@@ -84,11 +84,6 @@ def fetch_rdf_export(target_store: Store):
         tmp.write(response.content)
         tmp_path = tmp.name
 
-    with open("./exports/test.rdf", "wb") as tmp:
-        tmp.write(response.content)
-        tmp_path = tmp.name
-
-
     logger.info(f"Loading API RDF export from temp file {tmp_path}")
     try:
         before = len(target_store)
@@ -124,7 +119,7 @@ def build_graph(target_store: Store):
 
     for col in collections:
         col_data = col["data"]
-        col_uri = NamedNode(f"http://zotero.org/collection/{col_data['key']}")
+        col_uri = NamedNode(f"{BASE_URL}/collections/{col_data['key']}")
         target_store.add(Quad(col_uri, NamedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"), NamedNode(f"{ZOT_NS}Collection")))
         for field, value in col_data.items():
             if value:
@@ -133,7 +128,7 @@ def build_graph(target_store: Store):
     for item in items:
         data = item.get("data", {})
         key = data.get("key")
-        node_uri = NamedNode(f"http://zotero.org/item/{key}")
+        node_uri = NamedNode(f"{BASE_URL}/items/{key}")
         target_store.add(Quad(node_uri, NamedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"), NamedNode(f"{ZOT_NS}Item")))
 
         for field, value in data.items():
