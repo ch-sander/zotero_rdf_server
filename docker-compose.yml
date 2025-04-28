@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  zotero-sparql:
+    build: .
+    container_name: zotero-sparql-server
+    ports:
+      - "${SERVER_PORT:-8000}:8000"
+    environment:
+      - CONFIG_FILE=${CONFIG_FILE:-config.yaml}
+    volumes:
+      - ${CONFIG_FILE:-./config.yaml}:/app/config.yaml
+      - ${STORE_DIRECTORY:-./data}:/app/data
+      - ${EXPORT_DIRECTORY:-./exports}:/app/exports
+      - .:/app #dev
+      # - ${DB_PATH:-./users.db}:/app/users.db
+    restart: unless-stopped
+  oxigraph:
+    image: ghcr.io/oxigraph/oxigraph:latest
+    container_name: ${OXIGRAPH_CONTAINER}
+    ports:
+      - "7878:7878"
+    volumes:
+      - ${STORE_DIRECTORY:-./data}:/data
+    command: ["serve-read-only", "--location", "/data", "--bind", "0.0.0.0:7878", "--union-default-graph", "--cors"]
+    restart: unless-stopped
