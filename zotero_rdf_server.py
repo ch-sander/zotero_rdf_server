@@ -7,7 +7,7 @@ import tempfile
 import logging
 import shutil
 from uuid import uuid4
-from pyoxigraph import Store, Quad, NamedNode, Literal, RdfFormat
+from pyoxigraph import Store, Quad, NamedNode, Literal, RdfFormat, BlankNode
 from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter
 from fastapi.responses import FileResponse, HTMLResponse
 from contextlib import asynccontextmanager
@@ -25,9 +25,6 @@ logging.basicConfig(level=log_level)
 logger = logging.getLogger(__name__)
 
 # --- Config ---
-# API_KEY = config["zotero"]["api_key"]
-# LIBRARY_TYPE = config["zotero"]["library_type"]
-# LIBRARY_ID = config["zotero"]["library_id"]
 ZOTERO_CONFIGS = config["zotero"]
 PORT = config["server"]["port"]
 REFRESH_INTERVAL = config["server"]["refresh_interval"]
@@ -35,13 +32,8 @@ STORE_MODE = "directory"
 STORE_DIRECTORY = os.getenv("STORE_DIRECTORY", "./data")
 EXPORT_DIRECTORY = config["server"].get("export_directory", "./exports")
 IMPORT_DIRECTORY = config["server"].get("import_directory", "./import")
-# LOAD_MODE = config["zotero"].get("load_mode", "json")
-# RDF_EXPORT_FORMAT = config["zotero"].get("rdf_export_format", "rdf_zotero")
-# API_QUERY_PARAMS = config["zotero"].get("api_query_params", {})
 OXIGRAPH_CONTAINER = os.getenv("OXIGRAPH_CONTAINER", "oxigraph")
 LIMIT = 100
-# BASE_URL = f"https://api.zotero.org/{LIBRARY_TYPE}/{LIBRARY_ID}"
-HEADERS = {"Zotero-API-Key": API_KEY} if API_KEY else {}
 
 # --- Constants ---
 ZOT_NS = "http://www.zotero.org/namespaces/export#"
@@ -50,151 +42,121 @@ ZOT_NS = "http://www.zotero.org/namespaces/export#"
 router = APIRouter()
 store = None
 
-# --- Functions ---
+# --- Class ---
 
-def import_rdf_directory(target_store: Store, directory_path: str):
-    for lib_cfg in ZOTERO_CONFIGS:
-        name = lib_cfg["name"]
-        load_mode = lib_cfg.get("load_mode", "manual_import")
+class ZoteroLibrary:
+    def __init__(self, config: dict):
+        self.name = config["name"]
+        self.load_mode = config.get("load_mode", "json")
+        self.library_type = config["library_type"]
+        self.library_id = config["library_id"]
+        self.api_key = config["api_key"]
+        self.rdf_export_format = config.get("rdf_export_format", "rdf_zotero")
+        self.api_query_params = config.get("api_query_params", {})
+        self.base_url = f"https://api.zotero.org/{self.library_type}/{self.library_id}"
+        self.headers = {"Zotero-API-Key": self.api_key} if self.api_key else {}
 
-        if load_mode != "manual_import":
-            continue
-
-        subdir = os.path.join(directory_path, name)
-        if not os.path.isdir(subdir):
-            logger.warning(f"Skipping {name}: directory {subdir} not found")
-            continue
-
-        logger.info(f"Importing RDF files for library '{name}' from {subdir}")
-        for filename in os.listdir(subdir):
-            filepath = os.path.join(subdir, filename)
-            if filename.endswith(".rdf"):
-                fmt = RdfFormat.RDF_XML
-            elif filename.endswith(".trig"):
-                fmt = RdfFormat.TRIG
-            elif filename.endswith(".ttl"):
-                fmt = RdfFormat.TURTLE
-            elif filename.endswith(".nt"):
-                fmt = RdfFormat.N_TRIPLES
-            elif filename.endswith(".nq"):
-                fmt = RdfFormat.N_QUADS
-            else:
-                logger.info(f"Skipping unsupported file: {filename}")
-                continue
-
-            logger.info(f"Importing RDF file: {filepath}")
-            before = len(target_store)
-            base_iri = f"{lib_cfg['library_type']}/{lib_cfg['library_id']}/items/"
-            target_store.bulk_load(path=filepath, format=fmt, base_iri=base_iri, to_graph=NamedNode(base_iri))
-            after = len(target_store)
-            logger.info(f"Imported {after - before} triples from {filename}")
-
-
-def fetch_rdf_export(target_store: Store):
-    for lib_cfg in ZOTERO_CONFIGS:
-        name = lib_cfg["name"]
-        load_mode = lib_cfg.get("load_mode", "json")
-        if load_mode != "rdf":
-            continue
-
-        base_url = f"https://api.zotero.org/{lib_cfg['library_type']}/{lib_cfg['library_id']}"
-        export_format = lib_cfg.get("rdf_export_format", "rdf_zotero")
-        api_key = lib_cfg["api_key"]
-        api_query_params = lib_cfg.get("api_query_params", {})
-        headers = {"Zotero-API-Key": api_key}
-
-        url = f"{base_url}/items"
-        params = {"format": export_format, "limit": LIMIT, **api_query_params}
-
-        logger.info(f"Fetching RDF export for library '{name}' in format '{export_format}'")
-        response = requests.get(url, headers=headers, params=params)
-        response.raise_for_status()
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".rdf") as tmp:
-            tmp.write(response.content)
-            tmp_path = tmp.name
-
-        logger.info(f"Loading API RDF export for '{name}' from temp file {tmp_path}")
-        try:
-            before = len(target_store)
-            target_store.bulk_load(path=tmp_path, format=RdfFormat.RDF_XML, base_iri=url + "/", to_graph=NamedNode(base_url))
-            after = len(target_store)
-            logger.info(f"Loaded {after - before} triples from API export for '{name}'")
-        finally:
-            os.unlink(tmp_path)
-
-
-def fetch_all(endpoint: str) -> list:
-    results = {}
-
-    for lib_cfg in ZOTERO_CONFIGS:
-        name = lib_cfg["name"]
-        load_mode = lib_cfg.get("load_mode", "json")
-
-        if load_mode not in ("json", "rdf"):
-            print(f"Skipping {name}: load_mode is '{load_mode}'")
-            continue
-
-        api_key = lib_cfg["api_key"]
-        lib_type = lib_cfg["library_type"]
-        lib_id = lib_cfg["library_id"]
-        api_query_params = lib_cfg.get("api_query_params", {})
-        headers = {"Zotero-API-Key": api_key}
-        base_url = f"https://api.zotero.org/{lib_type}/{lib_id}"
-
+    def fetch_paginated(self, endpoint: str) -> list:
+        results = []
         start = 0
-        all_data = []
-        base_params = {"format": "json", "limit": LIMIT, **api_query_params}
-
         while True:
-            params = {**base_params, "start": start}
-            response = requests.get(f"{base_url}/{endpoint}", headers=headers, params=params)
+            params = {"format": "json", "limit": LIMIT, "start": start, **self.api_query_params}
+            response = requests.get(f"{self.base_url}/{endpoint}", headers=self.headers, params=params)
             response.raise_for_status()
             data = response.json()
             if not data:
                 break
-            all_data.extend(data)
+            results.extend(data)
             start += LIMIT
+        return results
 
-        results.append({
-            "base_url":base_url,
-            "name": name,
-            "load_mode": load_mode,
-            "data": all_data,
-            "rdf_export_format": lib_cfg.get("rdf_export_format") if load_mode == "rdf" else None
-        })
+    def fetch_items(self) -> list:
+        return self.fetch_paginated("items")
 
-    return results
+    def fetch_collections(self) -> list:
+        return self.fetch_paginated("collections")
+
+    def fetch_rdf_export(self) -> bytes:
+        params = {"format": self.rdf_export_format, "limit": LIMIT, **self.api_query_params}
+        response = requests.get(f"{self.base_url}/items", headers=self.headers, params=params)
+        response.raise_for_status()
+        return response.content  # RDF XML as Bytes
 
 
-def build_graph(target_store: Store):
-    items_list = fetch_all("items")
-    collections_list = fetch_all("collections")
+# --- Functions ---
 
-    for lib_items, lib_colls in zip(items_list, collections_list):
-        base_url = lib_items["base_url"]
-        items = lib_items["data"]
-        collections = lib_colls["data"]
+def import_rdf_from_disk(lib: ZoteroLibrary, store: Store, base_dir: str):
+    subdir = os.path.join(base_dir, lib.name)
+    if not os.path.isdir(subdir):
+        logger.warning(f"Directory not found for manual import: {subdir}")
+        return
 
-        logger.info(f"[{lib_items['name']}] Fetched {len(items)} items and {len(collections)} collections.")
+    logger.info(f"Importing RDF files for '{lib.name}' from {subdir}")
+    for filename in os.listdir(subdir):
+        filepath = os.path.join(subdir, filename)
+        if filename.endswith(".rdf"):
+            fmt = RdfFormat.RDF_XML
+        elif filename.endswith(".trig"):
+            fmt = RdfFormat.TRIG
+        elif filename.endswith(".ttl"):
+            fmt = RdfFormat.TURTLE
+        elif filename.endswith(".nt"):
+            fmt = RdfFormat.N_TRIPLES
+        elif filename.endswith(".nq"):
+            fmt = RdfFormat.N_QUADS
+        else:
+            logger.info(f"Skipping unsupported file: {filename}")
+            continue
 
-        for col in collections:
-            col_data = col["data"]
-            col_uri = NamedNode(f"{base_url}/collections/{col_data['key']}")
-            target_store.add(Quad(col_uri, NamedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"), NamedNode(f"{ZOT_NS}Collection")))
-            for field, value in col_data.items():
-                if value:
-                    target_store.add(Quad(col_uri, NamedNode(f"{ZOT_NS}{field}"), Literal(str(value))))
+        before = len(store)
+        store.bulk_load(path=filepath, format=fmt, base_iri=f"{lib.base_url}/items/", to_graph=NamedNode(lib.base_url))
+        after = len(store)
+        logger.info(f"Imported {after - before} triples from {filename}")
 
-        for item in items:
-            data = item.get("data", {})
-            key = data.get("key")
-            node_uri = NamedNode(f"{base_url}/items/{key}")
-            target_store.add(Quad(node_uri, NamedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"), NamedNode(f"{ZOT_NS}Item")))
 
-            for field, value in data.items():
-                if value:
-                    target_store.add(Quad(node_uri, NamedNode(f"{ZOT_NS}{field}"), Literal(str(value))))
+def add_rdf_from_dict_pyox(store: Store, subject: NamedNode | BlankNode, data: dict, ns_prefix: str):
+    for field, value in data.items():
+        predicate = NamedNode(f"{ns_prefix}{field}")
+
+        if isinstance(value, dict):
+            bnode = BlankNode()
+            store.add(Quad(subject, predicate, bnode))
+            add_rdf_from_dict_pyox(store, bnode, value, ns_prefix)
+
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    bnode = BlankNode()
+                    store.add(Quad(subject, predicate, bnode))
+                    add_rdf_from_dict_pyox(store, bnode, item, ns_prefix)
+                else:
+                    lit = Literal(str(item))
+                    store.add(Quad(subject, predicate, lit))
+
+        elif value is not None:
+            lit = Literal(str(value))
+            store.add(Quad(subject, predicate, lit))
+
+
+def build_graph_for_library(lib: ZoteroLibrary, store: Store):
+    items = lib.fetch_items()
+    collections = lib.fetch_collections()
+
+    logger.info(f"[{lib.name}] Fetched {len(items)} items and {len(collections)} collections.")
+
+    for col in collections:
+        col_data = col["data"]
+        col_uri = NamedNode(f"{lib.base_url}/collections/{col_data['key']}")
+        store.add(Quad(col_uri, NamedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"), NamedNode(f"{ZOT_NS}Collection")))
+        add_rdf_from_dict_pyox(store, col_uri, col_data, ZOT_NS)
+
+    for item in items:
+        data = item.get("data", {})
+        key = data.get("key")
+        node_uri = NamedNode(f"{lib.base_url}/items/{key}")
+        store.add(Quad(node_uri, NamedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"), NamedNode(f"{ZOT_NS}Item")))
+        add_rdf_from_dict_pyox(store, node_uri, data, ZOT_NS)
+
 
 
 def initialize_store():
@@ -235,21 +197,43 @@ def refresh_store():
                     os.makedirs(STORE_DIRECTORY, exist_ok=True)
                 store = Store(path=STORE_DIRECTORY)
 
-            if any(lib["load_mode"] == "rdf" for lib in ZOTERO_CONFIGS):
-                fetch_rdf_export(store)
+            # Für jede Zotero-Library einzeln laden
+            for lib_cfg in ZOTERO_CONFIGS:
+                lib = ZoteroLibrary(lib_cfg)
 
-            if any(lib["load_mode"] == "manual_import" for lib in ZOTERO_CONFIGS):
-                import_rdf_directory(store, IMPORT_DIRECTORY)
+                if lib.load_mode == "rdf":
+                    logger.info(f"Fetching RDF export for '{lib.name}'")
+                    rdf_data = lib.fetch_rdf_export()
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".rdf") as tmp:
+                        tmp.write(rdf_data)
+                        tmp_path = tmp.name
+                    try:
+                        before = len(store)
+                        store.bulk_load(
+                            path=tmp_path,
+                            format=RdfFormat.RDF_XML,
+                            base_iri=f"{lib.base_url}/items/",
+                            to_graph=NamedNode(lib.base_url)
+                        )
+                        after = len(store)
+                        logger.info(f"Loaded {after - before} triples from RDF export for '{lib.name}'")
+                    finally:
+                        os.unlink(tmp_path)
 
-            if any(lib["load_mode"] == "json" for lib in ZOTERO_CONFIGS):
-                build_graph(store)
+                elif lib.load_mode == "manual_import":
+                    import_rdf_from_disk(lib, store, IMPORT_DIRECTORY)
+
+                elif lib.load_mode == "json":
+                    build_graph_for_library(lib, store)
+
+                else:
+                    logger.warning(f"Unknown load_mode '{lib.load_mode}' for '{lib.name}' — skipping.")
 
             logger.info("Zotero data refreshed successfully.")
 
         except Exception as e:
             logger.error(f"Error refreshing data: {e}")
         time.sleep(REFRESH_INTERVAL)
-
 
 # --- API Endpoints ---
 
