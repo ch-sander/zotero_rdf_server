@@ -7,12 +7,11 @@ import tempfile
 import logging
 import shutil
 from uuid import uuid4
-from pyoxigraph import Store, Quad, NamedNode, Literal, RdfFormat, BlankNode
+from pyoxigraph import Store, Quad, NamedNode, Literal, RdfFormat, BlankNode, DefaultGraph
 from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter
 from fastapi.responses import FileResponse, HTMLResponse
 from contextlib import asynccontextmanager
 import uvicorn
-import subprocess
 
 # --- Load configuration ---
 config_path = os.getenv("CONFIG_FILE", "config.yaml")
@@ -50,10 +49,11 @@ class ZoteroLibrary:
         self.load_mode = config.get("load_mode", "json")
         self.library_type = config["library_type"]
         self.library_id = config["library_id"]
-        self.api_key = config["api_key"]
+        self.api_key = config.get("api_key", None)
         self.rdf_export_format = config.get("rdf_export_format", "rdf_zotero")
-        self.api_query_params = config.get("api_query_params", {})
-        self.base_url = f"https://api.zotero.org/{self.library_type}/{self.library_id}"
+        self.api_query_params = config.get("api_query_params") or {}
+        self.base_api_url = f"https://api.zotero.org/{self.library_type}/{self.library_id}"
+        self.base_url = f"https://www.zotero.org/{self.library_type}/{self.library_id}"
         self.headers = {"Zotero-API-Key": self.api_key} if self.api_key else {}
 
     def fetch_paginated(self, endpoint: str) -> list:
@@ -61,7 +61,7 @@ class ZoteroLibrary:
         start = 0
         while True:
             params = {"format": "json", "limit": LIMIT, "start": start, **self.api_query_params}
-            response = requests.get(f"{self.base_url}/{endpoint}", headers=self.headers, params=params)
+            response = requests.get(f"{self.base_api_url}/{endpoint}", headers=self.headers, params=params)
             response.raise_for_status()
             data = response.json()
             if not data:
@@ -78,7 +78,7 @@ class ZoteroLibrary:
 
     def fetch_rdf_export(self) -> bytes:
         params = {"format": self.rdf_export_format, "limit": LIMIT, **self.api_query_params}
-        response = requests.get(f"{self.base_url}/items", headers=self.headers, params=params)
+        response = requests.get(f"{self.base_api_url}/items", headers=self.headers, params=params)
         response.raise_for_status()
         return response.content  # RDF XML as Bytes
 
@@ -197,7 +197,6 @@ def refresh_store():
                     os.makedirs(STORE_DIRECTORY, exist_ok=True)
                 store = Store(path=STORE_DIRECTORY)
 
-            # Für jede Zotero-Library einzeln laden
             for lib_cfg in ZOTERO_CONFIGS:
                 lib = ZoteroLibrary(lib_cfg)
 
@@ -238,17 +237,38 @@ def refresh_store():
 # --- API Endpoints ---
 
 @router.get("/export")
-async def export_graph(format: str = Query("trig")):
+async def export_graph(
+    format: str = Query("trig"),
+    graph: str | None = Query(default=None, description="Named graph IRI (optional)")
+):
     os.makedirs(EXPORT_DIRECTORY, exist_ok=True)
-    if format == "trig":
-        path = os.path.join(EXPORT_DIRECTORY, "zotero_graph.trig")
-        store.dump(path, RdfFormat.TRIG)
-    elif format == "nquads":
-        path = os.path.join(EXPORT_DIRECTORY, "zotero_graph.nq")
-        store.dump(path, RdfFormat.N_QUADS)
-    else:
+
+    format_map = {
+        "trig": (RdfFormat.TRIG, "trig"),
+        "nquads": (RdfFormat.N_QUADS, "nq"),
+        "ttl": (RdfFormat.TURTLE, "ttl"),
+        "nt": (RdfFormat.N_TRIPLES, "nt"),
+        "n3": (RdfFormat.N3, "n3"),
+        "xml": (RdfFormat.RDF_XML, "rdf")
+    }
+
+    if format not in format_map:
         raise HTTPException(status_code=400, detail="Unsupported export format")
 
+    rdf_format, extension = format_map[format]
+    path = os.path.join(EXPORT_DIRECTORY, f"zotero_graph.{extension}")
+
+    no_named_graph_support = rdf_format in {
+        RdfFormat.TURTLE, RdfFormat.N_TRIPLES, RdfFormat.N3, RdfFormat.RDF_XML
+    }
+
+    kwargs = {}
+    if graph:
+        kwargs["from_graph"] = NamedNode(graph)
+    elif no_named_graph_support:
+        kwargs["from_graph"] = DefaultGraph()
+
+    store.dump(output=path, format=rdf_format, **kwargs)
     return FileResponse(path, filename=os.path.basename(path))
 
 # --- Start server ---
