@@ -6,7 +6,7 @@ import time
 import tempfile
 import logging
 import shutil
-from uuid import uuid4
+from uuid import uuid5, NAMESPACE_URL
 from pyoxigraph import Store, Quad, NamedNode, Literal, RdfFormat, BlankNode, DefaultGraph
 from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter
 from fastapi.responses import FileResponse, HTMLResponse
@@ -114,28 +114,75 @@ def import_rdf_from_disk(lib: ZoteroLibrary, store: Store, base_dir: str):
         logger.info(f"Imported {after - before} triples from {filename}")
 
 
-def add_rdf_from_dict_pyox(store: Store, subject: NamedNode | BlankNode, data: dict, ns_prefix: str):
+def add_rdf_from_dict_pyox(store: Store, subject: NamedNode | BlankNode, data: dict, ns_prefix: str, base_uri: str):
+
+    def zotero_property_map(predicate_str: str, object: str | dict | list):
+        XSD_NS = "http://www.w3.org/2001/XMLSchema#"
+        
+        try:
+            if object == "" or object == {} or object == [] or object == None or object == [{}]:
+                return None
+            # logger.info(f"Tag added: {predicate_str}, {isinstance(object, dict)}")
+
+            if predicate_str == "tags" and isinstance(object, dict) and "tag" in object:
+                tag_value = object["tag"]
+                base_ns = uuid5(NAMESPACE_URL, base_uri)
+                tag_iri = uuid5(base_ns, tag_value)
+                tag_node = NamedNode(f"{base_uri}/tags/{tag_iri}")
+                store.add(Quad(subject, NamedNode(f"{ns_prefix}tags"), tag_node))
+                logger.info(f"Tag added: {tag_value}")
+                for key, val in object.items():
+                    if val:
+                        pred = NamedNode(f"{ns_prefix}{key}")
+                        store.add(Quad(tag_node, pred, Literal(str(val))))
+                return None
+                
+            if predicate_str == "collections": #collections
+                return NamedNode(f"{base_uri}/collections/{object}")
+            if predicate_str in ["url","dc:relation"] and object.startswith("http"): # url
+                return NamedNode(object)
+            if predicate_str in ["numPages","numberOfVolumes","volume","series number"] and object.isdigit(): # int
+                return Literal(str(object),datatype=NamedNode(f"{XSD_NS}int"))
+            if predicate_str == "date": # date
+                year = int(object)
+                if year > 0:
+                    return Literal(str(year), datatype=NamedNode(f"{XSD_NS}gYear"))
+
+            if predicate_str in ["dateModified","accessDate","zot:dateAdded"]: # dateTime
+                return Literal(str(object),datatype=NamedNode(f"{XSD_NS}dateTime"))
+            else:
+                return Literal(str(object))
+        except (ValueError, TypeError):
+            pass
+
     for field, value in data.items():
         predicate = NamedNode(f"{ns_prefix}{field}")
 
         if isinstance(value, dict):
+            obj = zotero_property_map(field, value)
+            if obj is None:
+                continue
             bnode = BlankNode()
             store.add(Quad(subject, predicate, bnode))
-            add_rdf_from_dict_pyox(store, bnode, value, ns_prefix)
+            add_rdf_from_dict_pyox(store, bnode, value, ns_prefix, base_uri)
 
         elif isinstance(value, list):
             for item in value:
                 if isinstance(item, dict):
+                    if zotero_property_map(field, item) is None:
+                        continue
                     bnode = BlankNode()
                     store.add(Quad(subject, predicate, bnode))
-                    add_rdf_from_dict_pyox(store, bnode, item, ns_prefix)
+                    add_rdf_from_dict_pyox(store, bnode, item, ns_prefix, base_uri)
                 else:
-                    lit = Literal(str(item))
-                    store.add(Quad(subject, predicate, lit))
+                    obj = zotero_property_map(field, item)
+                    if obj is not None:
+                        store.add(Quad(subject, predicate, obj))
 
         elif value is not None:
-            lit = Literal(str(value))
-            store.add(Quad(subject, predicate, lit))
+            obj = zotero_property_map(field, value)
+            if obj is not None:
+                store.add(Quad(subject, predicate, obj))
 
 
 def build_graph_for_library(lib: ZoteroLibrary, store: Store):
@@ -148,14 +195,14 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store):
         col_data = col["data"]
         col_uri = NamedNode(f"{lib.base_url}/collections/{col_data['key']}")
         store.add(Quad(col_uri, NamedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"), NamedNode(f"{ZOT_NS}Collection")))
-        add_rdf_from_dict_pyox(store, col_uri, col_data, ZOT_NS)
+        add_rdf_from_dict_pyox(store, col_uri, col_data, ZOT_NS, lib.base_url)
 
     for item in items:
         data = item.get("data", {})
         key = data.get("key")
         node_uri = NamedNode(f"{lib.base_url}/items/{key}")
         store.add(Quad(node_uri, NamedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"), NamedNode(f"{ZOT_NS}Item")))
-        add_rdf_from_dict_pyox(store, node_uri, data, ZOT_NS)
+        add_rdf_from_dict_pyox(store, node_uri, data, ZOT_NS, lib.base_url)
 
 
 
