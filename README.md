@@ -15,43 +15,96 @@ exposes a local SPARQL endpoint, and allows exporting the graph.
 
 ## Configuration
 
-Set your `config.yaml` in `.env`!
+Place both YAML filenames in your `.env`, not in the code or Dockerfile. Only these two environment variables need updating when you rename or move configuration files:
 
-You may set up multiple Zotero libraries in your config. Each library will be loaded in the database as named graph (graph URI is the library URI, i.e. `https://api.zotero.org/{library_type}/{library_id}`)
+```bash
+CONFIG_FILE=custom-config.yaml
+ZOTERO_CONFIG_FILE=custom-zotero.yaml
+```
 
-Example `config.yaml`:
+Docker-Compose will mount these files into `/app` and your Python code loads them via `os.getenv(...)` with sensible defaults (`config.yaml` and `zotero.yaml`).
+
+### `config.yaml`
+
+Defines server and storage settings:
 
 ```yaml
-zotero:
-  - name: Library 1 Name # only internal use, does not have to be the name given in Zotero
-    api_key: "YOUR_API_KEY"
-    library_type: "groups"  # "user" or "groups"
-    library_id: "YOUR_LIBRARY_ID"
-    load_mode: "rdf"  # "json" or "rdf" or "manual_import"
-    rdf_export_format: "rdf_zotero" # "rdf_zotero" "rdf_bibliontology" only needed if load_mode = "rdf"
-    api_query_params:
-      itemType: "book"  # optional, freely configurable
-      # tag: "important"  # optional, freely configurable
-      # collection: "XYZ123"  # optional
-  - name: Library 2 Name # only internal use, does not have to be the name given in Zotero
-    api_key: "YOUR_API_KEY"
-    library_type: "groups"  # "user" or "groups"
-    library_id: "YOUR_LIBRARY_ID"
-    load_mode: "rdf"  # "json" or "rdf" or "manual_import"
-    rdf_export_format: "rdf_zotero" # "rdf_zotero" "rdf_bibliontology" only needed if load_mode = "rdf"
-    api_query_params:
-      itemType: "book"  # optional, freely configurable
-      # tag: "important"  # optional, freely configurable
-      # collection: "XYZ123"  # optional
-
 server:
-  port: 8000
-  refresh_interval: 3600
-  store_mode: "memory"
-  store_directory: "./data"
-  export_directory: "./exports"
-  manual_import_path: "./imported_rdf"
-  log_level: "info"
+  port: 8000                 # HTTP port for Uvicorn
+  refresh_interval: 3600     # polling interval in seconds
+  store_mode: "directory"      # "memory" or "directory"
+  store_directory: "./data" # only for directory mode
+  export_directory: "./exports" # SPARQL result exports
+  manual_import_path: "./imported_rdf" # for RDF manual imports
+  log_level: "info"         # logging level (debug, info, warn, error)
+```
+
+### `zotero.yaml`
+
+Contains the Zotero-specific settings:
+
+```yaml
+# Global RDF context (used for default vocabulary namespace)
+context:
+  vocab: "http://www.zotero.org/namespaces/export#"
+  api_url: "https://api.zotero.org/"
+  base: "https://www.zotero.org/"
+
+# List of libraries to ingest
+libraries:
+  - name: "Visual Magnetism"
+    api_key: "YOUR_API_KEY"
+    library_type: "groups"       # "user" or "groups"
+    library_id: "2536132"
+    load_mode: "json"            # "json", "rdf", or "manual_import"
+    rdf_export_format: "rdf_zotero"  # required only if load_mode is "rdf"
+
+    # Optional query parameters passed to the Zotero API
+    api_query_params:
+      itemType: "book"
+      # tag: "important"
+      # collection: "XYZ123"
+
+    # Optional RDF mapping configuration
+    map:
+      # Whitelist: only fields listed here (and in 'rdf_mapping') will be processed
+      # white: [title, date]
+
+      # Blacklist: fields to be explicitly ignored
+      black: [title, date]
+
+      # Fields that should be treated as structured Named Nodes
+      rdf_mapping: [creators, tags, collections]
+
+      # RDF type mapping for items
+      # Fields prefixed with "_" indicate fixed RDF types
+      # Others are field names whose values are interpreted as RDF types
+      # Values without "http" will be expanded using the default vocab
+      item_type: ["_Item", "itemType"]
+
+      # RDF type mapping for collections (same logic as item_type)
+      collection_type: ["_Collection"]
+
+      # Additional RDF triples per item
+      # - `property`: full URI or prefixed name of the predicate
+      # - `value`: name of the field in the data OR a constant (if prefixed with `_`)
+      # - `named_node`: if true, the value becomes a NamedNode; if false, a Literal
+      item_additional:
+        - property: "http://www.w3.org/2000/01/rdf-schema#label"
+          value: "title"
+          named_node: false
+        - property: "http://www.w3.org/2002/07/owl#sameAs"
+          value: "url"
+          named_node: true
+  - name: "Library 2"
+    api_key: "YOUR_OTHER_API_KEY"
+    library_type: "user"
+    library_id: "ANOTHER_ID"
+    load_mode: "json"
+    # no rdf_export_format needed
+    api_query_params:
+      itemType: "article"
+
 ```
 
 ## Running
@@ -75,6 +128,7 @@ docker-compose up --build
 | `/export?format=trig` | Export full RDF dataset in TriG format |
 | `/export?format=nquads` | Export full RDF dataset in N-Quads format |
 | `/export?format=ttl&graph=<graph-iri>` | Export a named graph in Turtle format (only content of the given graph) |
+| `/schema` | Export the Zotero item type schema as OWL ontology in JSON-LD format (incl. multilingual rdfs:label) |
 
 ### Export Parameters
 
