@@ -6,7 +6,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY zotero_rdf_server.py .
-COPY config.yaml .
+# COPY config.yaml .
+# COPY zotero.yaml .
 
 RUN pip install --no-cache-dir uvicorn
 # avoid  "--reload" in production

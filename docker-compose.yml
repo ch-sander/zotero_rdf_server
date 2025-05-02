@@ -1,18 +1,23 @@
 version: "3.8"
 
 services:
-  zotero-sparql:
+  zotero-rdf:
     build: .
-    container_name: zotero-sparql-server
+    container_name: zotero-rdf-server
     ports:
       - "${SERVER_PORT:-8000}:8000"
+    env_file:
+      - ./.env
     environment:
-      - CONFIG_FILE=${CONFIG_FILE:-config.yaml}
+      - CONFIG_FILE
+      - ZOTERO_CONFIG_FILE # =${ZOTERO_CONFIG_FILE:-zotero.yaml}
+      - SERVER_PORT
     volumes:
-      - ${CONFIG_FILE:-./config.yaml}:/app/config.yaml
-      - ${STORE_DIRECTORY:-./data}:/app/data
-      - ${EXPORT_DIRECTORY:-./exports}:/app/exports
-      - .:/app #dev
+      - ./:/app           # dev mount
+      - "${CONFIG_FILE:-config.yaml}:/app/${CONFIG_FILE:-config.yaml}"
+      - "${ZOTERO_CONFIG_FILE:-zotero.yaml}:/app/${ZOTERO_CONFIG_FILE:-zotero.yaml}"
+      - "${STORE_DIRECTORY:-./data}:/app/data"
+      - "${EXPORT_DIRECTORY:-./exports}:/app/exports"
       # - ${DB_PATH:-./users.db}:/app/users.db
     restart: unless-stopped
   oxigraph:
