@@ -6,12 +6,14 @@ import time
 import tempfile
 import logging
 import shutil
-from uuid import uuid5, NAMESPACE_URL
+from uuid import uuid5, NAMESPACE_URL, uuid4
 from pyoxigraph import Store, Quad, NamedNode, Literal, RdfFormat, BlankNode, DefaultGraph
 from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter
 from fastapi.responses import FileResponse, HTMLResponse
 from contextlib import asynccontextmanager
 import uvicorn
+from collections import defaultdict
+import json
 
 # --- Load configuration ---
 config_path = os.getenv("CONFIG_FILE", "config.yaml")
@@ -40,8 +42,11 @@ OXIGRAPH_CONTAINER = os.getenv("OXIGRAPH_CONTAINER", "oxigraph")
 LIMIT = 100
 
 # --- Constants ---
-ZOT_NS = ZOTERO_CONFIGS.get("zotero_ns", "http://www.zotero.org/namespaces/export#")
-
+ZOT_NS = ZOTERO_CONFIGS.get("vocab", "http://www.zotero.org/namespaces/export#")
+ZOT_API_URL = ZOTERO_CONFIGS.get("api_url", "https://api.zotero.org/")
+ZOT_BASE_URL = ZOTERO_CONFIGS.get("base_url", "https://www.zotero.org/")
+ZOT_SCHEMA = ZOTERO_CONFIGS.get("schema", "https://api.zotero.org/schema")
+RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 
 # --- App ---
 router = APIRouter()
@@ -58,8 +63,8 @@ class ZoteroLibrary:
         self.api_key = config.get("api_key", None)
         self.rdf_export_format = config.get("rdf_export_format", "rdf_zotero")
         self.api_query_params = config.get("api_query_params") or {}
-        self.base_api_url = f"https://api.zotero.org/{self.library_type}/{self.library_id}"
-        self.base_url = f"https://www.zotero.org/{self.library_type}/{self.library_id}"
+        self.base_api_url = f"{ZOT_API_URL}{self.library_type}/{self.library_id}"
+        self.base_url = f"{ZOT_BASE_URL}{self.library_type}/{self.library_id}"
         self.headers = {"Zotero-API-Key": self.api_key} if self.api_key else {}
         self.map = config.get("map") or {}
 
@@ -125,7 +130,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
     BASE_NS = uuid5(NAMESPACE_URL, base_uri)
     white = map.get("white") or []
     black = map.get("black") or []
-    named = map.get("named") or []
+    rdf_mapping = map.get("rdf_mapping") or []
     def zotero_property_map(predicate_str: str, object: str | dict | list, map: dict):
         XSD_NS = "http://www.w3.org/2001/XMLSchema#"
 
@@ -134,7 +139,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             if object == "" or object == {} or object == [] or object == None or object == [{}]:
                 return None
             
-            if named and predicate_str not in named: # no mapping if none specified or not specified for mapping
+            if rdf_mapping and predicate_str not in rdf_mapping: # no mapping if none specified or not specified for mapping
                 return None if isinstance(object, dict) else Literal(str(object))
             
             if isinstance(object, dict): # dicts as named nodes
@@ -199,7 +204,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
         predicate = NamedNode(f"{ns_prefix}{field}")
 
         if white:
-            if field not in white and field not in named:
+            if field not in white and field not in rdf_mapping:
                 logger.info(f"Skipping {field} (not in whitelist)")
                 continue
         elif black and field in black:
@@ -232,6 +237,46 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             if obj is not None:
                 store.add(Quad(subject, predicate, obj))
 
+def apply_rdf_types(store: Store, node: NamedNode, data: dict, type_fields: list[str], default_type: str, base_ns: str, prefix_ns: str):
+    if not type_fields:
+        store.add(Quad(node, NamedNode(RDF_TYPE), NamedNode(f"{prefix_ns}{default_type}")))
+    else:
+        for field in type_fields:
+            if field.startswith("_"):
+                val = field.lstrip("_")
+            else:
+                val = data.get(field)
+                if not val:
+                    continue
+            val_str = str(val)
+            type_node = NamedNode(val_str) if val_str.startswith("http") else NamedNode(f"{prefix_ns}{val_str}")
+            store.add(Quad(node, NamedNode(RDF_TYPE), type_node))
+
+def apply_additional_properties(store: Store, node: NamedNode, data: dict, specs: list[dict], prefix_ns: str):
+    for spec in specs:
+        property_str = spec.get("property")
+        value_spec = spec.get("value")
+        named_node = spec.get("named_node", False)
+
+        if not property_str or not value_spec:
+            continue
+
+        predicate = NamedNode(property_str) if property_str.startswith("http") else NamedNode(f"{prefix_ns}{property_str}")
+
+        if value_spec.startswith("_"):
+            raw_value = value_spec.lstrip("_")
+        else:
+            raw_value = data.get(value_spec)
+            if not raw_value:
+                continue
+
+        if named_node:
+            obj = NamedNode(str(raw_value)) if str(raw_value).startswith("http") else NamedNode(f"{prefix_ns}{raw_value}")
+        else:
+            obj = Literal(str(raw_value))
+
+        store.add(Quad(node, predicate, obj))
+
 
 def build_graph_for_library(lib: ZoteroLibrary, store: Store):
     items = lib.fetch_items()
@@ -241,16 +286,28 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store):
 
     for col in collections:
         col_data = col["data"]
-        col_uri = NamedNode(f"{lib.base_url}/collections/{col_data['key']}")
-        store.add(Quad(col_uri, NamedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"), NamedNode(f"{ZOT_NS}Collection")))
+        key = col_data.get("key", uuid4())
+        col_uri = NamedNode(f"{lib.base_url}/collections/{key}")
+
+        collection_type_fields = map.get("collection_type") or []
+        apply_rdf_types(store, col_uri, col_data, collection_type_fields, "Collection", lib.base_url, ZOT_NS)
+
+        collection_additional = map.get("collection_additional") or []
+        apply_additional_properties(store, col_uri, col_data, collection_additional, ZOT_NS)
+
         add_rdf_from_dict(store, col_uri, col_data, ZOT_NS, lib.base_url, map)
 
     for item in items:
-        data = item.get("data", {})
-        key = data.get("key")        
+        item_data = item.get("data", {})
+        key = item_data.get("key",uuid4())
+        item_type_fields = lib.map.get("item_type") or []
         node_uri = NamedNode(f"{lib.base_url}/items/{key}")
-        store.add(Quad(node_uri, NamedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"), NamedNode(f"{ZOT_NS}Item")))
-        add_rdf_from_dict(store, node_uri, data, ZOT_NS, lib.base_url, map)
+        apply_rdf_types(store, node_uri, item_data, item_type_fields, "Item", lib.base_url, ZOT_NS)
+
+        item_additional = map.get("item_additional") or []
+        apply_additional_properties(store, node_uri, item_data, item_additional, ZOT_NS)
+
+        add_rdf_from_dict(store, node_uri, item_data, ZOT_NS, lib.base_url, map)
 
 def initialize_store():
     global store
@@ -364,6 +421,139 @@ async def export_graph(
     store.dump(output=path, format=rdf_format, **kwargs)
     return FileResponse(path, filename=os.path.basename(path))
 
+@router.get("/schema")
+async def schema():
+
+    def extract_labels_from_locales(locales):
+        class_labels = defaultdict(list)
+        property_labels = defaultdict(list)
+
+        for lang, content in locales.items():
+            # Klassen: itemTypes + creatorTypes
+            for class_id, label in content.get("itemTypes", {}).items():
+                class_labels[class_id].append({"@value": label, "@language": lang})
+            for class_id, label in content.get("creatorTypes", {}).items():
+                class_labels[class_id].append({"@value": label, "@language": lang})
+
+            # Properties: fields
+            for prop_id, label in content.get("fields", {}).items():
+                property_labels[prop_id].append({"@value": label, "@language": lang})
+
+        return class_labels, property_labels
+    def generate_schema_jsonld(ontology, class_labels, property_labels):
+        context = {
+            "owl": "http://www.w3.org/2002/07/owl#",
+            "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+            "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+            "zot": "http://example.org/zotero#"
+        }
+
+        def format_union(entities):
+            if len(entities) == 1:
+                return {"@id": f"zot:{entities[0]}"}
+            return {
+                "@type": "owl:Class",
+                "owl:unionOf": [{"@id": f"zot:{e}"} for e in sorted(entities)]
+            }
+
+        jsonld = {
+            "@context": context,
+            "@graph": []
+        }
+
+        for cls in ontology["classes"]:
+            entry = {
+                "@id": f"zot:{cls['class']}",
+                "@type": "owl:Class"
+            }
+            if cls["class"] in class_labels:
+                entry["rdfs:label"] = class_labels[cls["class"]]
+            jsonld["@graph"].append(entry)
+
+        for prop in ontology["datatypeProperties"]:
+            entry = {
+                "@id": f"zot:{prop['property']}",
+                "@type": "owl:DatatypeProperty",
+                "rdfs:domain": format_union(prop["domains"])
+            }
+            if "equivalentProperty" in prop:
+                entry["owl:equivalentProperty"] = {"@id": f"zot:{prop['equivalentProperty']}"}
+            if prop["property"] in property_labels:
+                entry["rdfs:label"] = property_labels[prop["property"]]
+            jsonld["@graph"].append(entry)
+
+        for obj_prop in ontology["objectProperties"]:
+            entry = {
+                "@id": f"zot:{obj_prop['property']}",
+                "@type": "owl:ObjectProperty",
+                "rdfs:domain": format_union([obj_prop["domain"]]),
+                "rdfs:range": format_union(obj_prop["range"])
+            }
+            if obj_prop["property"] in property_labels:
+                entry["rdfs:label"] = property_labels[obj_prop["property"]]
+            jsonld["@graph"].append(entry)
+
+        return jsonld
+    def zotero_schema_to_ontology_json(zotero_json):
+        classes = set()
+        datatype_properties = defaultdict(lambda: {"domains": set(), "equivalentProperty": None})
+        creator_classes = set()
+        creator_property_relations = defaultdict(set)
+
+        for item_type in zotero_json.get("itemTypes", []):
+            item_type_name = item_type["itemType"]
+            classes.add(item_type_name)
+
+            for field in item_type.get("fields", []):
+                field_name = field["field"]
+                datatype_properties[field_name]["domains"].add(item_type_name)
+                if "baseField" in field:
+                    datatype_properties[field_name]["equivalentProperty"] = field["baseField"]
+
+            for creator in item_type.get("creatorTypes", []):
+                creator_type = creator["creatorType"]
+                creator_classes.add(creator_type)
+                creator_property_relations[item_type_name].add(creator_type)
+
+        ontology = {
+            "classes": sorted([{"class": cls} for cls in classes.union(creator_classes)], key=lambda x: x["class"]),
+            "datatypeProperties": [],
+            "objectProperties": []
+        }
+
+        for prop, details in sorted(datatype_properties.items()):
+            entry = {
+                "property": prop,
+                "domains": sorted(details["domains"])
+            }
+            if details["equivalentProperty"]:
+                entry["equivalentProperty"] = details["equivalentProperty"]
+            ontology["datatypeProperties"].append(entry)
+
+        for item_type, creator_types in sorted(creator_property_relations.items()):
+            ontology["objectProperties"].append({
+                "property": "creators",
+                "domain": item_type,
+                "range": sorted(creator_types)
+            })
+
+        return ontology
+    
+    def load_zotero_schema_from_api():
+        response = requests.get(ZOT_SCHEMA)
+        response.raise_for_status()
+        return response.json()
+
+    zotero_schema = load_zotero_schema_from_api()
+    ontology = zotero_schema_to_ontology_json(zotero_schema)
+    class_labels, property_labels = extract_labels_from_locales(zotero_schema["locales"])
+    jsonld = generate_schema_jsonld(ontology, class_labels, property_labels)
+    os.makedirs(EXPORT_DIRECTORY, exist_ok=True)
+    path = os.path.join(EXPORT_DIRECTORY, "zotero_schema_ontology.jsonld")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(jsonld, f, ensure_ascii=False, indent=2)
+    
+    return FileResponse(path, media_type="application/ld+json", filename=os.path.basename(path))
 # --- Start server ---
 
 @asynccontextmanager
