@@ -90,7 +90,7 @@ libraries:
     api_key: "xxxx"
     library_type: "groups"  # "user" or "groups"
     library_id: "123"
-    load_mode: "manual_import"  # Options: "json", "rdf", or "manual_import"
+    load_mode: "json"  # Options: "json", "rdf", or "manual_import"
     rdf_export_format: "rdf_zotero" # Options: "rdf_zotero", "rdf_bibliontology"; only needed if load_mode = "rdf"
     # base_uri: "https://www.example.com#" Used as the URI for the library's named graph and as the base URI for all named nodes created for Zotero items and collections. Defaults to "{context.base}{libraries.library_type}/{libraries.library_id}" as defined in this YAML
     # uuid_namespace: "https://www.example.com#" Used to generate consistent UUIDs for named nodes across multiple libraries in the union graph. Defaults to base_uri if not specified
@@ -144,8 +144,7 @@ docker-compose up --build
 | `/sparql` | Run SPARQL queries (GET/POST) *(not yet implemented)* |
 | `/export?format=trig` | Export full RDF dataset in TriG format |
 | `/export?format=nquads` | Export full RDF dataset in N-Quads format |
-| `/export?format=ttl&graph=<graph-iri>` | Export a named graph in Turtle format (only content of the given graph) |
-| `/schema` | Export the Zotero item type schema as OWL ontology in JSON-LD format (incl. multilingual rdfs:label) |
+| `/export?format=ttl&graph=/export?format=ttl&graph=http%3A%2F%2Fwww.zotero.org%2Fnamespaces%2Fexport%23` | Export a named graph in Turtle format (only content of the given graph) |
 
 ### Export Parameters
 
