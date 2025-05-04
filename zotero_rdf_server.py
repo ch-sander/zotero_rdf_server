@@ -605,8 +605,9 @@ async def export_graph(
 
     kwargs = {}
     if graph:
-        logger.info(f"Export from graph: {graph}")
-        kwargs["from_graph"] = NamedNode(graph)
+        clean_graph = graph.strip("<>")
+        kwargs["from_graph"] = NamedNode(clean_graph)
+        logger.info(f"Export from graph: {clean_graph}")
     elif no_named_graph_support:        
         kwargs["from_graph"] = DefaultGraph()
     else:
