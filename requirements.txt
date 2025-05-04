@@ -3,6 +3,5 @@ uvicorn
 requests
 pyoxigraph
 pyyaml
-collections
 # bcrypt
 # pyjwt

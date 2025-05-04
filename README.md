@@ -1,17 +1,51 @@
-# Zotero RDF SPARQL Server (Pyoxigraph-only)
+# Zotero RDF Server
 
 This server loads multiple Zotero libraries into an RDF graph,
 exposes a local SPARQL endpoint, and allows exporting the graph.
+## 📘 How to Create a Zotero Cloud Library
+
+To use this tool, you need at least one Zotero cloud library (either **user** or **group**). Here’s how to set it up:
+
+1. **Create a Zotero Account**  
+   Sign up at [https://www.zotero.org/user/register](https://www.zotero.org/user/register)
+
+2. **Install Zotero** *(optional but recommended)*  
+   Download from [https://www.zotero.org/download](https://www.zotero.org/download)
+
+3. **Create a Library**
+   - **User Library**: Log in and add items directly to your personal Zotero library.
+   - **Group Library**:
+     - Go to [https://www.zotero.org/groups](https://www.zotero.org/groups)
+     - Click **Create a New Group**
+     - Choose visibility and permissions
+     - Add items via the Zotero client or web interface
+
+4. **Find your Library ID**
+   - Visit your group library online (e.g. `https://www.zotero.org/groups/2536132/your-group-name`)
+   - The number in the URL is your `library_id`.
+
+5. **Create an API Key**
+   - Go to [https://www.zotero.org/settings/keys](https://www.zotero.org/settings/keys)
+   - Click **Create new private key**
+   - Select the appropriate access level (e.g., read-only)
+
+👉 More help in the official docs:  
+[Zotero Web Library](https://www.zotero.org/support/web_library)  
+[Groups](https://www.zotero.org/support/groups)  
+[API Guide](https://www.zotero.org/support/dev/web_api/v3/start)
+
+---
 
 ## Features
-- Load mode: JSON (Zotero API), RDF (Zotero API), or manual RDF import
-- Only Pyoxigraph in bulk-load where possible
-- Configurable API Query parameters (e.g., itemType, tag, collection)
-- Correct Zotero export namespace
-- FastAPI SPARQL endpoint not yet deployed
+
+- Load modes: JSON (via Zotero API), RDF (via API), or manual RDF import
+- Efficient graph loading using Pyoxigraph wherever possible
+- Configurable API query parameters (e.g., `itemType`, `tag`, `collection`)
+- Correct Zotero RDF namespace handling
 - Export as TriG or N-Quads
-- Docker and Compose ready
-- includes Oxigraph server in docker to query at port 7878
+- Docker and Compose support
+- Includes Oxigraph SPARQL server at port `7878`
+- *(FastAPI endpoint for `/sparql` not yet implemented)*
 
 ## Configuration
 
@@ -49,46 +83,24 @@ context:
   vocab: "http://www.zotero.org/namespaces/export#"
   api_url: "https://api.zotero.org/"
   base: "https://www.zotero.org/"
+  schema: "https://api.zotero.org/schema" # If specified, will generate a basic OWL ontology as a named graph using the IRI from vocab
 
-# List of libraries to ingest
 libraries:
-  - name: "Visual Magnetism"
-    api_key: "YOUR_API_KEY"
-    library_type: "groups"       # "user" or "groups"
-    library_id: "2536132"
-    load_mode: "json"            # "json", "rdf", or "manual_import"
-    rdf_export_format: "rdf_zotero"  # required only if load_mode is "rdf"
-
-    # Optional query parameters passed to the Zotero API
-    api_query_params:
-      itemType: "book"
-      # tag: "important"
-      # collection: "XYZ123"
-
-    # Optional RDF mapping configuration
-    map:
-      # Whitelist: only fields listed here (and in 'rdf_mapping') will be processed
-      # white: [title, date]
-
-      # Blacklist: fields to be explicitly ignored
-      black: [title, date]
-
-      # Fields that should be treated as structured Named Nodes
+  - name: My Library # Only required for "manual_import" as a subdirectory containing RDF files
+    api_key: "xxxx"
+    library_type: "groups"  # "user" or "groups"
+    library_id: "123"
+    load_mode: "manual_import"  # Options: "json", "rdf", or "manual_import"
+    rdf_export_format: "rdf_zotero" # Options: "rdf_zotero", "rdf_bibliontology"; only needed if load_mode = "rdf"
+    # base_uri: "https://www.example.com#" Used as the URI for the library's named graph and as the base URI for all named nodes created for Zotero items and collections. Defaults to "{context.base}{libraries.library_type}/{libraries.library_id}" as defined in this YAML
+    # uuid_namespace: "https://www.example.com#" Used to generate consistent UUIDs for named nodes across multiple libraries in the union graph. Defaults to base_uri if not specified
+    map: # Skip this block if no specifications are needed. Empty lists will be ignored
+      # white: [title, date] # Whitelist – only include these fields and those in 'named'
+      black: [title, date] # Blacklist – exclude these fields
       rdf_mapping: [creators, tags, collections]
-
-      # RDF type mapping for items
-      # Fields prefixed with "_" indicate fixed RDF types
-      # Others are field names whose values are interpreted as RDF types
-      # Values without "http" will be expanded using the default vocab
-      item_type: ["_Item", "itemType"]
-
-      # RDF type mapping for collections (same logic as item_type)
-      collection_type: ["_Collection"]
-
-      # Additional RDF triples per item
-      # - `property`: full URI or prefixed name of the predicate
-      # - `value`: name of the field in the data OR a constant (if prefixed with `_`)
-      # - `named_node`: if true, the value becomes a NamedNode; if false, a Literal
+      item_type: ["_Item", "itemType"] # Determines RDF type; leading underscore indicates a constant predicate. If not specified, defaults to "Item". If not starting with "http", the default vocab from context will be used
+      collection_type: ["_Collection"] # If not specified, defaults to "Collection"
+      named_library: "inLibrary" # If specified, adds an object property with this name linking to the library's named graph URI to support querying across named graphs
       item_additional:
         - property: "http://www.w3.org/2000/01/rdf-schema#label"
           value: "title"
@@ -96,6 +108,11 @@ libraries:
         - property: "http://www.w3.org/2002/07/owl#sameAs"
           value: "url"
           named_node: true
+    api_query_params:
+      itemType: "book"  # Optional, freely configurable
+      # tag: "important"  # Optional, freely configurable
+      # collection: "XYZ123"  # Optional
+
   - name: "Library 2"
     api_key: "YOUR_OTHER_API_KEY"
     library_type: "user"
