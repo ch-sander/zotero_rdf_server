@@ -65,11 +65,12 @@ Defines server and storage settings:
 ```yaml
 server:
   port: 8000                 # HTTP port for Uvicorn
-  refresh_interval: 3600     # polling interval in seconds
+  refresh_interval: 3600     # polling interval in seconds, 0 will prevent refreshing and only load local store
   store_mode: "directory"      # "memory" or "directory"
   store_directory: "./data" # only for directory mode
   export_directory: "./exports" # SPARQL result exports
-  manual_import_path: "./imported_rdf" # for RDF manual imports
+  import_directory: "./import" # for RDF manual imports
+  backup_directory: "./backup" # for RDF manual backups
   log_level: "info"         # logging level (debug, info, warn, error)
 ```
 
@@ -145,6 +146,8 @@ docker-compose up --build
 | `/export?format=trig` | Export full RDF dataset in TriG format |
 | `/export?format=nquads` | Export full RDF dataset in N-Quads format |
 | `/export?format=ttl&graph=/export?format=ttl&graph=http%3A%2F%2Fwww.zotero.org%2Fnamespaces%2Fexport%23` | Export a named graph in Turtle format (only content of the given graph) |
+| `/backup` | creates a backup to indicated backup folder (**deletes previous backup!**) |
+| `/optimize` | optimizes the current store |
 
 ### Export Parameters
 
