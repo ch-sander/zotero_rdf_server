@@ -13,8 +13,9 @@ from fastapi.responses import FileResponse, HTMLResponse
 from contextlib import asynccontextmanager
 import uvicorn
 from collections import defaultdict
-import json
+import json, re
 from datetime import datetime, timezone
+from dateutil import parser
 
 # --- Load configuration ---
 config_path = os.getenv("CONFIG_FILE", "config.yaml")
@@ -238,8 +239,27 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
     white = map.get("white") or []
     black = map.get("black") or []
     rdf_mapping = map.get("rdf_mapping") or []
+
     def zotero_property_map(predicate_str: str, object: str | dict | list, map: dict):
-        
+
+        def parse_date(text, dayfirst=True):
+            text = text.strip()
+            RANGE_SEPARATORS = r"\s*[-–—]\s*"
+            if re.search(RANGE_SEPARATORS, text):
+                parts = re.split(RANGE_SEPARATORS, text)
+                if len(parts) == 2:
+                    try:
+                        start = parser.parse(parts[0], dayfirst=dayfirst, default=datetime(1,1,1))
+                        end = parser.parse(parts[1], dayfirst=dayfirst, default=datetime(1,1,1))
+                        # return (start, end)
+                        return start
+                    except Exception:
+                        return text
+            try:
+                return parser.parse(str(text), dayfirst=dayfirst, default=datetime(1, 1, 1))
+            except (ValueError, TypeError):
+                return text
+            
         try:
             if not object:
                 return None
@@ -290,7 +310,8 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
 
                     return None
 
-            elif isinstance(object, str):    
+            elif isinstance(object, (str, int, datetime, float)):
+                logger.debug(f"{predicate_str}: {type(object)} {object}")
                 if predicate_str == "collections": # collections
                     return NamedNode(f"{base_uri}/collections/{object}")
                 if predicate_str in ["parentItem", "parentCollection"]: # parent items
@@ -299,12 +320,20 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     return NamedNode(object)
                 elif predicate_str in ["doi"] and not object.startswith("http") and len(object)>5: # DOI
                     return NamedNode(f"https://doi.org/{str(object)}")
-                elif predicate_str in ["numPages","numberOfVolumes","volume","series number"] and object.isdigit(): # int
+                elif predicate_str in ["numPages","numberOfVolumes","volume","series number"] and str(object).isdigit(): # int
                     return Literal(str(object),datatype=NamedNode(f"{XSD_NS}int"))
-                elif predicate_str == "date": # date
-                    year = int(object)
-                    if year > 0:
-                        return Literal(str(year), datatype=NamedNode(f"{XSD_NS}gYear"))
+                elif predicate_str == "date": # date TODO make smart dates
+                    date_val = parse_date(str(object))
+                    match = re.search(r"\b(1[5-9]\d{2}|20\d{2}|2100)\b", str(object))
+                    if re.fullmatch(r"\d{4}", str(object)):
+                        return Literal(str(object), datatype=NamedNode(f"{XSD_NS}gYear"))
+                    if isinstance(date_val, datetime):                        
+                        return Literal(str(date_val.date().isoformat()), datatype=NamedNode(f"{XSD_NS}dateTime"))
+                    elif match:
+                        return Literal(match.group(1), datatype=NamedNode(f"{XSD_NS}gYear"))
+                    else:
+                        return Literal(str(object))
+                    
                 elif predicate_str in ["dateModified","accessDate","zot:dateAdded"]: # dateTime
                     return Literal(str(object),datatype=NamedNode(f"{XSD_NS}dateTime"))
                 elif predicate_str in rdf_mapping: # create a UUID instead of the Literal for the value string
@@ -314,7 +343,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 else:
                     return Literal(str(object))
             else:
-                logger.error(f"Error: pass dict or str")
+                logger.error(f"Error: pass dict or str but got {type(object)}: {object}")
 
         except Exception as e:
             logger.error(f"Error: {e}")
@@ -592,6 +621,9 @@ def refresh_store():
         store = Store(path=STORE_DIRECTORY)
         logger.info(f"Zotero data loaded (not refresehd) successfully. {len(store)} triples, graphs: {list(store.named_graphs())}")
     else:
+        if log_level != "DEBUG": # delay start to have oxigraph initialize first
+            logger.info(f"Delay loading for {REFRESH_INTERVAL/2} seconds")
+            time.sleep(REFRESH_INTERVAL/2)
         while True:
             try:
                 logger.info("Refreshing Zotero data...")
@@ -649,7 +681,11 @@ def refresh_store():
 
             except Exception as e:
                 logger.error(f"Error refreshing data: {e}")
-            time.sleep(REFRESH_INTERVAL)
+
+            if log_level == "DEBUG":
+                time.sleep(REFRESH_INTERVAL)
+            else:
+                time.sleep(REFRESH_INTERVAL/2)
 
 # --- API Endpoints ---
 

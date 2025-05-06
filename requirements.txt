@@ -3,5 +3,6 @@ uvicorn
 requests
 pyoxigraph
 pyyaml
+python-dateutil
 # bcrypt
 # pyjwt
