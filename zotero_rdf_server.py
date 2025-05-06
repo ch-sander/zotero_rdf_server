@@ -25,26 +25,48 @@ with open(config_path, "r") as f:
 with open(zotero_config_path, "r") as f:
     zotero_config = yaml.safe_load(f)
 
+config = config or {}
+zotero_config = zotero_config or {}
+
 log_level = config["server"].get("log_level", "info").upper()
 logging.basicConfig(level=log_level)
-# logging.basicConfig(
-#     level=logging.DEBUG,
-#     format="%(asctime)s [%(levelname)s] %(name)s (%(filename)s:%(lineno)d in %(funcName)s): %(message)s"
-# )
 logger = logging.getLogger(__name__)
 
 # --- Config ---
-ZOTERO_LIBRARIES_CONFIGS = zotero_config["libraries"]
-ZOTERO_CONFIGS = zotero_config["context"]
 PORT = config["server"]["port"]
 REFRESH_INTERVAL = config["server"]["refresh_interval"]
 STORE_MODE = "directory"
 STORE_DIRECTORY = os.getenv("STORE_DIRECTORY", "./data")
 EXPORT_DIRECTORY = config["server"].get("export_directory", "./exports")
 IMPORT_DIRECTORY = config["server"].get("import_directory", "./import")
+BACKUP_DIRECTORY = config["server"].get("backup_directory", "./backup")
 OXIGRAPH_CONTAINER = os.getenv("OXIGRAPH_CONTAINER", "oxigraph")
 LIMIT = 100
-REFRESH = True
+
+REFRESH = REFRESH_INTERVAL > 0
+logger.info(f"Refresh {'set to ' + str(REFRESH_INTERVAL) + ' seconds' if REFRESH else 'deactivated'}")
+
+def set_defaults(lib_cfg: dict, master_cfg: dict, mode: str = "default", merge_keys: list = None) -> dict:
+    merged = lib_cfg.copy()
+    for key, value in master_cfg.items():
+        if key not in merged:
+            merged[key] = value
+        elif mode == "override":
+            merged[key] = value
+        elif mode == "merge":
+            if merge_keys and key in merge_keys and isinstance(value, dict) and isinstance(merged[key], dict):
+                merged[key] = set_defaults(merged[key], value, mode="merge", merge_keys=merge_keys)
+    return merged
+
+# --- Zotero Config ----
+ZOTERO_DEFAULT_CONFIGS = zotero_config.get("defaults", {})
+ZOTERO_DEFAULT_MODE = ZOTERO_DEFAULT_CONFIGS.get("mode", "default")
+ZOTERO_CONFIGS = zotero_config.get("context", {})
+
+ZOTERO_LIBRARIES_CONFIGS = [
+    set_defaults(lib_cfg, ZOTERO_DEFAULT_CONFIGS, ZOTERO_DEFAULT_MODE)
+    for lib_cfg in zotero_config.get("libraries", [])
+]
 
 # --- Constants ---
 ZOT_NS = ZOTERO_CONFIGS.get("vocab", "http://www.zotero.org/namespaces/export#")
@@ -52,7 +74,7 @@ ZOT_API_URL = ZOTERO_CONFIGS.get("api_url", "https://api.zotero.org/")
 ZOT_BASE_URL = ZOTERO_CONFIGS.get("base_url", "https://www.zotero.org/")
 ZOT_SCHEMA = ZOTERO_CONFIGS.get("schema") # "https://api.zotero.org/schema"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-PREFIXES = {"zot":ZOT_NS,"z":ZOT_BASE_URL}
+PREFIXES = {"zot":ZOT_NS,"z":ZOT_BASE_URL, "rdfs":"http://www.w3.org/2000/01/rdf-schema#", "owl":"http://www.w3.org/2002/07/owl#", "rdf":"http://www.w3.org/1999/02/22-rdf-syntax-ns#"}
 
 # --- App ---
 router = APIRouter()
@@ -71,14 +93,47 @@ class ZoteroLibrary:
         self.api_query_params = config.get("api_query_params") or {}
         self.base_api_url = f"{ZOT_API_URL}{self.library_type}/{self.library_id}"
         self.base_url = config.get("base_uri", f"{ZOT_BASE_URL}{self.library_type}/{self.library_id}")
-        # TODO: add check for valid URLs with http
         self.uuid_namespace = str(config.get("uuid_namespace", self.base_url))
         self.headers = {"Zotero-API-Key": self.api_key} if self.api_key else {}
         self.map = config.get("map") or {}
 
+        # check settings
+
+        passing = True
+        if not any([str(self.base_url).startswith("http"),str(self.base_api_url).startswith("http"),str(self.uuid_namespace).startswith("http")]):
+            passing = False
+            logger.warning(f"{self.name}: Some library config variable is expected to be a IRI/URI but is not!")
+        if not str(self.library_id).isdigit():
+            passing = False
+            logger.error(f"{self.name}: Invalid library ID --> {type(self.library_id)}!")
+        if not self.load_mode in ["json", "rdf", "manual_import"]:
+            passing = False
+            logger.warning(f"{self.name}: Invalid load_mode {self.load_mode}!")
+        if not self.library_type in ["groups", "user"]:
+            passing = False
+            logger.error(f"{self.name}: Invalid library_type {self.library_type}!")
+        if not self.rdf_export_format in ["rdf_zotero", "rdf_bibliontology"] and self.load_mode == "rdf":
+            passing = False
+            logger.warning(f"{self.name}: Invalid rdf_export_format {self.rdf_export_format}!")
+        if any([(self.name and not isinstance(self.name,str)),(self.api_key and not isinstance(self.api_key,str)),(self.map and not isinstance(self.map,dict)),(self.api_query_params and not isinstance(self.api_query_params,dict)),(self.map.get("white") and not isinstance(self.map["white"],list))]):
+            passing = False
+            logger.warning(f"{self.name}: Invalid optional argument!")
+
+        if not passing:
+            logger.error(f"####################################################")
+            logger.error(f"####################################################")
+            logger.error(f"####################################################")
+            logger.error(f"{self.name}: Invalid library config, check warnings!")
+            logger.error(f"####################################################")
+            logger.error(f"####################################################")
+            logger.error(f"####################################################")
+        else:
+            logger.info(f"{self.name}: Valid library config!") 
+
     def fetch_paginated(self, endpoint: str) -> list:
         results = []
         start = 0
+        logger.info("Initialize session")
         with requests.Session() as session:
             while True:
                 params = {"format": "json", "limit": LIMIT, "start": start, **self.api_query_params}
@@ -92,7 +147,6 @@ class ZoteroLibrary:
                 logger.debug(f"Send API request to: {prepared.method} {prepared.url}")
                 for k, v in prepared.headers.items():
                     logger.debug(f"Header: {k}: {v}")
-                # response = requests.get(f"{self.base_api_url}/{endpoint}", headers=self.headers, params=params)
                 response = session.send(prepared, timeout=10)
                 try:
                     response.raise_for_status()
@@ -185,10 +239,10 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
     def zotero_property_map(predicate_str: str, object: str | dict | list, map: dict):
         XSD_NS = "http://www.w3.org/2001/XMLSchema#"
         try:
-            if object == "" or object == {} or object == [] or object == None or object == [{}]:
+            if not object:
                 return None
             
-            if rdf_mapping and predicate_str not in rdf_mapping: # no mapping if none specified or not specified for mapping
+            if rdf_mapping and predicate_str not in rdf_mapping: # no mapping if none specified or predicate not specified for mapping
                 return None if isinstance(object, dict) else Literal(str(object))
             
             if isinstance(object, dict): # dicts as named nodes
@@ -197,13 +251,16 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     tag_value = object["tag"]
                     tag_iri = uuid5(BASE_NS, tag_value)
                     tag_node = NamedNode(f"{base_uri}/tags/{tag_iri}")
-                    store.add(Quad(subject, NamedNode(f"{ns_prefix}tags"), tag_node, graph_name=GRAPH_URI))
-                    store.add(Quad(tag_node, NamedNode(RDF_TYPE), NamedNode(f"{ns_prefix}tag"), graph_name=GRAPH_URI))
-                    logger.info(f"Tag added: {tag_value}")
-                    for key, val in object.items():
-                        if val:
-                            pred = NamedNode(f"{ns_prefix}{key}")
-                            store.add(Quad(tag_node, pred, Literal(str(val)), graph_name=GRAPH_URI))                            
+                    store.add(Quad(subject, NamedNode(f"{ns_prefix}tags"), tag_node, graph_name=GRAPH_URI))                    
+                    if len(list(store.quads_for_pattern(tag_node, NamedNode(RDF_TYPE), NamedNode(f"{ns_prefix}tag"), graph_name=GRAPH_URI))) == 0:
+                        store.add(Quad(tag_node, NamedNode(RDF_TYPE), NamedNode(f"{ns_prefix}tag"), graph_name=GRAPH_URI))
+                        logger.debug(f"Tag added: {tag_value}")
+                        for key, val in object.items():
+                            if val:
+                                pred = NamedNode(f"{ns_prefix}{key}")
+                                store.add(Quad(tag_node, pred, Literal(str(val)), graph_name=GRAPH_URI))
+                    else:
+                        logger.debug(f"Tag already exists: {tag_value}")              
                     return None
                 
                 if predicate_str == "creators": # creators
@@ -214,22 +271,21 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     creator_uuid = uuid5(BASE_NS, label)
                     creator_node = NamedNode(f"{base_uri}/creators/{creator_uuid}")
                     bnode = BlankNode()
-                    for key, val in object.items(): # TODO not created!
-                        if key != "creatorType" and val:
-                            pred = NamedNode(f"{ns_prefix}{key}")
-                            store.add(Quad(creator_node, pred, Literal(str(val)), graph_name=GRAPH_URI))
-                        elif key == "creatorType" and val:
-                            store.add(Quad(bnode, NamedNode(f"{ns_prefix}{key}"), NamedNode(f"{ns_prefix}{val}"), graph_name=GRAPH_URI))
-
                     
-                    logger.info(f"Creator added: {label}")
                     store.add(Quad(subject, NamedNode(f"{ns_prefix}{predicate_str}"), bnode, graph_name=GRAPH_URI))
                     store.add(Quad(bnode, NamedNode(f"{ns_prefix}creator"), creator_node, graph_name=GRAPH_URI))
-                    store.add(Quad(creator_node, NamedNode(RDF_TYPE), NamedNode(f"{ns_prefix}creator"), graph_name=GRAPH_URI))
-                    # if object.get("creatorType"):
-                    # if "creatorType" in object and object["creatorType"]:
-                        # type_node = NamedNode(f"{ns_prefix}{object['creatorType']}")
-                        # store.add(Quad(bnode, NamedNode(f"{ns_prefix}creatorType"), type_node, graph_name=GRAPH_URI))
+                    if len(list(store.quads_for_pattern(creator_node, NamedNode(RDF_TYPE), NamedNode(f"{ns_prefix}creator"), graph_name=GRAPH_URI)))==0:
+                        store.add(Quad(creator_node, NamedNode(RDF_TYPE), NamedNode(f"{ns_prefix}creator"), graph_name=GRAPH_URI))
+                        logger.debug(f"Creator added: {label}")
+                        for key, val in object.items():
+                            if key != "creatorType" and val:
+                                pred = NamedNode(f"{ns_prefix}{key}")
+                                store.add(Quad(creator_node, pred, Literal(str(val)), graph_name=GRAPH_URI))
+                            elif key == "creatorType" and val:
+                                store.add(Quad(bnode, NamedNode(f"{ns_prefix}{key}"), NamedNode(f"{ns_prefix}{val}"), graph_name=GRAPH_URI))
+                    else:
+                        logger.debug(f"Creator already exists: {label}")
+
                     return None
 
             elif isinstance(object, str):    
@@ -237,8 +293,10 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     return NamedNode(f"{base_uri}/collections/{object}")
                 if predicate_str in ["parentItem", "parentCollection"]: # parent items
                     return NamedNode(f"{base_uri}/items/{object}")
-                elif predicate_str in ["url","dc:relation"] and object.startswith("http"): # url
+                elif predicate_str in ["url","dc:relation","doi","owl:sameAs"] and object.startswith("http"): # url
                     return NamedNode(object)
+                elif predicate_str in ["doi"] and not object.startswith("http") and len(object)>5: # DOI
+                    return NamedNode(f"https://doi.org/{str(object)}")
                 elif predicate_str in ["numPages","numberOfVolumes","volume","series number"] and object.isdigit(): # int
                     return Literal(str(object),datatype=NamedNode(f"{XSD_NS}int"))
                 elif predicate_str == "date": # date
@@ -247,6 +305,10 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         return Literal(str(year), datatype=NamedNode(f"{XSD_NS}gYear"))
                 elif predicate_str in ["dateModified","accessDate","zot:dateAdded"]: # dateTime
                     return Literal(str(object),datatype=NamedNode(f"{XSD_NS}dateTime"))
+                elif predicate_str in rdf_mapping: # create a UUID instead of the Literal for the value string
+                    a_uuid = uuid5(BASE_NS, object)
+                    logger.debug(f"UUID for {predicate_str}: {object}")
+                    return NamedNode(f"{base_uri}/{predicate_str}/{a_uuid}") # TODO maybe create entity for each with type and label?
                 else:
                     return Literal(str(object))
             else:
@@ -263,10 +325,10 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
 
         if white:
             if field not in white and field not in rdf_mapping:
-                logger.info(f"Skipping {field} (not in whitelist)")
+                logger.debug(f"Skipping {field} (not in whitelist)")
                 continue
         elif black and field in black:
-            logger.info(f"Skipping {field} (in blacklist)")
+            logger.debug(f"Skipping {field} (in blacklist)")
             continue
         
         if isinstance(value, dict):
@@ -299,6 +361,7 @@ def apply_rdf_types(store: Store, node: NamedNode, data: dict, type_fields: list
     GRAPH_URI = NamedNode(base_ns)
     if not type_fields:
         store.add(Quad(node, NamedNode(RDF_TYPE), NamedNode(f"{prefix_ns}{default_type}", graph_name=GRAPH_URI)))
+        logger.debug("No type_fields for rdf:type")
     else:
         for field in type_fields:
             if field.startswith("_"):
@@ -310,6 +373,7 @@ def apply_rdf_types(store: Store, node: NamedNode, data: dict, type_fields: list
             val_str = str(val)
             type_node = NamedNode(val_str) if val_str.startswith("http") else NamedNode(f"{prefix_ns}{val_str}")
             store.add(Quad(node, NamedNode(RDF_TYPE), type_node, graph_name=GRAPH_URI))
+            logger.debug(f"Added rdf:type: {type_node}")
 
 def apply_additional_properties(store: Store, node: NamedNode, data: dict, specs: list[dict], base_ns: str, prefix_ns: str):
     GRAPH_URI = NamedNode(base_ns)
@@ -373,13 +437,13 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
 
             add_rdf_from_dict(store, col_uri, col_data, ZOT_NS, lib.base_url, map, lib.uuid_namespace)
     else:
-        logger.warning("No items!")
+        logger.warning("No collections!")
 
     if items:
+        item_type_fields = lib.map.get("item_type") or []
         for item in items:
             item_data = item.get("data", {})
-            key = item_data.get("key",uuid4())
-            item_type_fields = lib.map.get("item_type") or []
+            key = item_data.get("key",uuid4())            
             node_uri = NamedNode(f"{lib.base_url}/items/{key}")
             if lib.map.get("named_library"):
                 property_str = lib.map.get("named_library", "inLibrary")
@@ -398,7 +462,8 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
 
 def zotero_schema(schema, vocab_iri="http://www.zotero.org/namespaces/export#"):
     GRAPH_URI = NamedNode(vocab_iri)
-    def uri(term):
+
+    def uri(term): # TODO create from context dict
         if term.startswith("owl:"):
             return NamedNode("http://www.w3.org/2002/07/owl#" + term[4:])
         if term.startswith("rdfs:"):
@@ -406,7 +471,7 @@ def zotero_schema(schema, vocab_iri="http://www.zotero.org/namespaces/export#"):
         if term.startswith("rdf:"):
             return NamedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#" + term[4:])
         return NamedNode(vocab_iri + term)
-
+    
     def make_rdf_list(elements):
         if not elements:
             return NamedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#nil")
@@ -444,7 +509,7 @@ def zotero_schema(schema, vocab_iri="http://www.zotero.org/namespaces/export#"):
 
     item_types = schema.get("itemTypes", [])
     # Create Main Classes not set in Schema
-    for main_class in ["item","library", "collection", "tag"]:
+    for main_class in ["item","library", "collection", "tag"]: # TODO make dynamic
         store.add(Quad(uri(main_class), uri("rdf:type"), uri("owl:Class"), graph_name=GRAPH_URI))
         store.add(Quad(uri(main_class), uri("rdfs:label"), Literal(main_class), graph_name=GRAPH_URI))
 
@@ -470,6 +535,7 @@ def zotero_schema(schema, vocab_iri="http://www.zotero.org/namespaces/export#"):
         prop_node = uri(field)
         store.add(Quad(prop_node, uri("rdf:type"), uri("owl:DatatypeProperty"), graph_name=GRAPH_URI))
         add_union_triple(prop_node, "rdfs:domain", list(domains))
+        store.add(Quad(prop_node, uri("rdfs:range"), uri("rdfs:Literal"), graph_name=GRAPH_URI))
         for label in property_labels.get(field, []):
             store.add(Quad(prop_node, uri("rdfs:label"), label, graph_name=GRAPH_URI))
         if field in base_fields:
@@ -487,6 +553,7 @@ def zotero_schema(schema, vocab_iri="http://www.zotero.org/namespaces/export#"):
                     store.add(Quad(ct_node, uri("rdfs:label"), label, graph_name=GRAPH_URI))
             prop_node = uri("creators")
             store.add(Quad(prop_node, uri("rdf:type"), uri("owl:ObjectProperty"), graph_name=GRAPH_URI))
+            store.add(Quad(prop_node, uri("rdfs:label"), Literal("Creators"), graph_name=GRAPH_URI))
             add_union_triple(prop_node, "rdfs:range", creator_types)
             add_union_triple(prop_node, "rdfs:domain", [class_name])
 
@@ -534,8 +601,11 @@ def refresh_store():
                     store = Store(path=STORE_DIRECTORY)
 
                 if ZOT_SCHEMA:
-                    schema = requests.get(ZOT_SCHEMA).json()
-                    zotero_schema(schema,ZOT_NS)
+                    try:
+                        schema = requests.get(ZOT_SCHEMA).json()
+                        zotero_schema(schema,ZOT_NS)
+                    except Exception as e:
+                        logger.error(f"Schema could not be loaded: {e}")
 
                 for lib_cfg in ZOTERO_LIBRARIES_CONFIGS:
                     lib = ZoteroLibrary(lib_cfg)
@@ -616,6 +686,19 @@ async def export_graph(
     store.dump(output=path, format=rdf_format, prefixes=PREFIXES, **kwargs)
     return FileResponse(path, filename=os.path.basename(path))
 
+@router.get("/backup")
+async def backup_store():
+    global store
+    os.makedirs(BACKUP_DIRECTORY, exist_ok=True)
+    clear_directory(BACKUP_DIRECTORY)
+    store.backup(BACKUP_DIRECTORY)
+    return {"success":f"Backup created in {BACKUP_DIRECTORY}"}
+
+@router.get("/optimize")
+async def optimize_store():
+    global store
+    store.optimize()
+    return {"success":"Store optimized"}
 # --- Start server ---
 
 @asynccontextmanager
