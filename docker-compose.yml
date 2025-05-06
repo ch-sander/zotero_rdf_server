@@ -18,6 +18,7 @@ services:
       - "${ZOTERO_CONFIG_FILE:-zotero.yaml}:/app/${ZOTERO_CONFIG_FILE:-zotero.yaml}"
       - "${STORE_DIRECTORY:-./data}:/app/data"
       - "${EXPORT_DIRECTORY:-./exports}:/app/exports"
+      - "${BACKUP_DIRECTORY:-./backup}:/app/backup"
       # - ${DB_PATH:-./users.db}:/app/users.db
     restart: unless-stopped
   oxigraph:
