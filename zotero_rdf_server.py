@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from collections import defaultdict
 import json
+from datetime import datetime, timezone
 
 # --- Load configuration ---
 config_path = os.getenv("CONFIG_FILE", "config.yaml")
@@ -74,7 +75,8 @@ ZOT_API_URL = ZOTERO_CONFIGS.get("api_url", "https://api.zotero.org/")
 ZOT_BASE_URL = ZOTERO_CONFIGS.get("base_url", "https://www.zotero.org/")
 ZOT_SCHEMA = ZOTERO_CONFIGS.get("schema") # "https://api.zotero.org/schema"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-PREFIXES = {"zot":ZOT_NS,"z":ZOT_BASE_URL, "rdfs":"http://www.w3.org/2000/01/rdf-schema#", "owl":"http://www.w3.org/2002/07/owl#", "rdf":"http://www.w3.org/1999/02/22-rdf-syntax-ns#"}
+XSD_NS = "http://www.w3.org/2001/XMLSchema#"
+PREFIXES = {"zot":ZOT_NS,"z":ZOT_BASE_URL, "rdfs":"http://www.w3.org/2000/01/rdf-schema#", "owl":"http://www.w3.org/2002/07/owl#", "rdf":"http://www.w3.org/1999/02/22-rdf-syntax-ns#", "xsd":XSD_NS}
 
 # --- App ---
 router = APIRouter()
@@ -237,7 +239,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
     black = map.get("black") or []
     rdf_mapping = map.get("rdf_mapping") or []
     def zotero_property_map(predicate_str: str, object: str | dict | list, map: dict):
-        XSD_NS = "http://www.w3.org/2001/XMLSchema#"
+        
         try:
             if not object:
                 return None
@@ -401,6 +403,8 @@ def apply_additional_properties(store: Store, node: NamedNode, data: dict, specs
 
         store.add(Quad(node, predicate, obj, graph_name=GRAPH_URI))
 
+def add_timestamp(store: Store, node: NamedNode, graph: NamedNode):
+    store.add(Quad(node, NamedNode("http://www.w3.org/ns/prov#generatedAtTime"), Literal(datetime.now(timezone.utc).isoformat(),datatype=NamedNode(f"{XSD_NS}dateTime")), graph_name=graph))
 
 def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = None):    
     items = lib.fetch_items(json_path=json_path)
@@ -424,18 +428,19 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
         for col in collections:
             col_data = col["data"]
             key = col_data.get("key", uuid4())
-            col_uri = NamedNode(f"{lib.base_url}/collections/{key}")
+            node_uri = NamedNode(f"{lib.base_url}/collections/{key}")
             if lib.map.get("named_library"):
                 property_str = lib.map.get("named_library", "inLibrary")
-                store.add(Quad(col_uri, NamedNode(property_str) if property_str.startswith("http") else NamedNode(f"{ZOT_NS}{property_str}"), NamedNode(lib.base_url), graph_name=GRAPH_URI))
+                store.add(Quad(node_uri, NamedNode(property_str) if property_str.startswith("http") else NamedNode(f"{ZOT_NS}{property_str}"), NamedNode(lib.base_url), graph_name=GRAPH_URI))
 
             collection_type_fields = map.get("collection_type") or []
-            apply_rdf_types(store, col_uri, col_data, collection_type_fields, "collection", lib.base_url, ZOT_NS)
+            apply_rdf_types(store, node_uri, col_data, collection_type_fields, "collection", lib.base_url, ZOT_NS)
 
             collection_additional = map.get("collection_additional") or []
-            apply_additional_properties(store, col_uri, col_data, collection_additional, lib.base_url, ZOT_NS)
+            apply_additional_properties(store, node_uri, col_data, collection_additional, lib.base_url, ZOT_NS)
 
-            add_rdf_from_dict(store, col_uri, col_data, ZOT_NS, lib.base_url, map, lib.uuid_namespace)
+            add_rdf_from_dict(store, node_uri, col_data, ZOT_NS, lib.base_url, map, lib.uuid_namespace)
+            add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
     else:
         logger.warning("No collections!")
 
@@ -456,6 +461,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
             apply_additional_properties(store, node_uri, item_data, item_additional, lib.base_url, ZOT_NS)
 
             add_rdf_from_dict(store, node_uri, item_data, ZOT_NS, lib.base_url, map, lib.uuid_namespace)
+            add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
     else:
         logger.warning("No items!")
 
@@ -699,6 +705,7 @@ async def optimize_store():
     global store
     store.optimize()
     return {"success":"Store optimized"}
+
 # --- Start server ---
 
 @asynccontextmanager
