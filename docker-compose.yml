@@ -13,7 +13,7 @@ services:
       - ZOTERO_CONFIG_FILE # =${ZOTERO_CONFIG_FILE:-zotero.yaml}
       - SERVER_PORT
     volumes:
-      # - ./:/app           # dev mount
+      - ./:/app           # dev mount
       - "${CONFIG_FILE:-config.yaml}:/app/${CONFIG_FILE:-config.yaml}"
       - "${ZOTERO_CONFIG_FILE:-zotero.yaml}:/app/${ZOTERO_CONFIG_FILE:-zotero.yaml}"
       - "${STORE_DIRECTORY:-./data}:/app/data"
