@@ -3,7 +3,7 @@
 /exports
 *.ipynb
 zotero_rdf_server_public.py
-index.html
+/index.html
 config.yaml
 zotero.yaml
 /import
