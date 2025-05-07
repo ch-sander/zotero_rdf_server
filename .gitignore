@@ -10,3 +10,4 @@ zotero.yaml
 clone_repo.sh
 sparnatural/index-dev.html
 .env
+docker-compose-dev.yml
