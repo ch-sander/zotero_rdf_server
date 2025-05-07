@@ -24,12 +24,16 @@ const yasqe = new Yasqe(document.getElementById("yasqe"), {
 // register a specific plugin that is capable of displaying clikable label + URI
 Yasr.registerPlugin("TableX",SparnaturalYasguiPlugins.TableX);
 Yasr.registerPlugin("Grid",SparnaturalYasguiPlugins.GridPlugin);
+Yasr.registerPlugin("Stats",SparnaturalYasguiPlugins.StatsPlugin);
 delete Yasr.plugins['table'];
+delete Yasr.plugins['response'];
 
 const yasr = new Yasr(document.getElementById("yasr"), {
-	pluginOrder: ["TableX", "Grid", "response"],
-	defaultPlugin: "TableX"
-});
+	pluginOrder: ["TableX", "Grid", "Stats"],
+	defaultPlugin: "TableX",
+	persistencyExpire: 0,
+	maxPersistentResponseSize: 0
+  });
 
 // link yasqe and yasr
 yasqe.on("queryResponse", function(_yasqe, response, duration) {
@@ -83,6 +87,13 @@ sparnatural.addEventListener("reset", (event) => {
 	// empties the SPARQL query on yasQE
 	yasqe.setValue("");
 });
+
+const tableXConfig = yasr.plugins["TableX"];
+Object.assign(tableXConfig.config, {
+  includeControls: true,
+  openIriInNewWindow: true
+});
+tableXConfig.persistentConfig.compact = true;
 
 // hide/show yasQE
 document.getElementById('sparql-toggle').onclick = function() {
