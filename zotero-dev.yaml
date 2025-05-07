@@ -18,9 +18,9 @@ defaults:
     collection_type: ["_collection"] # If not indicated, uses "collection"
     named_library: "inLibrary" # if specified will add an object property by that name with a named node for the library's named graph URI to facilitate queries accross multiple named graphs
     additional:
-      - property: "http://www.w3.org/2000/01/rdf-schema#label"
-        value: "title"
-        named_node: false
+      # - property: "http://www.w3.org/2000/01/rdf-schema#label"
+      #   value: "title"
+      #   named_node: false
       - property: "http://www.w3.org/2000/01/rdf-schema#label"
         value: "name"
         named_node: false
@@ -30,14 +30,18 @@ defaults:
       - property: "http://www.w3.org/2002/07/owl#sameAs"
         value: "url"
         named_node: true
-  # api_query_params:
+  api_query_params:
     # itemType: "book"  # optional, freely configurable
     # tag: "important"  # optional, freely configurable
     # collection: "XYZ123"  # optional
 
 libraries:
-  - name: AquaCrop publications
+  - name: Open-Access History Books
     library_type: "groups"
-    library_id: "368553"
-    load_mode: "json"
-    rdf_export_format: "rdf_zotero"
+    library_id: "5250572"
+    description: |
+      Owner:rakarl
+      Registered: 2023-10-24
+      Type: Public
+      Membership: Open
+      Library Access: You can only view
