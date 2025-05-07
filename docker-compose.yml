@@ -25,8 +25,8 @@ services:
     image: ghcr.io/oxigraph/oxigraph:latest
     container_name: ${OXIGRAPH_CONTAINER}
     ports:
-      - "7878:7878"
+      - "7879:7879"
     volumes:
       - ${STORE_DIRECTORY:-./data}:/data
-    command: ["serve-read-only", "--location", "/data", "--bind", "0.0.0.0:7878", "--union-default-graph", "--cors"]
+    command: ["serve-read-only", "--location", "/data", "--bind", "0.0.0.0:7879", "--union-default-graph", "--cors"]
     restart: unless-stopped
