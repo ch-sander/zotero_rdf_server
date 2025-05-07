@@ -1,0 +1,8 @@
+server:
+  refresh_interval: 1800 # seconds, 0 = do not refresh
+  # store_mode: "memory"  # or "directory"
+  store_directory: "./data"
+  export_directory: "./exports"  
+  import_directory: "./import"
+  backup_directory: "./backup"
+  log_level: "debug"  # "debug", "info", "warning", "error"
