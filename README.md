@@ -2,6 +2,13 @@
 
 This server loads multiple Zotero libraries into an RDF graph,
 exposes a local SPARQL endpoint, and allows exporting the graph.
+A **visual query builder** is found in `/docs` to explore the graph or go to [GitHub Pages](https://ch-sander.github.io/zotero_rdf_server/).
+
+### Why this Tool?
+
+While Zotero allows greatly to store and collaborate in cloud hosted Zotero libraries, there is no service to federate and cross explore and search multiple libraries. This **Zotero RDF Server** is an initial attempt. It provides som entity mapping (tags, creators, etc.) but is strictly bound by the (rather textual) datamodel underlying Zotero and its API.
+*A Knowledge Base Mapping* would be a logical next step!
+
 ## 📘 How to Create a Zotero Cloud Library
 
 To use this tool, you need at least one Zotero cloud library (either **user** or **group**). Here’s how to set it up:
