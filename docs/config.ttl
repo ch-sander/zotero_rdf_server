@@ -2035,18 +2035,6 @@ zot:wordsBy a owl:Class ;
     rdfs:label "wordsBy"@en ;
     rdfs:subClassOf zot:creatorRole .
 
-zotsn:creatorrole_1499 a sh:NodeShape ;
-    rdfs:label "Creator Role" ;
-    volipi:iconName "fa-solid fa-user" ;
-    volipi:message "The role a person takes in creating an item" ;
-    sh:description "The role a person takes in creating an item" ;
-    sh:name "Creator Role" ;
-    sh:nodeKind sh:IRI ;
-    sh:property zotsn:property_1729,
-        zotsn:property_1741,
-        zotsn:property_1743 ;
-    sh:targetClass zot:creatorRole .
-
 zotsn:date_1727 a sh:NodeShape ;
     rdfs:label "Date" ;
     volipi:iconName "fa-solid fa-calendar-alt" ;
@@ -2163,15 +2151,36 @@ zotsn:property_1746 a sh:PropertyShape ;
     sh:path ( zot:creators zot:hasCreator ) .
 
 zotsn:property_1747 a sh:PropertyShape ;
-    rdfs:label "has Creator" ;
+    rdfs:label "Is Creator of" ;
     volipi:message "A person acting in any role as creator of an item (This is only a query pattern)" ;
     dash:searchWidget sparnatural:AutocompleteProperty ;
     sh:class zot:item ;
     sh:description "A person acting in any role as creator of an item" ;
-    sh:name "has Creator" ;
+    sh:name "Is Creator of" ;
     sh:node zotsn:item_1498 ;
     sh:nodeKind sh:IRI ;
-    sh:path ( zot:hasCreator zot:creators ) .
+    sh:path ( [ sh:inversePath zot:hasCreator ] [ sh:inversePath zot:creators ] ) .
+
+zotsn:property_1749 a sh:PropertyShape ;
+    rdfs:label "Has Type" ;
+    volipi:message "Tooltip for itemType" ;
+    dash:searchWidget sparnatural:ListProperty ;
+    sh:datatype zotsn:Text ;
+    sh:name "Has Type" ;
+    sh:node zotsn:text_1724 ;
+    sh:nodeKind sh:Literal ;
+    sh:path zot:itemType .
+
+zotsn:property_1750 a sh:PropertyShape ;
+    rdfs:label "Acted as" ;
+    volipi:message "A person acting in a role (This is only a query pattern)" ;
+    dash:searchWidget sparnatural:AutocompleteProperty ;
+    sh:class zot:creatorRole ;
+    sh:description "A person acting in a role" ;
+    sh:name "Acted as" ;
+    sh:node zotsn:creatorrole_1499 ;
+    sh:nodeKind sh:IRI ;
+    sh:path [ sh:inversePath zot:hasCreator ] .
 
 zotsn:tag_1502 a sh:NodeShape ;
     rdfs:label "Tag" ;
@@ -2201,6 +2210,18 @@ zot:tags a owl:ObjectProperty ;
     rdfs:domain zot:item ;
     rdfs:range zot:tag .
 
+zotsn:creatorrole_1499 a sh:NodeShape ;
+    rdfs:label "Creator Role" ;
+    volipi:iconName "fa-solid fa-user" ;
+    volipi:message "The role a person takes in creating an item" ;
+    sh:description "The role a person takes in creating an item" ;
+    sh:name "Creator Role" ;
+    sh:nodeKind sh:IRI ;
+    sh:property zotsn:property_1729,
+        zotsn:property_1741,
+        zotsn:property_1743 ;
+    sh:targetClass zot:creatorRole .
+
 zotsn:link_1728 a sh:NodeShape ;
     rdfs:label "Link" ;
     volipi:iconName "fa-solid fa-link" ;
@@ -2219,7 +2240,8 @@ zotsn:person_1742 a sh:NodeShape ;
         zotsn:property_1737,
         zotsn:property_1744,
         zotsn:property_1745,
-        zotsn:property_1747 ;
+        zotsn:property_1747,
+        zotsn:property_1750 ;
     sh:targetClass zot:person .
 
 zotsn:property_1614 a sh:PropertyShape ;
@@ -2655,11 +2677,6 @@ zotsn:property_1745 a sh:PropertyShape ;
     sh:nodeKind sh:Literal ;
     sh:path zot:lastName .
 
-zot:hasCreator a owl:ObjectProperty ;
-    rdfs:label "hasCreator"@en ;
-    rdfs:domain zot:creatorRole ;
-    rdfs:range zot:person .
-
 zotsn:property_1621 a sh:PropertyShape ;
     rdfs:label "programTitle" ;
     volipi:message "Tooltip for programTitle" ;
@@ -2743,6 +2760,11 @@ zot:creators a owl:ObjectProperty ;
     rdfs:label "creators"@en ;
     rdfs:domain zot:item ;
     rdfs:range zot:creatorRole .
+
+zot:hasCreator a owl:ObjectProperty ;
+    rdfs:label "hasCreator"@en ;
+    rdfs:domain zot:creatorRole ;
+    rdfs:range zot:person .
 
 zot:library a owl:Class ;
     rdfs:label "library"@en .
@@ -3024,7 +3046,8 @@ zotsn:item_1498 a sh:NodeShape ;
         zotsn:property_1735,
         zotsn:property_1744,
         zotsn:property_1745,
-        zotsn:property_1746 ;
+        zotsn:property_1746,
+        zotsn:property_1749 ;
     sh:targetClass zot:item .
 
 zotsn:property_1613 a sh:PropertyShape ;
@@ -3083,14 +3106,6 @@ zotsn:property_1690 a sh:PropertyShape ;
     sh:name "ISBN" ;
     sh:path zot:ISBN .
 
-zotsn:text_1724 a sh:NodeShape ;
-    rdfs:label "Text" ;
-    volipi:iconName "fa-solid fa-quote-left" ;
-    volipi:message "A search value for names (This is only a query pattern)" ;
-    sh:description "A search value for names" ;
-    sh:name "Text" ;
-    sh:nodeKind sh:Literal .
-
 zot:blogPost a owl:Class ;
     rdfs:label "blogPost"@en ;
     rdfs:subClassOf zot:item .
@@ -3108,6 +3123,14 @@ zotsn:property_1676 a sh:PropertyShape ;
     volipi:message "Tooltip for pages" ;
     sh:name "pages" ;
     sh:path zot:pages .
+
+zotsn:text_1724 a sh:NodeShape ;
+    rdfs:label "Text" ;
+    volipi:iconName "fa-solid fa-quote-left" ;
+    volipi:message "A search value for names (This is only a query pattern)" ;
+    sh:description "A search value for names" ;
+    sh:name "Text" ;
+    sh:nodeKind sh:Literal .
 
 zot:presentation a owl:Class ;
     rdfs:label "presentation"@en ;
@@ -3287,6 +3310,7 @@ zotsn:property_1639 a sh:PropertyShape ;
 zotsn:property_1715 a sh:PropertyShape ;
     rdfs:label "title" ;
     volipi:message "Tooltip for title" ;
+    dash:searchWidget sparnatural:SearchProperty ;
     sh:datatype zotsn:Text ;
     sh:name "title" ;
     sh:node zotsn:text_1724 ;
@@ -3320,6 +3344,7 @@ zotsn:property_1701 a sh:PropertyShape ;
 zotsn:property_1711 a sh:PropertyShape ;
     rdfs:label "shortTitle" ;
     volipi:message "Tooltip for shortTitle" ;
+    dash:searchWidget sparnatural:SearchProperty ;
     sh:datatype zotsn:Text ;
     sh:name "shortTitle" ;
     sh:node zotsn:text_1724 ;
