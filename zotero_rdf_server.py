@@ -846,15 +846,17 @@ async def export_graph(
         logger.info(f"Export from graphs: {list(store.named_graphs())}")
 
     store.dump(output=path, format=rdf_format, prefixes=PREFIXES, **kwargs)
-    return FileResponse(path, filename=os.path.basename(path))
+    return {"success":f"Export to: {path}"}
+    # return FileResponse(path, filename=os.path.basename(path))
 
 @router.get("/backup")
 async def backup_store():
     global store
-    os.makedirs(BACKUP_DIRECTORY, exist_ok=True)
-    clear_directory(BACKUP_DIRECTORY)
+    if os.path.exists(BACKUP_DIRECTORY):
+        shutil.rmtree(BACKUP_DIRECTORY)
     store.backup(BACKUP_DIRECTORY)
-    return {"success":f"Backup created in {BACKUP_DIRECTORY}"}
+    return {"success": f"Backup created in {BACKUP_DIRECTORY}"}
+
 
 @router.get("/optimize")
 async def optimize_store():
