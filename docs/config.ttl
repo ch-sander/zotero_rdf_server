@@ -1772,11 +1772,6 @@ zot:pages a owl:DatatypeProperty ;
     rdfs:domain [ a owl:Class ;
             owl:unionOf ( zot:item zot:encyclopediaArticle zot:bookSection zot:conferencePaper zot:hearing zot:statute zot:newspaperArticle zot:journalArticle zot:report zot:patent zot:dictionaryEntry zot:magazineArticle ) ] .
 
-zot:parentItem a owl:ObjectProperty ;
-    rdfs:label "parentItem"@en ;
-    rdfs:domain zot:item ;
-    rdfs:range zot:item .
-
 zot:patentNumber a owl:DatatypeProperty ;
     rdfs:label "patentNumber"@en ;
     rdfs:domain [ a owl:Class ;
@@ -2182,6 +2177,17 @@ zotsn:property_1750 a sh:PropertyShape ;
     sh:nodeKind sh:IRI ;
     sh:path [ sh:inversePath zot:hasCreator ] .
 
+zotsn:property_1751 a sh:PropertyShape ;
+    rdfs:label "is Parent Item of" ;
+    volipi:message "Has some attachment or related item (.e.g a note) (This is only a query pattern)" ;
+    dash:searchWidget sparnatural:AutocompleteProperty ;
+    sh:class zot:item ;
+    sh:description "Has some attachment or related item (.e.g a note)" ;
+    sh:name "is Parent Item of" ;
+    sh:node zotsn:item_1498 ;
+    sh:nodeKind sh:IRI ;
+    sh:path [ sh:inversePath zot:parentItem ] .
+
 zotsn:tag_1502 a sh:NodeShape ;
     rdfs:label "Tag" ;
     volipi:iconName "fa-solid fa-tag" ;
@@ -2204,6 +2210,11 @@ zot:inLibrary a owl:ObjectProperty ;
     rdfs:domain [ a owl:Class ;
             owl:unionOf ( zot:item zot:collection ) ] ;
     rdfs:range zot:library .
+
+zot:parentItem a owl:ObjectProperty ;
+    rdfs:label "parentItem"@en ;
+    rdfs:domain zot:item ;
+    rdfs:range zot:item .
 
 zot:tags a owl:ObjectProperty ;
     rdfs:label "tags"@en ;
@@ -2921,6 +2932,30 @@ zotsn:property_1736 a sh:PropertyShape ;
 zot:collection a owl:Class ;
     rdfs:label "collection"@en .
 
+zotsn:property_1613 a sh:PropertyShape ;
+    rdfs:label "series" ;
+    volipi:message "Tooltip for series" ;
+    sh:datatype zotsn:Text ;
+    sh:name "series" ;
+    sh:node zotsn:text_1724 ;
+    sh:nodeKind sh:Literal ;
+    sh:path zot:series .
+
+zotsn:property_1622 a sh:PropertyShape ;
+    rdfs:label "numberOfVolumes" ;
+    volipi:message "Tooltip for numberOfVolumes" ;
+    sh:datatype zotsn:Number ;
+    sh:name "numberOfVolumes" ;
+    sh:node zotsn:number_1726 ;
+    sh:nodeKind sh:Literal ;
+    sh:path zot:numberOfVolumes .
+
+zotsn:property_1626 a sh:PropertyShape ;
+    rdfs:label "seriesTitle" ;
+    volipi:message "Tooltip for seriesTitle" ;
+    sh:name "seriesTitle" ;
+    sh:path zot:seriesTitle .
+
 zotsn:item_1498 a sh:NodeShape ;
     rdfs:label "Item" ;
     volipi:iconName "fa-solid fa-circle" ;
@@ -3047,32 +3082,9 @@ zotsn:item_1498 a sh:NodeShape ;
         zotsn:property_1744,
         zotsn:property_1745,
         zotsn:property_1746,
-        zotsn:property_1749 ;
+        zotsn:property_1749,
+        zotsn:property_1751 ;
     sh:targetClass zot:item .
-
-zotsn:property_1613 a sh:PropertyShape ;
-    rdfs:label "series" ;
-    volipi:message "Tooltip for series" ;
-    sh:datatype zotsn:Text ;
-    sh:name "series" ;
-    sh:node zotsn:text_1724 ;
-    sh:nodeKind sh:Literal ;
-    sh:path zot:series .
-
-zotsn:property_1622 a sh:PropertyShape ;
-    rdfs:label "numberOfVolumes" ;
-    volipi:message "Tooltip for numberOfVolumes" ;
-    sh:datatype zotsn:Number ;
-    sh:name "numberOfVolumes" ;
-    sh:node zotsn:number_1726 ;
-    sh:nodeKind sh:Literal ;
-    sh:path zot:numberOfVolumes .
-
-zotsn:property_1626 a sh:PropertyShape ;
-    rdfs:label "seriesTitle" ;
-    volipi:message "Tooltip for seriesTitle" ;
-    sh:name "seriesTitle" ;
-    sh:path zot:seriesTitle .
 
 zot:email a owl:Class ;
     rdfs:label "email"@en ;
