@@ -1,5 +1,7 @@
 import os
 import requests
+from requests.adapters import HTTPAdapter, Retry
+from requests.exceptions import ReadTimeout, RequestException
 import yaml
 import threading
 import time
@@ -137,9 +139,26 @@ class ZoteroLibrary:
         results = []
         start = 0
         logger.info("Initialize session")
+
+        retries = Retry(
+            total=5,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["GET"]
+        )
+        adapter = HTTPAdapter(max_retries=retries)
+
         with requests.Session() as session:
+            session.mount("https://", adapter)
+            session.mount("http://", adapter)
+
             while True:
-                params = {"format": "json", "limit": LIMIT, "start": start, **self.api_query_params}
+                params = {
+                    "format": "json",
+                    "limit": LIMIT,
+                    "start": start,
+                    **self.api_query_params
+                }
                 req = requests.Request(
                     method="GET",
                     url=f"{self.base_api_url}/{endpoint}",
@@ -147,21 +166,32 @@ class ZoteroLibrary:
                     params=params
                 )
                 prepared = req.prepare()
-                logger.debug(f"Send API request to: {prepared.method} {prepared.url}")
+                logger.debug(f"Sending API request: {prepared.method} {prepared.url}")
                 for k, v in prepared.headers.items():
                     logger.debug(f"Header: {k}: {v}")
-                response = session.send(prepared, timeout=10)
+
                 try:
+                    response = session.send(prepared, timeout=(5, 30))
                     response.raise_for_status()
-                except requests.HTTPError as e:
-                    logger.error(f"Request failed: {e.response.status_code} - {e.response.text}")
+                    data = response.json()
+                except ReadTimeout:
+                    logger.error(f"Timeout after 30s at {prepared.url}")
                     raise
-                data = response.json()
+                except RequestException as e:
+                    logger.error(f"Request error: {e}")
+                    raise
+
                 if not data:
+                    logger.info(f"No more data (start={start})")
                     break
+
                 results.extend(data)
+                logger.info(f"Fetched {len(data)} items (start={start})")
                 start += LIMIT
-            return results
+
+                time.sleep(1)
+
+        return results
 
     def fetch_items(self, json_path:str = None) -> list:
         if self.load_mode == "manual_import":
@@ -194,6 +224,23 @@ class ZoteroLibrary:
 
 
 # --- Functions ---
+
+def safeNamedNode(uri: str) -> NamedNode | Literal:    
+    if not isinstance(uri, str) or " " in uri or not uri.startswith("http"):
+        logger.warning(f"Invalid IRI input (not a valid http URI), converting to Literal: {uri}")
+        return safeLiteral(uri)
+    try:
+        return NamedNode(uri)
+    except ValueError as e:
+        logger.warning(f"Invalid IRI converted to Literal: {uri} – {e}")
+        return safeLiteral(uri)
+
+def safeLiteral(value) -> Literal:
+    try:
+        return Literal(str(value))
+    except Exception as e:
+        logger.error(f"Literal creation failed for value '{value}': {e} – using fallback 'n/a'")
+        return Literal("n/a")
 
 def import_rdf_from_disk(lib: ZoteroLibrary, store: Store, base_dir: str):
     subdir = os.path.join(base_dir, lib.name)
@@ -266,7 +313,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             
             if rdf_mapping and predicate_str not in rdf_mapping: # no mapping if none specified or predicate not specified for mapping
                 return None if isinstance(object, dict) else Literal(str(object))
-            
+            predicate_node = NamedNode(f"{ns_prefix}{predicate_str}")
             if isinstance(object, dict): # dicts as named nodes
 
                 if predicate_str == "tags" and "tag" in object: # tags
@@ -296,7 +343,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     creator_node = NamedNode(f"{base_uri}/persons/{creator_uuid}")
                     bnode = BlankNode()
                     
-                    store.add(Quad(subject, NamedNode(f"{ns_prefix}{predicate_str}"), bnode, graph_name=GRAPH_URI))
+                    store.add(Quad(subject, predicate_node, bnode, graph_name=GRAPH_URI))
                     store.add(Quad(bnode, NamedNode(f"{ns_prefix}hasCreator"), creator_node, graph_name=GRAPH_URI))
                     store.add(Quad(bnode, NamedNode(RDF_TYPE), NamedNode(f"{ns_prefix}creatorRole"), graph_name=GRAPH_URI)) # TODO change to creator
                 
@@ -322,13 +369,21 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             elif isinstance(object, (str, int, datetime, float)):
                 logger.debug(f"{predicate_str}: {type(object)} {object}")
                 if predicate_str == "collections": # collections
-                    return NamedNode(f"{base_uri}/collections/{object}")
+                    return safeNamedNode(f"{base_uri}/collections/{object}")
                 if predicate_str in ["parentItem", "parentCollection"]: # parent items
-                    return NamedNode(f"{base_uri}/items/{object}")
+                    return safeNamedNode(f"{base_uri}/items/{object}")
                 elif predicate_str in ["url","dc:relation","doi","owl:sameAs"] and object.startswith("http"): # url
-                    return NamedNode(object)
+                    vals = [v.strip() for v in object.split(",")]
+                    for val in vals:
+                        if len(vals)>1:
+                            logger.debug(f"Parse Multi-URL for {subject}: {val}") 
+                        if val.startswith("http"):
+                            store.add(Quad(subject, predicate_node, safeNamedNode(val), graph_name=GRAPH_URI))
+                        else:
+                            store.add(Quad(subject, predicate_node, Literal(val), graph_name=GRAPH_URI))
+                    return None
                 elif predicate_str in ["doi"] and not object.startswith("http") and len(object)>5: # DOI
-                    return NamedNode(f"https://doi.org/{str(object)}")
+                    return safeNamedNode(f"https://doi.org/{str(object)}".strip())
                 elif predicate_str in ["numPages","numberOfVolumes","volume","series number"] and str(object).isdigit(): # int
                     return Literal(str(object),datatype=NamedNode(f"{XSD_NS}int"))
                 elif predicate_str == "date":
@@ -348,7 +403,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 elif predicate_str in rdf_mapping: # create a UUID instead of the Literal for the value string
                     a_uuid = uuid5(BASE_NS, object)
                     logger.debug(f"UUID for {predicate_str}: {object}")
-                    return NamedNode(f"{base_uri}/{predicate_str}/{a_uuid}") # TODO maybe create entity for each with type and label?
+                    return safeNamedNode(f"{base_uri}/{predicate_str}/{a_uuid}") # TODO maybe create entity for each with type and label?
                 else:
                     return Literal(str(object))
             else:
@@ -361,85 +416,117 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
     # main function start here!
 
     for field, value in data.items():
-        predicate = NamedNode(f"{ns_prefix}{field}")
+        try:
+            predicate = NamedNode(f"{ns_prefix}{field}")
 
-        if white:
-            if field not in white and field not in rdf_mapping:
-                logger.debug(f"Skipping {field} (not in whitelist)")
+            if white:
+                if field not in white and field not in rdf_mapping:
+                    logger.debug(f"Skipping {field} (not in whitelist)")
+                    continue
+            elif black and field in black:
+                logger.debug(f"Skipping {field} (in blacklist)")
                 continue
-        elif black and field in black:
-            logger.debug(f"Skipping {field} (in blacklist)")
-            continue
-        
-        if isinstance(value, dict):
-            obj = zotero_property_map(field, value, map)
-            if obj is None:
-                continue
-            bnode = BlankNode()
-            store.add(Quad(subject, predicate, bnode, graph_name=GRAPH_URI))
-            add_rdf_from_dict(store, bnode, value, ns_prefix, base_uri, map, used_uuid_namespace)
+            
+            if isinstance(value, dict):
+                obj = zotero_property_map(field, value, map)
+                if obj is None:
+                    continue
+                bnode = BlankNode()
+                store.add(Quad(subject, predicate, bnode, graph_name=GRAPH_URI))
+                add_rdf_from_dict(store, bnode, value, ns_prefix, base_uri, map, used_uuid_namespace)
 
-        elif isinstance(value, list):
-            for item in value:
-                if isinstance(item, dict):
-                    if zotero_property_map(field, item, map) is None:
-                        continue
-                    bnode = BlankNode()
-                    store.add(Quad(subject, predicate, bnode, graph_name=GRAPH_URI))
-                    add_rdf_from_dict(store, bnode, item, ns_prefix, base_uri, map, used_uuid_namespace)
-                else:
-                    obj = zotero_property_map(field, item, map)
-                    if obj is not None:
-                        store.add(Quad(subject, predicate, obj, graph_name=GRAPH_URI))
+            elif isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict):
+                        if zotero_property_map(field, item, map) is None:
+                            continue
+                        bnode = BlankNode()
+                        store.add(Quad(subject, predicate, bnode, graph_name=GRAPH_URI))
+                        add_rdf_from_dict(store, bnode, item, ns_prefix, base_uri, map, used_uuid_namespace)
+                    else:
+                        obj = zotero_property_map(field, item, map)
+                        if obj is not None:
+                            store.add(Quad(subject, predicate, obj, graph_name=GRAPH_URI))
 
-        elif value is not None:
-            obj = zotero_property_map(field, value, map)
-            if obj is not None:
-                store.add(Quad(subject, predicate, obj, graph_name=GRAPH_URI))
+            elif value is not None:
+                obj = zotero_property_map(field, value, map)
+                if obj is not None:
+                    store.add(Quad(subject, predicate, obj, graph_name=GRAPH_URI))
+        except Exception as e:
+            logger.error(f"Invalid data for: [{field}, {value}]")
+            continue        
 
 def apply_rdf_types(store: Store, node: NamedNode, data: dict, type_fields: list[str], default_type: str, base_ns: str, prefix_ns: str):
     GRAPH_URI = NamedNode(base_ns)
+    RDF_TYPE_NODE = NamedNode(RDF_TYPE)
+
     if not type_fields:
-        store.add(Quad(node, NamedNode(RDF_TYPE), NamedNode(f"{prefix_ns}{default_type}", graph_name=GRAPH_URI)))
-        logger.debug("No type_fields for rdf:type")
+        default_node = NamedNode(f"{prefix_ns}{default_type}")
+        store.add(Quad(node, RDF_TYPE_NODE, default_node, graph_name=GRAPH_URI))
+        logger.debug(f"No type_fields for rdf:type – added default: {default_node}")
     else:
         for field in type_fields:
             if field.startswith("_"):
-                val = field.lstrip("_")
+                raw_val = field.lstrip("_")
             else:
-                val = data.get(field)
-                if not val:
+                raw_val = data.get(field)
+                if not raw_val:
                     continue
-            val_str = str(val)
-            type_node = NamedNode(val_str) if val_str.startswith("http") else NamedNode(f"{prefix_ns}{val_str}")
-            store.add(Quad(node, NamedNode(RDF_TYPE), type_node, graph_name=GRAPH_URI))
-            logger.debug(f"Added rdf:type: {type_node}")
+
+            try:
+                val_strs = [v.strip() for v in str(raw_val).split(",")]
+                if len(val_strs) > 1:
+                    logger.debug(f"Multiple rdf:type values for {node}: {val_strs}")
+
+                for val_str in val_strs:
+                    type_node = (
+                        safeNamedNode(val_str)
+                        if val_str.startswith("http")
+                        else safeNamedNode(f"{prefix_ns}{val_str}")
+                    )
+                    store.add(Quad(node, RDF_TYPE_NODE, type_node, graph_name=GRAPH_URI))
+                    logger.debug(f"Added rdf:type: {type_node}")
+
+            except Exception as e:
+                logger.error(f"Invalid rdf:type at {node} for value '{raw_val}': {e}")
+                continue
+
 
 def apply_additional_properties(store: Store, node: NamedNode, data: dict, specs: list[dict], base_ns: str, prefix_ns: str):
     GRAPH_URI = NamedNode(base_ns)
     for spec in specs:
-        property_str = spec.get("property")
-        value_spec = spec.get("value")
-        named_node = spec.get("named_node", False)
+        try:
+            property_str = spec.get("property")
+            value_spec = spec.get("value")
+            named_node = spec.get("named_node", False)
 
-        if not property_str or not value_spec:
-            continue
-
-        predicate = NamedNode(property_str) if property_str.startswith("http") else NamedNode(f"{prefix_ns}{property_str}")
-
-        if value_spec.startswith("_"):
-            raw_value = value_spec.lstrip("_")
-        else:
-            raw_value = data.get(value_spec)
-            if not raw_value:
+            if not property_str or not value_spec:
                 continue
 
-        if named_node:
-            obj = NamedNode(str(raw_value)) if str(raw_value).startswith("http") else NamedNode(f"{prefix_ns}{raw_value}")
-        else:
+            predicate = NamedNode(property_str) if property_str.startswith("http") else NamedNode(f"{prefix_ns}{property_str}")
+
+            if value_spec.startswith("_"):
+                raw_value = value_spec.lstrip("_")
+            else:
+                raw_value = data.get(value_spec)
+                if not raw_value:
+                    continue
+
+            if named_node:
+                vals = [v.strip() for v in str(raw_value).split(",")]
+                if len(vals) > 1:
+                    logger.debug(f"Parse Multi-Object for {node}: {vals}")
+                for val in vals:
+                    obj = safeNamedNode(val) if val.startswith("http") else Literal(val)
+                    store.add(Quad(node, predicate, obj, graph_name=GRAPH_URI))
+                continue
+    
             obj = Literal(str(raw_value))
 
-        store.add(Quad(node, predicate, obj, graph_name=GRAPH_URI))
+            store.add(Quad(node, predicate, obj, graph_name=GRAPH_URI))
+        except Exception as e:
+            logger.error(f"Invalid data at {node} for {raw_value}")
+            continue
 
 def add_timestamp(store: Store, node: NamedNode, graph: NamedNode):
     store.add(Quad(node, NamedNode("http://www.w3.org/ns/prov#generatedAtTime"), Literal(datetime.now(timezone.utc).isoformat(),datatype=NamedNode(f"{XSD_NS}dateTime")), graph_name=graph))
@@ -500,21 +587,32 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
     if items:
         item_type_fields = lib.map.get("item_type") or []
         for item in items:
-            item_data = item.get("data", {})
-            key = item_data.get("key",uuid4())            
-            node_uri = NamedNode(f"{lib.base_url}/items/{key}")
-            if lib.map.get("named_library"):
-                property_str = lib.map.get("named_library", "inLibrary")
-                store.add(Quad(node_uri, NamedNode(property_str) if property_str.startswith("http") else NamedNode(f"{ZOT_NS}{property_str}"), NamedNode(a_library_href), graph_name=GRAPH_URI))
+            try:
+                item_data = item.get("data", {})
+                creators = item_data.get("creators") or []
+                first_creator = creators[0].get("lastName") if creators and "lastName" in creators[0] else "NO CREATOR"
+                title = item_data.get("title") or "NO TITLE"
+                date = item_data.get("date") or "NO DATE"
+                label = f"{first_creator}: {title} ({date})"
+                key = item_data.get("key",uuid4())            
+                node_uri = NamedNode(f"{lib.base_url}/items/{key}")
+                if lib.map.get("named_library"):
+                    property_str = lib.map.get("named_library", "inLibrary")
+                    store.add(Quad(node_uri, NamedNode(property_str) if property_str.startswith("http") else NamedNode(f"{ZOT_NS}{property_str}"), NamedNode(a_library_href), graph_name=GRAPH_URI))
 
-                        
-            apply_rdf_types(store, node_uri, item_data, item_type_fields, "item", lib.base_url, ZOT_NS)
+                if label:
+                    store.add(Quad(node_uri, NamedNode(RDFS_LABEL), Literal(label), graph_name=GRAPH_URI))
 
-            item_additional = map.get("additional") or []
-            apply_additional_properties(store, node_uri, item_data, item_additional, lib.base_url, ZOT_NS)
+                apply_rdf_types(store, node_uri, item_data, item_type_fields, "item", lib.base_url, ZOT_NS)
 
-            add_rdf_from_dict(store, node_uri, item_data, ZOT_NS, lib.base_url, map, lib.uuid_namespace)
-            add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
+                item_additional = map.get("additional") or []
+                apply_additional_properties(store, node_uri, item_data, item_additional, lib.base_url, ZOT_NS)
+
+                add_rdf_from_dict(store, node_uri, item_data, ZOT_NS, lib.base_url, map, lib.uuid_namespace)
+                add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
+            except Exception as e:
+                logger.error(f"Invalid data at {node_uri}. See next errors for details!")
+                continue
     else:
         logger.warning("No items!")
 
