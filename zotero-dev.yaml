@@ -1,0 +1,43 @@
+context:
+  vocab: "http://www.zotero.org/namespaces/export#"
+  api_url: "https://api.zotero.org/"
+  base: "https://www.zotero.org/"
+  schema: "https://api.zotero.org/schema" # if given, will create a basic OWL ontology as named graph with IRI of vocab
+
+defaults:
+  mode: "override" # "merge" or "default"
+  load_mode: "json"  # "json" or "rdf" or "manual_import"
+  rdf_export_format: "rdf_zotero" # "rdf_zotero" or "rdf_bibliontology" only needed if load_mode = "rdf"
+  # base_uri: "https://www.example.com#" used as the uri for the library named graph and as the base uri for all named nodes created for zotero items and collections. By default is "{context.base}{libraries.library_type}/{libraries.library_id}" as specified in this yaml
+  # uuid_namespace: "https://www.example.com#" # Will be used to create identical uuids for named nodes accross multiple libraries in the union graph. If not given, uses base_uri
+  map: # skip this dict if no specs needed. Will ignore empty lists as constraints
+    # white: [title,date] # a white list (will only include these and those in named)
+    # black: [title,date] # a black list (will ingore these)
+    # rdf_mapping: [creators,tags,collections,parentItem,parentCollection]
+    item_type: ["_item","itemType"] # takes values from field for rdf type. Start with _ sets constant type predicate. If not indicates, uses "item". If not starting with "http" will use defaul vocab from context.
+    collection_type: ["_collection"] # If not indicated, uses "collection"
+    named_library: "inLibrary" # if specified will add an object property by that name with a named node for the library's named graph URI to facilitate queries accross multiple named graphs
+    additional:
+      - property: "http://www.w3.org/2000/01/rdf-schema#label"
+        value: "title"
+        named_node: false
+      - property: "http://www.w3.org/2000/01/rdf-schema#label"
+        value: "name"
+        named_node: false
+      - property: "http://www.w3.org/2000/01/rdf-schema#label"
+        value: "tag"
+        named_node: false
+      - property: "http://www.w3.org/2002/07/owl#sameAs"
+        value: "url"
+        named_node: true
+  # api_query_params:
+    # itemType: "book"  # optional, freely configurable
+    # tag: "important"  # optional, freely configurable
+    # collection: "XYZ123"  # optional
+
+libraries:
+  - name: AquaCrop publications
+    library_type: "groups"
+    library_id: "368553"
+    load_mode: "json"
+    rdf_export_format: "rdf_zotero"
