@@ -1322,7 +1322,7 @@ zotsn:wordsby_1595 a sh:NodeShape ;
 grace: a owl:Ontology ;
     rdfs:label "Graceful17 Ontology"@en ;
     dc:title "Graceful17 Ontology"@en ;
-    dcterms:created "2025-05-07T11:40:45"@en ;
+    dcterms:created "2025-05-07T16:19:14"@en ;
     dcterms:creator "Bruno Boute"@en,
         "Christoph Sander"@en ;
     dcterms:license <http://creativecommons.org/licenses/by/4.0/> ;
@@ -1333,7 +1333,7 @@ grace: a owl:Ontology ;
     owl:imports <http://www.w3.org/2000/01/rdf-schema> ;
     owl:priorVersion grace:1.0.0 ;
     owl:versionIRI grace:1.0.1 ;
-    prov:generatedAtTime "2025-05-07T11:40:45"^^xsd:dateTime ;
+    prov:generatedAtTime "2025-05-07T16:19:14"^^xsd:dateTime ;
     schema:citation "Sander, Christoph; Boute, Bruno. (2025). The Graceful17 Ontology, https://w3id.org/g17/ontology (Version 1.0.1)"@en .
 
 zot:DOI a owl:DatatypeProperty ;
@@ -1920,7 +1920,7 @@ zot:thesisType a owl:DatatypeProperty ;
 zot:title a owl:DatatypeProperty ;
     rdfs:label "title"@en ;
     rdfs:domain [ a owl:Class ;
-            owl:unionOf ( zot:interview zot:book zot:videoRecording zot:audioRecording zot:podcast zot:film zot:encyclopediaArticle zot:forumPost zot:bookSection zot:instantMessage zot:map zot:presentation zot:conferencePaper zot:tvBroadcast zot:letter zot:dataset zot:hearing zot:manuscript zot:standard zot:newspaperArticle zot:document zot:computerProgram zot:artwork zot:journalArticle zot:report zot:thesis zot:attachment zot:patent zot:dictionaryEntry zot:blogPost zot:radioBroadcast zot:preprint zot:webpage zot:magazineArticle zot:bill ) ] .
+            owl:unionOf ( zot:item zot:interview zot:book zot:videoRecording zot:audioRecording zot:podcast zot:film zot:encyclopediaArticle zot:forumPost zot:bookSection zot:instantMessage zot:map zot:presentation zot:conferencePaper zot:tvBroadcast zot:letter zot:dataset zot:hearing zot:manuscript zot:standard zot:newspaperArticle zot:document zot:computerProgram zot:artwork zot:journalArticle zot:report zot:thesis zot:attachment zot:patent zot:dictionaryEntry zot:blogPost zot:radioBroadcast zot:preprint zot:webpage zot:magazineArticle zot:bill ) ] .
 
 zot:translator a owl:Class ;
     rdfs:label "translator"@en ;
@@ -2863,6 +2863,7 @@ zotsn:item_1498 a sh:NodeShape ;
     sh:name "Item" ;
     sh:nodeKind sh:IRI ;
     sh:property zotsn:property_1639,
+        zotsn:property_1715,
         zotsn:property_1729,
         zotsn:property_1730,
         zotsn:property_1731,
@@ -3105,6 +3106,12 @@ zotsn:property_1639 a sh:PropertyShape ;
     sh:nodeKind sh:Literal ;
     sh:path zot:date .
 
+zotsn:property_1705 a sh:PropertyShape ;
+    rdfs:label "language" ;
+    volipi:message "Tooltip for language" ;
+    sh:name "language" ;
+    sh:path zot:language .
+
 zotsn:property_1715 a sh:PropertyShape ;
     rdfs:label "title" ;
     volipi:message "Tooltip for title" ;
@@ -3113,12 +3120,6 @@ zotsn:property_1715 a sh:PropertyShape ;
     sh:node zotsn:text_1724 ;
     sh:nodeKind sh:Literal ;
     sh:path zot:title .
-
-zotsn:property_1705 a sh:PropertyShape ;
-    rdfs:label "language" ;
-    volipi:message "Tooltip for language" ;
-    sh:name "language" ;
-    sh:path zot:language .
 
 zotsn:property_1616 a sh:PropertyShape ;
     rdfs:label "rights" ;
