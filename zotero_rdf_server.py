@@ -18,6 +18,7 @@ from collections import defaultdict
 import json, re
 from datetime import datetime, timezone
 from dateutil import parser
+from pathlib import Path
 
 # --- Load configuration ---
 config_path = os.getenv("CONFIG_FILE", "config.yaml")
@@ -852,10 +853,28 @@ async def export_graph(
 @router.get("/backup")
 async def backup_store():
     global store
-    if os.path.exists(BACKUP_DIRECTORY):
-        shutil.rmtree(BACKUP_DIRECTORY)
-    store.backup(BACKUP_DIRECTORY)
-    return {"success": f"Backup created in {BACKUP_DIRECTORY}"}
+    backup_root = Path(BACKUP_DIRECTORY).resolve()
+    backup_path = backup_root / "Store"
+    log_file = backup_root / "backup.log"
+
+    try:
+        store_path = Path(STORE_DIRECTORY).resolve()
+    except AttributeError:
+        return {"error": "The current store was not found in {STORE_DIRECTORY} (maybe in-memory DB?)"}
+
+    if backup_path == store_path or backup_path in store_path.parents:
+        raise RuntimeError("Cannot backup into the current store's own directory")
+
+    if backup_path.exists():
+        shutil.rmtree(backup_path, ignore_errors=True)
+        log_file.write_text(f"[{datetime.now().isoformat()}] Deleted old Store backup\n", encoding="utf-8")
+
+    store.backup(str(backup_path))
+
+    with log_file.open("a", encoding="utf-8") as f:
+        f.write(f"[{datetime.now().isoformat()}] Created new backup in {backup_path}\n")
+
+    return {"success": f"Backup created in {backup_path}"}
 
 
 @router.get("/optimize")
