@@ -38,7 +38,7 @@ logging.basicConfig(level=log_level)
 logger = logging.getLogger(__name__)
 
 # --- Config ---
-REFRESH_INTERVAL = config["server"]["refresh_interval"]
+REFRESH_INTERVAL = config["server"].get("refresh_interval", 0)
 STORE_MODE = "directory"
 STORE_DIRECTORY = os.getenv("STORE_DIRECTORY", "./data")
 EXPORT_DIRECTORY = config["server"].get("export_directory", "./exports")
@@ -47,8 +47,16 @@ BACKUP_DIRECTORY = config["server"].get("backup_directory", "./backup")
 OXIGRAPH_CONTAINER = os.getenv("OXIGRAPH_CONTAINER", "oxigraph")
 LIMIT = 100
 
-REFRESH = REFRESH_INTERVAL > 0
-logger.info(f"Refresh {'set to ' + str(REFRESH_INTERVAL) + ' seconds' if REFRESH else 'deactivated'}")
+REFRESH = REFRESH_INTERVAL >= 0
+
+if REFRESH_INTERVAL >= 30:
+    logger.info(f"Refresh set to {REFRESH_INTERVAL} seconds")
+elif REFRESH_INTERVAL == -1:
+    logger.info("Refresh deactivated")
+elif REFRESH_INTERVAL == 0:
+    logger.info("Refresh only at startup")
+else:
+    logger.info("Refresh interval incorrect and refresh disabled! A minimum of 30 seconds is required!")
 
 def set_defaults(lib_cfg: dict, master_cfg: dict, mode: str = "default", merge_keys: list = None) -> dict:
     merged = lib_cfg.copy()
@@ -371,8 +379,10 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 logger.debug(f"{predicate_str}: {type(object)} {object}")
                 if predicate_str == "collections": # collections
                     return safeNamedNode(f"{base_uri}/collections/{object}")
-                if predicate_str in ["parentItem", "parentCollection"]: # parent items
+                if predicate_str in ["parentItem"]: # parent items
                     return safeNamedNode(f"{base_uri}/items/{object}")
+                if predicate_str in ["parentCollection"]: # parent collections
+                    return safeNamedNode(f"{base_uri}/collections/{object}")
                 elif predicate_str in ["url","dc:relation","doi","owl:sameAs"] and object.startswith("http"): # url
                     vals = [v.strip() for v in object.split(",")]
                     for val in vals:
@@ -804,9 +814,12 @@ def refresh_store():
             except Exception as e:
                 logger.error(f"Error refreshing data: {e}")
 
-            logger.info(f"Next refresh in {REFRESH_INTERVAL} seconds")
-            time.sleep(REFRESH_INTERVAL)
-
+            if REFRESH_INTERVAL >= 30:
+                logger.info(f"Next refresh in {REFRESH_INTERVAL} seconds")
+                time.sleep(REFRESH_INTERVAL)
+            else:
+                logger.info("Refresh interval less than 30 seconds — exiting after initial load.")
+                break
 
 # --- API Endpoints ---
 
