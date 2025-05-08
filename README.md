@@ -6,8 +6,10 @@ A **visual query builder** is found in `/docs` to explore the graph or go to [Gi
 
 ### Why this Tool?
 
-While Zotero allows greatly to store and collaborate in cloud hosted Zotero libraries, there is no service to federate and cross explore and search multiple libraries. This **Zotero RDF Server** is an initial attempt. It provides som entity mapping (tags, creators, etc.) but is strictly bound by the (rather textual) datamodel underlying Zotero and its API.
-*A Knowledge Base Mapping* would be a logical next step!
+While Zotero offers robust functionality for storing and collaboratively managing cloud-hosted libraries, it lacks support for federated access and cross-library exploration or search.
+This **Zotero RDF Server** is an initial attempt to fill that gap. It implements basic entity mapping (e.g., tags, creators), but remains tightly constrained by Zotero’s inherently textual data model and API structure.
+A logical next step would be to implement a **knowledge base mapping** layer to enable richer semantic interoperability.
+
 
 ## 📘 How to Create a Zotero Cloud Library
 
