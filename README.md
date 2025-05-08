@@ -2,7 +2,7 @@
 
 This server loads multiple Zotero libraries into an RDF graph,
 exposes a local SPARQL endpoint, and allows exporting the graph.
-A **visual query builder** is found in `/docs` to explore the graph or go to [GitHub Pages](https://ch-sander.github.io/zotero_rdf_server/).
+A **visual query builder** is found in `/explorer` to explore the graph or go to [GitHub Pages](https://ch-sander.github.io/zotero_rdf_server/).
 
 ### Why this Tool?
 
