@@ -3,23 +3,20 @@ version: "3.8"
 services:
   zotero-rdf:
     build: .
-    container_name: zotero-rdf-server
+    container_name: ${ZOTERO_RDF_SERVER_CONTAINER}
+    working_dir: /src
+    command: uvicorn zotero_rdf_server.main:app --host 0.0.0.0 --port 8000
     ports:
       - "${SERVER_PORT:-8000}:8000"
     env_file:
       - ./.env
-    environment:
-      - CONFIG_FILE
-      - ZOTERO_CONFIG_FILE # =${ZOTERO_CONFIG_FILE:-zotero.yaml}
-      - SERVER_PORT
     volumes:
-      - ./:/app           # dev mount
-      - "${CONFIG_FILE:-config.yaml}:/app/${CONFIG_FILE:-config.yaml}"
-      - "${ZOTERO_CONFIG_FILE:-zotero.yaml}:/app/${ZOTERO_CONFIG_FILE:-zotero.yaml}"
-      - "${STORE_DIRECTORY:-./data}:/app/data"
-      - "${EXPORT_DIRECTORY:-./exports}:/app/exports"
-      - "${BACKUP_DIRECTORY:-./backup}:/app/backup"
-      # - ${DB_PATH:-./users.db}:/app/users.db
+      - "${CONFIG_FILE_HOST:-./app/config.yaml}:${CONFIG_FILE:-/app/config.yaml}"
+      - "${ZOTERO_CONFIG_FILE_HOST:-./app/zotero.yaml}:${ZOTERO_CONFIG_FILE:-/app/zotero.yaml}"
+      - "${STORE_DIRECTORY:-./app/data}:/app/data"
+      - "${EXPORT_DIRECTORY:-./app/exports}:/app/exports"
+      - "${IMPORT_DIRECTORY:-./app/exports}:/app/import"
+      - "${BACKUP_DIRECTORY:-./app/backup}:/app/backup"
     restart: unless-stopped
   oxigraph:
     image: ghcr.io/oxigraph/oxigraph:latest
@@ -27,6 +24,6 @@ services:
     ports:
       - "7879:7879"
     volumes:
-      - ${STORE_DIRECTORY:-./data}:/data
+      - ${STORE_DIRECTORY:-./app/data}:/data
     command: ["serve-read-only", "--location", "/data", "--bind", "0.0.0.0:7879", "--union-default-graph", "--cors"]
     restart: unless-stopped

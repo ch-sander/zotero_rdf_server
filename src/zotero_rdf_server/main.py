@@ -40,11 +40,11 @@ logger = logging.getLogger(__name__)
 # --- Config ---
 REFRESH_INTERVAL = config["server"].get("refresh_interval", 0)
 STORE_MODE = "directory"
-STORE_DIRECTORY = os.getenv("STORE_DIRECTORY", "./data")
-EXPORT_DIRECTORY = config["server"].get("export_directory", "./exports")
-IMPORT_DIRECTORY = config["server"].get("import_directory", "./import")
-BACKUP_DIRECTORY = config["server"].get("backup_directory", "./backup")
-OXIGRAPH_CONTAINER = os.getenv("OXIGRAPH_CONTAINER", "oxigraph")
+STORE_DIRECTORY = config["server"].get("store_directory", "/app/data")
+EXPORT_DIRECTORY = config["server"].get("export_directory", "/app/exports")
+IMPORT_DIRECTORY = config["server"].get("import_directory", "/app/import")
+BACKUP_DIRECTORY = config["server"].get("backup_directory", "/app/backup")
+
 LIMIT = 100
 
 REFRESH = REFRESH_INTERVAL >= 0
