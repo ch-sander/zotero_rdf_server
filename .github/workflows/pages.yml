@@ -1,0 +1,30 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'explorer/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload explorer folder
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: explorer
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
