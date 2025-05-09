@@ -14,6 +14,7 @@ services:
       - "${CONFIG_FILE_HOST:-./app/config.yaml}:${CONFIG_FILE:-/app/config.yaml}"
       - "${ZOTERO_CONFIG_FILE_HOST:-./app/zotero.yaml}:${ZOTERO_CONFIG_FILE:-/app/zotero.yaml}"
       - "${STORE_DIRECTORY:-./app/data}:/app/data"
+      - "${PARSER_DIRECTORY:-./app/parser}:/app/parser"
       - "${EXPORT_DIRECTORY:-./app/exports}:/app/exports"
       - "${IMPORT_DIRECTORY:-./app/exports}:/app/import"
       - "${BACKUP_DIRECTORY:-./app/backup}:/app/backup"

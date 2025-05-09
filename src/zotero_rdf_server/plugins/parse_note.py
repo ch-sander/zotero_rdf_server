@@ -1,5 +1,5 @@
 import subprocess
-import sys, json
+import sys, json, html
 import logging
 from zotero_rdf_server.logging_config import logger
 
@@ -7,7 +7,10 @@ try:
     from semantic_html.parser import parse_note
 except ImportError:
     logger.warning("semantic-html not found. Installing...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "semantic-html"])
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "https://github.com/ch-sander/semantic-html/releases/download/v0.2.0/semantic_html-0.3.0-py3-none-any.whl"])
+    # semantic-html 
+    # semantic-html git+https://github.com/ch-sander/semantic-html.git
+    # https://github.com/ch-sander/semantic-html/releases/download/v0.2.0/semantic_html-0.2.0-py3-none-any.whl'
     try:
         from semantic_html.parser import parse_note
     except ImportError:
@@ -25,13 +28,17 @@ class ParseNotePlugin:
 
     def run(
         self,
-        html: str,
+        html_str: str,
         note_uri: str,
         return_annotated_html: bool = False
     ) -> dict:
         logger.info(f"Parsing HTML note for URI: {note_uri}")
+        logger.info(f"Unescaping HTML")
+
+        html_str = html.unescape(html_str)
+
         result = parse_note(
-            html=html,
+            html=html_str,
             mapping=self.mapping,
             note_uri=note_uri,
             metadata=self.metadata,

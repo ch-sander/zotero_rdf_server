@@ -2,6 +2,7 @@ server:
   refresh_interval: 0 # seconds (min. 30), 0 = refresh at startup, -1 = do not refresh
   # store_mode: "memory"  # or "directory" currently hard-coded to "directory"
   # directory variables will be primarily set in .env
+  delay: 60 # delay at startup in seconds
   store_directory: "/app/data"
   export_directory: "/app/exports"  
   import_directory: "/app/import"

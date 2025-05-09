@@ -39,6 +39,7 @@ setup_logging(log_level)
 
 # --- Config ---
 REFRESH_INTERVAL = config["server"].get("refresh_interval", 0)
+DELAY = config["server"].get("delay", 60)
 STORE_MODE = "directory"
 STORE_DIRECTORY = config["server"].get("store_directory", "/app/data")
 EXPORT_DIRECTORY = config["server"].get("export_directory", "/app/exports")
@@ -626,41 +627,62 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
     else:
         logger.warning("No items!")
 
-def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode = NamedNode(f"{ZOT_NS}note"), query_str: str = None, replace:bool = False):
+def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode = NamedNode(f"{ZOT_NS}note"), query_str: str = None, replace:bool = False, push:bool=True):
     from zotero_rdf_server.plugins.parse_note import ParseNotePlugin
     from rdflib import Graph
     GRAPH_URI = NamedNode(lib.base_url)
     
     # Mapping
+    raw_mapping = lib.parser.get("mapping")
     mapping = {}
 
     try:
-        with open(lib.parser.get("mapping")) as f:
-            mapping = json.load(f)
+        if isinstance(raw_mapping, dict):
+            mapping = raw_mapping
 
-        logger.info(f"Parser mapping loaded from {lib.parser.get('mapping')}")
+        elif isinstance(raw_mapping, str):
+            if os.path.exists(raw_mapping):
+                with open(raw_mapping) as f:
+                    mapping = json.load(f)
+                logger.info(f"Parser mapping loaded from file: {raw_mapping}")
+            else:
+                mapping = json.loads(raw_mapping)
+                logger.info("Parser mapping loaded from JSON string")
+        else:
+            raise ValueError("Invalid mapping input")
+
     except Exception as e:
         logger.warning(f"No mapping found, using fallback: {e}")
         mapping = {
-            '@context':
-                {
-                    "@base": lib.base_url,
-                    "@vocab": ZOT_NS
-                }
+            '@context': {
+                '@base': lib.base_url,
+                '@vocab': ZOT_NS
+            }
         }
 
-    # Metadata
-    metadata = {
-            "wasGeneratedBy": os.path.basename(__file__)
-        }
+    raw_metadata = lib.parser.get("metadata")
+    metadata = {}
+
     try:
-        with open(lib.parser.get("metadata")) as f:
-            metadata = json.load(f)
-        logger.info(f"Parser metadata loaded from {lib.parser.get('metadata')}")
+        if isinstance(raw_metadata, dict):
+            metadata = raw_metadata
+
+        elif isinstance(raw_metadata, str):
+            if os.path.exists(raw_metadata):
+                with open(raw_metadata) as f:
+                    metadata = json.load(f)
+                logger.info(f"Parser metadata loaded from file: {raw_metadata}")
+            else:
+                metadata = json.loads(raw_metadata)
+                logger.info("Parser metadata loaded from JSON string")
+        else:
+            raise ValueError("Invalid metadata input")
+
     except Exception as e:
         logger.warning(f"No metadata found, using fallback: {e}")
-        
-
+        metadata = {
+            "wasGeneratedBy": os.path.basename(__file__)
+        }
 
     plugin = ParseNotePlugin(mapping=mapping, metadata=metadata)
     logger.debug("Plugin initialized")
@@ -683,15 +705,20 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
 
         if isinstance(obj, Literal):
             count += 1
-            html = str(obj)
+            html = obj.value
             note_uri = subject.value if hasattr(subject, "value") else str(subject)
-            result = plugin.run(html=html, note_uri=note_uri)
-            logger.debug(result)
+            result = plugin.run(html_str=html, note_uri=note_uri)
+            logger.debug(json.dumps(result, indent=2))
             g = Graph()
-            g.parse(data=result, format="json-ld")
-            logger.debug("JSON-LD parsed")     
-            store.load(g.serialize(format="turtle"), format=RdfFormat.TURTLE, to_graph=GRAPH_URI)
-            logger.debug("Loaded to Store")
+            g.parse(data=json.dumps(result), format="json-ld")
+            logger.debug("JSON-LD parsed")
+            
+            if push:
+                store.load(g.serialize(format="turtle"), format=RdfFormat.TURTLE, to_graph=GRAPH_URI)
+                logger.info("Loaded to Store")
+            else:
+                logger.info("Serialized only")
+                g.serialize(format="turtle")
     return count
 
 def zotero_schema(schema, vocab_iri="http://www.zotero.org/namespaces/export#"):
@@ -986,7 +1013,8 @@ async def parse_notes(
     replace: bool = False,
     graph: str | None = Query(default=None, description="Named graph IRI (optional)"),
     note_predicate: str | None  = Query(default=None, description="predicate for note HTML"),
-    query: str | None = Query(default=None, description="Query to retrieve notes (optional)")
+    query: str | None = Query(default=None, description="Query to retrieve notes (optional)"),
+    push: bool | None = Query(default=True, description="Push triples to store (optional)")
     ):
 
     global store
@@ -999,7 +1027,7 @@ async def parse_notes(
     for lib_cfg in ZOTERO_LIBRARIES_CONFIGS:
         lib = ZoteroLibrary(lib_cfg)
         if not graph or graph == lib.base_url:
-            result=parse_all_notes(lib, store, note_predicate=predicate, query_str=query, replace=replace)
+            result=parse_all_notes(lib, store, note_predicate=predicate, query_str=query, replace=replace,push=push)
     return {"success":f"{result} notes parsed"}
 
 
@@ -1009,8 +1037,8 @@ async def parse_notes(
 async def app_lifespan(app: FastAPI):
     initialize_store()
     if log_level != "DEBUG": # delay start to have oxigraph initialize first
-        logger.info(f"Delay loading for 60 seconds")
-        time.sleep(60)
+        logger.info(f"Delay loading for {DELAY} seconds")
+        time.sleep(DELAY)
     threading.Thread(target=refresh_store, daemon=True).start()
     yield
 

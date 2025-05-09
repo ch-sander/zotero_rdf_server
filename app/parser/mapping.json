@@ -1,110 +1,129 @@
 {
-    "@type": ["researchNote"],
+    "@type": [
+      "SemanticNote"
+    ],
     "Document": {
-        "tags": ["p"],
-        "types": ["Doc"]
+      "tags": [
+        "p"
+      ],
+      "types": [
+        "Doc"
+      ]
     },
-
     "Annotation": {
-
-        "Concept": {
-
-            "tags": ["em"],
-            "styles": ["font-style:italic"],
-            "types": ["Annotation", "Concept"]
-        },
-
-        "Entity": {
-
-            "tags": ["strong"],
-            "types": ["Entity"]
-        },
-
-        "Entity2": {
-
-            "regex": ["#\\\\w+#?"],
-            "types": ["Entity"]
-        },
-
-        "Reference1": {
-
-            "tags": ["u"],
-            "types": ["Reference"]
-        },
-
-        "Reference2": {
-
-            "tags": ["span"],
-            "class": "citation",
-            "types": ["Reference Zotero"]
-        }
+      "Concept": {
+        "tags": [
+          "em"
+        ],
+        "styles": [
+          "font-style:italic"
+        ],
+        "types": [
+          "Annotation",
+          "Concept"
+        ]
+      },
+      "Entity": {
+        "tags": [
+          "strong"
+        ],
+        "types": [
+            "Annotation",
+            "Entity"
+          ]
+      },
+      "Entity2": {
+        "regex": [
+          "#\\\\w+#?"
+        ],
+        "types": [
+          "Annotation",
+          "Entity"
+        ]
+      },
+      "Reference1": {
+        "tags": [
+          "u"
+        ],
+        "types": [
+          "Reference"
+        ]
+      },
+      "Reference2": {
+        "tags": [
+          "span"
+        ],
+        "class": "citation",
+        "types": [
+          "Reference Zotero"
+        ]
+      }
     },
-
     "Locator": {
-
-        "tags": ["code"],
-        "types": ["Page-Locator"]
+      "tags": [
+        "code"
+      ],
+      "types": [
+        "Page-Locator"
+      ]
     },
-
     "Structure": {
-
-        "tags": ["h1", "h2", "h3"],
-        "types": ["Structure"]
+      "tags": [
+        "h1",
+        "h2",
+        "h3"
+      ],
+      "types": [
+        "Structure"
+      ]
     },
-
     "Quotation": {
-
-        "tags": ["blockquote"],
-        "types": ["Quotation"]
+      "tags": [
+        "blockquote"
+      ],
+      "types": [
+        "Quotation"
+      ]
     },
-
     "IGNORE": {
-
-        "tags": ["pre"],
-        "regex": ["#"]
+      "tags": [
+        "pre",
+        "img"
+      ],
+      "regex": [
+        "#"
+      ]
     },
     "@context": {
-
-        "xsd": "http://www.w3.org/2001/XMLSchema#",
-        "schema": "http://schema.org/",
-        "doco": "http://purl.org/spar/doco/",
-        "dcterms": "http://purl.org/dc/terms/",
-        "prov": "http://www.w3.org/ns/prov#",
-        "owl": "http://www.w3.org/2002/07/owl#",
-        "@vocab": "https://semantic-html.org/vocab#",
-        "Note": "doco:Document",
-        "Structure": "doco:DiscourseElement",
-        "Locator": "ex:Locator",
-        "Doc": "doco:Section",
-        "Annotation": "schema:Comment",
-        "Quotation": "doco:BlockQuotation",
-        "note": {
-            "@id": "inNote",
-            "@type": "@id"
-        },
-        "structure": {
-            "@id": "inStructure",
-            "@type": "@id"
-        },
-        "locator": {
-            "@id": "hasLocator",
-            "@type": "@id"
-        },
-        "sameAs": {
-            "@id": "owl:sameAs",
-            "@type": "@id"
-        },
-        "doc": {
-            "@id": "dcterms:isPartOf",
-            "@type": "@id"
-        },
-        "level": {
-            "@id": "doco:hasLevel",
-            "@type": "xsd:int"
-        },
-        "generatedAtTime": {
-            "@id": "prov:generatedAtTime",
-            "@type": "xsd:dateTime"
-        }
+      "prov": "http://www.w3.org/ns/prov#",
+      "owl": "http://www.w3.org/2002/07/owl#",
+      "@vocab": "https://semantic-html.org/vocab#",
+      "note": {
+        "@id": "inNote",
+        "@type": "@id"
+      },
+      "structure": {
+        "@id": "inStructure",
+        "@type": "@id"
+      },
+      "locator": {
+        "@id": "hasLocator",
+        "@type": "@id"
+      },
+      "sameAs": {
+        "@type": "@id"
+      },
+      "doc": {
+        "@id": "inDoc",
+        "@type": "@id"
+      },
+      "level": {
+        "@id": "doco:hasLevel",
+        "@type": "xsd:int"
+      },
+      "generatedAtTime": {
+        "@id": "prov:generatedAtTime",
+        "@type": "xsd:dateTime"
+      }
     }
-}
+  }
