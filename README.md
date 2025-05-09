@@ -56,83 +56,22 @@ To use this tool, you need at least one Zotero cloud library (either **user** or
 - Includes Oxigraph SPARQL server at port `7878`
 - *(FastAPI endpoint for `/sparql` not yet implemented)*
 
+## Parse Notes
+
+As a plugin, you can parse your HTML Zotero notes with the [Semantic-HTML](https://github.com/ch-sander/semantic-html) package ([Docs](https://semantic-html.readthedocs.io/en/latest/)). It is only loaded if the trigger is set in the `config.yaml` or called via `/parse_notes` in the API. The results are parsed as RDF and loaded to the store. A mapping example for the RDF parsing is defined in `app/parser/mapping.json` and can be specified in `config.yaml` for each library
+
 ## Configuration
 
-Place both YAML filenames in your `.env`, not in the code or Dockerfile. Only these two environment variables need updating when you rename or move configuration files:
-
-```bash
-CONFIG_FILE=custom-config.yaml
-ZOTERO_CONFIG_FILE=custom-zotero.yaml
-```
-
+Place both YAML filenames in your `.env` (example in [env.backup](env.backup)), not in the code or Dockerfile. Only these two environment variables need updating when you rename or move configuration files.
 Docker-Compose will mount these files into `/app` and your Python code loads them via `os.getenv(...)` with sensible defaults (`config.yaml` and `zotero.yaml`).
 
 ### `config.yaml`
 
-Defines server and storage settings:
-
-```yaml
-server:
-  port: 8000                 # HTTP port for Uvicorn
-  refresh_interval: 3600     # polling interval in seconds, 0 will prevent refreshing and only load local store
-  store_mode: "directory"      # "memory" or "directory"
-  store_directory: "./data" # only for directory mode
-  export_directory: "./exports" # SPARQL result exports
-  import_directory: "./import" # for RDF manual imports
-  backup_directory: "./backup" # for RDF manual backups
-  log_level: "info"         # logging level (debug, info, warn, error)
-```
+Defines server and storage settings, see [app/config.yaml](app/config.yaml) as an example with comments.
 
 ### `zotero.yaml`
 
-Contains the Zotero-specific settings:
-
-```yaml
-# Global RDF context (used for default vocabulary namespace)
-context:
-  vocab: "http://www.zotero.org/namespaces/export#"
-  api_url: "https://api.zotero.org/"
-  base: "https://www.zotero.org/"
-  schema: "https://api.zotero.org/schema" # If specified, will generate a basic OWL ontology as a named graph using the IRI from vocab
-
-libraries:
-  - name: My Library # Only required for "manual_import" as a subdirectory containing RDF files
-    api_key: "xxxx"
-    library_type: "groups"  # "user" or "groups"
-    library_id: "123"
-    load_mode: "json"  # Options: "json", "rdf", or "manual_import"
-    rdf_export_format: "rdf_zotero" # Options: "rdf_zotero", "rdf_bibliontology"; only needed if load_mode = "rdf"
-    # base_uri: "https://www.example.com#" Used as the URI for the library's named graph and as the base URI for all named nodes created for Zotero items and collections. Defaults to "{context.base}{libraries.library_type}/{libraries.library_id}" as defined in this YAML
-    # uuid_namespace: "https://www.example.com#" Used to generate consistent UUIDs for named nodes across multiple libraries in the union graph. Defaults to base_uri if not specified
-    map: # Skip this block if no specifications are needed. Empty lists will be ignored
-      # white: [title, date] # Whitelist – only include these fields and those in 'named'
-      black: [title, date] # Blacklist – exclude these fields
-      rdf_mapping: [creators, tags, collections]
-      item_type: ["_Item", "itemType"] # Determines RDF type; leading underscore indicates a constant predicate. If not specified, defaults to "Item". If not starting with "http", the default vocab from context will be used
-      collection_type: ["_Collection"] # If not specified, defaults to "Collection"
-      named_library: "inLibrary" # If specified, adds an object property with this name linking to the library's named graph URI to support querying across named graphs
-      item_additional:
-        - property: "http://www.w3.org/2000/01/rdf-schema#label"
-          value: "title"
-          named_node: false
-        - property: "http://www.w3.org/2002/07/owl#sameAs"
-          value: "url"
-          named_node: true
-    api_query_params:
-      itemType: "book"  # Optional, freely configurable
-      # tag: "important"  # Optional, freely configurable
-      # collection: "XYZ123"  # Optional
-
-  - name: "Library 2"
-    api_key: "YOUR_OTHER_API_KEY"
-    library_type: "user"
-    library_id: "ANOTHER_ID"
-    load_mode: "json"
-    # no rdf_export_format needed
-    api_query_params:
-      itemType: "article"
-
-```
+Contains the Zotero-specific settings, see [app/zotero.yaml](app/zotero.yaml) as an example with comments.
 
 ## Running
 
