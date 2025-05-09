@@ -9,3 +9,4 @@ docker-compose-dev.yml
 **/import
 /dev
 /public_server_app
+explorer/index-dev.html
