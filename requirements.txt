@@ -4,5 +4,6 @@ requests
 pyoxigraph
 pyyaml
 python-dateutil
+rdflib
 # bcrypt
 # pyjwt

@@ -34,8 +34,8 @@ config = config or {}
 zotero_config = zotero_config or {}
 
 log_level = config["server"].get("log_level", "info").upper()
-logging.basicConfig(level=log_level)
-logger = logging.getLogger(__name__)
+from zotero_rdf_server.logging_config import logger, setup_logging
+setup_logging(log_level)
 
 # --- Config ---
 REFRESH_INTERVAL = config["server"].get("refresh_interval", 0)
@@ -110,7 +110,7 @@ class ZoteroLibrary:
         self.uuid_namespace = str(config.get("uuid_namespace", self.base_url))
         self.headers = {"Zotero-API-Key": self.api_key} if self.api_key else {}
         self.map = config.get("map") or {}
-
+        self.parser = config.get("notes_parser") or {}
         # check settings
 
         passing = True
@@ -563,8 +563,6 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
             json.dump(collections, f, ensure_ascii=False, indent=2)        
         logger.debug(f"Stored JSON in {path}") 
 
-
-    
     map = lib.map
     a_library_href = library_href(items[0]) or lib.base_url
     logger.debug(f"Example JSON: {items[0]}")
@@ -621,12 +619,80 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
 
                 add_rdf_from_dict(store, node_uri, item_data, ZOT_NS, lib.base_url, map, lib.uuid_namespace)
                 add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
+
             except Exception as e:
                 logger.error(f"Invalid data at {node_uri}. See next errors for details!")
                 continue
     else:
         logger.warning("No items!")
 
+def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode = NamedNode(f"{ZOT_NS}note"), query_str: str = None, replace:bool = False):
+    from zotero_rdf_server.plugins.parse_note import ParseNotePlugin
+    from rdflib import Graph
+    GRAPH_URI = NamedNode(lib.base_url)
+    
+    # Mapping
+    mapping = {}
+
+    try:
+        with open(lib.parser.get("mapping")) as f:
+            mapping = json.load(f)
+
+        logger.info(f"Parser mapping loaded from {lib.parser.get('mapping')}")
+    except Exception as e:
+        logger.warning(f"No mapping found, using fallback: {e}")
+        mapping = {
+            '@context':
+                {
+                    "@base": lib.base_url,
+                    "@vocab": ZOT_NS
+                }
+        }
+
+    # Metadata
+    metadata = {
+            "wasGeneratedBy": os.path.basename(__file__)
+        }
+    try:
+        with open(lib.parser.get("metadata")) as f:
+            metadata = json.load(f)
+        logger.info(f"Parser metadata loaded from {lib.parser.get('metadata')}")
+    except Exception as e:
+        logger.warning(f"No metadata found, using fallback: {e}")
+        
+
+
+    plugin = ParseNotePlugin(mapping=mapping, metadata=metadata)
+    logger.debug("Plugin initialized")
+    count = 0
+    if query_str and "SELECT" in query_str:
+        logger.debug(f"using query: {query_str}")
+        note_quads = store.query(query_str,default_graph=GRAPH_URI)
+    else:
+        logger.debug(f"using pattern: {note_predicate}")
+        note_quads = store.quads_for_pattern(None, note_predicate, None, GRAPH_URI)
+
+    # if replace: #TODO delete only quads for pares notes
+    #     for quad in note_quads:
+    #         store.remove(quad)
+
+
+    for quad in note_quads:
+        subject = quad.subject
+        obj = quad.object
+
+        if isinstance(obj, Literal):
+            count += 1
+            html = str(obj)
+            note_uri = subject.value if hasattr(subject, "value") else str(subject)
+            result = plugin.run(html=html, note_uri=note_uri)
+            logger.debug(result)
+            g = Graph()
+            g.parse(data=result, format="json-ld")
+            logger.debug("JSON-LD parsed")     
+            store.load(g.serialize(format="turtle"), format=RdfFormat.TURTLE, to_graph=GRAPH_URI)
+            logger.debug("Loaded to Store")
+    return count
 
 def zotero_schema(schema, vocab_iri="http://www.zotero.org/namespaces/export#"):
     GRAPH_URI = NamedNode(vocab_iri)
@@ -748,9 +814,9 @@ def clear_directory(directory_path):
             logger.error(f"Failed to delete {file_path}. Reason: {e}")
 
 
-def refresh_store():
+def refresh_store(force_reload:bool = False):
     global store
-    if REFRESH == False:
+    if REFRESH == False and not force_reload:
         del store
         store = Store(path=STORE_DIRECTORY)
         logger.info(f"Zotero data loaded (not refresehd) successfully. {len(store)} triples, graphs: {list(store.named_graphs())}")
@@ -807,6 +873,15 @@ def refresh_store():
 
                     else:
                         logger.warning(f"Unknown load_mode '{lib.load_mode}' for '{lib.name}' — skipping.")
+
+                    if lib.parser.get("auto")==True:
+                        try:
+                            logger.info("Start Parser Plugin")
+                            parse_all_notes(lib, store)
+                        except Exception as e:
+                            logger.error(f"Error parsing notes: {e}")
+                    else:
+                        logger.info(f"No notes parsing for {lib.name} in {lib.parser}")
 
                 logger.info(f"Zotero data refreshed successfully. {len(store)} triples, graphs: {list(store.named_graphs())}")
 
@@ -895,6 +970,38 @@ async def optimize_store():
     global store
     store.optimize()
     return {"success":"Store optimized"}
+
+@router.get("/reload")
+async def reload_store():
+    refresh_store(True)
+    return {"success":"Store reloaded"}
+
+@router.get("/libs")
+async def debug_test():
+    result = [ZoteroLibrary(cfg) for cfg in ZOTERO_LIBRARIES_CONFIGS]
+    return {"success": result}
+
+@router.get("/parse_notes")
+async def parse_notes(
+    replace: bool = False,
+    graph: str | None = Query(default=None, description="Named graph IRI (optional)"),
+    note_predicate: str | None  = Query(default=None, description="predicate for note HTML"),
+    query: str | None = Query(default=None, description="Query to retrieve notes (optional)")
+    ):
+
+    global store
+    if not note_predicate:
+        predicate = NamedNode(f"{ZOT_NS}note")
+    else:
+        predicate = NamedNode(f"{note_predicate}")
+
+
+    for lib_cfg in ZOTERO_LIBRARIES_CONFIGS:
+        lib = ZoteroLibrary(lib_cfg)
+        if not graph or graph == lib.base_url:
+            result=parse_all_notes(lib, store, note_predicate=predicate, query_str=query, replace=replace)
+    return {"success":f"{result} notes parsed"}
+
 
 # --- Start server ---
 
