@@ -4,6 +4,7 @@ requests
 pyoxigraph
 pyyaml
 python-dateutil
+rapidfuzz
 rdflib
 # rdflib is only needed until pyoxigraph supports JSON-LD as format
 # bcrypt
