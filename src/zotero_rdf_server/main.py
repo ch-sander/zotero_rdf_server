@@ -497,29 +497,6 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
 
                     store.add(Quad(bnode, NamedNode(f"{ns_prefix}hasCreator"), creator_node, graph_name=GRAPH_URI))
                     return None
-                
-            ### PLACES  deprecated by make_entity ###
-
-            # elif isinstance(object, (str)) and predicate_str == "place":
-            #     place_value = object.strip()
-            #     places = [p.strip() for p in re.split(r'[;,]', place_value) if p.strip()]
-
-            #     for place in places:
-            #         place_node, score, matched_label = fuzzy_match_label(store, place, rdf_type="place", ns_prefix=ns_prefix, threshold=fuzzy_threshold, graph_name=ENTITY_GRAPH_URI)  
-            #         if not place_node:
-            #             place_iri = uuid5(ENTITY_UUID, place)
-            #             place_node = NamedNode(f"{knowledge_base_graph}/place/{place_iri}")  
-            #             store.add(Quad(place_node, NamedNode(RDF_TYPE), NamedNode(f"{ns_prefix}place"), graph_name=ENTITY_GRAPH_URI))
-            #             store.add(Quad(place_node, NamedNode(RDFS_LABEL), Literal(place), graph_name=ENTITY_GRAPH_URI))
-            #             logger.debug(f"Place added: {place}")                          
-            #         else:
-            #             logger.debug(f"Place '{place}' matched as '{matched_label}' with score {score}")
-            #             existing_alts = {str(q.object).lower() for q in store.quads_for_pattern(place_node, NamedNode(SKOS_ALT), None, graph_name=ENTITY_GRAPH_URI)}
-            #             if matched_label and place.lower() not in existing_alts and place.lower() != matched_label.lower():
-            #                 store.add(Quad(place_node, NamedNode(SKOS_ALT), Literal(place), graph_name=ENTITY_GRAPH_URI))
-
-            #         store.add(Quad(subject, NamedNode(f"{ns_prefix}{predicate_str}"), place_node, graph_name=GRAPH_URI))          
-            #     return None
 
             ### DATATYPES ###
 
