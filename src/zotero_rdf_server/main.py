@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 from dateutil import parser
 from pathlib import Path
 from rapidfuzz import fuzz, process
+from urllib.parse import quote
+
 
 # --- Load configuration ---
 config_path = os.getenv("CONFIG_FILE", "config.yaml")
@@ -242,7 +244,8 @@ def safeNamedNode(uri: str) -> NamedNode | Literal:
         logger.warning(f"Invalid IRI input (not a valid http URI), converting to Literal: {uri}")
         return safeLiteral(uri)
     try:
-        return NamedNode(uri)
+        safe_iri = quote(uri, safe=':/#?&=%')
+        return NamedNode(safe_iri)
     except ValueError as e:
         logger.warning(f"Invalid IRI converted to Literal: {uri} – {e}")
         return safeLiteral(uri)
@@ -647,7 +650,7 @@ def apply_additional_properties(store: Store, node: NamedNode, data: dict, specs
             if not property_str or not value_spec:
                 continue
 
-            predicate = NamedNode(property_str) if property_str.startswith("http") else NamedNode(f"{prefix_ns}{property_str}")
+            predicate = safeNamedNode(property_str) if property_str.startswith("http") else safeNamedNode(f"{prefix_ns}{property_str}")
 
             if value_spec.startswith("_"):
                 raw_value = value_spec.lstrip("_")
@@ -713,7 +716,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
             node_uri = NamedNode(f"{lib.base_url}/collections/{key}")
             if lib.map.get("named_library"):
                 property_str = lib.map.get("named_library", "inLibrary")
-                store.add(Quad(node_uri, NamedNode(property_str) if property_str.startswith("http") else NamedNode(f"{ZOT_NS}{property_str}"), NamedNode(a_library_href), graph_name=GRAPH_URI))
+                store.add(Quad(node_uri, safeNamedNode(property_str) if property_str.startswith("http") else safeNamedNode(f"{ZOT_NS}{property_str}"), NamedNode(a_library_href), graph_name=GRAPH_URI))
 
             collection_type_fields = map.get("collection_type") or []
             apply_rdf_types(store, node_uri, col_data, collection_type_fields, "collection", lib.base_url, ZOT_NS)
@@ -740,7 +743,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
                 node_uri = NamedNode(f"{lib.base_url}/items/{key}")
                 if lib.map.get("named_library"):
                     property_str = lib.map.get("named_library", "inLibrary")
-                    store.add(Quad(node_uri, NamedNode(property_str) if property_str.startswith("http") else NamedNode(f"{ZOT_NS}{property_str}"), NamedNode(a_library_href), graph_name=GRAPH_URI))
+                    store.add(Quad(node_uri, safeNamedNode(property_str) if property_str.startswith("http") else safeNamedNode(f"{ZOT_NS}{property_str}"), NamedNode(a_library_href), graph_name=GRAPH_URI))
 
                 if label:
                     store.add(Quad(node_uri, NamedNode(RDFS_LABEL), Literal(label), graph_name=GRAPH_URI))
@@ -1298,7 +1301,7 @@ async def get_csv(
                     for value in cell.split(delimiter):
                         value = value.strip()
                         if value:
-                            obj = NamedNode(value) if value.startswith("<") and value.endswith(">") and value.startswith("http") else Literal(value)
+                            obj = safeNamedNode(value) if value.startswith("<") and value.endswith(">") and value.startswith("http") else Literal(value)
                             quad = Quad(subj, predicate, obj, graph_uri)
                             store.add(quad)
     return {"status": "success"}
