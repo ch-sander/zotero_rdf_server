@@ -120,7 +120,7 @@ class ZoteroLibrary:
         if not any([str(self.base_url).startswith("http"),str(self.base_api_url).startswith("http"),str(self.knowledge_base_graph).startswith("http")]):
             passing = False
             logger.warning(f"{self.name}: Some library config variable is expected to be a IRI/URI but is not!")
-        if not str(self.library_id).isdigit():
+        if not str(self.library_id).isdigit() and not self.library_type == "knowledge base":
             passing = False
             logger.error(f"{self.name}: Invalid library ID --> {type(self.library_id)}!")
         if not self.load_mode in ["json", "rdf", "manual_import"]:
@@ -140,7 +140,7 @@ class ZoteroLibrary:
             logger.error(f"####################################################")
             logger.error(f"####################################################")
             logger.error(f"####################################################")
-            logger.error(f"{self.name}: Invalid library config, check warnings!")
+            logger.error(f"{self.name}: Problematic library config, check warnings!")
             logger.error(f"####################################################")
             logger.error(f"####################################################")
             logger.error(f"####################################################")
@@ -254,16 +254,44 @@ def safeLiteral(value) -> Literal:
         logger.error(f"Literal creation failed for value '{value}': {e} – using fallback 'n/a'")
         return Literal("n/a")
 
-def fuzzy_match_label(store, label, rdf_type, ns_prefix, threshold=90, graph_name=None):
+def fuzzy_match_label(store:Store, label:str, type_node:NamedNode, threshold=90, graph_name:NamedNode = None, predicates:list = [SKOS_ALT], test=False):
     best_score = 0
     best_match = None
     best_label = None
-    logger.debug(f"Fuzzy matching '{label}' against existing {rdf_type} labels (threshold: {threshold})")
+    logger.debug(f"Fuzzy matching '{label}' against existing {type_node} labels (threshold: {threshold})")
+    if test:
+        logger.info(f"### {label} a {type_node}, look in {predicates}, in {graph_name}, found...")
+        candidates = list(store.quads_for_pattern(
+            None,
+            NamedNode(RDF_TYPE),
+            type_node,
+            graph_name=graph_name
+        ))
+        logger.info("→ finde %d Instanzen von %s im Graph %s", 
+                    len(candidates), type_node, graph_name)
+        for c in candidates:
+            logger.info("   → %s", c.subject)
 
-    for quad in store.quads_for_pattern(None, NamedNode(RDF_TYPE), NamedNode(f"{ns_prefix}{rdf_type}"), graph_name=graph_name):
+
+    for quad in store.quads_for_pattern(None, NamedNode(RDF_TYPE), type_node, graph_name=graph_name):
         subject = quad.subject
-        for pred in [SKOS_ALT, RDFS_LABEL]:
-            for label_quad in store.quads_for_pattern(subject, NamedNode(pred), None, graph_name=graph_name):
+        for pred in predicates: # [SKOS_ALT, RDFS_LABEL] Not really needed as every label should also be a altLabel
+
+            if test:
+                labels = list(store.quads_for_pattern(
+                    subject,
+                    NamedNode(pred),
+                    None,
+                    #graph_name=graph_name
+                ))
+                logger.info("→ altLabels auf %s via %s: %r", subject, pred, labels)
+
+            for label_quad in store.quads_for_pattern(
+                subject, 
+                NamedNode(pred), 
+                None, 
+                graph_name=graph_name
+                ):
                 existing_label = str(label_quad.object.value)
                 score = fuzz.ratio(existing_label.lower(), label.lower())
                 logger.debug(f"Compared '{label}' with '{existing_label}' → score: {score}")
@@ -272,6 +300,7 @@ def fuzzy_match_label(store, label, rdf_type, ns_prefix, threshold=90, graph_nam
                     best_match = subject
                     best_label = existing_label
 
+   
     if best_score >= threshold:
         logger.debug(f"Best match: {best_match} with label '{best_label}' (score: {best_score})")
         return best_match, best_score, best_label
@@ -349,7 +378,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 return parser.parse(str(text), dayfirst=dayfirst, default=datetime(1, 1, 1))
             except (ValueError, TypeError):
                 return text
-        def make_entity(object_value,rdf_type,):
+        def make_entity(object_value,my_type,):
             # Normalize and split values
             value = object_value.strip()
             items = [p.strip() for p in re.split(r"[;,]", value) if p.strip()]
@@ -358,23 +387,24 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 node, score, matched_label = fuzzy_match_label(
                     store,
                     item,
-                    rdf_type=rdf_type,
-                    ns_prefix=ns_prefix,
+                    type_node=NamedNode(f"{ns_prefix}{my_type}"),
                     threshold=fuzzy_threshold,
                     graph_name=ENTITY_GRAPH_URI
                 )
 
                 if not node:
                     iri_suffix = uuid5(ENTITY_UUID, item)
-                    node = NamedNode(f"{knowledge_base_graph}/{rdf_type}/{iri_suffix}")
-                    store.add(Quad(node, NamedNode(RDF_TYPE), NamedNode(f"{ns_prefix}{rdf_type}"), graph_name=ENTITY_GRAPH_URI))
+                    node = NamedNode(f"{knowledge_base_graph}/{my_type}/{iri_suffix}")
+                    store.add(Quad(node, NamedNode(RDF_TYPE), NamedNode(f"{ns_prefix}{my_type}"), graph_name=ENTITY_GRAPH_URI))
                     store.add(Quad(node, NamedNode(RDFS_LABEL), Literal(item), graph_name=ENTITY_GRAPH_URI))
-                    logger.debug(f"Created new {rdf_type}: {item}")
+
+                    logger.debug(f"Created new {my_type}: {item}")
                 else:
-                    logger.debug(f"{rdf_type.capitalize()} '{item}' matched as '{matched_label}' (score {score})")
-                    alts = {str(q.object).lower() for q in store.quads_for_pattern(node, NamedNode(SKOS_ALT), None, graph_name=ENTITY_GRAPH_URI)}
-                    if matched_label and item.lower() not in alts and item.lower() != matched_label.lower():
-                        store.add(Quad(node, NamedNode(SKOS_ALT), Literal(item), graph_name=ENTITY_GRAPH_URI))
+                    logger.debug(f"{my_type.capitalize()} '{item}' matched as '{matched_label}' (score {score})")
+
+                alts = {(q.object.value).lower() for q in store.quads_for_pattern(node, NamedNode(SKOS_ALT), None, graph_name=ENTITY_GRAPH_URI)}
+                if item.lower() not in alts:
+                    store.add(Quad(node, NamedNode(SKOS_ALT), Literal(item), graph_name=ENTITY_GRAPH_URI))
                 pred_node = NamedNode(f"{ns_prefix}{predicate_str}")
                 store.add(Quad(subject, pred_node, node, graph_name=GRAPH_URI))
 
@@ -420,7 +450,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     bnode = BlankNode()
                     store.add(Quad(subject, predicate_node, bnode, graph_name=GRAPH_URI))                    
                     store.add(Quad(bnode, NamedNode(RDF_TYPE), NamedNode(f"{ns_prefix}creatorRole"), graph_name=GRAPH_URI)) # TODO change to creator
-                    creator_node, score, matched_label = fuzzy_match_label(store, label, rdf_type="person", ns_prefix=ns_prefix, threshold=fuzzy_threshold, graph_name=ENTITY_GRAPH_URI)
+                    creator_node, score, matched_label = fuzzy_match_label(store, label, type_node=NamedNode(f"{ns_prefix}person"), threshold=fuzzy_threshold, graph_name=ENTITY_GRAPH_URI)
                     if not creator_node:
                         creator_uuid = uuid5(ENTITY_UUID, label)
                         creator_node = NamedNode(f"{knowledge_base_graph}/person/{creator_uuid}")
@@ -440,9 +470,10 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                                 store.add(Quad(bnode, NamedNode(RDF_TYPE), NamedNode(f"{ns_prefix}{val}"), graph_name=GRAPH_URI))
                     else:
                         logger.debug(f"Creator already exists: {label} as {matched_label} ({score})")
-                        existing_alts = {str(q.object).lower() for q in store.quads_for_pattern(creator_node, NamedNode(SKOS_ALT), None, graph_name=ENTITY_GRAPH_URI)}
-                        if matched_label and label.lower() not in existing_alts and label.lower() != matched_label.lower():
-                            store.add(Quad(creator_node, NamedNode(SKOS_ALT), Literal(label), graph_name=ENTITY_GRAPH_URI))
+
+                    existing_alts = {str(q.object).lower() for q in store.quads_for_pattern(creator_node, NamedNode(SKOS_ALT), None, graph_name=ENTITY_GRAPH_URI)}
+                    if matched_label and label.lower() not in existing_alts and label.lower() != matched_label.lower():
+                        store.add(Quad(creator_node, NamedNode(SKOS_ALT), Literal(label), graph_name=ENTITY_GRAPH_URI))
 
                     store.add(Quad(bnode, NamedNode(f"{ns_prefix}hasCreator"), creator_node, graph_name=GRAPH_URI))
                     return None
@@ -473,7 +504,8 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             ### DATATYPES ###
 
             elif isinstance(object, (str, int, datetime, float)):
-                logger.debug(f"{predicate_str}: {type(object)} {object}")               
+                val = str(object)
+                logger.debug(f"{predicate_str}: {type(object)} {val[:100] + ('...' if len(val) > 100 else '')}")             
 
                 
                 if predicate_str == "collections": # collections
@@ -731,7 +763,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
     from zotero_rdf_server.plugins.parse_note import ParseNotePlugin
     from rdflib import Graph
     GRAPH_URI = NamedNode(lib.base_url)
-    
+
     # Mapping
     raw_mapping = lib.parser.get("mapping")
     mapping = {}
@@ -783,15 +815,76 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
         metadata = {
             "wasGeneratedBy": os.path.basename(__file__)
         }
+    map_KB = lib.parser.get("knowledge_base_mapping", False)
+    if map_KB:        
+        fuzzy_threshold = lib.parser.get("fuzzy", 90)
+        knowledge_base = mapping.pop("KnowledgeBase") or []
+        entity_graph_uri = NamedNode(lib.knowledge_base_graph)
+        logger.debug(f"Map smenatic entites to KB following: {knowledge_base}")
+    
+    def map_semantic_entities(
+        mem_store,
+        knowledge_base: list = knowledge_base
+    ):
+        
+        for rule in knowledge_base:            
+            try:
+                domain_type     = rule["domainTypes"]
+                range_type      = rule["rangeType"]
+                domain_prop     = rule["domainProperty"]
+                target_prop     = rule["targetProperty"]
+                map_prop        = rule["mapProperty"]
+            except:
+                logger.error("Missing key in KB Mapping dict")
+                break
+
+            for quad in mem_store.quads_for_pattern(
+                None,
+                NamedNode(RDF_TYPE),
+                NamedNode(domain_type)
+            ):
+                domain_node = quad.subject
+                logger.debug(f"Testing {quad.subject}")
+                for dp in mem_store.quads_for_pattern(
+                    domain_node,
+                    NamedNode(domain_prop),
+                    None
+                ):
+                    lit_value = str(dp.object.value)                    
+                    logger.debug(f"Comparing semantic note label {lit_value} to KB labels with threshold {fuzzy_threshold}%")
+                    try:
+                        matched_node, score, label = fuzzy_match_label(
+                            store,
+                            lit_value,
+                            type_node=NamedNode(f"{range_type}"),
+                            threshold=fuzzy_threshold,
+                            graph_name=entity_graph_uri,
+                            predicates=[target_prop]
+                        )
+
+                        if matched_node:
+                            logger.debug(f"Matched semantic note label {lit_value} to KB label {label} with {score}%: {domain_node} to {matched_node}")
+                            mem_store.add(Quad(
+                                domain_node,
+                                NamedNode(map_prop),
+                                matched_node
+                            ))
+                    except Exception as e:
+                        logger.error(f"Error matching KB: {e}")
+                    
+ 
+
+        return mem_store
+
 
     plugin = ParseNotePlugin(mapping=mapping, metadata=metadata)
     logger.debug("Plugin initialized")
     count = 0
     if query_str and "SELECT" in query_str:
-        logger.debug(f"using query: {query_str}")
+        logger.debug(f"using query pattern: {query_str}")
         note_quads = store.query(query_str,default_graph=GRAPH_URI)
     else:
-        logger.debug(f"using pattern: {note_predicate}")
+        logger.debug(f"using predicate pattern: {note_predicate}")
         note_quads = store.quads_for_pattern(None, note_predicate, None, GRAPH_URI)
 
     # if replace: #TODO delete only quads for pares notes
@@ -814,11 +907,22 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
             logger.debug("JSON-LD parsed")
             
             if push:
-                store.load(g.serialize(format="turtle"), format=RdfFormat.TURTLE, to_graph=GRAPH_URI)
-                logger.info("Loaded to Store")
+                try:
+                    mem_store = Store()
+                    mem_store.load(g.serialize(format="turtle"), format=RdfFormat.TURTLE, to_graph=GRAPH_URI)                
+                    store.extend(map_semantic_entities(mem_store)) if map_KB else store.extend(mem_store)
+                    logger.info(f"Extended store: {len(mem_store)} triples")
+                except Exception as e:
+                    logger.error(f"Error when extending store: {e}")
             else:
                 logger.info("Serialized only")
                 g.serialize(format="turtle")
+
+
+        # Map Semantic-HTML entities to domain knowledge base
+
+
+
     return count
 
 def zotero_schema(schema, vocab_iri="http://www.zotero.org/namespaces/export#"):
@@ -1151,12 +1255,13 @@ async def get_csv(
     global store
 
     # subject → { predicate → [objects...] }
+    # NamedNodes as objects are wrapped in <> for both export and import
     records = defaultdict(lambda: defaultdict(list))
     all_predicates = set()
     for quad in store.quads_for_pattern(None, None, None, graph_uri):
         subj = (quad.subject.value)
         pred = (quad.predicate.value)
-        obj = obj.value if hasattr(obj, "value") else str(obj)
+        obj = obj.value if isinstance(obj,Literal) else str(obj)
         records[subj][pred].append(obj)
         all_predicates.add(pred)
     columns = ["IRI"] + sorted(all_predicates)
@@ -1185,15 +1290,15 @@ async def get_csv(
         with open(load_csv, newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                subj = NamedNode(row["IRI"])
+                subj = NamedNode(row["IRI"].strip("<>"))
                 for pred_label, cell in row.items():
                     if pred_label == "IRI" or not cell.strip():
                         continue
-                    predicate = NamedNode(pred_label)
+                    predicate = NamedNode(pred_label.strip("<>"))
                     for value in cell.split(delimiter):
                         value = value.strip()
                         if value:
-                            obj = Literal(value)
+                            obj = NamedNode(value) if value.startswith("<") and value.endswith(">") and value.startswith("http") else Literal(value)
                             quad = Quad(subj, predicate, obj, graph_uri)
                             store.add(quad)
     return {"status": "success"}
