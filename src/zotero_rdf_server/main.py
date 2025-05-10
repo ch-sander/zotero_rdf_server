@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from dateutil import parser
 from pathlib import Path
 from rapidfuzz import fuzz, process
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 
 # --- Load configuration ---
@@ -239,15 +239,32 @@ class ZoteroLibrary:
 
 # --- Functions ---
 
-def safeNamedNode(uri: str) -> NamedNode | Literal:    
-    if not isinstance(uri, str) or " " in uri or not uri.startswith("http"):
-        logger.warning(f"Invalid IRI input (not a valid http URI), converting to Literal: {uri}")
+
+def safeNamedNode(uri: str, enforce: bool = True) -> NamedNode | Literal:
+    INTERNAL_IRI_PREFIX = "http://internal.invalid/"
+    if not isinstance(uri, str):
+        logger.warning(f"Invalid IRI input (not a string), converting to Literal or synthetic IRI: {uri}")
+        if enforce:
+            fallback = quote(str(uri), safe="")
+            return NamedNode(f"{INTERNAL_IRI_PREFIX}{fallback}")
         return safeLiteral(uri)
+
+    parsed = urlparse(uri)
+    if not parsed.scheme:
+        logger.warning(f"Invalid IRI input (missing scheme), converting to Literal or synthetic IRI: {uri}")
+        if enforce:
+            fallback = quote(uri, safe="")
+            return NamedNode(f"{INTERNAL_IRI_PREFIX}{fallback}")
+        return safeLiteral(uri)
+
     try:
         safe_iri = quote(uri, safe=':/#?&=%')
         return NamedNode(safe_iri)
     except ValueError as e:
-        logger.warning(f"Invalid IRI converted to Literal: {uri} – {e}")
+        logger.warning(f"Invalid IRI converted to Literal or synthetic IRI: {uri} – {e}")
+        if enforce:
+            fallback = quote(uri, safe="")
+            return NamedNode(f"{INTERNAL_IRI_PREFIX}{fallback}")
         return safeLiteral(uri)
 
 def safeLiteral(value) -> Literal:
@@ -349,13 +366,13 @@ def import_rdf_from_disk(lib: ZoteroLibrary, store: Store, base_dir: str):
 
 
 def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, ns_prefix: str, base_uri: str, map: dict, knowledge_base_graph: str = None):
-    GRAPH_URI = NamedNode(base_uri)
+    GRAPH_URI = safeNamedNode(base_uri)
     
     if knowledge_base_graph is None:
         knowledge_base_graph = base_uri
 
-    knowledge_base_graph=knowledge_base_graph.strip("/#")
-    ENTITY_GRAPH_URI = NamedNode(knowledge_base_graph)
+    knowledge_base_graph=knowledge_base_graph
+    ENTITY_GRAPH_URI = safeNamedNode(knowledge_base_graph)
 
     ENTITY_UUID = uuid5(NAMESPACE_URL, knowledge_base_graph)
     white = map.get("white") or []
@@ -397,8 +414,8 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
 
                 if not node:
                     iri_suffix = uuid5(ENTITY_UUID, item)
-                    node = NamedNode(f"{knowledge_base_graph}/{my_type}/{iri_suffix}")
-                    store.add(Quad(node, NamedNode(RDF_TYPE), NamedNode(f"{ns_prefix}{my_type}"), graph_name=ENTITY_GRAPH_URI))
+                    node = safeNamedNode(f"{knowledge_base_graph}/{my_type}/{iri_suffix}")
+                    store.add(Quad(node, NamedNode(RDF_TYPE), safeNamedNode(f"{ns_prefix}{my_type}"), graph_name=ENTITY_GRAPH_URI))
                     store.add(Quad(node, NamedNode(RDFS_LABEL), Literal(item), graph_name=ENTITY_GRAPH_URI))
 
                     logger.debug(f"Created new {my_type}: {item}")
@@ -408,7 +425,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 alts = {(q.object.value).lower() for q in store.quads_for_pattern(node, NamedNode(SKOS_ALT), None, graph_name=ENTITY_GRAPH_URI)}
                 if item.lower() not in alts:
                     store.add(Quad(node, NamedNode(SKOS_ALT), Literal(item), graph_name=ENTITY_GRAPH_URI))
-                pred_node = NamedNode(f"{ns_prefix}{predicate_str}")
+                pred_node = safeNamedNode(f"{ns_prefix}{predicate_str}")
                 store.add(Quad(subject, pred_node, node, graph_name=GRAPH_URI))
 
             return None
@@ -430,7 +447,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     tag_node = NamedNode(f"{knowledge_base_graph}/tag/{tag_iri}")
                     store.add(Quad(subject, NamedNode(f"{ns_prefix}tags"), tag_node, graph_name=GRAPH_URI))                    
                     if not any (store.quads_for_pattern(tag_node, NamedNode(RDF_TYPE), NamedNode(f"{ns_prefix}tag"), graph_name=ENTITY_GRAPH_URI)):
-                        store.add(Quad(tag_node, NamedNode(RDF_TYPE), NamedNode(f"{ns_prefix}tag"), graph_name=ENTITY_GRAPH_URI))
+                        store.add(Quad(tag_node, NamedNode(RDF_TYPE), safeNamedNode(f"{ns_prefix}tag"), graph_name=ENTITY_GRAPH_URI))
                         store.add(Quad(tag_node, NamedNode(RDFS_LABEL), Literal(tag_value), graph_name=ENTITY_GRAPH_URI))
                         logger.debug(f"Tag added: {tag_value}")
                         for key, val in object.items():
@@ -452,25 +469,25 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
 
                     bnode = BlankNode()
                     store.add(Quad(subject, predicate_node, bnode, graph_name=GRAPH_URI))                    
-                    store.add(Quad(bnode, NamedNode(RDF_TYPE), NamedNode(f"{ns_prefix}creatorRole"), graph_name=GRAPH_URI)) # TODO change to creator
+                    store.add(Quad(bnode, NamedNode(RDF_TYPE), NamedNode(f"{ns_prefix}creatorRole"), graph_name=GRAPH_URI))
                     creator_node, score, matched_label = fuzzy_match_label(store, label, type_node=NamedNode(f"{ns_prefix}person"), threshold=fuzzy_threshold, graph_name=ENTITY_GRAPH_URI)
                     if not creator_node:
                         creator_uuid = uuid5(ENTITY_UUID, label)
-                        creator_node = NamedNode(f"{knowledge_base_graph}/person/{creator_uuid}")
+                        creator_node = safeNamedNode(f"{knowledge_base_graph}/person/{creator_uuid}")
                         
-                        store.add(Quad(creator_node, NamedNode(RDF_TYPE), NamedNode(f"{ns_prefix}person"), graph_name=ENTITY_GRAPH_URI))
+                        store.add(Quad(creator_node, NamedNode(RDF_TYPE), safeNamedNode(f"{ns_prefix}person"), graph_name=ENTITY_GRAPH_URI))
                         
                         store.add(Quad(creator_node, NamedNode(RDFS_LABEL), Literal(str(label)), graph_name=ENTITY_GRAPH_URI))
 
                         logger.debug(f"Creator added: {label}")
                         for key, val in object.items():
                             if key != "creatorType" and val:
-                                pred = NamedNode(f"{ns_prefix}{key}")
+                                pred = safeNamedNode(f"{ns_prefix}{key}")
                                 store.add(Quad(creator_node, pred, Literal(str(val)), graph_name=ENTITY_GRAPH_URI))
                             elif key == "creatorType" and val:
                                 store.add(Quad(bnode, NamedNode(RDFS_LABEL), Literal(str(val)), graph_name=GRAPH_URI))
-                                store.add(Quad(bnode, NamedNode(f"{ns_prefix}{key}"), NamedNode(f"{ns_prefix}{val}"), graph_name=GRAPH_URI))
-                                store.add(Quad(bnode, NamedNode(RDF_TYPE), NamedNode(f"{ns_prefix}{val}"), graph_name=GRAPH_URI))
+                                store.add(Quad(bnode, safeNamedNode(f"{ns_prefix}{key}"), safeNamedNode(f"{ns_prefix}{val}"), graph_name=GRAPH_URI))
+                                store.add(Quad(bnode, NamedNode(RDF_TYPE), safeNamedNode(f"{ns_prefix}{val}"), graph_name=GRAPH_URI))
                     else:
                         logger.debug(f"Creator already exists: {label} as {matched_label} ({score})")
 
@@ -510,27 +527,33 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 val = str(object)
                 logger.debug(f"{predicate_str}: {type(object)} {val[:100] + ('...' if len(val) > 100 else '')}")             
 
-                
+                # ZOTERO Links #
                 if predicate_str == "collections": # collections
                     return safeNamedNode(f"{base_uri}/collections/{object}")
                 if predicate_str in ["parentItem"]: # parent items
                     return safeNamedNode(f"{base_uri}/items/{object}")
                 if predicate_str in ["parentCollection"]: # parent collections
                     return safeNamedNode(f"{base_uri}/collections/{object}")
+                
+                # URL #
                 elif predicate_str in ["url","dc:relation","doi","owl:sameAs"] and object.startswith("http"): # url
-                    vals = [v.strip() for v in object.split(",")]
+                    vals = [vals.strip()] #for v in object.split(",")] # TODO no splitting or URLs!
                     for val in vals:
                         if len(vals)>1:
                             logger.debug(f"Parse Multi-URL for {subject}: {val}") 
-                        if val.startswith("http"):
-                            store.add(Quad(subject, predicate_node, safeNamedNode(val), graph_name=GRAPH_URI))
-                        else:
-                            store.add(Quad(subject, predicate_node, Literal(val), graph_name=GRAPH_URI))
+                        store.add(Quad(subject, predicate_node, safeNamedNode(val, enforce=False), graph_name=GRAPH_URI))
+
                     return None
-                elif predicate_str in ["doi"] and not object.startswith("http") and len(object)>5: # DOI
+                
+                # DOI #
+                elif predicate_str in ["doi"] and not object.startswith("http") and len(object)>5:
                     return safeNamedNode(f"https://doi.org/{str(object)}".strip())
+                
+                # INT #
                 elif predicate_str in ["numPages","numberOfVolumes","volume","series number"] and str(object).isdigit(): # int
                     return Literal(str(object),datatype=NamedNode(f"{XSD_NS}int"))
+                
+                # DATE #
                 elif predicate_str == "date":
                     date_val = parse_date(str(object))
                     match = re.search(r"\b(1[5-9]\d{2}|20\d{2}|2100)\b", str(object))
@@ -543,14 +566,19 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     else:
                         return Literal(str(object))
                     
-                elif predicate_str in ["dateModified","accessDate","zot:dateAdded"]: # dateTime
+                elif predicate_str in ["dateModified","accessDate","dateAdded"]: # dateTime
                     return Literal(str(object),datatype=NamedNode(f"{XSD_NS}dateTime"))
+                
+                # ENTITY #
                 elif isinstance(object, str) and ((not rdf_mapping and predicate_str in ["place","publisher","series"]) or predicate_str in rdf_mapping):
                     logger.debug(f"UUID Entity for {predicate_str}: {object}")
                     make_entity(object,predicate_str)
                     return None
+                
+                # LITERAL #
                 else:
                     return Literal(str(object))
+                
             else:
                 logger.error(f"Error: pass dict or str but got {type(object)}: {object}")
 
@@ -564,7 +592,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
 
     for field, value in data.items():
         try:
-            predicate = NamedNode(f"{ns_prefix}{field}")
+            predicate = safeNamedNode(f"{ns_prefix}{field}")
 
             if white:
                 if field not in white and field not in rdf_mapping:
@@ -660,12 +688,8 @@ def apply_additional_properties(store: Store, node: NamedNode, data: dict, specs
                     continue
 
             if named_node:
-                vals = [v.strip() for v in str(raw_value).split(",")]
-                if len(vals) > 1:
-                    logger.debug(f"Parse Multi-Object for {node}: {vals}")
-                for val in vals:
-                    obj = safeNamedNode(val) if val.startswith("http") else Literal(val)
-                    store.add(Quad(node, predicate, obj, graph_name=GRAPH_URI))
+                obj = safeNamedNode(raw_value,enforce=False)
+                store.add(Quad(node, predicate, obj, graph_name=GRAPH_URI))
                 continue
     
             obj = Literal(str(raw_value))
@@ -703,11 +727,11 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
     a_library_href = library_href(items[0]) or lib.base_url
     logger.debug(f"Example JSON: {items[0]}")
     logger.info(f"[{lib.name} at {a_library_href}] Fetched {len(items) if items else 0} items and {len(collections) if collections else 0} collections.")
-    GRAPH_URI = NamedNode(lib.base_url)
+    GRAPH_URI = safeNamedNode(lib.base_url)
     if lib.map.get("named_library") and items[0].get("library"): # take library metadata from first item only
-        store.add(Quad(NamedNode(a_library_href), NamedNode(RDF_TYPE), NamedNode(f"{ZOT_NS}library"), graph_name=GRAPH_URI))
-        add_rdf_from_dict(store, NamedNode(a_library_href), items[0].get("library", {}), ZOT_NS, lib.base_url, map, lib.knowledge_base_graph)
-        apply_additional_properties(store, NamedNode(a_library_href), items[0].get("library", {}), map.get("additional",[]), lib.base_url, ZOT_NS)
+        store.add(Quad(safeNamedNode(a_library_href), NamedNode(RDF_TYPE), safeNamedNode(f"{ZOT_NS}library"), graph_name=GRAPH_URI))
+        add_rdf_from_dict(store, safeNamedNode(a_library_href), items[0].get("library", {}), ZOT_NS, lib.base_url, map, lib.knowledge_base_graph)
+        apply_additional_properties(store, safeNamedNode(a_library_href), items[0].get("library", {}), map.get("additional",[]), lib.base_url, ZOT_NS)
 
     if collections:
         for col in collections:
@@ -716,7 +740,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
             node_uri = NamedNode(f"{lib.base_url}/collections/{key}")
             if lib.map.get("named_library"):
                 property_str = lib.map.get("named_library", "inLibrary")
-                store.add(Quad(node_uri, safeNamedNode(property_str) if property_str.startswith("http") else safeNamedNode(f"{ZOT_NS}{property_str}"), NamedNode(a_library_href), graph_name=GRAPH_URI))
+                store.add(Quad(node_uri, safeNamedNode(property_str) if property_str.startswith("http") else safeNamedNode(f"{ZOT_NS}{property_str}"), safeNamedNode(a_library_href), graph_name=GRAPH_URI))
 
             collection_type_fields = map.get("collection_type") or []
             apply_rdf_types(store, node_uri, col_data, collection_type_fields, "collection", lib.base_url, ZOT_NS)
@@ -743,7 +767,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
                 node_uri = NamedNode(f"{lib.base_url}/items/{key}")
                 if lib.map.get("named_library"):
                     property_str = lib.map.get("named_library", "inLibrary")
-                    store.add(Quad(node_uri, safeNamedNode(property_str) if property_str.startswith("http") else safeNamedNode(f"{ZOT_NS}{property_str}"), NamedNode(a_library_href), graph_name=GRAPH_URI))
+                    store.add(Quad(node_uri, safeNamedNode(property_str) if property_str.startswith("http") else safeNamedNode(f"{ZOT_NS}{property_str}"), safeNamedNode(a_library_href), graph_name=GRAPH_URI))
 
                 if label:
                     store.add(Quad(node_uri, NamedNode(RDFS_LABEL), Literal(label), graph_name=GRAPH_URI))
@@ -822,7 +846,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
     if map_KB:        
         fuzzy_threshold = lib.parser.get("fuzzy", 90)
         knowledge_base = mapping.pop("KnowledgeBase") or []
-        entity_graph_uri = NamedNode(lib.knowledge_base_graph)
+        entity_graph_uri = safeNamedNode(lib.knowledge_base_graph)
         logger.debug(f"Map smenatic entites to KB following: {knowledge_base}")
     
     def map_semantic_entities(
@@ -844,13 +868,13 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
             for quad in mem_store.quads_for_pattern(
                 None,
                 NamedNode(RDF_TYPE),
-                NamedNode(domain_type)
+                safeNamedNode(domain_type)
             ):
                 domain_node = quad.subject
                 logger.debug(f"Testing {quad.subject}")
                 for dp in mem_store.quads_for_pattern(
                     domain_node,
-                    NamedNode(domain_prop),
+                    safeNamedNode(domain_prop),
                     None
                 ):
                     lit_value = str(dp.object.value)                    
@@ -859,7 +883,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                         matched_node, score, label = fuzzy_match_label(
                             store,
                             lit_value,
-                            type_node=NamedNode(f"{range_type}"),
+                            type_node=safeNamedNode(f"{range_type}"),
                             threshold=fuzzy_threshold,
                             graph_name=entity_graph_uri,
                             predicates=[target_prop]
@@ -869,7 +893,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                             logger.debug(f"Matched semantic note label {lit_value} to KB label {label} with {score}%: {domain_node} to {matched_node}")
                             mem_store.add(Quad(
                                 domain_node,
-                                NamedNode(map_prop),
+                                safeNamedNode(map_prop),
                                 matched_node
                             ))
                     except Exception as e:
@@ -929,16 +953,16 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
     return count
 
 def zotero_schema(schema, vocab_iri="http://www.zotero.org/namespaces/export#"):
-    GRAPH_URI = NamedNode(vocab_iri.strip("#/"))
+    GRAPH_URI = safeNamedNode(vocab_iri.strip("#/"))
 
     def uri(term): # TODO create from context dict
         if term.startswith("owl:"):
-            return NamedNode("http://www.w3.org/2002/07/owl#" + term[4:])
+            return safeNamedNode("http://www.w3.org/2002/07/owl#" + term[4:])
         if term.startswith("rdfs:"):
-            return NamedNode("http://www.w3.org/2000/01/rdf-schema#" + term[5:])
+            return safeNamedNode("http://www.w3.org/2000/01/rdf-schema#" + term[5:])
         if term.startswith("rdf:"):
-            return NamedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#" + term[4:])
-        return NamedNode(vocab_iri + term)
+            return safeNamedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#" + term[4:])
+        return safeNamedNode(vocab_iri + term)
     
     def make_rdf_list(elements):
         if not elements:
@@ -1092,7 +1116,7 @@ def refresh_store(force_reload:bool = False):
                                 path=tmp_path,
                                 format=RdfFormat.RDF_XML,
                                 base_iri=f"{lib.base_url}/items/",
-                                to_graph=NamedNode(lib.base_url)
+                                to_graph=safeNamedNode(lib.base_url)
                             )
                             after = len(store)
                             logger.info(f"Loaded {after - before} triples from RDF export for '{lib.name}'")
@@ -1166,7 +1190,7 @@ async def export_graph(
     kwargs = {}
     if graph:
         clean_graph = graph.strip("<>")
-        kwargs["from_graph"] = NamedNode(clean_graph)
+        kwargs["from_graph"] = safeNamedNode(clean_graph)
         logger.info(f"Export from graph: {clean_graph}")
     elif no_named_graph_support:        
         kwargs["from_graph"] = DefaultGraph()
@@ -1231,9 +1255,9 @@ async def parse_notes(
 
     global store
     if not note_predicate:
-        predicate = NamedNode(f"{ZOT_NS}note")
+        predicate = safeNamedNode(f"{ZOT_NS}note")
     else:
-        predicate = NamedNode(f"{note_predicate}")
+        predicate = safeNamedNode(f"{note_predicate}")
 
 
     for lib_cfg in ZOTERO_LIBRARIES_CONFIGS:
@@ -1251,7 +1275,7 @@ async def get_csv(
     from collections import defaultdict
     import csv
 
-    graph_uri = NamedNode(graph) if graph else None
+    graph_uri = safeNamedNode(graph) if graph else None
     os.makedirs(EXPORT_DIRECTORY, exist_ok=True)
     output_file = os.path.join(EXPORT_DIRECTORY, f"export.csv")
     delimiter = " | "
@@ -1286,18 +1310,18 @@ async def get_csv(
                 for row in reader:
                     subj_iri = row["IRI"].strip()
                     if subj_iri:
-                        subjects.add(NamedNode(subj_iri))
+                        subjects.add(safeNamedNode(subj_iri))
             for subj in subjects:
                 for quad in store.quads_for_pattern(subj, None, None, graph_uri):
                     store.remove(quad)
         with open(load_csv, newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                subj = NamedNode(row["IRI"].strip("<>"))
+                subj = safeNamedNode(row["IRI"].strip("<>"))
                 for pred_label, cell in row.items():
                     if pred_label == "IRI" or not cell.strip():
                         continue
-                    predicate = NamedNode(pred_label.strip("<>"))
+                    predicate = safeNamedNode(pred_label.strip("<>"))
                     for value in cell.split(delimiter):
                         value = value.strip()
                         if value:
