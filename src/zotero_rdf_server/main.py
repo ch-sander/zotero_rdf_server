@@ -417,7 +417,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
         def make_entity(object_value,my_type,):
             # Normalize and split values
             value = object_value.strip()
-            items = [p.strip() for p in re.split(r"[;,]", value) if p.strip()]
+            items = [p.strip() for p in re.split(r"[;]", value) if p.strip()] # Do not split on comma!
 
             for item in items:
                 node, score, matched_label = fuzzy_match_label(
@@ -1226,6 +1226,12 @@ class LogLevel(str, Enum):
     warning = "WARNING"
     error = "ERROR"
 
+def iri_to_filename(iri: str) -> str:
+    parsed = urlparse(iri)
+    parts = [parsed.netloc] + parsed.path.strip("/").split("/")
+    safe = "_".join(parts)
+    return re.sub(r"[^\w\-\.]", "_", safe)
+
 # --- API Endpoints ---
 
 @router.get("/export", summary="Create export", description=f"Exports the store or a named graph to {EXPORT_DIRECTORY}", tags=["data"])
@@ -1233,6 +1239,7 @@ async def export_graph(
     format: str = Query("trig"),
     graph: str | None = Query(default=None, description="Named graph IRI (optional)")
 ):
+    graph = f"<{graph.strip().strip('<>').strip()}>"
     global store
     graphs = [str(g) for g in store.named_graphs()]
     if graph and graph not in graphs:
@@ -1258,7 +1265,8 @@ async def export_graph(
         raise HTTPException(status_code=400, detail="Unsupported export format")
 
     rdf_format, extension = format_map[format]
-    path = os.path.join(EXPORT_DIRECTORY, f"zotero_graph.{extension}")
+    filename_base = iri_to_filename(graph) if graph else "zotero_store"
+    path = os.path.join(EXPORT_DIRECTORY, f"{filename_base}.{extension}")
 
     no_named_graph_support = rdf_format in {
         RdfFormat.TURTLE, RdfFormat.N_TRIPLES, RdfFormat.N3, RdfFormat.RDF_XML
@@ -1352,6 +1360,7 @@ async def parse_notes(
 
     global store
     graphs = [str(g) for g in store.named_graphs()]
+    graph = f"<{graph.strip().strip('<>').strip()}>"
     if graph and graph not in graphs:
         raise HTTPException(status_code=400, detail=f"Invalid graph IRI. Use one of these or None: {graphs}")
     if not note_predicate:
@@ -1381,6 +1390,7 @@ async def get_csv(
     delimiter = " | "
     global store
     graphs = [str(g) for g in store.named_graphs()]
+    graph = f"<{graph.strip().strip('<>').strip()}>"
     if graph and graph not in graphs:
         raise HTTPException(status_code=400, detail=f"Invalid graph IRI. Use one of these or None: {graphs}")
     # subject → { predicate → [objects...] }
