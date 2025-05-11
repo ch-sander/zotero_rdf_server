@@ -21,7 +21,7 @@ from dateutil import parser
 from pathlib import Path
 from rapidfuzz import fuzz, process
 from urllib.parse import quote, urlparse
-
+from enum import Enum
 
 # --- Load configuration ---
 config_path = os.getenv("CONFIG_FILE", "config.yaml")
@@ -1115,6 +1115,8 @@ def initialize_store():
         store = Store(path=STORE_DIRECTORY)
     else:
         raise ValueError(f"Invalid store_mode: {STORE_MODE}")
+    global GRAPHS 
+    GRAPHS = [str(g) for g in store.named_graphs()]
 
 def clear_directory(directory_path):
     for filename in os.listdir(directory_path):
@@ -1203,6 +1205,7 @@ def refresh_store(force_reload:bool = False):
                     else:
                         logger.info(f"No notes parsing for {lib.name} in {lib.parser}")
 
+
                 logger.info(f"Zotero data refreshed successfully. {len(store)} triples, graphs: {list(store.named_graphs())}")
 
 
@@ -1216,6 +1219,13 @@ def refresh_store(force_reload:bool = False):
                 logger.info("Refresh interval less than 30 seconds — exiting after initial load.")
                 break
 
+
+class LogLevel(str, Enum):
+    debug = "DEBUG"
+    info = "INFO"
+    warning = "WARNING"
+    error = "ERROR"
+
 # --- API Endpoints ---
 
 @router.get("/export", summary="Create export", description=f"Exports the store or a named graph to {EXPORT_DIRECTORY}", tags=["data"])
@@ -1223,6 +1233,11 @@ async def export_graph(
     format: str = Query("trig"),
     graph: str | None = Query(default=None, description="Named graph IRI (optional)")
 ):
+    global store
+    graphs = [str(g) for g in store.named_graphs()]
+    if graph and graph not in graphs:
+        raise HTTPException(status_code=400, detail=f"Invalid graph IRI. Use one of these or None: {graphs}")
+
     os.makedirs(EXPORT_DIRECTORY, exist_ok=True)
 
     format_map = {
@@ -1291,7 +1306,7 @@ async def backup_store():
     return {"status": "success", "backup store":{"path": backup_path,"named_graphs":graphs, "len":len(store)}}
 
 @router.get("/reload", summary="Reload app", description="Will trigger a reload, even if not set in config.", tags=["data"])
-async def reload_store(logging_level: str = Query(default=log_level, description="Sets log level")):
+async def reload_store(logging_level: LogLevel = Query(default=log_level, description="Sets log level")):
     if logging_level:
         current_level = logger.level
         new_level = getattr(logging, logging_level.upper(), None)
@@ -1336,6 +1351,9 @@ async def parse_notes(
     ):
 
     global store
+    graphs = [str(g) for g in store.named_graphs()]
+    if graph and graph not in graphs:
+        raise HTTPException(status_code=400, detail=f"Invalid graph IRI. Use one of these or None: {graphs}")
     if not note_predicate:
         predicate = safeNamedNode(f"{ZOT_NS}note")
     else:
@@ -1362,7 +1380,9 @@ async def get_csv(
     output_file = os.path.join(EXPORT_DIRECTORY, f"export.csv")
     delimiter = " | "
     global store
-
+    graphs = [str(g) for g in store.named_graphs()]
+    if graph and graph not in graphs:
+        raise HTTPException(status_code=400, detail=f"Invalid graph IRI. Use one of these or None: {graphs}")
     # subject → { predicate → [objects...] }
     # NamedNodes as objects are wrapped in <> for both export and import
     records = defaultdict(lambda: defaultdict(list))
