@@ -11,7 +11,7 @@ import shutil
 from uuid import uuid5, NAMESPACE_URL, uuid4
 from pyoxigraph import Store, Quad, NamedNode, Literal, RdfFormat, BlankNode, DefaultGraph
 from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter
-from fastapi.responses import FileResponse, HTMLResponse
+# from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from contextlib import asynccontextmanager
 import uvicorn
 from collections import defaultdict
@@ -113,8 +113,10 @@ class ZoteroLibrary:
         self.base_api_url = f"{ZOT_API_URL}{self.library_type}/{self.library_id}".strip("#/")
         self.base_url = str(config.get("base_uri", f"{ZOT_BASE_URL}{self.library_type}/{self.library_id}")).strip("/#")
         self.knowledge_base_graph = str(config.get("knowledge_base_graph", self.base_url)).strip("/#")
-        self.load_from = config.get("load_from",os.path.join(IMPORT_DIRECTORY, self.name))
+        self.load_from = str(config.get("load_from",os.path.join(IMPORT_DIRECTORY, self.name))).replace("$",str(self.library_id))
         self.save_to = config.get("save_to")
+        if self.save_to:
+            self.save_to = str(self.save_to).replace("$",str(self.library_id))
         self.headers = {"Zotero-API-Key": self.api_key} if self.api_key else {}
         self.map = config.get("map") or {}
         self.parser = config.get("notes_parser") or {}
@@ -226,7 +228,18 @@ class ZoteroLibrary:
         else:
             return None
 
-    def fetch_collections(self) -> list:
+    def fetch_collections(self, json_path:str = None) -> list:
+        if self.load_mode == "manual_import":
+            if not json_path or not os.path.isfile(json_path):
+                raise FileNotFoundError(f"JSON path not found: {json_path}")
+
+            with open(json_path, "r", encoding="utf-8") as f:
+                cols = json.load(f)
+
+            if not isinstance(cols, list):
+                raise ValueError(f"Expected list of collections in JSON file, got {type(cols).__name__}")
+
+            return cols
         if self.load_mode == "json":
             return self.fetch_paginated("collections")
         else:
@@ -517,7 +530,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 
                 # URL #
                 elif predicate_str in ["url","dc:relation","doi","owl:sameAs"] and object.startswith("http"): # url
-                    vals = [vals.strip()] #for v in object.split(",")] # TODO no splitting or URLs!
+                    vals = [object.strip()] #for v in object.split(",")] # TODO no splitting or URLs!
                     for val in vals:
                         if len(vals)>1:
                             logger.debug(f"Parse Multi-URL for {subject}: {val}") 
@@ -691,30 +704,88 @@ def library_href(library_meta: dict):
 
 
 def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = None):    
-    items = lib.fetch_items(json_path=json_path)
-    collections = lib.fetch_collections()
+    json_path_items = None
+    json_path_collections = None
+
+    if json_path:
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                preview = json.load(f)
+                if not isinstance(preview, list):
+                    raise ValueError(f"Expected a list in JSON file: {json_path}")
+                if all("data" in e and "itemType" in e["data"] for e in preview):
+                    json_path_items = json_path
+                elif all("data" in e and "name" in e["data"] for e in preview):
+                    json_path_collections = json_path
+                else:
+                    raise ValueError(f"Could not classify JSON as items or collections: {json_path}")
+        except Exception as e:
+            logger.error(f"Error reading or classifying JSON file {json_path}: {e}")
+            return
+
+    collections = []
+    items = []
+
+    try:
+        if not json_path_collections:
+            items = lib.fetch_items(json_path=json_path_items)
+    except Exception as e:
+        logger.warning(f"Could not fetch items for {lib.library_id}: {e}")
+
+    try:
+        if not json_path_items:
+            collections = lib.fetch_collections(json_path=json_path_collections)
+    except Exception as e:
+        logger.warning(f"Could not fetch collections for {lib.library_id}: {e}")
+        
     #if log_level=="DEBUG":
     if lib.save_to:
         try:
-            path = os.path(lib.save_to) #.join(EXPORT_DIRECTORY, "Zotero JSON", lib.name)
+            path = lib.save_to #.join(EXPORT_DIRECTORY, "Zotero JSON", lib.name)
             os.makedirs(path, exist_ok=True)
-            with open(os.path.join(path, f"{lib.library_id}_items.json"), "w", encoding="utf-8") as f:
-                json.dump(items, f, ensure_ascii=False, indent=2)
-            with open(os.path.join(path, f"{lib.library_id}_collections.json"), "w", encoding="utf-8") as f:
-                json.dump(collections, f, ensure_ascii=False, indent=2)        
+            if items:
+                with open(os.path.join(path, f"{lib.library_id}_items.json"), "w", encoding="utf-8") as f:
+                    json.dump(items, f, ensure_ascii=False, indent=2)
+            if collections:
+                with open(os.path.join(path, f"{lib.library_id}_collections.json"), "w", encoding="utf-8") as f:
+                    json.dump(collections, f, ensure_ascii=False, indent=2)        
             logger.info(f"Stored JSON for {lib.library_id} in {path}")
         except Exception as e:
             logger.error(f"Error saving JSON for {lib.library_id} to {lib.save_to}: {e}")
 
     map = lib.map
-    a_library_href = library_href(items[0]) or lib.base_url
-    logger.debug(f"Example JSON: {items[0]}")
+    sample_entry = (items or collections or [None])[0]
+
+    if sample_entry is not None:
+        a_library_href = library_href(sample_entry) or lib.base_url
+        logger.debug(f"Example JSON: {sample_entry}")
+    else:
+        a_library_href = lib.base_url
+        logger.warning(f"No items or collections found for library {lib.name}")
+
     logger.info(f"[{lib.name} at {a_library_href}] Fetched {len(items) if items else 0} items and {len(collections) if collections else 0} collections.")
+
     GRAPH_URI = safeNamedNode(lib.base_url)
-    if lib.map.get("named_library") and items[0].get("library"): # take library metadata from first item only
+
+    if lib.map.get("named_library") and sample_entry and sample_entry.get("library"):
         store.add(Quad(safeNamedNode(a_library_href), NamedNode(RDF_TYPE), safeNamedNode(f"{ZOT_NS}library"), graph_name=GRAPH_URI))
-        add_rdf_from_dict(store, safeNamedNode(a_library_href), items[0].get("library", {}), ZOT_NS, lib.base_url, map, lib.knowledge_base_graph)
-        apply_additional_properties(store, safeNamedNode(a_library_href), items[0].get("library", {}), map.get("additional",[]), lib.base_url, ZOT_NS)
+        add_rdf_from_dict(
+            store,
+            safeNamedNode(a_library_href),
+            sample_entry["library"],
+            ZOT_NS,
+            lib.base_url,
+            map,
+            lib.knowledge_base_graph
+        )
+        apply_additional_properties(
+            store,
+            safeNamedNode(a_library_href),
+            sample_entry["library"],
+            map.get("additional", []),
+            lib.base_url,
+            ZOT_NS
+        )
 
     if collections:
         for col in collections:
@@ -733,8 +804,9 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
 
             add_rdf_from_dict(store, node_uri, col_data, ZOT_NS, lib.base_url, map, lib.knowledge_base_graph)
             add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
+        logger.info(f"--> Loaded {len(collections)} collections for {lib.name} to store")
     else:
-        logger.warning("No collections!")
+        logger.warning("No collections!") if not json_path_items else None
 
     if items:
         item_type_fields = lib.map.get("item_type") or []
@@ -762,12 +834,13 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
 
                 add_rdf_from_dict(store, node_uri, item_data, ZOT_NS, lib.base_url, map, lib.knowledge_base_graph)
                 add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
-
+    
             except Exception as e:
                 logger.error(f"Invalid data at {node_uri}. See next errors for details!")
                 continue
+        logger.info(f"--> Loaded {len(items)} items for {lib.name} to store")
     else:
-        logger.warning("No items!")
+        logger.warning("No items!") if not json_path_collections else None
 
 def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode = NamedNode(f"{ZOT_NS}note"), query_str: str = None, replace:bool = False, push:bool=True):
     from zotero_rdf_server.plugins.parse_note import ParseNotePlugin
@@ -1088,30 +1161,36 @@ def refresh_store(force_reload:bool = False):
                     lib = ZoteroLibrary(lib_cfg)
 
                     if lib.load_mode == "rdf":
-                        logger.info(f"Fetching RDF export for '{lib.name}'")
-                        rdf_data = lib.fetch_rdf_export()
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=".rdf") as tmp:
-                            tmp.write(rdf_data)
-                            tmp_path = tmp.name
                         try:
-                            before = len(store)
-                            store.bulk_load(
-                                path=tmp_path,
-                                format=RdfFormat.RDF_XML,
-                                base_iri=f"{lib.base_url}/items/",
-                                to_graph=safeNamedNode(lib.base_url)
-                            )
-                            after = len(store)
-                            logger.info(f"Loaded {after - before} triples from RDF export for '{lib.name}'")
-                        finally:
-                            os.unlink(tmp_path)
-
+                            logger.info(f"Fetching RDF export for '{lib.name}'")
+                            rdf_data = lib.fetch_rdf_export()
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=".rdf") as tmp:
+                                tmp.write(rdf_data)
+                                tmp_path = tmp.name
+                            try:
+                                before = len(store)
+                                store.bulk_load(
+                                    path=tmp_path,
+                                    format=RdfFormat.RDF_XML,
+                                    base_iri=f"{lib.base_url}/items/",
+                                    to_graph=safeNamedNode(lib.base_url)
+                                )
+                                after = len(store)
+                                logger.info(f"Loaded {after - before} triples from RDF export for '{lib.name}'")
+                            finally:
+                                os.unlink(tmp_path)
+                        except Exception as e:
+                            logger.error(f"Error loading RDF from API for {lib.library_id}: {e}")
                     elif lib.load_mode == "manual_import":
-                        import_rdf_from_disk(lib, store)
-
+                        try:
+                            import_rdf_from_disk(lib, store)
+                        except Exception as e:
+                            logger.error(f"Error loading from file import for {lib.name}: {e}")
                     elif lib.load_mode == "json":
-                        build_graph_for_library(lib, store)
-
+                        try:
+                            build_graph_for_library(lib, store)
+                        except Exception as e:
+                            logger.error(f"Error loading JSON from API for {lib.library_id}: {e}")
                     else:
                         logger.warning(f"Unknown load_mode '{lib.load_mode}' for '{lib.name}' — skipping.")
 
@@ -1139,7 +1218,7 @@ def refresh_store(force_reload:bool = False):
 
 # --- API Endpoints ---
 
-@router.get("/export")
+@router.get("/export", summary="Create export", description=f"Exports the store or a named graph to {EXPORT_DIRECTORY}", tags=["data"])
 async def export_graph(
     format: str = Query("trig"),
     graph: str | None = Query(default=None, description="Named graph IRI (optional)")
@@ -1184,7 +1263,7 @@ async def export_graph(
     return {"success":f"Export to: {path}"}
     # return FileResponse(path, filename=os.path.basename(path))
 
-@router.get("/backup")
+@router.get("/backup", summary="Create backup", description=f"Creates a complete backup of the store to {BACKUP_DIRECTORY}", tags=["data"])
 async def backup_store():
     global store
     backup_root = Path(BACKUP_DIRECTORY).resolve()
@@ -1204,34 +1283,54 @@ async def backup_store():
         log_file.write_text(f"[{datetime.now().isoformat()}] Deleted old Store backup\n", encoding="utf-8")
 
     store.backup(str(backup_path))
-
+    backup_store = Store(str(backup_path))
+    graphs = [str(g) for g in backup_store.named_graphs()]
     with log_file.open("a", encoding="utf-8") as f:
         f.write(f"[{datetime.now().isoformat()}] Created new backup in {backup_path}\n")
 
-    return {"success": f"Backup created in {backup_path}"}
+    return {"status": "success", "backup store":{"path": backup_path,"named_graphs":graphs, "len":len(store)}}
 
+@router.get("/reload", summary="Reload app", description="Will trigger a reload, even if not set in config.", tags=["data"])
+async def reload_store(logging_level: str = Query(default=log_level, description="Sets log level")):
+    if logging_level:
+        current_level = logger.level
+        new_level = getattr(logging, logging_level.upper(), None)
+        if not isinstance(new_level, int):
+            return {"error": f"Invalid log level: {logging_level}"}
+        
+        logger.setLevel(new_level)
+        try:
+            refresh_store(True)
+        finally:
+            logger.setLevel(current_level)
+    else:
+        refresh_store(True)
+    graphs = [str(g) for g in store.named_graphs()]
+    return {"status": "success", "store":{"named_graphs":graphs, "len":len(store)}}
 
-@router.get("/optimize")
+@router.get("/optimize", summary="Optimize Store", description="Will optimize the oxigraph store", tags=["data"])
 async def optimize_store():
     global store
     store.optimize()
     return {"success":"Store optimized"}
 
-@router.get("/reload")
-async def reload_store():
-    refresh_store(True)
-    return {"success":"Store reloaded"}
 
-@router.get("/libs")
-async def debug_test():
+@router.get("/libs", summary="List of all libraries", description="Returns all available libraries with configuration.", tags=["config"])
+async def get_libs():
     result = [ZoteroLibrary(cfg) for cfg in ZOTERO_LIBRARIES_CONFIGS]
     return {"success": result}
 
-@router.get("/parse_notes")
+@router.get("/graphs", summary="List of all named graphs", description="Returns all available named graphs.", tags=["RDF"])
+async def get_graphs():
+    global store
+    graphs = [str(g) for g in store.named_graphs()]
+    return {"status": "success", "store":{"named_graphs":graphs, "len":len(store)}}
+
+@router.get("/parse_notes", summary="Parse notes", description="Triggers the parsing of all Zotero notes with semantic-html plugin", tags=["RDF"])
 async def parse_notes(
-    replace: bool = False,
+    replace: bool = Query(default=False, description="Replaces current triples for notes"),
     graph: str | None = Query(default=None, description="Named graph IRI (optional)"),
-    note_predicate: str | None  = Query(default=None, description="predicate for note HTML"),
+    note_predicate: str | None  = Query(default=f"{ZOT_NS}note", description="predicate for note HTML"),
     query: str | None = Query(default=None, description="Query to retrieve notes (optional)"),
     push: bool | None = Query(default=True, description="Push triples to store (optional)")
     ):
@@ -1249,11 +1348,11 @@ async def parse_notes(
             result=parse_all_notes(lib, store, note_predicate=predicate, query_str=query, replace=replace,push=push)
     return {"success":f"{result} notes parsed"}
 
-@router.get("/csv")
+@router.get("/csv", summary="Export CSV", description="Exports a named graph or the entire store as CSV or loads a CSV as RDF into the store", tags=["RDF"])
 async def get_csv(
     graph: str | None = Query(default=None, description="Named graph IRI (optional)"),
     load_csv: str | None = Query(default=None, description="Load a CSV file into the store"),
-    delete: bool | None = Query(default=False, description="Removes triples from graph if true")
+    delete: bool | None = Query(default=False, description="Removes triples from graph if true, done before loading triples (you may only use subject IRIs to just delete)")
     ):
     from collections import defaultdict
     import csv
@@ -1297,21 +1396,38 @@ async def get_csv(
             for subj in subjects:
                 for quad in store.quads_for_pattern(subj, None, None, graph_uri):
                     store.remove(quad)
+
         with open(load_csv, newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                subj = safeNamedNode(row["IRI"].strip("<>"))
+                subj_raw = row.get("IRI", "").strip("<>").strip()
+                if not subj_raw:
+                    continue
+                subj = safeNamedNode(subj_raw)
+
                 for pred_label, cell in row.items():
                     if pred_label == "IRI" or not cell.strip():
                         continue
-                    predicate = safeNamedNode(pred_label.strip("<>"))
+                    pred_raw = pred_label.strip("<>").strip()
+                    if not pred_raw:
+                        continue
+                    predicate = safeNamedNode(pred_raw)
+
                     for value in cell.split(delimiter):
                         value = value.strip()
-                        if value:
-                            obj = safeNamedNode(value) if value.startswith("<") and value.endswith(">") and value.startswith("http") else Literal(value)
+                        if not value:
+                            continue
+
+                        if value.startswith("<") and value.endswith(">") and value.startswith("http"):
+                            obj = safeNamedNode(value.strip("<>"))
+                        else:
+                            obj = Literal(value)
+
+                        if subj and predicate and obj:
                             quad = Quad(subj, predicate, obj, graph_uri)
                             store.add(quad)
-    return {"status": "success"}
+    graphs = [str(g) for g in store.named_graphs()]
+    return {"status": "success", "store":{"named_graphs":graphs, "len":len(store)}}
 # --- Start server ---
 
 @asynccontextmanager
@@ -1323,5 +1439,5 @@ async def app_lifespan(app: FastAPI):
     threading.Thread(target=refresh_store, daemon=True).start()
     yield
 
-app = FastAPI(lifespan=app_lifespan)
+app = FastAPI(lifespan=app_lifespan, docs_url="/")
 app.include_router(router)
