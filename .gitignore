@@ -8,5 +8,6 @@ docker-compose-dev.yml
 **/exports
 **/import
 /dev
+/tests
 /public_server_app
 explorer/index-dev.html
