@@ -5,8 +5,11 @@ context:
   schema: "https://api.zotero.org/schema" # if given, will create a basic OWL ontology as named graph with IRI of vocab
 
 defaults:
-  mode: "override" # "merge" or "default"
-  load_mode: "json"  # "json" or "rdf" or "manual_import"
+  mode: "override" # "merge" or "default". Defines how defaults are enforced for library setups specified below
+  load_mode: "json"  # "json" or "rdf" or "manual_import".
+                     # json: Will use Zotero's API (paginated) to get a full JSON of items and collections. You may set a file path in "save_to" to store a json dump locally that can be used further on as source for manual_import.
+                     # rdf: will use Zotero's API (paginated) to get full RDF of items. Parsing is done with Zotero's own translators, set in "rdf_export_format". You may set a directory path in "save_to" to store a json dump locally that can be used further on as source for manual_import.
+                     # manual_import: it will look for all files in the import folder in a directory of the library's "name" or set in "import from"
   rdf_export_format: "rdf_zotero" # "rdf_zotero" or "rdf_bibliontology" only needed if load_mode = "rdf"
   # base_uri: "https://www.example.com#" used as the uri for the library named graph and as the base uri for all named nodes created for zotero items and collections. By default is "{context.base}{libraries.library_type}/{libraries.library_id}" as specified in this yaml
   knowledge_base_graph: "https://www.zotero.org/entities" # Will be used to create identical uuids for named nodes accross multiple libraries in the union graph. If not given, uses base_uri

@@ -113,6 +113,8 @@ class ZoteroLibrary:
         self.base_api_url = f"{ZOT_API_URL}{self.library_type}/{self.library_id}".strip("#/")
         self.base_url = str(config.get("base_uri", f"{ZOT_BASE_URL}{self.library_type}/{self.library_id}")).strip("/#")
         self.knowledge_base_graph = str(config.get("knowledge_base_graph", self.base_url)).strip("/#")
+        self.load_from = config.get("load_from",os.path.join(IMPORT_DIRECTORY, self.name))
+        self.save_to = config.get("save_to")
         self.headers = {"Zotero-API-Key": self.api_key} if self.api_key else {}
         self.map = config.get("map") or {}
         self.parser = config.get("notes_parser") or {}
@@ -330,8 +332,9 @@ def fuzzy_match_label(store:Store, label:str, type_node:NamedNode, threshold=90,
 
 
 
-def import_rdf_from_disk(lib: ZoteroLibrary, store: Store, base_dir: str):
-    subdir = os.path.join(base_dir, lib.name)
+def import_rdf_from_disk(lib: ZoteroLibrary, store: Store):
+
+    subdir = lib.load_from if lib.load_from else os.path.join(IMPORT_DIRECTORY, lib.name)
     if not os.path.isdir(subdir):
         logger.warning(f"Directory not found for manual import: {subdir}")
         return
@@ -643,7 +646,6 @@ def apply_rdf_types(store: Store, node: NamedNode, data: dict, type_fields: list
                 logger.error(f"Invalid rdf:type at {node} for value '{raw_val}': {e}")
                 continue
 
-
 def apply_additional_properties(store: Store, node: NamedNode, data: dict, specs: list[dict], base_ns: str, prefix_ns: str):
     GRAPH_URI = NamedNode(base_ns)
     for spec in specs:
@@ -691,14 +693,18 @@ def library_href(library_meta: dict):
 def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = None):    
     items = lib.fetch_items(json_path=json_path)
     collections = lib.fetch_collections()
-    if log_level=="DEBUG":
-        path = os.path.join(EXPORT_DIRECTORY, "Zotero JSON", lib.name)
-        os.makedirs(path, exist_ok=True)
-        with open(os.path.join(path, "items.json"), "w", encoding="utf-8") as f:
-            json.dump(items, f, ensure_ascii=False, indent=2)
-        with open(os.path.join(path, "collections.json"), "w", encoding="utf-8") as f:
-            json.dump(collections, f, ensure_ascii=False, indent=2)        
-        logger.debug(f"Stored JSON in {path}") 
+    #if log_level=="DEBUG":
+    if lib.save_to:
+        try:
+            path = os.path(lib.save_to) #.join(EXPORT_DIRECTORY, "Zotero JSON", lib.name)
+            os.makedirs(path, exist_ok=True)
+            with open(os.path.join(path, f"{lib.library_id}_items.json"), "w", encoding="utf-8") as f:
+                json.dump(items, f, ensure_ascii=False, indent=2)
+            with open(os.path.join(path, f"{lib.library_id}_collections.json"), "w", encoding="utf-8") as f:
+                json.dump(collections, f, ensure_ascii=False, indent=2)        
+            logger.info(f"Stored JSON for {lib.library_id} in {path}")
+        except Exception as e:
+            logger.error(f"Error saving JSON for {lib.library_id} to {lib.save_to}: {e}")
 
     map = lib.map
     a_library_href = library_href(items[0]) or lib.base_url
@@ -1101,7 +1107,7 @@ def refresh_store(force_reload:bool = False):
                             os.unlink(tmp_path)
 
                     elif lib.load_mode == "manual_import":
-                        import_rdf_from_disk(lib, store, IMPORT_DIRECTORY)
+                        import_rdf_from_disk(lib, store)
 
                     elif lib.load_mode == "json":
                         build_graph_for_library(lib, store)
