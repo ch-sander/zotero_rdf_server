@@ -1397,7 +1397,7 @@ grace: a owl:Ontology ;
     rdfs:label "Graceful17 Ontology"@en ;
     ns3:status <bibo:status/draft> ;
     ns4:title "Graceful17 Ontology"@en ;
-    ns2:created "2025-05-11T12:03:48"@en ;
+    ns2:created "2025-05-11T20:57:47"@en ;
     ns2:creator "Bruno Boute"@en,
         "Christoph Sander"@en ;
     ns2:license <http://creativecommons.org/licenses/by/4.0/> ;
@@ -1405,7 +1405,7 @@ grace: a owl:Ontology ;
     owl:imports <http://www.w3.org/2000/01/rdf-schema> ;
     owl:priorVersion grace:1.0.0 ;
     owl:versionIRI grace:1.0.1 ;
-    prov:generatedAtTime "2025-05-11T12:03:48"^^xsd:dateTime ;
+    prov:generatedAtTime "2025-05-11T20:57:47"^^xsd:dateTime ;
     schema:citation "Sander, Christoph; Boute, Bruno. (2025). The Graceful17 Ontology, https://w3id.org/g17/ontology (Version 1.0.1)"@en ;
     ns1:preferredNamespacePrefix "grace"@en ;
     ns1:preferredNamespaceUri "https://w3id.org/grace/ontology/"@en .
@@ -2946,17 +2946,6 @@ zotsn:date_1727 a sh:NodeShape ;
     sh:name "Date"@en ;
     sh:nodeKind sh:Literal .
 
-zotsn:library_1500 a sh:NodeShape ;
-    rdfs:label "Library"@en ;
-    volipi:iconName "fa-solid fa-box"@en ;
-    volipi:message "Tooltip for library"@en ;
-    sh:name "Library"@en ;
-    sh:nodeKind sh:IRI ;
-    sh:property zotsn:property_1729,
-        zotsn:property_1737,
-        zotsn:property_1740 ;
-    sh:targetClass zot:library .
-
 zotsn:place_1772 a sh:NodeShape ;
     rdfs:label "Place"@en ;
     volipi:iconName "fa-sticky-note"@en ;
@@ -2973,7 +2962,7 @@ zotsn:property_1730 a sh:PropertyShape ;
     rdfs:label "created by"@en ;
     volipi:message "Tooltip for creators"@en ;
     dash:searchWidget sparnatural:NonSelectableProperty ;
-    sh:class zot:creatorRole ;
+    sh:class zotsn:creatorrole_1499 ;
     sh:name "created by"@en ;
     sh:node zotsn:creatorrole_1499 ;
     sh:nodeKind sh:IRI ;
@@ -2983,7 +2972,7 @@ zotsn:property_1732 a sh:PropertyShape ;
     rdfs:label "has the Tag(s)"@en ;
     volipi:message "Tooltip for tags"@en ;
     dash:searchWidget sparnatural:ListProperty ;
-    sh:class zot:tag ;
+    sh:class zotsn:tag_1502 ;
     sh:name "has the Tag(s)"@en ;
     sh:node zotsn:tag_1502 ;
     sh:nodeKind sh:IRI ;
@@ -2992,7 +2981,7 @@ zotsn:property_1732 a sh:PropertyShape ;
 zotsn:property_1734 a sh:PropertyShape ;
     rdfs:label "in Collection(s)"@en ;
     volipi:message "Tooltip for collections"@en ;
-    sh:class zot:collection ;
+    sh:class zotsn:collection_1501 ;
     sh:name "in Collection(s)"@en ;
     sh:node zotsn:collection_1501 ;
     sh:nodeKind sh:IRI ;
@@ -3001,7 +2990,7 @@ zotsn:property_1734 a sh:PropertyShape ;
 zotsn:property_1735 a sh:PropertyShape ;
     rdfs:label "has Parent Item"@en ;
     volipi:message "Tooltip for parentItem"@en ;
-    sh:class zot:item ;
+    sh:class zotsn:item_1498 ;
     sh:name "has Parent Item"@en ;
     sh:node zotsn:item_1498 ;
     sh:nodeKind sh:IRI ;
@@ -3011,7 +3000,7 @@ zotsn:property_1738 a sh:PropertyShape ;
     rdfs:label "Tag of"@en ;
     volipi:message "Tooltip for tag of (This is only a query pattern)"@en ;
     dash:searchWidget sparnatural:NonSelectableProperty ;
-    sh:class zot:item ;
+    sh:class zotsn:item_1498 ;
     sh:name "Tag of"@en ;
     sh:node zotsn:item_1498 ;
     sh:nodeKind sh:IRI ;
@@ -3021,7 +3010,7 @@ zotsn:property_1739 a sh:PropertyShape ;
     rdfs:label "Collection of"@en ;
     volipi:message "Tooltip for collection of (This is only a query pattern)"@en ;
     dash:searchWidget sparnatural:NonSelectableProperty ;
-    sh:class zot:item ;
+    sh:class zotsn:item_1498 ;
     sh:name "Collection of"@en ;
     sh:node zotsn:item_1498 ;
     sh:nodeKind sh:IRI ;
@@ -3031,8 +3020,6 @@ zotsn:property_1740 a sh:PropertyShape ;
     rdfs:label "Library of"@en ;
     volipi:message "Tooltip for library of (This is only a query pattern)"@en ;
     dash:searchWidget sparnatural:NonSelectableProperty ;
-    sh:class zot:collection,
-        zot:item ;
     sh:name "Library of"@en ;
     sh:nodeKind sh:IRI ;
     sh:or ( [ sh:class zotsn:item_1498 ;
@@ -3044,7 +3031,7 @@ zotsn:property_1741 a sh:PropertyShape ;
     rdfs:label "created"@en ;
     volipi:message "Tooltip for creator of (This is only a query pattern)"@en ;
     dash:searchWidget sparnatural:NonSelectableProperty ;
-    sh:class zot:item ;
+    sh:class zotsn:item_1498 ;
     sh:name "created"@en ;
     sh:node zotsn:item_1498 ;
     sh:nodeKind sh:IRI ;
@@ -3054,7 +3041,7 @@ zotsn:property_1743 a sh:PropertyShape ;
     rdfs:label "taken by"@en ;
     volipi:message "Tooltip for hasCreator"@en ;
     dash:searchWidget sparnatural:AutocompleteProperty ;
-    sh:class zot:person ;
+    sh:class zotsn:person_1742 ;
     sh:name "taken by"@en ;
     sh:node zotsn:person_1742 ;
     sh:nodeKind sh:IRI ;
@@ -3064,7 +3051,7 @@ zotsn:property_1746 a sh:PropertyShape ;
     rdfs:label "has Creator"@en ;
     volipi:message "A person acting in any role as creator of an item (This is only a query pattern)"@en ;
     dash:searchWidget sparnatural:AutocompleteProperty ;
-    sh:class zot:person ;
+    sh:class zotsn:person_1742 ;
     sh:description "A person acting in any role as creator of an item"@en ;
     sh:name "has Creator"@en ;
     sh:node zotsn:person_1742 ;
@@ -3075,7 +3062,7 @@ zotsn:property_1747 a sh:PropertyShape ;
     rdfs:label "Is Creator of"@en ;
     volipi:message "A person acting in any role as creator of an item (This is only a query pattern)"@en ;
     dash:searchWidget sparnatural:AutocompleteProperty ;
-    sh:class zot:item ;
+    sh:class zotsn:item_1498 ;
     sh:description "A person acting in any role as creator of an item"@en ;
     sh:name "Is Creator of"@en ;
     sh:node zotsn:item_1498 ;
@@ -3096,7 +3083,7 @@ zotsn:property_1750 a sh:PropertyShape ;
     rdfs:label "Acted as"@en ;
     volipi:message "A person acting in a role (This is only a query pattern)"@en ;
     dash:searchWidget sparnatural:AutocompleteProperty ;
-    sh:class zot:creatorRole ;
+    sh:class zotsn:creatorrole_1499 ;
     sh:description "A person acting in a role"@en ;
     sh:name "Acted as"@en ;
     sh:node zotsn:creatorrole_1499 ;
@@ -3107,7 +3094,7 @@ zotsn:property_1751 a sh:PropertyShape ;
     rdfs:label "is Parent Item of"@en ;
     volipi:message "Has some attachment or related item (.e.g a note) (This is only a query pattern)"@en ;
     dash:searchWidget sparnatural:AutocompleteProperty ;
-    sh:class zot:item ;
+    sh:class zotsn:item_1498 ;
     sh:description "Has some attachment or related item (.e.g a note)"@en ;
     sh:name "is Parent Item of"@en ;
     sh:node zotsn:item_1498 ;
@@ -3117,7 +3104,7 @@ zotsn:property_1751 a sh:PropertyShape ;
 zotsn:property_1752 a sh:PropertyShape ;
     rdfs:label "in Collection"@en ;
     volipi:message "Tooltip for parentCollection"@en ;
-    sh:class zot:collection ;
+    sh:class zotsn:collection_1501 ;
     sh:name "in Collection"@en ;
     sh:node zotsn:collection_1501 ;
     sh:nodeKind sh:IRI ;
@@ -3127,7 +3114,7 @@ zotsn:property_1753 a sh:PropertyShape ;
     rdfs:label "Collection of"@en ;
     volipi:message "Tooltip for collection of (This is only a query pattern)"@en ;
     dash:searchWidget sparnatural:NonSelectableProperty ;
-    sh:class zot:collection ;
+    sh:class zotsn:collection_1501 ;
     sh:name "Collection of"@en ;
     sh:node zotsn:collection_1501 ;
     sh:nodeKind sh:IRI ;
@@ -3147,7 +3134,7 @@ zotsn:property_1774 a sh:PropertyShape ;
     rdfs:label "Publication Place of"@en ;
     volipi:message "Tooltip for placeOf (This is only a query pattern)"@en ;
     dash:searchWidget sparnatural:AutocompleteProperty ;
-    sh:class zot:item ;
+    sh:class zotsn:item_1498 ;
     sh:name "Publication Place of"@en ;
     sh:node zotsn:item_1498 ;
     sh:nodeKind sh:IRI ;
@@ -3157,7 +3144,7 @@ zotsn:property_1775 a sh:PropertyShape ;
     rdfs:label "Publisher of"@en ;
     volipi:message "Tooltip for publisherOf (This is only a query pattern)"@en ;
     dash:searchWidget sparnatural:AutocompleteProperty ;
-    sh:class zot:item ;
+    sh:class zotsn:item_1498 ;
     sh:name "Publisher of"@en ;
     sh:node zotsn:item_1498 ;
     sh:nodeKind sh:IRI ;
@@ -3175,17 +3162,6 @@ zotsn:publisher_1773 a sh:NodeShape ;
         zotsn:property_1775 ;
     sh:targetClass zot:publisher .
 
-zotsn:tag_1502 a sh:NodeShape ;
-    rdfs:label "Tag"@en ;
-    volipi:iconName "fa-solid fa-tag"@en ;
-    volipi:message "Tooltip for tag"@en ;
-    sh:name "Tag"@en ;
-    sh:nodeKind sh:IRI ;
-    sh:property zotsn:property_1729,
-        zotsn:property_1736,
-        zotsn:property_1738 ;
-    sh:targetClass zot:tag .
-
 zotsn:Date a rdfs:Datatype ;
     rdfs:label "Date"@en ;
     sparnatural:defaultLabelProperty grace:called ;
@@ -3193,39 +3169,22 @@ zotsn:Date a rdfs:Datatype ;
     sparnatural:tooltip "A search value for dates (This is only a query pattern)"@en ;
     rdfs:comment "A search value for dates"@en .
 
-zotsn:creatorrole_1499 a sh:NodeShape ;
-    rdfs:label "Creator Role"@en ;
-    volipi:iconName "fa-solid fa-user"@en ;
-    volipi:message "The role a person takes in creating an item"@en ;
-    sh:description "The role a person takes in creating an item"@en ;
-    sh:name "Creator Role"@en ;
-    sh:nodeKind sh:IRI ;
-    sh:property zotsn:property_1729,
-        zotsn:property_1741,
-        zotsn:property_1743 ;
-    sh:targetClass zot:creatorRole .
-
-zotsn:link_1728 a sh:NodeShape ;
+zotsn:Link a owl:Class ;
     rdfs:label "Link"@en ;
-    volipi:iconName "fa-solid fa-link"@en ;
-    volipi:message "A search value for names (This is only a query pattern)"@en ;
-    sh:description "A search value for names"@en ;
-    sh:name "Link"@en ;
-    sh:nodeKind sh:IRI .
+    sparnatural:defaultLabelProperty grace:called ;
+    sparnatural:faIcon "fa-solid fa-link"@en ;
+    sparnatural:tooltip "Tooltip for Link (This is only a query pattern)"@en .
 
-zotsn:person_1742 a sh:NodeShape ;
-    rdfs:label "Person"@en ;
-    volipi:iconName "fa-solid fa-user"@en ;
-    volipi:message "Tooltip for person"@en ;
-    sh:name "Person"@en ;
+zotsn:library_1500 a sh:NodeShape ;
+    rdfs:label "Library"@en ;
+    volipi:iconName "fa-solid fa-box"@en ;
+    volipi:message "Tooltip for library"@en ;
+    sh:name "Library"@en ;
     sh:nodeKind sh:IRI ;
     sh:property zotsn:property_1729,
         zotsn:property_1737,
-        zotsn:property_1744,
-        zotsn:property_1745,
-        zotsn:property_1747,
-        zotsn:property_1750 ;
-    sh:targetClass zot:person .
+        zotsn:property_1740 ;
+    sh:targetClass zot:library .
 
 zotsn:property_1614 a sh:PropertyShape ;
     rdfs:label "country"@en ;
@@ -3627,7 +3586,7 @@ zotsn:property_1731 a sh:PropertyShape ;
     rdfs:label "in Library"@en ;
     volipi:message "Tooltip for inLibrary"@en ;
     dash:searchWidget sparnatural:SearchProperty ;
-    sh:class zot:library ;
+    sh:class zotsn:library_1500 ;
     sh:name "in Library"@en ;
     sh:node zotsn:library_1500 ;
     sh:nodeKind sh:IRI ;
@@ -3650,6 +3609,17 @@ zotsn:property_1745 a sh:PropertyShape ;
     sh:node zotsn:text_1724 ;
     sh:nodeKind sh:Literal ;
     sh:path zot:lastName .
+
+zotsn:tag_1502 a sh:NodeShape ;
+    rdfs:label "Tag"@en ;
+    volipi:iconName "fa-solid fa-tag"@en ;
+    volipi:message "Tooltip for tag"@en ;
+    sh:name "Tag"@en ;
+    sh:nodeKind sh:IRI ;
+    sh:property zotsn:property_1729,
+        zotsn:property_1736,
+        zotsn:property_1738 ;
+    sh:targetClass zot:tag .
 
 zot:collections a owl:ObjectProperty ;
     rdfs:label "collections"@en ;
@@ -3695,12 +3665,12 @@ zot:tags a owl:ObjectProperty ;
     rdfs:domain zot:item ;
     rdfs:range zot:tag .
 
-zotsn:Link a owl:Class ;
+zotsn:link_1728 a sh:NodeShape ;
     rdfs:label "Link"@en ;
-    sparnatural:defaultLabelProperty grace:called ;
-    sparnatural:faIcon "fa-solid fa-link"@en ;
-    sparnatural:tooltip "A search value for names (This is only a query pattern)"@en ;
-    rdfs:comment "A search value for names"@en .
+    volipi:iconName "fa-solid fa-link"@en ;
+    volipi:message "Tooltip for Link (This is only a query pattern)"@en ;
+    sh:name "Link"@en ;
+    sh:nodeKind sh:IRI .
 
 zotsn:property_1621 a sh:PropertyShape ;
     rdfs:label "programTitle"@en ;
@@ -3784,6 +3754,32 @@ zot:attachment a owl:Class ;
     sparnatural:tooltip "Tooltip for attachment"@en ;
     rdfs:subClassOf zot:item .
 
+zotsn:creatorrole_1499 a sh:NodeShape ;
+    rdfs:label "Creator Role"@en ;
+    volipi:iconName "fa-solid fa-user"@en ;
+    volipi:message "The role a person takes in creating an item"@en ;
+    sh:description "The role a person takes in creating an item"@en ;
+    sh:name "Creator Role"@en ;
+    sh:nodeKind sh:IRI ;
+    sh:property zotsn:property_1729,
+        zotsn:property_1741,
+        zotsn:property_1743 ;
+    sh:targetClass zot:creatorRole .
+
+zotsn:person_1742 a sh:NodeShape ;
+    rdfs:label "Person"@en ;
+    volipi:iconName "fa-solid fa-user"@en ;
+    volipi:message "Tooltip for person"@en ;
+    sh:name "Person"@en ;
+    sh:nodeKind sh:IRI ;
+    sh:property zotsn:property_1729,
+        zotsn:property_1737,
+        zotsn:property_1744,
+        zotsn:property_1745,
+        zotsn:property_1747,
+        zotsn:property_1750 ;
+    sh:targetClass zot:person .
+
 zotsn:property_1615 a sh:PropertyShape ;
     rdfs:label "versionNumber"@en ;
     volipi:message "Tooltip for versionNumber"@en ;
@@ -3847,19 +3843,11 @@ zot:hasCreator a owl:ObjectProperty ;
     rdfs:domain zot:creatorRole ;
     rdfs:range zot:person .
 
-zotsn:collection_1501 a sh:NodeShape ;
-    rdfs:label "Collection"@en ;
-    volipi:iconName "fa-solid fa-crop-simple"@en ;
-    volipi:message "Tooltip for collection"@en ;
-    sh:name "Collection"@en ;
-    sh:nodeKind sh:IRI ;
-    sh:property zotsn:property_1729,
-        zotsn:property_1731,
-        zotsn:property_1737,
-        zotsn:property_1739,
-        zotsn:property_1752,
-        zotsn:property_1753 ;
-    sh:targetClass zot:collection .
+zot:library a owl:Class ;
+    rdfs:label "library"@en ;
+    sparnatural:defaultLabelProperty grace:called ;
+    sparnatural:faIcon "fa-solid fa-box"@en ;
+    sparnatural:tooltip "Tooltip for library"@en .
 
 zotsn:property_1657 a sh:PropertyShape ;
     rdfs:label "history"@en ;
@@ -3876,11 +3864,21 @@ zotsn:property_1699 a sh:PropertyShape ;
     sh:nodeKind sh:Literal ;
     sh:path zot:numPages .
 
-zot:library a owl:Class ;
-    rdfs:label "library"@en ;
+zot:tag a owl:Class,
+        owl:DatatypeProperty ;
+    rdfs:label "tag"@en ;
     sparnatural:defaultLabelProperty grace:called ;
-    sparnatural:faIcon "fa-solid fa-box"@en ;
-    sparnatural:tooltip "Tooltip for library"@en .
+    sparnatural:faIcon "fa-solid fa-tag"@en ;
+    sparnatural:tooltip "Tooltip for tag"@en ;
+    rdfs:domain [ a owl:Class ;
+            grace:unionOf zot:bookSection,
+                zot:conferencePaper,
+                zot:dictionaryEntry,
+                zot:encyclopediaArticle,
+                zot:journalArticle,
+                zot:preprint,
+                zot:tag ] ;
+    rdfs:range zotsn:Text .
 
 zotsn:number_1726 a sh:NodeShape ;
     rdfs:label "Number"@en ;
@@ -3949,22 +3947,6 @@ zot:publisher a owl:Class,
     rdfs:comment "Publisher as entity"@en ;
     rdfs:range zot:publisher .
 
-zot:tag a owl:Class,
-        owl:DatatypeProperty ;
-    rdfs:label "tag"@en ;
-    sparnatural:defaultLabelProperty grace:called ;
-    sparnatural:faIcon "fa-solid fa-tag"@en ;
-    sparnatural:tooltip "Tooltip for tag"@en ;
-    rdfs:domain [ a owl:Class ;
-            grace:unionOf zot:bookSection,
-                zot:conferencePaper,
-                zot:dictionaryEntry,
-                zot:encyclopediaArticle,
-                zot:journalArticle,
-                zot:preprint,
-                zot:tag ] ;
-    rdfs:range zotsn:Text .
-
 zotsn:property_1624 a sh:PropertyShape ;
     rdfs:label "edition"@en ;
     volipi:message "Tooltip for edition"@en ;
@@ -3985,6 +3967,20 @@ zotsn:property_1736 a sh:PropertyShape ;
     sh:node zotsn:text_1724 ;
     sh:nodeKind sh:Literal ;
     sh:path zot:tag .
+
+zotsn:collection_1501 a sh:NodeShape ;
+    rdfs:label "Collection"@en ;
+    volipi:iconName "fa-solid fa-crop-simple"@en ;
+    volipi:message "Tooltip for collection"@en ;
+    sh:name "Collection"@en ;
+    sh:nodeKind sh:IRI ;
+    sh:property zotsn:property_1729,
+        zotsn:property_1731,
+        zotsn:property_1737,
+        zotsn:property_1739,
+        zotsn:property_1752,
+        zotsn:property_1753 ;
+    sh:targetClass zot:collection .
 
 zotsn:property_1613 a sh:PropertyShape ;
     rdfs:label "series"@en ;
@@ -4024,6 +4020,18 @@ zotsn:property_1729 a sh:PropertyShape ;
     sh:nodeKind sh:Literal ;
     sh:path rdfs:label .
 
+zot:person a owl:Class ;
+    rdfs:label "person"@en ;
+    sparnatural:defaultLabelProperty grace:called ;
+    sparnatural:faIcon "fa-solid fa-user"@en ;
+    sparnatural:tooltip "Tooltip for person"@en .
+
+zot:collection a owl:Class ;
+    rdfs:label "collection"@en ;
+    sparnatural:defaultLabelProperty grace:called ;
+    sparnatural:faIcon "fa-solid fa-crop-simple"@en ;
+    sparnatural:tooltip "Tooltip for collection"@en .
+
 zot:email a owl:Class ;
     rdfs:label "email"@en ;
     sparnatural:defaultLabelProperty grace:called ;
@@ -4036,6 +4044,154 @@ zot:instantMessage a owl:Class ;
     sparnatural:defaultLabelProperty grace:called ;
     sparnatural:faIcon "fa-comment-dots"@en ;
     sparnatural:tooltip "Tooltip for instantMessage"@en ;
+    rdfs:subClassOf zot:item .
+
+zotsn:property_1674 a sh:PropertyShape ;
+    rdfs:label "volume"@en ;
+    volipi:message "Tooltip for volume"@en ;
+    sh:datatype zotsn:Number ;
+    sh:name "volume"@en ;
+    sh:node zotsn:number_1726 ;
+    sh:nodeKind sh:Literal ;
+    sh:path zot:volume .
+
+zotsn:property_1690 a sh:PropertyShape ;
+    rdfs:label "ISBN"@en ;
+    volipi:message "Tooltip for ISBN"@en ;
+    sh:name "ISBN"@en ;
+    sh:path zot:ISBN .
+
+zotsn:text_1724 a sh:NodeShape ;
+    rdfs:label "Text"@en ;
+    volipi:iconName "fa-solid fa-quote-left"@en ;
+    volipi:message "A search value for names (This is only a query pattern)"@en ;
+    sh:description "A search value for names"@en ;
+    sh:name "Text"@en ;
+    sh:nodeKind sh:Literal .
+
+zot:blogPost a owl:Class ;
+    rdfs:label "blogPost"@en ;
+    sparnatural:defaultLabelProperty grace:called ;
+    sparnatural:faIcon "fa-blog"@en ;
+    sparnatural:tooltip "Tooltip for blogPost"@en ;
+    rdfs:subClassOf zot:item .
+
+zot:forumPost a owl:Class ;
+    rdfs:label "forumPost"@en ;
+    sparnatural:defaultLabelProperty grace:called ;
+    sparnatural:faIcon "fa-comments"@en ;
+    sparnatural:tooltip "Tooltip for forumPost"@en ;
+    rdfs:subClassOf zot:item .
+
+zot:webpage a owl:Class ;
+    rdfs:label "webpage"@en ;
+    sparnatural:defaultLabelProperty grace:called ;
+    sparnatural:faIcon "fa-globe"@en ;
+    sparnatural:tooltip "Tooltip for webpage"@en ;
+    rdfs:subClassOf zot:item .
+
+zotsn:Number a rdfs:Datatype ;
+    rdfs:label "Number"@en ;
+    sparnatural:defaultLabelProperty grace:called ;
+    sparnatural:faIcon "fa-solid fa-hashtag"@en ;
+    sparnatural:tooltip "A search value for numbers (This is only a query pattern)"@en ;
+    rdfs:comment "A search value for numbers"@en .
+
+zotsn:property_1676 a sh:PropertyShape ;
+    rdfs:label "pages"@en ;
+    volipi:message "Tooltip for pages"@en ;
+    sh:name "pages"@en ;
+    sh:path zot:pages .
+
+zot:presentation a owl:Class ;
+    rdfs:label "presentation"@en ;
+    sparnatural:defaultLabelProperty grace:called ;
+    sparnatural:faIcon "fa-chalkboard"@en ;
+    sparnatural:tooltip "Tooltip for presentation"@en ;
+    rdfs:subClassOf zot:item .
+
+zot:document a owl:Class ;
+    rdfs:label "document"@en ;
+    sparnatural:defaultLabelProperty grace:called ;
+    sparnatural:faIcon "fa-file-alt"@en ;
+    sparnatural:tooltip "Tooltip for document"@en ;
+    rdfs:subClassOf zot:item .
+
+zot:podcast a owl:Class ;
+    rdfs:label "podcast"@en ;
+    sparnatural:defaultLabelProperty grace:called ;
+    sparnatural:faIcon "fa-podcast"@en ;
+    sparnatural:tooltip "Tooltip for podcast"@en ;
+    rdfs:subClassOf zot:item .
+
+zot:interview a owl:Class ;
+    rdfs:label "interview"@en ;
+    sparnatural:defaultLabelProperty grace:called ;
+    sparnatural:faIcon "fa-microphone"@en ;
+    sparnatural:tooltip "Tooltip for interview"@en ;
+    rdfs:subClassOf zot:item .
+
+zot:letter a owl:Class ;
+    rdfs:label "letter"@en ;
+    sparnatural:defaultLabelProperty grace:called ;
+    sparnatural:faIcon "fa-envelope-open-text"@en ;
+    sparnatural:tooltip "Tooltip for letter"@en ;
+    rdfs:subClassOf zot:item .
+
+zot:artwork a owl:Class ;
+    rdfs:label "artwork"@en ;
+    sparnatural:defaultLabelProperty grace:called ;
+    sparnatural:faIcon "fa-palette"@en ;
+    sparnatural:tooltip "Tooltip for artwork"@en ;
+    rdfs:subClassOf zot:item .
+
+zot:case a owl:Class ;
+    rdfs:label "case"@en ;
+    sparnatural:defaultLabelProperty grace:called ;
+    sparnatural:faIcon "fa-scale-balanced"@en ;
+    sparnatural:tooltip "Tooltip for case"@en ;
+    rdfs:subClassOf zot:item .
+
+zot:manuscript a owl:Class ;
+    rdfs:label "manuscript"@en ;
+    sparnatural:defaultLabelProperty grace:called ;
+    sparnatural:faIcon "fa-scroll"@en ;
+    sparnatural:tooltip "Tooltip for manuscript"@en ;
+    rdfs:subClassOf zot:item .
+
+zot:statute a owl:Class ;
+    rdfs:label "statute"@en ;
+    sparnatural:defaultLabelProperty grace:called ;
+    sparnatural:faIcon "fa-balance-scale"@en ;
+    sparnatural:tooltip "Tooltip for statute"@en ;
+    rdfs:subClassOf zot:item .
+
+zot:bill a owl:Class ;
+    rdfs:label "bill"@en ;
+    sparnatural:defaultLabelProperty grace:called ;
+    sparnatural:faIcon "fa-file-invoice"@en ;
+    sparnatural:tooltip "Tooltip for bill"@en ;
+    rdfs:subClassOf zot:item .
+
+zot:film a owl:Class ;
+    rdfs:label "film"@en ;
+    sparnatural:defaultLabelProperty grace:called ;
+    sparnatural:faIcon "fa-film"@en ;
+    sparnatural:tooltip "Tooltip for film"@en ;
+    rdfs:subClassOf zot:item .
+
+zot:hearing a owl:Class ;
+    rdfs:label "hearing"@en ;
+    sparnatural:defaultLabelProperty grace:called ;
+    sparnatural:faIcon "fa-gavel"@en ;
+    sparnatural:tooltip "Tooltip for hearing"@en ;
+    rdfs:subClassOf zot:item .
+
+zot:thesis a owl:Class ;
+    rdfs:label "thesis"@en ;
+    sparnatural:defaultLabelProperty grace:called ;
+    sparnatural:faIcon "fa-user-graduate"@en ;
+    sparnatural:tooltip "Tooltip for thesis"@en ;
     rdfs:subClassOf zot:item .
 
 zotsn:item_1498 a sh:NodeShape ;
@@ -4166,166 +4322,6 @@ zotsn:item_1498 a sh:NodeShape ;
         zotsn:property_1749,
         zotsn:property_1751 ;
     sh:targetClass zot:item .
-
-zotsn:property_1674 a sh:PropertyShape ;
-    rdfs:label "volume"@en ;
-    volipi:message "Tooltip for volume"@en ;
-    sh:datatype zotsn:Number ;
-    sh:name "volume"@en ;
-    sh:node zotsn:number_1726 ;
-    sh:nodeKind sh:Literal ;
-    sh:path zot:volume .
-
-zotsn:property_1690 a sh:PropertyShape ;
-    rdfs:label "ISBN"@en ;
-    volipi:message "Tooltip for ISBN"@en ;
-    sh:name "ISBN"@en ;
-    sh:path zot:ISBN .
-
-zot:person a owl:Class ;
-    rdfs:label "person"@en ;
-    sparnatural:defaultLabelProperty grace:called ;
-    sparnatural:faIcon "fa-solid fa-user"@en ;
-    sparnatural:tooltip "Tooltip for person"@en .
-
-zotsn:text_1724 a sh:NodeShape ;
-    rdfs:label "Text"@en ;
-    volipi:iconName "fa-solid fa-quote-left"@en ;
-    volipi:message "A search value for names (This is only a query pattern)"@en ;
-    sh:description "A search value for names"@en ;
-    sh:name "Text"@en ;
-    sh:nodeKind sh:Literal .
-
-zot:blogPost a owl:Class ;
-    rdfs:label "blogPost"@en ;
-    sparnatural:defaultLabelProperty grace:called ;
-    sparnatural:faIcon "fa-blog"@en ;
-    sparnatural:tooltip "Tooltip for blogPost"@en ;
-    rdfs:subClassOf zot:item .
-
-zot:forumPost a owl:Class ;
-    rdfs:label "forumPost"@en ;
-    sparnatural:defaultLabelProperty grace:called ;
-    sparnatural:faIcon "fa-comments"@en ;
-    sparnatural:tooltip "Tooltip for forumPost"@en ;
-    rdfs:subClassOf zot:item .
-
-zot:webpage a owl:Class ;
-    rdfs:label "webpage"@en ;
-    sparnatural:defaultLabelProperty grace:called ;
-    sparnatural:faIcon "fa-globe"@en ;
-    sparnatural:tooltip "Tooltip for webpage"@en ;
-    rdfs:subClassOf zot:item .
-
-zotsn:Number a rdfs:Datatype ;
-    rdfs:label "Number"@en ;
-    sparnatural:defaultLabelProperty grace:called ;
-    sparnatural:faIcon "fa-solid fa-hashtag"@en ;
-    sparnatural:tooltip "A search value for numbers (This is only a query pattern)"@en ;
-    rdfs:comment "A search value for numbers"@en .
-
-zotsn:property_1676 a sh:PropertyShape ;
-    rdfs:label "pages"@en ;
-    volipi:message "Tooltip for pages"@en ;
-    sh:name "pages"@en ;
-    sh:path zot:pages .
-
-zot:presentation a owl:Class ;
-    rdfs:label "presentation"@en ;
-    sparnatural:defaultLabelProperty grace:called ;
-    sparnatural:faIcon "fa-chalkboard"@en ;
-    sparnatural:tooltip "Tooltip for presentation"@en ;
-    rdfs:subClassOf zot:item .
-
-zot:collection a owl:Class ;
-    rdfs:label "collection"@en ;
-    sparnatural:defaultLabelProperty grace:called ;
-    sparnatural:faIcon "fa-solid fa-crop-simple"@en ;
-    sparnatural:tooltip "Tooltip for collection"@en .
-
-zot:document a owl:Class ;
-    rdfs:label "document"@en ;
-    sparnatural:defaultLabelProperty grace:called ;
-    sparnatural:faIcon "fa-file-alt"@en ;
-    sparnatural:tooltip "Tooltip for document"@en ;
-    rdfs:subClassOf zot:item .
-
-zot:podcast a owl:Class ;
-    rdfs:label "podcast"@en ;
-    sparnatural:defaultLabelProperty grace:called ;
-    sparnatural:faIcon "fa-podcast"@en ;
-    sparnatural:tooltip "Tooltip for podcast"@en ;
-    rdfs:subClassOf zot:item .
-
-zot:interview a owl:Class ;
-    rdfs:label "interview"@en ;
-    sparnatural:defaultLabelProperty grace:called ;
-    sparnatural:faIcon "fa-microphone"@en ;
-    sparnatural:tooltip "Tooltip for interview"@en ;
-    rdfs:subClassOf zot:item .
-
-zot:letter a owl:Class ;
-    rdfs:label "letter"@en ;
-    sparnatural:defaultLabelProperty grace:called ;
-    sparnatural:faIcon "fa-envelope-open-text"@en ;
-    sparnatural:tooltip "Tooltip for letter"@en ;
-    rdfs:subClassOf zot:item .
-
-zot:artwork a owl:Class ;
-    rdfs:label "artwork"@en ;
-    sparnatural:defaultLabelProperty grace:called ;
-    sparnatural:faIcon "fa-palette"@en ;
-    sparnatural:tooltip "Tooltip for artwork"@en ;
-    rdfs:subClassOf zot:item .
-
-zot:case a owl:Class ;
-    rdfs:label "case"@en ;
-    sparnatural:defaultLabelProperty grace:called ;
-    sparnatural:faIcon "fa-scale-balanced"@en ;
-    sparnatural:tooltip "Tooltip for case"@en ;
-    rdfs:subClassOf zot:item .
-
-zot:manuscript a owl:Class ;
-    rdfs:label "manuscript"@en ;
-    sparnatural:defaultLabelProperty grace:called ;
-    sparnatural:faIcon "fa-scroll"@en ;
-    sparnatural:tooltip "Tooltip for manuscript"@en ;
-    rdfs:subClassOf zot:item .
-
-zot:statute a owl:Class ;
-    rdfs:label "statute"@en ;
-    sparnatural:defaultLabelProperty grace:called ;
-    sparnatural:faIcon "fa-balance-scale"@en ;
-    sparnatural:tooltip "Tooltip for statute"@en ;
-    rdfs:subClassOf zot:item .
-
-zot:bill a owl:Class ;
-    rdfs:label "bill"@en ;
-    sparnatural:defaultLabelProperty grace:called ;
-    sparnatural:faIcon "fa-file-invoice"@en ;
-    sparnatural:tooltip "Tooltip for bill"@en ;
-    rdfs:subClassOf zot:item .
-
-zot:film a owl:Class ;
-    rdfs:label "film"@en ;
-    sparnatural:defaultLabelProperty grace:called ;
-    sparnatural:faIcon "fa-film"@en ;
-    sparnatural:tooltip "Tooltip for film"@en ;
-    rdfs:subClassOf zot:item .
-
-zot:hearing a owl:Class ;
-    rdfs:label "hearing"@en ;
-    sparnatural:defaultLabelProperty grace:called ;
-    sparnatural:faIcon "fa-gavel"@en ;
-    sparnatural:tooltip "Tooltip for hearing"@en ;
-    rdfs:subClassOf zot:item .
-
-zot:thesis a owl:Class ;
-    rdfs:label "thesis"@en ;
-    sparnatural:defaultLabelProperty grace:called ;
-    sparnatural:faIcon "fa-user-graduate"@en ;
-    sparnatural:tooltip "Tooltip for thesis"@en ;
-    rdfs:subClassOf zot:item .
 
 zot:magazineArticle a owl:Class ;
     rdfs:label "magazineArticle"@en ;
@@ -4499,6 +4495,13 @@ zotsn:property_1717 a sh:PropertyShape ;
     sh:name "libraryCatalog"@en ;
     sh:path zot:libraryCatalog .
 
+zot:creatorRole a owl:Class ;
+    rdfs:label "creatorRole"@en ;
+    sparnatural:defaultLabelProperty grace:called ;
+    sparnatural:faIcon "fa-solid fa-user"@en ;
+    sparnatural:tooltip "The role a person takes in creating an item"@en ;
+    rdfs:comment "The role a person takes in creating an item"@en .
+
 zotsn:property_1639 a sh:PropertyShape ;
     rdfs:label "date"@en ;
     volipi:message "Tooltip for date"@en ;
@@ -4518,13 +4521,6 @@ zotsn:property_1715 a sh:PropertyShape ;
     sh:node zotsn:text_1724 ;
     sh:nodeKind sh:Literal ;
     sh:path zot:title .
-
-zot:creatorRole a owl:Class ;
-    rdfs:label "creatorRole"@en ;
-    sparnatural:defaultLabelProperty grace:called ;
-    sparnatural:faIcon "fa-solid fa-user"@en ;
-    sparnatural:tooltip "The role a person takes in creating an item"@en ;
-    rdfs:comment "The role a person takes in creating an item"@en .
 
 zotsn:property_1705 a sh:PropertyShape ;
     rdfs:label "language"@en ;
@@ -4563,7 +4559,7 @@ zotsn:property_1711 a sh:PropertyShape ;
 zotsn:property_1688 a sh:PropertyShape ;
     rdfs:label "url"@en ;
     volipi:message "Tooltip for url"@en ;
-    sh:class zotsn:Link ;
+    sh:class zotsn:link_1728 ;
     sh:name "url"@en ;
     sh:node zotsn:link_1728 ;
     sh:nodeKind sh:IRI ;
