@@ -11,6 +11,7 @@ services:
     env_file:
       - ./.env
     volumes:
+      - ./src:/src # dev (no reloading, though)
       - "${CONFIG_FILE_HOST:-./app/config.yaml}:${CONFIG_FILE:-/app/config.yaml}"
       - "${ZOTERO_CONFIG_FILE_HOST:-./app/zotero.yaml}:${ZOTERO_CONFIG_FILE:-/app/zotero.yaml}"
       - "${STORE_DIRECTORY:-./app/data}:/app/data"
