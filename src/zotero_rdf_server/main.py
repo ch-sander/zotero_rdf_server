@@ -7,6 +7,7 @@ import threading
 import time
 import tempfile
 import logging
+import asyncio
 import shutil
 from uuid import uuid5, NAMESPACE_URL, uuid4
 from pyoxigraph import Store, Quad, NamedNode, Literal, RdfFormat, BlankNode, DefaultGraph
@@ -507,8 +508,8 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     else:
                         logger.debug(f"Creator already exists: {label} as {matched_label} ({score})")
 
-                    existing_alts = {str(q.object).lower() for q in store.quads_for_pattern(creator_node, NamedNode(SKOS_ALT), None, graph_name=ENTITY_GRAPH_URI)}
-                    if matched_label and label.lower() not in existing_alts and label.lower() != matched_label.lower():
+                    alts = {(q.object.value).lower() for q in store.quads_for_pattern(creator_node, NamedNode(SKOS_ALT), None, graph_name=ENTITY_GRAPH_URI)}
+                    if item.lower() not in alts:
                         store.add(Quad(creator_node, NamedNode(SKOS_ALT), Literal(label), graph_name=ENTITY_GRAPH_URI))
 
                     store.add(Quad(bnode, NamedNode(f"{ns_prefix}hasCreator"), creator_node, graph_name=GRAPH_URI))
