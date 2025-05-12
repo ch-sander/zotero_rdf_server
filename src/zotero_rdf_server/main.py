@@ -570,7 +570,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     for val in vals:
                         if len(vals)>1:
                             logger.debug(f"Parse Multi-URL for {subject}: {val}") 
-                        store.add(Quad(subject, predicate_node, safeNamedNode(val, enforce=False), graph_name=GRAPH_URI))
+                        store.add(Quad(subject, predicate_node, safeNamedNode(val, enforce=True), graph_name=GRAPH_URI))
 
                     return None
                 
