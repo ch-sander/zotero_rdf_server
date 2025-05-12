@@ -96,6 +96,22 @@ XSD_NS = "http://www.w3.org/2001/XMLSchema#"
 SKOS_ALT = "http://www.w3.org/2004/02/skos/core#altLabel"
 PREFIXES = {"zot":ZOT_NS, "rdfs":"http://www.w3.org/2000/01/rdf-schema#", "owl":"http://www.w3.org/2002/07/owl#", "rdf":"http://www.w3.org/1999/02/22-rdf-syntax-ns#", "xsd":XSD_NS, "skos":"http://www.w3.org/2004/02/skos/core#"}
 
+LANG_MAP = {
+                "de": ["deutsch", "german", "allemand", "alemán", "tedesco", "deu", "ger", "de"],
+                "en": ["englisch", "english", "anglais", "inglés", "inglese", "eng", "en"],
+                "fr": ["französisch", "french", "français", "francese", "fre", "fra", "fr"],
+                "it": ["italienisch", "italian", "italien", "italiano", "ita", "it"],
+                "es": ["spanisch", "spanish", "español", "espanol", "esp", "spa", "es"],
+                "la": ["latein", "latin", "latino", "lat", "la"],
+                "pt": ["portugiesisch", "portuguese", "português", "por", "pt"],
+                "ru": ["russisch", "russian", "русский", "rus", "ru"],
+                "ja": ["japanisch", "japanese", "日本語", "jpn", "ja"],
+                "zh": ["chinesisch", "chinese", "中文", "漢語", "汉语", "chi", "zho", "zh"],
+                "ar": ["arabisch", "arabic", "العربية", "ara", "ar"],
+                "default": "und" # used if none found
+            }
+
+
 # --- App ---
 router = APIRouter()
 store = None
@@ -344,7 +360,19 @@ def fuzzy_match_label(store:Store, label:str, type_node:NamedNode, threshold=90,
         logger.debug("No fuzzy match found above threshold.")
         return None, 0, None
 
-
+def process_language_and_title(
+    title: str | None,
+    language_field: str | None = "default",
+    mapping: dict = LANG_MAP
+) -> Literal:
+    normalized = language_field.strip().lower() if isinstance(language_field, str) else ""
+    for code, variants in mapping.items():
+        if code == "default":
+            continue
+        if normalized and normalized in variants:
+            return Literal(title, language=code) if title else Literal(code)
+    fallback = mapping.get("default", "und")
+    return Literal(title, language=fallback) if title else Literal(language_field)
 
 def import_rdf_from_disk(lib: ZoteroLibrary, store: Store):
 
@@ -382,7 +410,7 @@ def import_rdf_from_disk(lib: ZoteroLibrary, store: Store):
         logger.info(f"Imported {after - before} triples from {filename}")
 
 
-def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, ns_prefix: str, base_uri: str, map: dict, knowledge_base_graph: str = None):
+def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, ns_prefix: str, base_uri: str, map: dict, knowledge_base_graph: str = None, language: str = None):
     GRAPH_URI = safeNamedNode(base_uri)
     
     if knowledge_base_graph is None:
@@ -394,6 +422,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
     ENTITY_UUID = uuid5(NAMESPACE_URL, knowledge_base_graph)
     white = map.get("white") or []
     black = map.get("black") or []
+    lang_map = map.get("language_map", LANG_MAP)
     rdf_mapping = map.get("rdf_mapping") or []
     fuzzy_threshold = map.get("fuzzy", 90)
     def zotero_property_map(predicate_str: str, object: str | dict | list, map: dict):
@@ -500,7 +529,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         for key, val in object.items():
                             if key != "creatorType" and val:
                                 pred = safeNamedNode(f"{ns_prefix}{key}")
-                                store.add(Quad(creator_node, pred, Literal(str(val)), graph_name=ENTITY_GRAPH_URI))
+                                store.add(Quad(creator_node, pred, Literal(str(val)), graph_name=ENTITY_GRAPH_URI))       
                             elif key == "creatorType" and val:
                                 store.add(Quad(bnode, NamedNode(RDFS_LABEL), Literal(str(val)), graph_name=GRAPH_URI))
                                 store.add(Quad(bnode, safeNamedNode(f"{ns_prefix}{key}"), safeNamedNode(f"{ns_prefix}{val}"), graph_name=GRAPH_URI))
@@ -509,7 +538,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         logger.debug(f"Creator already exists: {label} as {matched_label} ({score})")
 
                     alts = {(q.object.value).lower() for q in store.quads_for_pattern(creator_node, NamedNode(SKOS_ALT), None, graph_name=ENTITY_GRAPH_URI)}
-                    if item.lower() not in alts:
+                    if label.lower() not in alts:
                         store.add(Quad(creator_node, NamedNode(SKOS_ALT), Literal(label), graph_name=ENTITY_GRAPH_URI))
 
                     store.add(Quad(bnode, NamedNode(f"{ns_prefix}hasCreator"), creator_node, graph_name=GRAPH_URI))
@@ -519,7 +548,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
 
             elif isinstance(object, (str, int, datetime, float)):
                 val = str(object)
-                logger.debug(f"{predicate_str}: {type(object)} {val[:100] + ('...' if len(val) > 100 else '')}")             
+                logger.debug(f"{predicate_str}: {type(object)} {val[:100] + ('...' if len(val) > 100 else '')}")           
 
                 # ZOTERO Links #
                 if predicate_str == "collections": # collections
@@ -529,6 +558,12 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 if predicate_str in ["parentCollection"]: # parent collections
                     return safeNamedNode(f"{base_uri}/collections/{object}")
                 
+                # TITLE and LANGUAGE #
+                elif isinstance(object, (str)) and predicate_str in ["title","bookTitle"] and language:
+                    process_language_and_title(title=object,language_field="en",mapping=lang_map)
+                elif isinstance(object, (str)) and predicate_str in ["language"] and language:
+                    process_language_and_title(title=None, language_field="en",mapping=lang_map)
+
                 # URL #
                 elif predicate_str in ["url","dc:relation","doi","owl:sameAs"] and object.startswith("http"): # url
                     vals = [object.strip()] #for v in object.split(",")] # TODO no splitting or URLs!
@@ -819,6 +854,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
                 title = item_data.get("title") or "NO TITLE"
                 date = item_data.get("date") or "NO DATE"
                 label = f"{first_creator}: {title} ({date})"
+                language = item_data.get("language")
                 key = item_data.get("key",uuid4())            
                 node_uri = NamedNode(f"{lib.base_url}/items/{key}")
                 if lib.map.get("named_library"):
@@ -833,7 +869,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
                 item_additional = map.get("additional") or []
                 apply_additional_properties(store, node_uri, item_data, item_additional, lib.base_url, ZOT_NS)
 
-                add_rdf_from_dict(store, node_uri, item_data, ZOT_NS, lib.base_url, map, lib.knowledge_base_graph)
+                add_rdf_from_dict(store, node_uri, item_data, ZOT_NS, lib.base_url, map, lib.knowledge_base_graph,language)
                 add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
     
             except Exception as e:
