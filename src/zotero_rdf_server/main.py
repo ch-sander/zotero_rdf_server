@@ -275,7 +275,7 @@ class ZoteroLibrary:
 def safeNamedNode(uri: str, enforce: bool = True) -> NamedNode | Literal:
     INTERNAL_IRI_PREFIX = "http://internal.invalid/"
     if not isinstance(uri, str):
-        logger.warning(f"Invalid IRI input (not a string), converting to Literal or synthetic IRI: {uri}")
+        logger.info(f"Invalid IRI input (not a string), converting to Literal or synthetic IRI: {uri}")
         if enforce:
             fallback = quote(str(uri), safe="")
             return NamedNode(f"{INTERNAL_IRI_PREFIX}{fallback}")
@@ -283,17 +283,19 @@ def safeNamedNode(uri: str, enforce: bool = True) -> NamedNode | Literal:
 
     parsed = urlparse(uri)
     if not parsed.scheme:
-        logger.warning(f"Invalid IRI input (missing scheme), converting to Literal or synthetic IRI: {uri}")
+        logger.info(f"Invalid IRI input (missing scheme), converting to Literal or synthetic IRI: {uri}")
         if enforce:
             fallback = quote(uri, safe="")
+            logger.warning(f"Replaced {uri} with {INTERNAL_IRI_PREFIX}{fallback}")
             return NamedNode(f"{INTERNAL_IRI_PREFIX}{fallback}")
+        logger.warning(f"Stores {uri} as Literal")
         return safeLiteral(uri)
 
     try:
         safe_iri = quote(uri, safe=':/#?&=%')
         return NamedNode(safe_iri)
     except ValueError as e:
-        logger.warning(f"Invalid IRI converted to Literal or synthetic IRI: {uri} – {e}")
+        logger.info(f"Invalid IRI converted to Literal or synthetic IRI: {uri} – {e}")
         if enforce:
             fallback = quote(uri, safe="")
             return NamedNode(f"{INTERNAL_IRI_PREFIX}{fallback}")
@@ -701,6 +703,7 @@ def apply_additional_properties(store: Store, node: NamedNode, data: dict, specs
         try:
             property_str = spec.get("property")
             value_spec = spec.get("value")
+            prefix = spec.get("prefix","")
             named_node = spec.get("named_node", False)
 
             if not property_str or not value_spec:
@@ -714,10 +717,13 @@ def apply_additional_properties(store: Store, node: NamedNode, data: dict, specs
                 raw_value = data.get(value_spec)
                 if not raw_value:
                     continue
+                else:
+                    raw_value = prefix + raw_value
 
-            if named_node:
-                obj = safeNamedNode(raw_value,enforce=False)
+            if named_node:                
+                obj = safeNamedNode(raw_value,enforce=True)
                 store.add(Quad(node, predicate, obj, graph_name=GRAPH_URI))
+                logger.debug(f"Added named node {obj.value}")
                 continue
     
             obj = Literal(str(raw_value))
