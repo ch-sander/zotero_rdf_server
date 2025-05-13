@@ -570,14 +570,13 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
     if map_KB:        
         fuzzy_threshold = lib.parser.get("fuzzy", 90)
         knowledge_base = mapping.pop("KnowledgeBase") or []
-        entity_graph_uri = safeNamedNode(lib.knowledge_base_graph)
+        # entity_graph_uri = safeNamedNode(lib.knowledge_base_graph)
         logger.debug(f"Map semantic entites to KB following: {knowledge_base}")
     
     def map_semantic_entities(
         mem_store,
         knowledge_base: list = knowledge_base
     ):
-        
         for rule in knowledge_base:            
             try:
                 domain_type     = rule["domainTypes"]
@@ -585,9 +584,12 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                 domain_prop     = rule["domainProperty"]
                 target_prop     = rule["targetProperty"]
                 map_prop        = rule["mapProperty"]
+                KB_graph        = rule.get("knowledgeBaseGraph", None)
             except:
                 logger.error("Missing key in KB Mapping dict")
                 break
+
+            entity_graph_uri = NamedNode(KB_graph) or safeNamedNode(lib.knowledge_base_graph)
 
             for quad in mem_store.quads_for_pattern(
                 None,
@@ -621,28 +623,28 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                                 matched_node,
                                 GRAPH_URI
                             ))
-                        else:               
-                            ENTITY_UUID = uuid5(NAMESPACE_URL, str(lib.knowledge_base_graph))
+                        elif not matched_node and KB_graph and isinstance(KB_graph, str):   # maybe by trigger or argument in mapping?            
+                            ENTITY_UUID = uuid5(NAMESPACE_URL, str(KB_graph))
                             iri_suffix = uuid5(ENTITY_UUID, lit_value)
-                            domain_node = safeNamedNode(f"{lib.knowledge_base_graph}/semantic_html/{iri_suffix}")
+                            domain_node = safeNamedNode(f"{KB_graph}/semantic_html/{iri_suffix}")
                             mem_store.add(Quad( # not sure this works as expected, maybe load to local store insted?
                                 domain_node,
                                 NamedNode(RDF_TYPE),
                                 safeNamedNode(range_type),
-                                entity_graph_uri                           
+                                safeNamedNode(KB_graph)                           
                             ))
-                            mem_store.add(Quad(domain_node, NamedNode(RDFS_LABEL), Literal(lit_value), graph_name=entity_graph_uri))
+                            mem_store.add(Quad(domain_node, NamedNode(RDFS_LABEL), Literal(lit_value), graph_name=safeNamedNode(KB_graph)))
                             mem_store.add(Quad(
                                 domain_node,
                                 safeNamedNode(map_prop),
                                 domain_node,
-                                GRAPH_URI                           
+                                safeNamedNode(KB_graph)                           
                             ))
                             logger.debug(f"Added label {lit_value} to KB as {domain_node}")
 
-                        alts = {(q.object.value).lower() for q in store.quads_for_pattern(domain_node, NamedNode(SKOS_ALT), None, graph_name=entity_graph_uri)}
+                        alts = {(q.object.value).lower() for q in store.quads_for_pattern(domain_node, NamedNode(SKOS_ALT), None, graph_name=safeNamedNode(KB_graph))}
                         if lit_value.lower() not in alts:
-                            mem_store.add(Quad(domain_node, NamedNode(SKOS_ALT), Literal(lit_value), graph_name=entity_graph_uri))                     
+                            mem_store.add(Quad(domain_node, NamedNode(SKOS_ALT), Literal(lit_value), graph_name=safeNamedNode(KB_graph)))                     
                     except Exception as e:
                         logger.error(f"Error matching KB: {e}")
         return mem_store

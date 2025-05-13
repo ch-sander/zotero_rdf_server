@@ -126,5 +126,5 @@
         "@type": "xsd:dateTime"
       }
     },
-    "KnowledgeBase":[{"domainTypes":"https://semantic-html.org/vocab#Entity", "rangeType":"http://www.zotero.org/namespaces/export#place", "domainProperty": "https://semantic-html.org/vocab#text", "targetProperty": "http://www.w3.org/2004/02/skos/core#altLabel", "mapProperty":"http://www.w3.org/2002/07/owl#sameAs"}]
+    "KnowledgeBase":[{"domainTypes":"https://semantic-html.org/vocab#Entity", "rangeType":"http://www.zotero.org/namespaces/export#place", "domainProperty": "https://semantic-html.org/vocab#text", "targetProperty": "http://www.w3.org/2004/02/skos/core#altLabel", "mapProperty":"http://www.w3.org/2002/07/owl#sameAs", "knowledgeBaseGraph":"https://www.zotero.org/entities"}]
   }
