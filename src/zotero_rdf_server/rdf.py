@@ -97,7 +97,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 )
 
                 if not node:
-                    iri_suffix = uuid5(ENTITY_UUID, item)
+                    iri_suffix = uuid5(ENTITY_UUID, item) if fuzzy_threshold <= 100 else uuid4()
                     node = safeNamedNode(f"{knowledge_base_graph}/{my_type}/{iri_suffix}")
                     store.add(Quad(node, NamedNode(RDF_TYPE), safeNamedNode(f"{ns_prefix}{my_type}"), graph_name=ENTITY_GRAPH_URI))
                     store.add(Quad(node, NamedNode(RDFS_LABEL), Literal(item), graph_name=ENTITY_GRAPH_URI))
@@ -156,7 +156,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     store.add(Quad(bnode, NamedNode(RDF_TYPE), NamedNode(f"{ns_prefix}creatorRole"), graph_name=GRAPH_URI))
                     creator_node, score, matched_label = fuzzy_match_label(store, label, type_node=NamedNode(f"{ns_prefix}person"), threshold=fuzzy_threshold, graph_name=ENTITY_GRAPH_URI)
                     if not creator_node:
-                        creator_uuid = uuid5(ENTITY_UUID, label)
+                        creator_uuid = uuid5(ENTITY_UUID, label) if fuzzy_threshold <= 100 else uuid4()
                         creator_node = safeNamedNode(f"{knowledge_base_graph}/person/{creator_uuid}")
                         
                         store.add(Quad(creator_node, NamedNode(RDF_TYPE), safeNamedNode(f"{ns_prefix}person"), graph_name=ENTITY_GRAPH_URI))
@@ -565,12 +565,13 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
         metadata = {
             "wasGeneratedBy": os.path.basename(__file__)
         }
+
     map_KB = lib.parser.get("knowledge_base_mapping", False)
     if map_KB:        
         fuzzy_threshold = lib.parser.get("fuzzy", 90)
         knowledge_base = mapping.pop("KnowledgeBase") or []
         entity_graph_uri = safeNamedNode(lib.knowledge_base_graph)
-        logger.debug(f"Map smenatic entites to KB following: {knowledge_base}")
+        logger.debug(f"Map semantic entites to KB following: {knowledge_base}")
     
     def map_semantic_entities(
         mem_store,
@@ -606,7 +607,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                         matched_node, score, label = fuzzy_match_label(
                             store,
                             lit_value,
-                            type_node=safeNamedNode(f"{range_type}"),
+                            type_node=safeNamedNode(range_type),
                             threshold=fuzzy_threshold,
                             graph_name=entity_graph_uri,
                             predicates=[target_prop]
@@ -617,13 +618,33 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                             mem_store.add(Quad(
                                 domain_node,
                                 safeNamedNode(map_prop),
-                                matched_node
+                                matched_node,
+                                GRAPH_URI
                             ))
+                        else:               
+                            ENTITY_UUID = uuid5(NAMESPACE_URL, str(lib.knowledge_base_graph))
+                            iri_suffix = uuid5(ENTITY_UUID, lit_value)
+                            domain_node = safeNamedNode(f"{lib.knowledge_base_graph}/semantic_html/{iri_suffix}")
+                            mem_store.add(Quad( # not sure this works as expected, maybe load to local store insted?
+                                domain_node,
+                                NamedNode(RDF_TYPE),
+                                safeNamedNode(range_type),
+                                entity_graph_uri                           
+                            ))
+                            mem_store.add(Quad(domain_node, NamedNode(RDFS_LABEL), Literal(lit_value), graph_name=entity_graph_uri))
+                            mem_store.add(Quad(
+                                domain_node,
+                                safeNamedNode(map_prop),
+                                domain_node,
+                                GRAPH_URI                           
+                            ))
+                            logger.debug(f"Added label {lit_value} to KB as {domain_node}")
+
+                        alts = {(q.object.value).lower() for q in store.quads_for_pattern(domain_node, NamedNode(SKOS_ALT), None, graph_name=entity_graph_uri)}
+                        if lit_value.lower() not in alts:
+                            mem_store.add(Quad(domain_node, NamedNode(SKOS_ALT), Literal(lit_value), graph_name=entity_graph_uri))                     
                     except Exception as e:
                         logger.error(f"Error matching KB: {e}")
-                    
- 
-
         return mem_store
 
 
@@ -637,12 +658,12 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
         logger.debug(f"using predicate pattern: {note_predicate}")
         note_quads = store.quads_for_pattern(None, note_predicate, None, GRAPH_URI)
 
-    # if replace: #TODO delete only quads for pares notes
+    # if replace: #TODO delete only quads for parent notes
     #     for quad in note_quads:
     #         store.remove(quad)
 
 
-    for quad in note_quads:
+    for quad in note_quads: # TODO first serialize all parsed notes and then extend in bulk
         subject = quad.subject
         obj = quad.object
 
