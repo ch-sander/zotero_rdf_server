@@ -11,3 +11,4 @@ docker-compose-dev.yml
 /tests
 /public_server_app
 explorer/index-dev.html
+*.log
