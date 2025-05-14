@@ -1,7 +1,8 @@
 from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter
+from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse
 import logging
 from pathlib import Path
-
+import asyncio
 from .store import *
 from .rdf import *
 from .logging_config import logger, setup_logging
@@ -10,6 +11,8 @@ from .models import ZoteroLibrary
 from .utils import *
 
 router = APIRouter()
+
+
 
 @router.get("/export", summary="Create export", description=f"Exports the store or a named graph to {EXPORT_DIRECTORY}", tags=["data"])
 async def export_graph(
@@ -238,3 +241,84 @@ async def get_csv(
                             store.add(quad)
     graphs = [str(g) for g in store.named_graphs()]
     return {"status": "success", "store":{"named_graphs":graphs, "len":len(store)}}
+
+
+@router.get("/logs", response_class=HTMLResponse)
+def logs_page():
+    try:
+        import html
+        with open("app.log", "r") as f:
+            log_content = html.escape(f.read())
+    except FileNotFoundError:
+        log_content = "Log file not found."
+
+    html_page = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Log Viewer</title>
+        <style>
+            body {{
+                font-family: monospace;
+                background: #111;
+                color: #eee;
+                padding: 20px;
+            }}
+            #log {{
+                background: #222;
+                border: 1px solid #444;
+                border-radius: 8px;
+                padding: 12px;
+                white-space: pre-wrap;
+                overflow-y: auto;
+                max-height: 80vh;
+                font-size: 13px;
+                line-height: 1.4em;
+            }}
+            button {{
+                margin-right: 10px;
+                padding: 6px 12px;
+                font-size: 13px;
+                background: #333;
+                border: 1px solid #666;
+                color: #eee;
+                border-radius: 4px;
+                cursor: pointer;
+            }}
+            .button-bar {{
+                margin-bottom: 10px;
+            }}
+        </style>
+    </head>
+    <body>
+        <h2>Log Viewer</h2>
+        <div class="button-bar">
+            <form method="get" action="/logs" style="display:inline;">
+                <button type="submit">⟳ Refresh</button>
+            </form>
+            <form method="post" action="/logs/clear" style="display:inline;">
+                <button type="submit">🗑 Clear Log</button>
+            </form>
+        </div>
+        <div id="log">{log_content}</div>
+
+        <script>
+            const logDiv = document.getElementById("log");
+            logDiv.scrollTop = logDiv.scrollHeight;
+        </script>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_page)
+
+
+@router.post("/logs/clear")
+def clear_log_file():
+    try:
+        with open("app.log", "w") as f:
+            f.write("")  # Logdatei leeren
+    except Exception as e:
+        return HTMLResponse(content=f"Error clearing log file: {e}", status_code=500)
+
+    # Nach dem Löschen zurück zur Viewer-Seite
+    return RedirectResponse(url="/logs", status_code=303)
