@@ -32,8 +32,8 @@ class ParseNotePlugin:
         note_uri: str,
         return_annotated_html: bool = False
     ) -> dict:
-        logger.info(f"Parsing HTML note for URI: {note_uri}")
-        logger.info(f"Unescaping HTML")
+        logger.debug(f"Parsing HTML note for URI: {note_uri}")
+        logger.debug(f"Unescaping HTML")
 
         html_str = html.unescape(html_str)
 
@@ -44,5 +44,5 @@ class ParseNotePlugin:
             metadata=self.metadata,
             return_annotated_html=return_annotated_html
         )
-        logger.info("Parsing completed.")
+        logger.debug("Parsing completed.")
         return result
