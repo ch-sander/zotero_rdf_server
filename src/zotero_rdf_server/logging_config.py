@@ -1,5 +1,6 @@
 import logging
 
+LOG_FILE ="app.log"
 logger = logging.getLogger("zotero_rdf_server")
 
 def setup_logging(log_level="INFO"):
@@ -7,10 +8,15 @@ def setup_logging(log_level="INFO"):
     level = getattr(logging, log_level.upper(), logging.INFO)
     logger.setLevel(level)
     if not logger.hasHandlers():
-        handler = logging.StreamHandler()
         formatter = logging.Formatter(
             "%(asctime)s %(levelname)s %(name)s "
             "[%(filename)s:%(lineno)d in %(funcName)s] %(message)s"
         )
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
+
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(formatter)
+        logger.addHandler(stream_handler)
+
+        file_handler = logging.FileHandler(LOG_FILE)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
