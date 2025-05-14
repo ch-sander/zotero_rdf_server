@@ -684,7 +684,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                     mem_store = Store()
                     mem_store.load(g.serialize(format="turtle"), format=RdfFormat.TURTLE, to_graph=GRAPH_URI)                
                     store.extend(map_semantic_entities(mem_store)) if map_KB else store.extend(mem_store)
-                    logger.info(f"Extended store: {len(mem_store)} triples")
+                    logger.debug(f"Extended store: {len(mem_store)} triples")
                 except Exception as e:
                     logger.error(f"Error when extending store: {e}")
             else:
@@ -694,7 +694,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
 
         # Map Semantic-HTML entities to domain knowledge base
 
-
+    logger.info(f"Semantic-HTML parsing completed, {count} notes parsed")
 
     return count
 
