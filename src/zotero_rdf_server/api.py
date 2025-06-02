@@ -27,37 +27,28 @@ async def export_graph(
 
     os.makedirs(EXPORT_DIRECTORY, exist_ok=True)
 
-    format_map = {
-        "trig": (RdfFormat.TRIG, "trig"),
-        "nquads": (RdfFormat.N_QUADS, "nq"),
-        "ttl": (RdfFormat.TURTLE, "ttl"),
-        "nt": (RdfFormat.N_TRIPLES, "nt"),
-        "n3": (RdfFormat.N3, "n3"),
-        "xml": (RdfFormat.RDF_XML, "rdf")
-    }
     # prefixes = dict(PREFIXES)
 
     # for i, graph_uri in enumerate(store.named_graphs(), start=1):
     #     prefix = f"z{i}"
     #     prefixes[prefix] = str(graph_uri).strip("<>")
 
-    if format not in format_map:
-        raise HTTPException(status_code=400, detail="Unsupported export format")
 
-    rdf_format, extension = format_map[format]
+
+    rdf_format = RdfFormat.from_extension(format.lower())
+    if rdf_format is None:
+        raise ValueError(f"Unsupported RDF format: {format}")
+
+    extension = rdf_format.file_extension
     filename_base = iri_to_filename(graph) if graph else "zotero_store"
     path = os.path.join(EXPORT_DIRECTORY, f"{filename_base}.{extension}")
-
-    no_named_graph_support = rdf_format in {
-        RdfFormat.TURTLE, RdfFormat.N_TRIPLES, RdfFormat.N3, RdfFormat.RDF_XML
-    }
 
     kwargs = {}
     if graph:
         clean_graph = graph.strip("<>")
         kwargs["from_graph"] = safeNamedNode(clean_graph)
         logger.info(f"Export from graph: {clean_graph}")
-    elif no_named_graph_support:        
+    elif rdf_format.supports_datasets:        
         kwargs["from_graph"] = DefaultGraph()
     else:
         logger.info(f"Export from graphs: {list(store.named_graphs())}")
@@ -132,10 +123,10 @@ async def get_graphs():
 
 @router.get("/parse_notes", summary="Parse notes", description="Triggers the parsing of all Zotero notes with semantic-html plugin", tags=["RDF"])
 async def parse_notes(
-    replace: bool = Query(default=False, description="Replaces current triples for notes"),
+    delete: bool = Query(default=False, description="Delete all existing triples related to parsed note"),
     graph: str | None = Query(default=None, description="Named graph IRI (optional)"),
     note_predicate: str | None  = Query(default=f"{ZOT_NS}note", description="predicate for note HTML"),
-    query: str | None = Query(default=None, description="Query to retrieve notes (optional)"),
+    query: str | None = Query(default=None, description="Query to retrieve notes, requires ?s ?p ?o as bindings (optional)"),
     push: bool | None = Query(default=True, description="Push triples to store (optional)")
     ):
 
@@ -153,7 +144,7 @@ async def parse_notes(
     for lib_cfg in ZOTERO_LIBRARIES_CONFIGS:
         lib = ZoteroLibrary(lib_cfg)
         if not graph or graph == lib.base_url:
-            result=parse_all_notes(lib, store, note_predicate=predicate, query_str=query, replace=replace,push=push)
+            result=parse_all_notes(lib, store, note_predicate=predicate, query_str=query, delete=delete,push=push)
     return {"success":f"{result} notes parsed"}
 
 @router.get("/csv", summary="Export CSV", description="Exports a named graph or the entire store as CSV or loads a CSV as RDF into the store", tags=["RDF"])

@@ -23,27 +23,25 @@ def import_rdf_from_disk(lib: ZoteroLibrary, store: Store):
     for filename in os.listdir(subdir):
         logger.info(f"Found: {filename}")
         filepath = os.path.join(subdir, filename)
-        if filename.endswith(".rdf"):
-            fmt = RdfFormat.RDF_XML
-        elif filename.endswith(".trig"):
-            fmt = RdfFormat.TRIG
-        elif filename.endswith(".ttl"):
-            fmt = RdfFormat.TURTLE
-        elif filename.endswith(".nt"):
-            fmt = RdfFormat.N_TRIPLES
-        elif filename.endswith(".nq"):
-            fmt = RdfFormat.N_QUADS
-        elif filename.endswith(".json"): # call for JSON
+        ext = os.path.splitext(filename)[1].lstrip('.').lower()
+        if ext == "json":  # call for JSON
+            logger.warning(f"A {filename} will be parsed as Zotero Export JSON file. For JSON-LD, use .jsonld extension instead!")
             json_path = os.path.join(subdir, filename)
             build_graph_for_library(lib, store, json_path=json_path)
-            fmt = None
-        else:
+            continue
+
+        fmt = RdfFormat.from_extension(ext)
+        if fmt is None:
             logger.info(f"Skipping unsupported file: {filename}")
             continue
-        
+
         before = len(store)
-        if fmt:
-            store.bulk_load(path=filepath, format=fmt, base_iri=f"{lib.base_url}/items/", to_graph=NamedNode(lib.base_url))
+        store.bulk_load(
+            path=filepath,
+            format=fmt,
+            base_iri=f"{lib.base_url}/items/",
+            to_graph=NamedNode(lib.base_url)
+        )
         after = len(store)
         logger.info(f"Imported {after - before} triples from {filename}")
 
@@ -509,9 +507,8 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
     else:
         logger.warning("No items!") if not json_path_collections else None
 
-def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode = NamedNode(f"{ZOT_NS}note"), query_str: str = None, replace:bool = False, push:bool=True):
+def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode = NamedNode(f"{ZOT_NS}note"), query_str: str = None, delete:bool = False, push:bool=True):
     from zotero_rdf_server.plugins.parse_note import ParseNotePlugin
-    from rdflib import Graph
     GRAPH_URI = NamedNode(lib.base_url)
 
     # Mapping
@@ -653,16 +650,43 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
     plugin = ParseNotePlugin(mapping=mapping, metadata=metadata)
     logger.debug("Plugin initialized")
     count = 0
-    if query_str and "SELECT" in query_str:
+    if query_str and "SELECT" in query_str.upper():
         logger.debug(f"using query pattern: {query_str}")
-        note_quads = store.query(query_str,default_graph=GRAPH_URI)
+        bindings = store.query(query_str,default_graph=GRAPH_URI)
+        note_quads = []
+        for row in bindings:  # QuerySolutions
+            quad = Quad(
+                subject=row["s"],
+                predicate=row["p"],
+                object=row["o"],
+                graph=GRAPH_URI
+            )
+            note_quads.append(quad)
     else:
         logger.debug(f"using predicate pattern: {note_predicate}")
         note_quads = store.quads_for_pattern(None, note_predicate, None, GRAPH_URI)
 
-    # if replace: #TODO delete only quads for parent notes
-    #     for quad in note_quads:
-    #         store.remove(quad)
+    if delete: # TODO: Currently, the parent node (note) has additional triples from semantic-html that are not removed, as predicates are dynamic (e.g. text, html)
+        logger.warning("Deleting triples!")
+        delete_query = f"""
+            DELETE {{
+            GRAPH <{GRAPH_URI.value}> {{
+                ?s2 ?p ?o .
+            }}
+            }}
+            WHERE {{
+            GRAPH <{GRAPH_URI.value}> {{
+                ?s1 <{note_predicate.value}> ?o1 .
+                ?s2 ?p2 ?s1 .
+                ?s2 ?p ?o .
+            }}
+            }}
+            """ if note_predicate and not query_str else query_str
+        logger.info(f"Query: {delete_query}")
+        try:
+            store.update(delete_query)
+        except Exception as e:
+            logger.error(f"Error when deleting triples: {e}")
 
 
     for quad in note_quads: # TODO first serialize all parsed notes and then extend in bulk
@@ -674,25 +698,21 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
             html = obj.value
             note_uri = subject.value if hasattr(subject, "value") else str(subject)
             result = plugin.run(html_str=html, note_uri=note_uri)
-            logger.debug(json.dumps(result, indent=2))
-            g = Graph()
-            g.parse(data=json.dumps(result), format="json-ld")
-            logger.debug("JSON-LD parsed")
+            logger.debug(json.dumps(result, indent=2))            
             
-            if push:
-                try:
-                    mem_store = Store()
-                    mem_store.load(g.serialize(format="turtle"), format=RdfFormat.TURTLE, to_graph=GRAPH_URI)                
+            try:
+                mem_store = Store()
+                mem_store.load(json.dumps(result), format=RdfFormat.JSON_LD, to_graph=GRAPH_URI)
+                logger.debug(mem_store.dump(format=RdfFormat.TRIG).decode("utf-8"))
+                logger.debug("JSON-LD parsed")
+                if push:  
                     store.extend(map_semantic_entities(mem_store)) if map_KB else store.extend(mem_store)
                     logger.debug(f"Extended store: {len(mem_store)} triples")
-                except Exception as e:
-                    logger.error(f"Error when extending store: {e}")
-            else:
-                logger.info("Serialized only")
-                g.serialize(format="turtle")
-
-
-        # Map Semantic-HTML entities to domain knowledge base
+                else:
+                    logger.debug("Serialized only")                    
+                    
+            except Exception as e:
+                logger.error(f"Error when extending store: {e}")
 
     logger.info(f"Semantic-HTML parsing completed, {count} notes parsed")
 

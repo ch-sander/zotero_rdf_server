@@ -1,11 +1,7 @@
 fastapi
 uvicorn
 requests
-pyoxigraph
+pyoxigraph>=0.4.11
 pyyaml
 python-dateutil
 rapidfuzz
-rdflib
-# rdflib is only needed until pyoxigraph supports JSON-LD as format
-# bcrypt
-# pyjwt
