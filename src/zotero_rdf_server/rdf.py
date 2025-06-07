@@ -702,7 +702,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
             
             try:
                 mem_store = Store()
-                mem_store.load(json.dumps(result), format=RdfFormat.JSON_LD, to_graph=GRAPH_URI)
+                mem_store.load(json.dumps(result["JSON-LD"]), format=RdfFormat.JSON_LD, to_graph=GRAPH_URI)
                 logger.debug(mem_store.dump(format=RdfFormat.TRIG).decode("utf-8"))
                 logger.debug("JSON-LD parsed")
                 if push:  

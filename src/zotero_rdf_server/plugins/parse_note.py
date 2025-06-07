@@ -30,7 +30,8 @@ class ParseNotePlugin:
         self,
         html_str: str,
         note_uri: str,
-        return_annotated_html: bool = False
+        rdfa:bool=False,
+        wadm:bool=False
     ) -> dict:
         logger.debug(f"Parsing HTML note for URI: {note_uri}")
         logger.debug(f"Unescaping HTML")
@@ -42,7 +43,8 @@ class ParseNotePlugin:
             mapping=self.mapping,
             note_uri=note_uri,
             metadata=self.metadata,
-            return_annotated_html=return_annotated_html
+            rdfa=rdfa,
+            wadm=wadm
         )
         logger.debug("Parsing completed.")
         return result
