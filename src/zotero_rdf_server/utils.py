@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from urllib.parse import quote, urlparse
 from .store import Store, Quad, NamedNode, Literal
 from rapidfuzz import fuzz
-
+import re
 from .logging_config import logger
 from .config import *
 
@@ -43,7 +43,7 @@ def safeLiteral(value) -> Literal:
         logger.error(f"Literal creation failed for value '{value}': {e} – using fallback 'n/a'")
         return Literal("n/a")
 
-def fuzzy_match_label(store:Store, label:str, type_node:NamedNode, threshold=90, graph_name:NamedNode = None, predicates:list = [SKOS_ALT], test=False):
+def fuzzy_match_label(store:Store, label:str, type_node:NamedNode, threshold=90, graph_name:NamedNode = None, predicates:list = [SKOS_ALT], test:bool=False, regex:bool=False):
     best_score = 0
     best_match = None
     best_label = None
@@ -56,8 +56,6 @@ def fuzzy_match_label(store:Store, label:str, type_node:NamedNode, threshold=90,
             type_node,
             graph_name=graph_name
         ))
-        logger.info("→ finde %d Instanzen von %s im Graph %s", 
-                    len(candidates), type_node, graph_name)
         for c in candidates:
             logger.info("   → %s", c.subject)
 
@@ -71,9 +69,9 @@ def fuzzy_match_label(store:Store, label:str, type_node:NamedNode, threshold=90,
                     subject,
                     NamedNode(pred),
                     None,
-                    #graph_name=graph_name
+                    graph_name=graph_name
                 ))
-                logger.info("→ altLabels auf %s via %s: %r", subject, pred, labels)
+                logger.info("→ altLabels %s via %s: %r", subject, pred, labels)
 
             for label_quad in store.quads_for_pattern(
                 subject, 
@@ -84,10 +82,24 @@ def fuzzy_match_label(store:Store, label:str, type_node:NamedNode, threshold=90,
                 existing_label = str(label_quad.object.value)
                 score = fuzz.ratio(existing_label.lower(), label.lower())
                 logger.debug(f"Compared '{label}' with '{existing_label}' → score: {score}")
+                if score == 100 and threshold <=100:
+                    return subject, 100, existing_label
                 if score > best_score:
                     best_score = score
                     best_match = subject
                     best_label = existing_label
+
+            # Regex matching
+            if regex and any(c in label for c in ".^$*+?{}[]\\|()"):
+                for pattern_quad in store.quads_for_pattern(subject, safeNamedNode(pred), None, graph_name=graph_name):
+                    pattern_str = pattern_quad.object.value
+                    try:
+                        if pattern_str and re.search(pattern_str, label, re.IGNORECASE):
+                            regex_match = subject
+                            logger.debug(f"Regex '{pattern_str}' matched '{label}'")
+                            return regex_match, 100, pattern_str
+                    except re.error as e:
+                        logger.warning(f"Invalid regex pattern '{pattern_str}' on {subject}: {e}")
 
    
     if best_score >= threshold:

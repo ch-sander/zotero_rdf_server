@@ -640,8 +640,10 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                             logger.debug(f"Added label {lit_value} to KB as {domain_node}")
 
                         alts = {(q.object.value).lower() for q in store.quads_for_pattern(domain_node, NamedNode(SKOS_ALT), None, graph_name=safeNamedNode(KB_graph))}
+
                         if lit_value.lower() not in alts:
-                            mem_store.add(Quad(domain_node, NamedNode(SKOS_ALT), Literal(lit_value), graph_name=safeNamedNode(KB_graph)))                     
+                            mem_store.add(Quad(domain_node, NamedNode(SKOS_ALT), Literal(lit_value), graph_name=safeNamedNode(KB_graph)))
+                            
                     except Exception as e:
                         logger.error(f"Error matching KB: {e}")
         return mem_store
