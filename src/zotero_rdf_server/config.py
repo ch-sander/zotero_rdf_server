@@ -26,10 +26,6 @@ EXPORT_DIRECTORY = config["server"].get("export_directory", "/app/exports")
 IMPORT_DIRECTORY = config["server"].get("import_directory", "/app/import")
 BACKUP_DIRECTORY = config["server"].get("backup_directory", "/app/backup")
 
-
-
-LIMIT = 100
-
 REFRESH = REFRESH_INTERVAL >= 0
 
 if REFRESH_INTERVAL >= 30:
@@ -54,14 +50,20 @@ def set_defaults(lib_cfg: dict, master_cfg: dict, mode: str = "default", merge_k
     return merged
 
 # --- Zotero Config ----
+
 ZOTERO_DEFAULT_CONFIGS = zotero_config.get("defaults", {})
 ZOTERO_DEFAULT_MODE = ZOTERO_DEFAULT_CONFIGS.get("mode", "default")
 ZOTERO_CONFIGS = zotero_config.get("context", {})
+ZOTERO_KB_CONFIG = [] # TODO not yet in use
+ZOTERO_LIBRARIES_CONFIGS = []
+LIMIT = zotero_config.get("limit", 100)
 
-ZOTERO_LIBRARIES_CONFIGS = [
-    set_defaults(lib_cfg, ZOTERO_DEFAULT_CONFIGS, ZOTERO_DEFAULT_MODE)
-    for lib_cfg in zotero_config.get("libraries", [])
-]
+
+for lib_cfg in zotero_config.get("libraries", []):
+    merged_cfg = set_defaults(lib_cfg, ZOTERO_DEFAULT_CONFIGS, ZOTERO_DEFAULT_MODE)
+    if merged_cfg.get("library_type") == "knowledge base":
+        ZOTERO_KB_CONFIG.append(merged_cfg)
+    ZOTERO_LIBRARIES_CONFIGS.append(merged_cfg)
 
 # --- Constants ---
 ZOT_NS = ZOTERO_CONFIGS.get("vocab", "http://www.zotero.org/namespaces/export#")

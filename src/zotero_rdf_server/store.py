@@ -1,6 +1,5 @@
 from pyoxigraph import Store, Quad, NamedNode, Literal, RdfFormat, BlankNode, DefaultGraph
 import os, shutil, requests, tempfile, time
-from enum import Enum
 
 from .logging_config import logger
 from .config import *
@@ -10,6 +9,11 @@ from .rdf import *
 from .schema import zotero_schema
 
 store = Store()
+
+def get_graph(graph: str | NamedNode):
+    if graph and isinstance(graph, str):
+        graph = safeNamedNode(graph.strip().strip('<>').strip())
+    return (graph, [str(g) for g in store.named_graphs()]) if graph and isinstance(graph, NamedNode) and store.contains_named_graph(graph) else (None, [str(g) for g in store.named_graphs()])
 
 def initialize_store():
     global store
@@ -38,7 +42,7 @@ def refresh_store(force_reload:bool = False):
     if REFRESH == False and not force_reload:
         del store
         store = Store(path=STORE_DIRECTORY)
-        logger.info(f"Zotero data loaded (not refresehd) successfully. {len(store)} triples, graphs: {list(store.named_graphs())}")
+        logger.info(f"Zotero data loaded (not refreshed) successfully. {len(store)} triples, graphs: {list(store.named_graphs())}")
     else:
         while True:
             try:
@@ -46,7 +50,7 @@ def refresh_store(force_reload:bool = False):
                 del store
 
                 if STORE_MODE == "memory":
-                    store = Store()
+                    store = Store()                    
                 else:
                     if os.path.exists(STORE_DIRECTORY):
                         clear_directory(STORE_DIRECTORY)
@@ -92,10 +96,13 @@ def refresh_store(force_reload:bool = False):
                         except Exception as e:
                             logger.error(f"Error loading from file import for {lib.name}: {e}")
                     elif lib.load_mode == "json":
-                        try:
-                            build_graph_for_library(lib, store)
-                        except Exception as e:
-                            logger.error(f"Error loading JSON from API for {lib.library_id}: {e}")
+                        if lib.library_type != "knowledge base":
+                            try:
+                                build_graph_for_library(lib, store)
+                            except Exception as e:
+                                logger.error(f"Error loading JSON from API for {lib.library_id}: {e}")
+                        else:
+                            logger.warning(f"{lib.name} excluded, because is a {lib.library_type}")
                     else:
                         logger.warning(f"Unknown load_mode '{lib.load_mode}' for '{lib.name}' — skipping.")
 
@@ -123,13 +130,8 @@ def refresh_store(force_reload:bool = False):
                 break
 
 
-class LogLevel(str, Enum):
-    debug = "DEBUG"
-    info = "INFO"
-    warning = "WARNING"
-    error = "ERROR"
 
-def iri_to_filename(iri: str) -> str:
+def iri_to_filename(iri: str) -> str: #TODO move to utils
     parsed = urlparse(iri)
     parts = [parsed.netloc] + parsed.path.strip("/").split("/")
     safe = "_".join(parts)

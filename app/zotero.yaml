@@ -3,6 +3,7 @@ context:
   api_url: "https://api.zotero.org/"
   base: "https://www.zotero.org/"
   schema: "https://api.zotero.org/schema" # if given, will create a basic OWL ontology as named graph with IRI of vocab
+  limit: 100 # chunk size per API request
 
 defaults:
   mode: "override" # "merge" or "default". Defines how defaults are enforced for library setups specified below
@@ -12,7 +13,7 @@ defaults:
                      # manual_import: it will look for all files in the import folder in a directory of the library's "name" or set in "load_from" ("$" will be replaced by library_id for a path pattern).
   rdf_export_format: "rdf_zotero" # "rdf_zotero" or "rdf_bibliontology" only needed if load_mode = "rdf"
   # base_uri: "https://www.example.com#" used as the uri for the library named graph and as the base uri for all named nodes created for zotero items and collections. By default is "{context.base}{libraries.library_type}/{libraries.library_id}" as specified in this yaml
-  knowledge_base_graph: "https://www.zotero.org/entities" # Will be used to create identical uuids for named nodes accross multiple libraries in the union graph. If not given, uses base_uri
+  knowledge_base_graph: "https://www.zotero.org/entities" # Will be used to create identical uuids for named nodes accross multiple libraries in the union graph. If not given, uses base_uri. A knowledge base to be loaded into the graph can be set as library below, with library_type: "knowledge base".
   notes_parser: # loads the semantic-html package to parse notes HTML to JSON-LD and load into Store
     knowledge_base_mapping: true # Will map found entities in notes parsing to the library's knowledge base (knowledge_base_graph)
     fuzzy: 90
@@ -47,7 +48,9 @@ libraries:
     base_uri: "https://www.zotero.org/entities"
     description: "Named Entities"
     load_mode: "manual_import"
-    load_from: "/app/import/kb"
+    load_from: "/app/import/kb" # folder containing RDF file(s)
+    sync:
+
   - name: Open-Access History Books
     library_type: "groups"
     library_id: "5250572"

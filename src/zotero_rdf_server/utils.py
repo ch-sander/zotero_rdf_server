@@ -1,7 +1,7 @@
 
 from datetime import datetime, timezone
 from urllib.parse import quote, urlparse
-from .store import Store, Quad, NamedNode, Literal
+from .store import Store, Quad, NamedNode, Literal, RdfFormat
 from rapidfuzz import fuzz
 import re
 from .logging_config import logger
@@ -10,7 +10,7 @@ from .config import *
 def safeNamedNode(uri: str, enforce: bool = True) -> NamedNode | Literal:
     INTERNAL_IRI_PREFIX = "http://internal.invalid/"
     if not isinstance(uri, str):
-        logger.info(f"Invalid IRI input (not a string), converting to Literal or synthetic IRI: {uri}")
+        logger.info(f"Invalid IRI input (not a string), converting to Literal or synthetic IRI: {uri} of type {type(uri)}")
         if enforce:
             fallback = quote(str(uri), safe="")
             return NamedNode(f"{INTERNAL_IRI_PREFIX}{fallback}")
@@ -42,7 +42,16 @@ def safeLiteral(value) -> Literal:
     except Exception as e:
         logger.error(f"Literal creation failed for value '{value}': {e} – using fallback 'n/a'")
         return Literal("n/a")
-
+    
+def ensure_rdf_format(format=None, fallback=RdfFormat.TRIG):
+    if not format:
+        return fallback
+    else:
+        if not isinstance(format, RdfFormat): 
+            return RdfFormat.from_media_type(format) or RdfFormat.from_extension(format) or fallback
+        else:
+            return format
+        
 def fuzzy_match_label(store:Store, label:str, type_node:NamedNode, threshold=90, graph_name:NamedNode = None, predicates:list = [SKOS_ALT], test:bool=False, regex:bool=False):
     best_score = 0
     best_match = None
