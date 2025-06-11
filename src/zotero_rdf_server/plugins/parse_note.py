@@ -2,6 +2,7 @@ import subprocess
 import sys, json, html
 from zotero_rdf_server.logging_config import logger
 
+
 try:
     from semantic_html.parser import parse_note
 except ImportError:

@@ -74,6 +74,7 @@ RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 XSD_NS = "http://www.w3.org/2001/XMLSchema#"
 SKOS_ALT = "http://www.w3.org/2004/02/skos/core#altLabel"
+OWL_SAME_AS = "http://www.w3.org/2002/07/owl#sameAs"
 PREFIXES = {"zot":ZOT_NS, "rdfs":"http://www.w3.org/2000/01/rdf-schema#", "owl":"http://www.w3.org/2002/07/owl#", "rdf":"http://www.w3.org/1999/02/22-rdf-syntax-ns#", "xsd":XSD_NS, "skos":"http://www.w3.org/2004/02/skos/core#"}
 REGEX_PATTERN = f"{ZOT_NS}regex"
 

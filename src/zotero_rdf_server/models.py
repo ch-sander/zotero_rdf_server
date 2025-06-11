@@ -26,20 +26,17 @@ class ZoteroLibrary:
         self.map = config.get("map") or {}
         self.parser = config.get("notes_parser") or {}
 
+        self.sync = {}
+
         if (
             config.get("sync") and
-            self.sync.get('library_type') and
-            self.sync.get('library_id') and
-            self.sync.get('api_key')
+            config["sync"].get('library_type') and
+            config["sync"].get('library_id') and
+            config["sync"].get('api_key')
         ):
-            _SYNC = {
-                'library_type': str(self.library_type).replace("groups", "group"),
-                'library_id': self.library_id,
-                'api_key': self.api_key,
-            }
-            # self.sync = _SYNC | config.get("sync", {}) # Too dangerous!
-            self.sync = config.get("sync", {})
+            self.sync = config["sync"]
             self.sync['base_uri'] = f"{ZOT_BASE_URL}{self.sync['library_type']}/{self.sync['library_id']}"
+
 
 
         # check settings

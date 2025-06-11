@@ -110,7 +110,7 @@ async def get_libs():
     return {"success": result}
 
 @router.get("/graphs", summary="List of all named graphs", description="Returns all available named graphs.", tags=["RDF"])
-async def get_graphs():
+async def list_graphs():
     from .store import store
     graphs = [str(g) for g in store.named_graphs()]
     return {"status": "success", "store":{"named_graphs":graphs, "len":len(store)}}
@@ -126,22 +126,21 @@ async def get_csv(
     from collections import defaultdict
     import csv
 
-    graph_uri = safeNamedNode(graph) if graph else None
     os.makedirs(EXPORT_DIRECTORY, exist_ok=True)
     output_file = os.path.join(EXPORT_DIRECTORY, f"export.csv")
     delimiter = " | "
 
     from .store import store
 
-    graphs = [str(g) for g in store.named_graphs()]
-    graph = f"<{graph.strip().strip('<>').strip()}>" if graph else None
-    if graph and graph not in graphs:
-        raise HTTPException(status_code=400, detail=f"Invalid graph IRI. Use one of these or None: {graphs}")
+    checked_graph, all_graphs = get_graph(graph)
+    if graph and not checked_graph:
+        raise HTTPException(status_code=400, detail=f"Invalid graph IRI. Use one of these or None: {all_graphs}")
+    
     # subject → { predicate → [objects...] }
     # NamedNodes as objects are wrapped in <> for both export and import
     records = defaultdict(lambda: defaultdict(list))
     all_predicates = set()
-    for quad in store.quads_for_pattern(None, None, None, graph_uri):
+    for quad in store.quads_for_pattern(None, None, None, checked_graph):
         subj = (quad.subject.value)
         pred = (quad.predicate.value)
         obj = quad.object.value if isinstance(quad.object,Literal) else str(quad.object)
@@ -168,7 +167,7 @@ async def get_csv(
                     if subj_iri:
                         subjects.add(safeNamedNode(subj_iri))
             for subj in subjects:
-                for quad in store.quads_for_pattern(subj, None, None, graph_uri):
+                for quad in store.quads_for_pattern(subj, None, None, checked_graph):
                     store.remove(quad)
 
         with open(load_csv, newline="", encoding="utf-8") as f:
@@ -198,7 +197,7 @@ async def get_csv(
                             obj = Literal(value)
 
                         if subj and predicate and obj:
-                            quad = Quad(subj, predicate, obj, graph_uri)
+                            quad = Quad(subj, predicate, obj, checked_graph)
                             store.add(quad)
     graphs = [str(g) for g in store.named_graphs()]
     return {"status": "success", "store":{"named_graphs":graphs, "len":len(store)}}
@@ -337,7 +336,7 @@ async def rdf2znotes(
             label_predicate=label_predicate,
             type_predicate=type_predicate,
             graph=checked_graph
-        )[:22]
+        )
         logger.info(f"Found {len(blocks)} blocks to write")
         return rdf_to_znotes(
             blocks=blocks,
@@ -389,12 +388,12 @@ async def parse_notes(
     graph: str | None = Query(default=None, description="Named graph IRI (optional)"),
     note_predicate: str | None  = Query(default=f"{ZOT_NS}note", description="predicate for note HTML"),
     query: str | None = Query(default=None, description="Query to retrieve notes, requires ?s ?p ?o as bindings (optional)"),
-    push: bool | None = Query(default=True, description="Push triples to store (optional)")
+    push: bool | None = Query(default=True, description="Push triples to store (true by default)")
     ):
 
     from .store import store
 
-    checked_graph, all_graphs = checked_graph(graph)
+    checked_graph, all_graphs = get_graph(graph)
     if graph and not checked_graph:
         raise HTTPException(status_code=400, detail=f"Invalid graph IRI. Use one of these or None: {all_graphs}")
     
@@ -403,10 +402,10 @@ async def parse_notes(
     else:
         predicate = safeNamedNode(f"{note_predicate}")
 
-    for lib_cfg in ZOTERO_LIBRARIES_CONFIGS:
+    for lib_cfg in ZOTERO_LIBRARIES_CONFIGS: # TODO improve
         lib = ZoteroLibrary(lib_cfg)
-        if not graph or graph.value == lib.base_url:
-            result=parse_all_notes(lib, store, note_predicate=predicate, query_str=query, delete=delete,push=push)
+        if not graph or graph == lib.base_url:
+            result=parse_all_notes(lib, store, note_predicate=predicate, query_str=query, delete=delete,push=push) # TODO no graph given
     return {"success":f"{result} notes parsed"}
 
 ###LOGS###

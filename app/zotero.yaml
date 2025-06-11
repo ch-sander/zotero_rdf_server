@@ -17,6 +17,7 @@ defaults:
   notes_parser: # loads the semantic-html package to parse notes HTML to JSON-LD and load into Store
     knowledge_base_mapping: true # Will map found entities in notes parsing to the library's knowledge base (knowledge_base_graph)
     fuzzy: 90
+    base_uri: "https://semantic-html.org" # graph for the parser result RDF to be stored in. Uses the library's base_uri as default
     auto: true # hook parser into loading process if true
     mapping: "/app/parser/mapping.json" # load file or build dict here
     metadata: "/app/parser/meta.json" # load file or build dict here
@@ -49,8 +50,11 @@ libraries:
     description: "Named Entities"
     load_mode: "manual_import"
     load_from: "/app/import/kb" # folder containing RDF file(s)
-    sync:
-
+    # sync: # For Plugin: Define a secondary Zotero library to sync RDF from primary library to, each resource as one note (needs rw access for access token). Also used for writing RDF Zotero notes back into store (ro access sufficient). You may also use the primary library as the second one, but make sure to indicate a dedicated collection (or none so that one will be created)
+    #   api_key: "xxx"
+    #   library_type: "group"
+    #   library_id: "000"
+    #   collection_id: "000"
   - name: Open-Access History Books
     library_type: "groups"
     library_id: "5250572"
