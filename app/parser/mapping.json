@@ -156,7 +156,7 @@
             "allowCreate": true,
             "mapProperty": "http://www.w3.org/2002/07/owl#sameAs",
             "altLabel": "http://www.w3.org/2004/02/skos/core#altLabel",
-            "knowledgeBaseGraph": "https://www.zotero.org/entities",
+            "knowledgeBaseGraph": "https://www.raramagnetica.de/entities",
             "ADD": {
             "http://www.w3.org/2000/01/rdf-schema#comment": {
                 "@value": "Auto-generated concept from semantic note",
