@@ -21,7 +21,10 @@ def initialize_store():
         store = Store()
     elif STORE_MODE == "directory":
         os.makedirs(STORE_DIRECTORY, exist_ok=True)
-        store = Store(path=STORE_DIRECTORY)
+        try:
+            store = Store(path=STORE_DIRECTORY)
+        except Exception as e:
+            logger.exception(f"Failed to load store: {e}")
     else:
         raise ValueError(f"Invalid store_mode: {STORE_MODE}")
 
@@ -37,12 +40,29 @@ def clear_directory(directory_path):
             logger.error(f"Failed to delete {file_path}. Reason: {e}")
 
 
+def ensure_store(store):
+    try:
+        store.flush()
+        logger.info("Store flushed to disk.")
+    except Exception as e:
+        logger.warning(f"Flush failed: {e}")
+    try:
+        store.optimize()
+        logger.info("Store optimized after bulk load.")
+    except Exception as e:
+        logger.warning(f"Optimize failed: {e}")
+
+
 def refresh_store(force_reload:bool = False):
     global store
     if REFRESH == False and not force_reload:
-        del store
-        store = Store(path=STORE_DIRECTORY)
-        logger.info(f"Zotero data loaded (not refreshed) successfully. {len(store)} triples, graphs: {list(store.named_graphs())}")
+        try:
+            del store
+            store = Store(path=STORE_DIRECTORY)
+            logger.info(f"Zotero data loaded (not refreshed) successfully. {len(store)} triples, graphs: {list(store.named_graphs())}")
+        except Exception as e:
+            logger.exception(f"Failed to load store: {e}")
+
     else:
         while True:
             try:
@@ -56,7 +76,10 @@ def refresh_store(force_reload:bool = False):
                         clear_directory(STORE_DIRECTORY)
                     else:
                         os.makedirs(STORE_DIRECTORY, exist_ok=True)
-                    store = Store(path=STORE_DIRECTORY)
+                    try:
+                        store = Store(path=STORE_DIRECTORY)
+                    except Exception as e:
+                        logger.exception(f"Failed to load store: {e}")
 
                 if ZOT_SCHEMA: # TODO in Class?
                     try:
@@ -68,7 +91,7 @@ def refresh_store(force_reload:bool = False):
 
                 for lib_cfg in ZOTERO_LIBRARIES_CONFIGS:
                     lib = ZoteroLibrary(lib_cfg)
-
+                    ensure_store(store)
                     if lib.load_mode == "rdf":
                         try:
                             logger.info(f"Fetching RDF export for '{lib.name}'")
@@ -108,16 +131,17 @@ def refresh_store(force_reload:bool = False):
 
                     if lib.parser.get("auto")==True:
                         try:
+                            ensure_store(store)
+                            time.sleep(2)
                             logger.info("Start Parser Plugin")
-                            parse_all_notes(lib, store)
+                            parse_all_notes(lib, store, delete=True)
                         except Exception as e:
                             logger.error(f"Error parsing notes: {e}")
                     else:
                         logger.info(f"No notes parsing for {lib.name} in {lib.parser}")
 
-
                 logger.info(f"Zotero data refreshed successfully. {len(store)} triples, graphs: {list(store.named_graphs())}")
-
+                ensure_store(store)
 
             except Exception as e:
                 logger.error(f"Error refreshing data: {e}")
@@ -130,9 +154,3 @@ def refresh_store(force_reload:bool = False):
                 break
 
 
-
-def iri_to_filename(iri: str) -> str: #TODO move to utils
-    parsed = urlparse(iri)
-    parts = [parsed.netloc] + parsed.path.strip("/").split("/")
-    safe = "_".join(parts)
-    return re.sub(r"[^\w\-\.]", "_", safe)
