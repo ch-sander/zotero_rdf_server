@@ -63,7 +63,7 @@ def describe_resources(source, input_format: str = "trig", output_format: str = 
 
         output_format=ensure_rdf_format(output_format,RdfFormat.TURTLE)
 
-        rdf_str = substore.dump(format=output_format,from_graph=graph if graph else DefaultGraph(),prefixes=prefixes).decode("utf-8")
+        rdf_str = substore.dump(format=output_format,from_graph=graph if graph else DefaultGraph(),prefixes=prefixes, base_iri= str(graph.value).rstrip('/') + '/' if graph else None).decode("utf-8")
         blocks.append((prefixed_type, label_str, rdf_str))
 
     logger.info(f"Found {len(blocks)} blocks")
@@ -138,6 +138,6 @@ def znotes_to_rdf(api_key, library_id, library_type, collection_id, input_format
             continue
     output_format=ensure_rdf_format(output_format,None)
     if output_format and isinstance(output_format, RdfFormat):
-        return tmp_store.dump(format=output_format, prefixes=prefixes, from_graph=graph)
+        return tmp_store.dump(format=output_format, prefixes=prefixes, from_graph=graph, base_iri= str(graph.value).rstrip('/') + '/' if graph else None)
     else:
         return tmp_store

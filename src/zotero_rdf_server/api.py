@@ -43,11 +43,10 @@ async def export_graph(
     else:
         logger.info(f"Export from graphs: {list(store.named_graphs())}")
         
-    print(f"Checked graph: {checked_graph!r}")
-    print(f"Kwargs: {kwargs}")
-    print(f"Graph triples: {len(list(store.quads_for_pattern(None,None,None,checked_graph)))}")
+    logger.info(f"Checked graph: {checked_graph!r}")
+    logger.info(f"Graph triples: {len(list(store.quads_for_pattern(None,None,None,checked_graph)))}")
 
-    store.dump(output=path, format=rdf_format, prefixes=PREFIXES, from_graph=checked_graph)
+    store.dump(output=path, format=rdf_format, prefixes=PREFIXES, from_graph=checked_graph, base_iri= str(checked_graph.value).rstrip('/') + '/' if checked_graph else None) #
     return {"success":f"Export to: {path}"}
     # return FileResponse(path, filename=os.path.basename(path))
 
@@ -260,7 +259,7 @@ async def znotes2rdf(
                     extension = rdf_format.file_extension
                     filename_base = iri_to_filename(target_graph) if target_graph else "zotero_notes"
                     path = os.path.join(EXPORT_DIRECTORY, f"{filename_base}.{extension}")
-                    input.dump(output=path, format=rdf_format, prefixes=PREFIXES, from_graph = target_graph)
+                    input.dump(output=path, format=rdf_format, prefixes=PREFIXES, from_graph = target_graph, base_iri= str(target_graph.value).rstrip('/') + '/' if target_graph else None)
 
                 return len(input)
         else:
@@ -385,7 +384,7 @@ async def rdf2znotes(
 @router.get("/parse_notes", summary="Parse notes", description="Triggers the parsing of all Zotero notes with semantic-html plugin", tags=["RDF", "Plugins"])
 async def parse_notes(
     delete: bool = Query(default=False, description="Delete all existing triples related to parsed note"),
-    graph: str | None = Query(default=None, description="Named graph IRI (optional)"),
+    graph: str | None = Query(default=None, description="Named graph IRI containing the items/notes (optional)"),
     note_predicate: str | None  = Query(default=f"{ZOT_NS}note", description="predicate for note HTML"),
     query: str | None = Query(default=None, description="Query to retrieve notes, requires ?s ?p ?o as bindings (optional)"),
     push: bool | None = Query(default=True, description="Push triples to store (true by default)")
