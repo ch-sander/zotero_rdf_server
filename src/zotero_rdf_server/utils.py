@@ -7,6 +7,13 @@ import re
 from .logging_config import logger
 from .config import *
 
+
+def iri_to_filename(iri: str) -> str: #TODO move to utils
+    parsed = urlparse(iri)
+    parts = [parsed.netloc] + parsed.path.strip("/").split("/")
+    safe = "_".join(parts)
+    return re.sub(r"[^\w\-\.]", "_", safe)
+
 def safeNamedNode(uri: str | NamedNode, enforce: bool = True) -> NamedNode | Literal:
     INTERNAL_IRI_PREFIX = "http://internal.invalid/"
     if isinstance(uri, NamedNode):
