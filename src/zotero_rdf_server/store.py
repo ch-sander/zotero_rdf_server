@@ -152,5 +152,3 @@ def refresh_store(force_reload:bool = False):
             else:
                 logger.info("Refresh interval less than 30 seconds — exiting after initial load.")
                 break
-
-
