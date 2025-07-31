@@ -1,4 +1,5 @@
 import logging
+from enum import Enum
 
 LOG_FILE ="app.log"
 logger = logging.getLogger("zotero_rdf_server")
@@ -20,3 +21,10 @@ def setup_logging(log_level="INFO"):
         file_handler = logging.FileHandler(LOG_FILE)
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
+
+
+class LogLevel(str, Enum):
+    debug = "DEBUG"
+    info = "INFO"
+    warning = "WARNING"
+    error = "ERROR"

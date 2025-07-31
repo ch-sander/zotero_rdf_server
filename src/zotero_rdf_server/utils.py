@@ -1,16 +1,25 @@
 
 from datetime import datetime, timezone
 from urllib.parse import quote, urlparse
-from .store import Store, Quad, NamedNode, Literal
+from .store import Store, Quad, NamedNode, Literal, RdfFormat, DefaultGraph
 from rapidfuzz import fuzz
 import re
 from .logging_config import logger
 from .config import *
 
-def safeNamedNode(uri: str, enforce: bool = True) -> NamedNode | Literal:
+
+def iri_to_filename(iri: str) -> str: #TODO move to utils
+    parsed = urlparse(iri)
+    parts = [parsed.netloc] + parsed.path.strip("/").split("/")
+    safe = "_".join(parts)
+    return re.sub(r"[^\w\-\.]", "_", safe)
+
+def safeNamedNode(uri: str | NamedNode, enforce: bool = True) -> NamedNode | Literal:
     INTERNAL_IRI_PREFIX = "http://internal.invalid/"
+    if isinstance(uri, NamedNode):
+        return uri
     if not isinstance(uri, str):
-        logger.info(f"Invalid IRI input (not a string), converting to Literal or synthetic IRI: {uri}")
+        logger.info(f"Invalid IRI input (not a string), converting to Literal or synthetic IRI: {uri} of type {type(uri)}")
         if enforce:
             fallback = quote(str(uri), safe="")
             return NamedNode(f"{INTERNAL_IRI_PREFIX}{fallback}")
@@ -42,40 +51,39 @@ def safeLiteral(value) -> Literal:
     except Exception as e:
         logger.error(f"Literal creation failed for value '{value}': {e} – using fallback 'n/a'")
         return Literal("n/a")
+    
+def ensure_rdf_format(format=None, fallback=RdfFormat.TRIG):
+    if not format:
+        return fallback
+    else:
+        if not isinstance(format, RdfFormat): 
+            return RdfFormat.from_media_type(format) or RdfFormat.from_extension(format) or fallback
+        else:
+            return format
 
-def fuzzy_match_label(store:Store, label:str, type_node:NamedNode, threshold=90, graph_name:NamedNode = None, predicates:list = [SKOS_ALT], test:bool=False, regex:bool=False):
+def ensure_alt_label(store: Store, node: NamedNode, lit_value: str, alt_label_prop: NamedNode = NamedNode(SKOS_ALT), graph: NamedNode = DefaultGraph()):
+    existing_labels = {
+        q.object.value.lower()
+        for q in store.quads_for_pattern(node, alt_label_prop, None, graph)
+    }
+    if lit_value.lower() not in existing_labels:
+        store.add(Quad(node, alt_label_prop, Literal(lit_value), graph))
+        logger.debug(f"[ALT] Added altLabel '{lit_value}' to {node}")
+
+
+def fuzzy_match_label(pool_store:Store, label:str, threshold=90, graph_name:NamedNode = None, predicates:list = [SKOS_ALT], test:bool=False, regex:bool=False):
     best_score = 0
     best_match = None
     best_label = None
-    logger.debug(f"Fuzzy matching '{label}' against existing {type_node} labels (threshold: {threshold})")
-    if test:
-        logger.info(f"### {label} a {type_node}, look in {predicates}, in {graph_name}, found...")
-        candidates = list(store.quads_for_pattern(
-            None,
-            NamedNode(RDF_TYPE),
-            type_node,
-            graph_name=graph_name
-        ))
-        for c in candidates:
-            logger.info("   → %s", c.subject)
+    logger.debug(f"Fuzzy matching '{label}' against existing pool of {len(pool_store)} quads (threshold: {threshold})")
 
-
-    for quad in store.quads_for_pattern(None, NamedNode(RDF_TYPE), type_node, graph_name=graph_name):
+    for quad in pool_store: # TODO use candidates!
         subject = quad.subject
         for pred in predicates: # [SKOS_ALT, RDFS_LABEL] Not really needed as every label should also be a altLabel
 
-            if test:
-                labels = list(store.quads_for_pattern(
-                    subject,
-                    NamedNode(pred),
-                    None,
-                    graph_name=graph_name
-                ))
-                logger.info("→ altLabels %s via %s: %r", subject, pred, labels)
-
-            for label_quad in store.quads_for_pattern(
+            for label_quad in pool_store.quads_for_pattern(
                 subject, 
-                NamedNode(pred), 
+                safeNamedNode(pred), 
                 None, 
                 graph_name=graph_name
                 ):
@@ -91,7 +99,7 @@ def fuzzy_match_label(store:Store, label:str, type_node:NamedNode, threshold=90,
 
             # Regex matching
             if regex and any(c in label for c in ".^$*+?{}[]\\|()"):
-                for pattern_quad in store.quads_for_pattern(subject, safeNamedNode(pred), None, graph_name=graph_name):
+                for pattern_quad in pool_store:
                     pattern_str = pattern_quad.object.value
                     try:
                         if pattern_str and re.search(pattern_str, label, re.IGNORECASE):
@@ -100,7 +108,6 @@ def fuzzy_match_label(store:Store, label:str, type_node:NamedNode, threshold=90,
                             return regex_match, 100, pattern_str
                     except re.error as e:
                         logger.warning(f"Invalid regex pattern '{pattern_str}' on {subject}: {e}")
-
    
     if best_score >= threshold:
         logger.debug(f"Best match: {best_match} with label '{best_label}' (score: {best_score})")

@@ -86,12 +86,12 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             items = [p.strip() for p in re.split(r"[;]", value) if p.strip()] # Do not split on comma!
 
             for item in items:
+                pool_store = Store()
+                pool_store.bulk_extend(store.quads_for_pattern(None,safeNamedNode(f"{ns_prefix}{my_type}"),None,ENTITY_GRAPH_URI))
                 node, score, matched_label = fuzzy_match_label(
-                    store,
+                    pool_store,
                     item,
-                    type_node=NamedNode(f"{ns_prefix}{my_type}"),
-                    threshold=fuzzy_threshold,
-                    graph_name=ENTITY_GRAPH_URI
+                    threshold=fuzzy_threshold
                 )
 
                 if not node:
@@ -152,7 +152,15 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     bnode = BlankNode()
                     store.add(Quad(subject, predicate_node, bnode, graph_name=GRAPH_URI))                    
                     store.add(Quad(bnode, NamedNode(RDF_TYPE), NamedNode(f"{ns_prefix}creatorRole"), graph_name=GRAPH_URI))
-                    creator_node, score, matched_label = fuzzy_match_label(store, label, type_node=NamedNode(f"{ns_prefix}person"), threshold=fuzzy_threshold, graph_name=ENTITY_GRAPH_URI)
+
+                    pool_store = Store()
+                    pool_store.bulk_extend(store.quads_for_pattern(None,NamedNode(f"{ns_prefix}person"),None,ENTITY_GRAPH_URI))
+                    creator_node, score, matched_label = fuzzy_match_label(
+                        pool_store,
+                        item,
+                        threshold=fuzzy_threshold
+                    )
+
                     if not creator_node:
                         creator_uuid = uuid5(ENTITY_UUID, label) if fuzzy_threshold <= 100 else uuid4()
                         creator_node = safeNamedNode(f"{knowledge_base_graph}/person/{creator_uuid}")
@@ -202,7 +210,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
 
                 # URL #
                 elif predicate_str in ["url","dc:relation","doi","owl:sameAs"] and object.startswith("http"): # url
-                    vals = [object.strip()] #for v in object.split(",")] # TODO no splitting or URLs!
+                    vals = [object.strip()] #for v in object.split(",")] # no splitting of URLs!
                     for val in vals:
                         if len(vals)>1:
                             logger.debug(f"Parse Multi-URL for {subject}: {val}") 
@@ -509,8 +517,10 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
 
 def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode = NamedNode(f"{ZOT_NS}note"), query_str: str = None, delete:bool = False, push:bool=True):
     from zotero_rdf_server.plugins.parse_note import ParseNotePlugin
-    GRAPH_URI = NamedNode(lib.base_url)
 
+    GRAPH_URI = safeNamedNode(lib.base_url) # Source graph of notes
+    SEMANTIC_HTML_GRAPH = safeNamedNode(lib.parser.get("base_uri", {lib.base_url}))
+    KB_GRAPH = safeNamedNode(lib.knowledge_base_graph)
     # Mapping
     raw_mapping = lib.parser.get("mapping")
     mapping = {}
@@ -538,7 +548,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                 '@vocab': ZOT_NS
             }
         }
-
+    
     raw_metadata = lib.parser.get("metadata")
     metadata = {}
 
@@ -569,90 +579,174 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
         knowledge_base = mapping.pop("KnowledgeBase") or []
         # entity_graph_uri = safeNamedNode(lib.knowledge_base_graph)
         logger.debug(f"Map semantic entites to KB following: {knowledge_base}")
-    
+
     def map_semantic_entities(
-        mem_store,
-        knowledge_base: list = knowledge_base
+        source_store,
+        target_store,
+        knowledge_base: list = None,
+        fuzzy_threshold: int = 85
     ):
-        for rule in knowledge_base:            
-            try:
-                domain_type     = rule["domainTypes"]
-                range_type      = rule["rangeType"]
-                domain_prop     = rule["domainProperty"]
-                target_prop     = rule["targetProperty"]
-                map_prop        = rule["mapProperty"]
-                KB_graph        = rule.get("knowledgeBaseGraph", None)
-            except:
-                logger.error("Missing key in KB Mapping dict")
-                break
+        result_store = Store()
 
-            entity_graph_uri = NamedNode(KB_graph) or safeNamedNode(lib.knowledge_base_graph)
+        if knowledge_base is None:
+            return result_store
+        for rule in knowledge_base:
+            fuzzy_rules = rule.get("FUZZY", [])
+            and_rules = rule.get("AND", [])
+            or_rules = rule.get("OR", [])
+            map_prop = safeNamedNode(rule.get("mapProperty", OWL_SAME_AS))
+            KB_graph = rule.get("knowledgeBaseGraph", None)
+            entity_graph_uri = safeNamedNode(KB_graph) if KB_graph else KB_GRAPH
+            alt_label_prop = safeNamedNode(rule.get("altLabel", SKOS_ALT))
+            add_jsonld = rule.get("ADD")
+            allow_create = rule.get("allowCreate", False)
+            # AND
+            filter_source_subjects = set()
+            filter_target_subjects = set()
+            logger.debug("Rule found!")
+            for a in and_rules:
+                try:
+                    src_qs = source_store.quads_for_pattern(
+                        None,
+                        safeNamedNode(a["domainProperty"]),
+                        safeNamedNode(a["domainNode"]),
+                        None
+                    )
+                    tgt_qs = target_store.quads_for_pattern(
+                        None,
+                        safeNamedNode(a["targetProperty"]),
+                        safeNamedNode(a["targetNode"]),
+                        entity_graph_uri
+                    )
+                    filter_source_subjects.update(q.subject for q in src_qs)
+                    filter_target_subjects.update(q.subject for q in tgt_qs)
+                except KeyError:
+                    logger.warning("Invalid AND rule")
 
-            for quad in mem_store.quads_for_pattern(
-                None,
-                NamedNode(RDF_TYPE),
-                safeNamedNode(domain_type)
-            ):
-                domain_node = quad.subject
-                logger.debug(f"Testing {quad.subject}")
-                for dp in mem_store.quads_for_pattern(
-                    domain_node,
-                    safeNamedNode(domain_prop),
-                    None
-                ):
-                    lit_value = str(dp.object.value)                    
-                    logger.debug(f"Comparing semantic note label {lit_value} to KB labels with threshold {fuzzy_threshold}%")
+            filter_source_store = Store()
+            filter_target_store = Store()
+            for s in filter_source_subjects:
+                filter_source_store.bulk_extend(source_store.quads_for_pattern(s, None, None, None))
+            for s in filter_target_subjects:
+                filter_target_store.bulk_extend(target_store.quads_for_pattern(s, None, None, entity_graph_uri))
+                
+            logger.info(f"Found graphs in filtered source store: {list(filter_source_store.named_graphs())}")
+
+            for domain_node in filter_source_subjects:
+                value_matched = False
+
+                # OR
+                for or_rule in or_rules:
                     try:
-                        matched_node, score, label = fuzzy_match_label(
-                            store,
-                            lit_value,
-                            type_node=safeNamedNode(range_type),
-                            threshold=fuzzy_threshold,
-                            graph_name=entity_graph_uri,
-                            predicates=[target_prop]
-                        )
+                        dom_prop = safeNamedNode(or_rule["domainProperty"])
+                        tgt_prop = safeNamedNode(or_rule["targetProperty"])
+                    except KeyError:
+                        continue
 
-                        if matched_node:
-                            logger.debug(f"Matched semantic note label {lit_value} to KB label {label} with {score}%: {domain_node} to {matched_node}")
-                            mem_store.add(Quad(
-                                domain_node,
-                                safeNamedNode(map_prop),
-                                matched_node,
-                                GRAPH_URI
-                            ))
-                        elif not matched_node and KB_graph and isinstance(KB_graph, str):   # maybe by trigger or argument in mapping?            
-                            ENTITY_UUID = uuid5(NAMESPACE_URL, str(KB_graph))
-                            iri_suffix = uuid5(ENTITY_UUID, lit_value)
-                            domain_node = safeNamedNode(f"{KB_graph}/semantic_html/{iri_suffix}")
-                            mem_store.add(Quad( # not sure this works as expected, maybe load to local store insted?
-                                domain_node,
-                                NamedNode(RDF_TYPE),
-                                safeNamedNode(range_type),
-                                safeNamedNode(KB_graph)                           
-                            ))
-                            mem_store.add(Quad(domain_node, NamedNode(RDFS_LABEL), Literal(lit_value), graph_name=safeNamedNode(KB_graph)))
-                            mem_store.add(Quad(
-                                domain_node,
-                                safeNamedNode(map_prop),
-                                domain_node,
-                                safeNamedNode(KB_graph)                           
-                            ))
-                            logger.debug(f"Added label {lit_value} to KB as {domain_node}")
+                    for dp in filter_source_store.quads_for_pattern(domain_node, dom_prop, None):
+                        lit_value = str(dp.object.value)
 
-                        alts = {(q.object.value).lower() for q in store.quads_for_pattern(domain_node, NamedNode(SKOS_ALT), None, graph_name=safeNamedNode(KB_graph))}
+                        for tq in filter_target_store.quads_for_pattern(None, tgt_prop, Literal(lit_value), entity_graph_uri):
+                            result_store.add(Quad(
+                                domain_node,
+                                map_prop,
+                                tq.subject,
+                                dp.graph_name
+                            ))
+                            logger.debug(f"[OR] Matched {lit_value} by identity: {domain_node} → {tq.subject}")
+                            value_matched = True
+                            ensure_alt_label(result_store, tq.subject, lit_value, alt_label_prop, entity_graph_uri)
 
-                        if lit_value.lower() not in alts:
-                            mem_store.add(Quad(domain_node, NamedNode(SKOS_ALT), Literal(lit_value), graph_name=safeNamedNode(KB_graph)))
-                            
-                    except Exception as e:
-                        logger.error(f"Error matching KB: {e}")
-        return mem_store
+                            break
+                        if value_matched:
+                            break
+                    if value_matched:
+                        break
+
+                if value_matched:
+                    continue  # no FUZZY needed
+
+                # FUZZY
+                for fuzzy in fuzzy_rules:
+                    try:
+                        domain_prop = safeNamedNode(fuzzy["domainProperty"])
+                        target_prop = safeNamedNode(fuzzy["targetProperty"])
+                        fuzzy_threshold = fuzzy.get('threshold', fuzzy_threshold)
+                    except KeyError:
+                        continue
+                    
+                    for dp in filter_source_store.quads_for_pattern(domain_node, domain_prop, None):
+                        lit_value = str(dp.object.value)
+
+                        try:
+                            matched_node, score, label = fuzzy_match_label(
+                                filter_target_store,
+                                lit_value,
+                                threshold=fuzzy_threshold,
+                                predicates=[target_prop]
+                            )
+
+                            if matched_node:
+                                result_store.add(Quad(
+                                    domain_node,
+                                    map_prop,
+                                    matched_node,
+                                    dp.graph_name
+                                ))
+                                logger.debug(f"[FUZZY] Matched {lit_value} to {label} ({score}%)")
+                                ensure_alt_label(result_store, matched_node, lit_value, alt_label_prop, entity_graph_uri)
+
+                            elif allow_create:
+                                ENTITY_UUID = uuid5(NAMESPACE_URL, str(entity_graph_uri.value))
+                                iri_suffix = uuid5(ENTITY_UUID, lit_value)
+                                base_uri = lib.parser.get('base_uri', f"{str(entity_graph_uri.value).rstrip('/')}") 
+                                new_node = safeNamedNode(f"{base_uri}/{iri_suffix}") # {KB_graph}/semantic_html/{iri_suffix}
+
+                                for a in and_rules:
+                                    try:
+                                        result_store.add(Quad(
+                                            new_node,
+                                            safeNamedNode(a["targetProperty"]),
+                                            safeNamedNode(a["targetNode"]),
+                                            entity_graph_uri
+                                        ))
+                                    except KeyError:
+                                        continue
+
+                                result_store.add(Quad(new_node, target_prop, Literal(lit_value), entity_graph_uri))
+                                if target_prop != NamedNode(RDFS_LABEL):
+                                    result_store.add(Quad(new_node, NamedNode(RDFS_LABEL), Literal(lit_value), entity_graph_uri))
+                                
+                                result_store.add(Quad(domain_node, map_prop, new_node, dp.graph_name))
+                                result_store.add(Quad(new_node, alt_label_prop, Literal(lit_value), entity_graph_uri))
+                                
+                                if add_jsonld:
+                                    try:
+                                        jsonld_copy = add_jsonld
+                                        if "@graph" in jsonld_copy:
+                                            logger.warning(f"[ADD] '@graph' found in ADD block and is ignored. Only single object additions are supported.")
+                                        else:                                            
+                                            jsonld_copy["@id"] = str(new_node)
+                                            result_store.load(json.dumps(jsonld_copy), to_graph=entity_graph_uri, format=RdfFormat.JSON_LD)
+                                            logger.debug(f"[ADD] Added JSON-LD supplement for {new_node}")
+                                    except Exception as e:
+                                        logger.warning(f"[ADD] Failed to add JSON-LD for {new_node}: {e}")
+
+                                logger.debug(f"[CREATE] New KB node for {lit_value} → {new_node}")
+
+                        except Exception as e:
+                            logger.error(f"[ERROR] Fuzzy match failed for '{lit_value}' with prop {domain_prop} → {target_prop}: {e}")
+
+        logger.info(f"Returning parser mapping result store with {len(result_store)} quads")
+        return result_store
 
 
     plugin = ParseNotePlugin(mapping=mapping, metadata=metadata)
     logger.debug("Plugin initialized")
     count = 0
-    if query_str and "SELECT" in query_str.upper():
+    # Search notes in library graph
+
+    if query_str and "SELECT" in query_str.upper(): 
         logger.debug(f"using query pattern: {query_str}")
         bindings = store.query(query_str,default_graph=GRAPH_URI)
         note_quads = []
@@ -668,30 +762,36 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
         logger.debug(f"using predicate pattern: {note_predicate}")
         note_quads = store.quads_for_pattern(None, note_predicate, None, GRAPH_URI)
 
-    if delete: # TODO: Currently, the parent node (note) has additional triples from semantic-html that are not removed, as predicates are dynamic (e.g. text, html)
-        logger.warning("Deleting triples!")
-        delete_query = f"""
-            DELETE {{
-            GRAPH <{GRAPH_URI.value}> {{
-                ?s2 ?p ?o .
-            }}
-            }}
-            WHERE {{
-            GRAPH <{GRAPH_URI.value}> {{
-                ?s1 <{note_predicate.value}> ?o1 .
-                ?s2 ?p2 ?s1 .
-                ?s2 ?p ?o .
-            }}
-            }}
-            """ if note_predicate and not query_str else query_str
-        logger.info(f"Query: {delete_query}")
+    if delete:
+        logger.warning("Deleting quads!")
+
+        # delete_query = f"""
+        #     DELETE {{
+        #     GRAPH <{GRAPH_URI.value}> {{
+        #         ?s2 ?p ?o .
+        #     }}
+        #     }}
+        #     WHERE {{
+        #     GRAPH <{GRAPH_URI.value}> {{
+        #         ?s1 <{note_predicate.value}> ?o1 .
+        #         ?s2 ?p2 ?s1 .
+        #         ?s2 ?p ?o .
+        #     }}
+        #     }}
+        #     """ if note_predicate and not query_str else query_str
+        # logger.info(f"Query: {delete_query}")
         try:
-            store.update(delete_query)
+            # store.update(delete_query)
+            if SEMANTIC_HTML_GRAPH and SEMANTIC_HTML_GRAPH != GRAPH_URI:
+                store.remove_graph(SEMANTIC_HTML_GRAPH)
+                logger.info(f"Removed named graph {SEMANTIC_HTML_GRAPH}!")
+            else:
+                logger.warning(f"Did not delete graph, as identical to library graph!")
         except Exception as e:
             logger.error(f"Error when deleting triples: {e}")
 
-
-    for quad in note_quads: # TODO first serialize all parsed notes and then extend in bulk
+    parser_store = Store()
+    for quad in note_quads:
         subject = quad.subject
         obj = quad.object
 
@@ -703,18 +803,34 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
             logger.debug(json.dumps(result, indent=2))            
             
             try:
-                mem_store = Store()
-                mem_store.load(json.dumps(result["JSON-LD"]), format=RdfFormat.JSON_LD, to_graph=GRAPH_URI)
-                logger.debug(mem_store.dump(format=RdfFormat.TRIG).decode("utf-8"))
-                logger.debug("JSON-LD parsed")
-                if push:  
-                    store.extend(map_semantic_entities(mem_store)) if map_KB else store.extend(mem_store)
-                    logger.debug(f"Extended store: {len(mem_store)} triples")
-                else:
-                    logger.debug("Serialized only")                    
-                    
+                tmp_store = Store()
+                tmp_store.load(json.dumps(result["JSON-LD"]), format=RdfFormat.JSON_LD, to_graph=SEMANTIC_HTML_GRAPH)
+                parser_store.extend(tmp_store)
+                logger.debug(tmp_store.dump(format=RdfFormat.TRIG).decode("utf-8"))
+                logger.debug("JSON-LD parsed")                    
             except Exception as e:
-                logger.error(f"Error when extending store: {e}")
+                logger.error(f"Error when parsing note: {e}")
+    logger.info(f"Parsed {count} notes!")
+
+    try:
+        if push:            
+            store.bulk_extend(parser_store)
+            logger.info(f"Extended store from parser results: {len(parser_store)} quads")
+            if map_KB and knowledge_base:
+                target_store = Store()
+                target_store.bulk_extend(store.quads_for_pattern(None,None,None,KB_GRAPH))
+                logger.info(f"PUSH: Len source store ({SEMANTIC_HTML_GRAPH}): {len(parser_store)}, LEN target store ({KB_GRAPH}): {len(target_store)}")
+                logger.info(f"Extending store from mapping with {len(knowledge_base)} rules")
+                result_store = map_semantic_entities(parser_store, target_store, knowledge_base, fuzzy_threshold)
+                store.bulk_extend(result_store)
+                logger.info(f"Extended store from mapping: {len(result_store)} quads")
+            else:                
+                logger.info(f"No mapping for parser provided!")
+        else:
+            logger.info("Serialized only")                    
+            
+    except Exception as e:
+        logger.error(f"Error when extending store: {e}")
 
     logger.info(f"Semantic-HTML parsing completed, {count} notes parsed")
 
