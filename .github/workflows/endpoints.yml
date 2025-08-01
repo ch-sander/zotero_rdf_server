@@ -17,6 +17,12 @@ jobs:
           persist-credentials: true
           fetch-depth: 0
 
+      - name: 📥 Pull latest changes before modifying files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase
+
       - name: 🐍 Set up Python
         uses: actions/setup-python@v5
         with:
@@ -30,12 +36,6 @@ jobs:
       - name: ⚙️ Run generate_openapi()
         run: |
           python local/local_z2rdf.py generate_openapi
-
-      - name: 📥 Prepare repo
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --rebase
 
       - name: 📤 Commit and push changes
         run: |
