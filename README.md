@@ -76,41 +76,28 @@ Contains the Zotero-specific settings, see [app/zotero.yaml](app/zotero.yaml) as
 ## Running
 
 ### Locally
+
 ```bash
 pip install -r requirements.txt
-python zotero_rdf_server.py
+python src/zotero_rdf_server/main.py
 ```
+
+You can even run it as a GitHub Action for RDF export, see [local/local_z2rdf.py](local/local_z2rdf.py) and [.github/workflows/rdf_export.yml](.github/workflows/rdf_export.yml)
+
 
 ### Docker
+
 ```bash
-docker-compose up --build
+docker-compose up --build -d
 ```
 
-## API Endpoints
+## API
 
-| Endpoint | Description |
-|:---------|:-------------|
-| `/sparql` | Run SPARQL queries (GET/POST) *(not yet implemented)* |
-| `/export?format=trig` | Export full RDF dataset in TriG format |
-| `/export?format=nquads` | Export full RDF dataset in N-Quads format |
-| `/export?format=ttl&graph=/export?format=ttl&graph=http%3A%2F%2Fwww.zotero.org%2Fnamespaces%2Fexport%23` | Export a named graph in Turtle format (only content of the given graph) |
-| `/backup` | creates a backup to indicated backup folder (**deletes previous backup!**) |
-| `/optimize` | optimizes the current store |
+Visit `/` when the app is running for the Swagger UI or `/redoc` for alternative OpenAPI documentation.
 
-### Export Parameters
+A static documentation (OpenAPI) is found in [docs/openapi.json](docs/openapi.json) and [HTML](https://raw.githack.com/ch-sander/g17-article1/main/docs/endpoints.html)
 
-- `format`: One of `trig`, `nquads`, `ttl`, `nt`, `n3`, `xml` (default: `trig`)
-- `graph` *(optional)*: IRI of the named graph to export. Required for formats that do not support named graphs (e.g., `ttl`, `nt`, etc.) if you don’t want to export the default graph.
 
-### Interactive Documentation
-
-Visit `/docs` for the Swagger UI or `/redoc` for alternative OpenAPI documentation.
-
-## Notes
-- RDF export from Zotero API uses temporary file and bulk_load()
-- Manual import mode reads local `.rdf`, `.trig`, `.ttl`, `.nt`, `.nq` files
-- All Zotero entries are typed as `z:Item`
-- Query parameters are configurable for fine-grained API filtering
 
 ## License
 
