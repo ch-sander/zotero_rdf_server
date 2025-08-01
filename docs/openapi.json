@@ -11,7 +11,7 @@
           "data"
         ],
         "summary": "Create export",
-        "description": "Exports the store or a named graph to C:\\Users\\c.sander\\Documents\\GitHub\\zotero_rdf_server\\local\\exports",
+        "description": "Exports the store or a named graph to /home/runner/work/zotero_rdf_server/zotero_rdf_server/local/exports",
         "operationId": "export_graph_export_get",
         "parameters": [
           {
@@ -71,7 +71,7 @@
           "data"
         ],
         "summary": "Create backup",
-        "description": "Creates a complete backup of the store to C:\\Users\\c.sander\\Documents\\GitHub\\zotero_rdf_server\\local\\backup",
+        "description": "Creates a complete backup of the store to /home/runner/work/zotero_rdf_server/zotero_rdf_server/local/backup",
         "operationId": "backup_store_backup_get",
         "responses": {
           "200": {
@@ -99,14 +99,9 @@
             "in": "query",
             "required": false,
             "schema": {
-              "allOf": [
-                {
-                  "$ref": "#/components/schemas/LogLevel"
-                }
-              ],
+              "$ref": "#/components/schemas/LogLevel",
               "description": "Sets log level",
-              "default": "INFO",
-              "title": "Logging Level"
+              "default": "INFO"
             },
             "description": "Sets log level"
           }
@@ -348,11 +343,11 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Push loaded triples to main store (default: true). Otherwise writes file in C:\\Users\\c.sander\\Documents\\GitHub\\zotero_rdf_server\\local\\exports",
+              "description": "Push loaded triples to main store (default: true). Otherwise writes file in /home/runner/work/zotero_rdf_server/zotero_rdf_server/local/exports",
               "default": true,
               "title": "Push"
             },
-            "description": "Push loaded triples to main store (default: true). Otherwise writes file in C:\\Users\\c.sander\\Documents\\GitHub\\zotero_rdf_server\\local\\exports"
+            "description": "Push loaded triples to main store (default: true). Otherwise writes file in /home/runner/work/zotero_rdf_server/zotero_rdf_server/local/exports"
           },
           {
             "name": "clear_graph",
