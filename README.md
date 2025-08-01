@@ -95,7 +95,7 @@ docker-compose up --build -d
 
 Visit `/` when the app is running for the Swagger UI or `/redoc` for alternative OpenAPI documentation.
 
-A static documentation (OpenAPI) is found in [docs/openapi.json](docs/openapi.json) and [HTML](https://raw.githack.com/ch-sander/zotero-rdf-server/main/docs/endpoints.html)
+A static documentation (OpenAPI) is found in [docs/openapi.json](docs/openapi.json) and [HTML](https://raw.githack.com/ch-sander/zotero_rdf_server/main/docs/endpoints.html)
 
 
 
