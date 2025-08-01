@@ -29,6 +29,10 @@ jobs:
       - name: ⚙️ Run generate_openapi()
         run: |
           python local/local_z2rdf.py export_rdf --force
+          
+      - name: 🔄 Pull remote changes before push
+        run: |
+          git pull --rebase
 
       - name: 📤 Commit and push changes
         run: |

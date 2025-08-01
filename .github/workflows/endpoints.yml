@@ -5,7 +5,7 @@ on:
 
 permissions:
   contents: write
-  
+
 jobs:
   generate_openapi:
     runs-on: ubuntu-latest
@@ -30,6 +30,10 @@ jobs:
       - name: ⚙️ Run generate_openapi()
         run: |
           python local/local_z2rdf.py generate_openapi
+          
+      - name: 🔄 Pull remote changes before push
+        run: |
+          git pull --rebase
 
       - name: 📤 Commit and push changes
         run: |
