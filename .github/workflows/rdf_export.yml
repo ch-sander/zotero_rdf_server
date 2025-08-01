@@ -16,6 +16,12 @@ jobs:
           persist-credentials: true
           fetch-depth: 0
 
+      - name: 🔄 Pull remote changes before modifying files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase
+
       - name: 🐍 Set up Python
         uses: actions/setup-python@v5
         with:
@@ -26,18 +32,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: ⚙️ Run generate_openapi()
+      - name: ⚙️ Run export_rdf()
         run: |
           python local/local_z2rdf.py export_rdf --force
-          
-      - name: 🔄 Pull remote changes before push
-        run: |
-          git pull --rebase
 
-      - name: 📤 Commit and push changes
+      - name: 📤 Commit and push RDF export
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add local/exports/
           git diff --cached --quiet || git commit -m "🔄 Export RDF files via GitHub Action"
           git push
