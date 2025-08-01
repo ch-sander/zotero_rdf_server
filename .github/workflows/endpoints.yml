@@ -30,15 +30,15 @@ jobs:
       - name: ⚙️ Run generate_openapi()
         run: |
           python local/local_z2rdf.py generate_openapi
-          
-      - name: 🔄 Pull remote changes before push
+
+      - name: 📥 Prepare repo
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git pull --rebase
 
       - name: 📤 Commit and push changes
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add docs/
           git diff --cached --quiet || git commit -m "🔄 Update OpenAPI files via GitHub Action"
           git push
