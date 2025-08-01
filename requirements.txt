@@ -5,3 +5,4 @@ pyoxigraph>=0.4.11
 pyyaml
 python-dateutil
 rapidfuzz
+python-dotenv>=1.0
