@@ -3,6 +3,9 @@ name: Generate and Push OpenAPI
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+  
 jobs:
   generate_openapi:
     runs-on: ubuntu-latest

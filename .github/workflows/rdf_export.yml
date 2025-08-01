@@ -1,8 +1,9 @@
 name: Export Store to RDF
 
-
 on:
   workflow_dispatch:
+permissions:
+  contents: write
 
 jobs:
   export_rdf:
