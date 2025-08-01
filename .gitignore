@@ -5,7 +5,7 @@ sparnatural/index-dev.html
 docker-compose-dev.yml
 **/backup
 **/data
-**/exports
+app/exports
 **/import
 /dev
 /tests

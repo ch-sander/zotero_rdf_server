@@ -1,0 +1,872 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FastAPI",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/export": {
+      "get": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Create export",
+        "description": "Exports the store or a named graph to C:\\Users\\c.sander\\Documents\\GitHub\\zotero_rdf_server\\local\\exports",
+        "operationId": "export_graph_export_get",
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "trig",
+              "title": "Format"
+            }
+          },
+          {
+            "name": "graph",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Named graph IRI (optional)",
+              "title": "Graph"
+            },
+            "description": "Named graph IRI (optional)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/backup": {
+      "get": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Create backup",
+        "description": "Creates a complete backup of the store to C:\\Users\\c.sander\\Documents\\GitHub\\zotero_rdf_server\\local\\backup",
+        "operationId": "backup_store_backup_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reload": {
+      "get": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Reload app",
+        "description": "Will trigger a reload, even if not set in config.",
+        "operationId": "reload_store_reload_get",
+        "parameters": [
+          {
+            "name": "logging_level",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/LogLevel"
+                }
+              ],
+              "description": "Sets log level",
+              "default": "INFO",
+              "title": "Logging Level"
+            },
+            "description": "Sets log level"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/optimize": {
+      "get": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Optimize Store",
+        "description": "Will optimize the oxigraph store",
+        "operationId": "optimize_store_optimize_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/libs": {
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "List of all libraries",
+        "description": "Returns all available libraries with configuration.",
+        "operationId": "get_libs_libs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/graphs": {
+      "get": {
+        "tags": [
+          "RDF"
+        ],
+        "summary": "List of all named graphs",
+        "description": "Returns all available named graphs.",
+        "operationId": "list_graphs_graphs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/csv": {
+      "get": {
+        "tags": [
+          "RDF"
+        ],
+        "summary": "Export CSV",
+        "description": "Exports a named graph or the entire store as CSV or loads a CSV as RDF into the store",
+        "operationId": "get_csv_csv_get",
+        "parameters": [
+          {
+            "name": "graph",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Named graph IRI (optional)",
+              "title": "Graph"
+            },
+            "description": "Named graph IRI (optional)"
+          },
+          {
+            "name": "load_csv",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "format": "path"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Load a CSV file into the store",
+              "title": "Load Csv"
+            },
+            "description": "Load a CSV file into the store"
+          },
+          {
+            "name": "delete",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Removes triples from graph if true, done before loading triples (you may only use subject IRIs to just delete)",
+              "default": false,
+              "title": "Delete"
+            },
+            "description": "Removes triples from graph if true, done before loading triples (you may only use subject IRIs to just delete)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/znotes2rdf": {
+      "get": {
+        "tags": [
+          "RDF",
+          "Plugins"
+        ],
+        "summary": "Zotero Notes to RDF",
+        "description": "Writes all RDF blocks in Zotero Notes HTML into RDF, either Store or file.",
+        "operationId": "znotes2rdf_znotes2rdf_get",
+        "parameters": [
+          {
+            "name": "graph",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Named graph IRI (optional) to write RDF resources to. Will use this named graph to detect Zotero library sync configuration to read from collection if no config parameters are given to the endpoint.",
+              "title": "Graph"
+            },
+            "description": "Named graph IRI (optional) to write RDF resources to. Will use this named graph to detect Zotero library sync configuration to read from collection if no config parameters are given to the endpoint."
+          },
+          {
+            "name": "input_format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "RDF format used in notes (e.g. ttl, nt)",
+              "default": "ttl",
+              "title": "Input Format"
+            },
+            "description": "RDF format used in notes (e.g. ttl, nt)"
+          },
+          {
+            "name": "output_format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional RDF format to export (e.g. json-ld). Defaults to trig.",
+              "title": "Output Format"
+            },
+            "description": "Optional RDF format to export (e.g. json-ld). Defaults to trig."
+          },
+          {
+            "name": "push",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Push loaded triples to main store (default: true). Otherwise writes file in C:\\Users\\c.sander\\Documents\\GitHub\\zotero_rdf_server\\local\\exports",
+              "default": true,
+              "title": "Push"
+            },
+            "description": "Push loaded triples to main store (default: true). Otherwise writes file in C:\\Users\\c.sander\\Documents\\GitHub\\zotero_rdf_server\\local\\exports"
+          },
+          {
+            "name": "clear_graph",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Deletes existing graph in Store, otherwise extends (only relevant if push)",
+              "default": true,
+              "title": "Clear Graph"
+            },
+            "description": "Deletes existing graph in Store, otherwise extends (only relevant if push)"
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Zotero API key (overrides config)",
+              "title": "Api Key"
+            },
+            "description": "Zotero API key (overrides config)"
+          },
+          {
+            "name": "library_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Zotero Library ID (overrides config)",
+              "title": "Library Id"
+            },
+            "description": "Zotero Library ID (overrides config)"
+          },
+          {
+            "name": "library_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Zotero Library type (user or group, overrides config)",
+              "title": "Library Type"
+            },
+            "description": "Zotero Library type (user or group, overrides config)"
+          },
+          {
+            "name": "collection_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Zotero Collection ID (overrides config)",
+              "title": "Collection Id"
+            },
+            "description": "Zotero Collection ID (overrides config)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rdf2znotes": {
+      "get": {
+        "tags": [
+          "RDF",
+          "Plugins"
+        ],
+        "summary": "RDF to Zotero Notes",
+        "description": "Creates Zotero Notes with RDF dump block from Store or RDF dataset",
+        "operationId": "rdf2znotes_rdf2znotes_get",
+        "parameters": [
+          {
+            "name": "clear_collection",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Delete all existing notes in collection",
+              "default": false,
+              "title": "Clear Collection"
+            },
+            "description": "Delete all existing notes in collection"
+          },
+          {
+            "name": "graph",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Named graph IRI (optional) to read RDF resources from. Will use this named graph to detect Zotero library sync configuration to write to collection if no config parameters are given to the endpoint.",
+              "title": "Graph"
+            },
+            "description": "Named graph IRI (optional) to read RDF resources from. Will use this named graph to detect Zotero library sync configuration to write to collection if no config parameters are given to the endpoint."
+          },
+          {
+            "name": "input_file",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Reads from Store if no input file specified",
+              "title": "Input File"
+            },
+            "description": "Reads from Store if no input file specified"
+          },
+          {
+            "name": "input_format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Input RDF format (default: trig). Only relevant if input file given",
+              "default": "trig",
+              "title": "Input Format"
+            },
+            "description": "Input RDF format (default: trig). Only relevant if input file given"
+          },
+          {
+            "name": "output_format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Output RDF format for note display (e.g. ttl, nt, json-ld)",
+              "default": "ttl",
+              "title": "Output Format"
+            },
+            "description": "Output RDF format for note display (e.g. ttl, nt, json-ld)"
+          },
+          {
+            "name": "label_predicate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Label predicate used to identify the label of a resource",
+              "default": "http://www.w3.org/2000/01/rdf-schema#label",
+              "title": "Label Predicate"
+            },
+            "description": "Label predicate used to identify the label of a resource"
+          },
+          {
+            "name": "type_predicate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Type predicate used to identify the RDF type of a resource",
+              "default": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+              "title": "Type Predicate"
+            },
+            "description": "Type predicate used to identify the RDF type of a resource"
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Zotero API key (overrides config)",
+              "title": "Api Key"
+            },
+            "description": "Zotero API key (overrides config)"
+          },
+          {
+            "name": "library_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Zotero Library ID (overrides config)",
+              "title": "Library Id"
+            },
+            "description": "Zotero Library ID (overrides config)"
+          },
+          {
+            "name": "library_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Zotero Library type (user or group, overrides config)",
+              "title": "Library Type"
+            },
+            "description": "Zotero Library type (user or group, overrides config)"
+          },
+          {
+            "name": "collection_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Zotero Collection ID (overrides config)",
+              "title": "Collection Id"
+            },
+            "description": "Zotero Collection ID (overrides config)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/parse_notes": {
+      "get": {
+        "tags": [
+          "RDF",
+          "Plugins"
+        ],
+        "summary": "Parse notes",
+        "description": "Triggers the parsing of all Zotero notes with semantic-html plugin",
+        "operationId": "parse_notes_parse_notes_get",
+        "parameters": [
+          {
+            "name": "delete",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Delete all existing triples related to parsed note",
+              "default": false,
+              "title": "Delete"
+            },
+            "description": "Delete all existing triples related to parsed note"
+          },
+          {
+            "name": "graph",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Named graph IRI containing the items/notes (optional)",
+              "title": "Graph"
+            },
+            "description": "Named graph IRI containing the items/notes (optional)"
+          },
+          {
+            "name": "note_predicate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "predicate for note HTML",
+              "default": "http://www.zotero.org/namespaces/export#note",
+              "title": "Note Predicate"
+            },
+            "description": "predicate for note HTML"
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Query to retrieve notes, requires ?s ?p ?o as bindings (optional)",
+              "title": "Query"
+            },
+            "description": "Query to retrieve notes, requires ?s ?p ?o as bindings (optional)"
+          },
+          {
+            "name": "push",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Push triples to store (true by default)",
+              "default": true,
+              "title": "Push"
+            },
+            "description": "Push triples to store (true by default)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/logs": {
+      "get": {
+        "summary": "Logs Page",
+        "operationId": "logs_page_logs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/logs/clear": {
+      "post": {
+        "summary": "Clear Log File",
+        "operationId": "clear_log_file_logs_clear_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "LogLevel": {
+        "type": "string",
+        "enum": [
+          "DEBUG",
+          "INFO",
+          "WARNING",
+          "ERROR"
+        ],
+        "title": "LogLevel"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}
