@@ -1,0 +1,37 @@
+name: Generate and Push OpenAPI
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate_openapi:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: ⚙️ Run generate_openapi()
+        run: |
+          python local/local_z2rdf.py generate_openapi
+
+      - name: 📤 Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/
+          git diff --cached --quiet || git commit -m "🔄 Update OpenAPI files via GitHub Action"
+          git push

@@ -1,0 +1,8 @@
+server:
+  refresh_interval: -1 # seconds (min. 30), 0 = refresh at startup, -1 = do not refresh
+  delay: 10 # delay at startup in seconds
+  store_directory: "./local/data"
+  export_directory: "./local/exports"  
+  import_directory: "./local/import"
+  backup_directory: "./local/backup"
+  log_level: "info"  # "debug", "info", "warning", "error"

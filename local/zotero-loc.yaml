@@ -1,0 +1,41 @@
+context:
+  vocab: "http://www.zotero.org/namespaces/export#"
+  api_url: "https://api.zotero.org/"
+  base: "https://www.zotero.org/"
+  schema: "https://api.zotero.org/schema" # if given, will create a basic OWL ontology as named graph with IRI of vocab
+  limit: 100 # chunk size per API request
+
+defaults:
+  mode: "override" # "merge" or "default". Defines how defaults are enforced for library setups specified below
+  load_mode: "json"  # "json" or "rdf" or "manual_import".
+  rdf_export_format: "rdf_zotero"
+  knowledge_base_graph: "https://www.zotero.org/entities"
+  map:
+    item_type: ["_item","itemType"]
+    collection_type: ["_collection"]
+    named_library: "inLibrary"
+    additional:
+      - property: "http://www.w3.org/2000/01/rdf-schema#label"
+        value: "name"
+        named_node: false
+      - property: "http://www.w3.org/2000/01/rdf-schema#label"
+        value: "tag"
+        named_node: false
+      - property: "http://www.w3.org/2002/07/owl#sameAs"
+        value: "url"
+        named_node: true
+
+libraries:
+  - name: Knowledge_Base # stores known named entities (once created automatically from mapping, exported via API, manually refined etc.)
+    library_type: "knowledge base" # "knowledge base" does not require library_id and library_type
+    base_uri: "https://www.zotero.org/entities"
+    description: "Named Entities"
+  - name: Open-Access History Books
+    library_type: "groups"
+    library_id: "5250572"
+    description: |
+      Owner:rakarl
+      Registered: 2023-10-24
+      Type: Public
+      Membership: Open
+      Library Access: You can only view
