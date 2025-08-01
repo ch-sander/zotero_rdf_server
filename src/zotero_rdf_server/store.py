@@ -1,5 +1,6 @@
 from pyoxigraph import Store, Quad, NamedNode, Literal, RdfFormat, BlankNode, DefaultGraph
 import os, shutil, requests, tempfile, time
+from pathlib import Path
 
 from .logging_config import logger
 from .config import *
@@ -20,7 +21,7 @@ def initialize_store():
     if STORE_MODE == "memory":
         store = Store()
     elif STORE_MODE == "directory":
-        os.makedirs(STORE_DIRECTORY, exist_ok=True)
+        STORE_DIRECTORY.mkdir(parents=True,exist_ok=True)
         try:
             store = Store(path=STORE_DIRECTORY)
         except Exception as e:
@@ -29,16 +30,18 @@ def initialize_store():
         raise ValueError(f"Invalid store_mode: {STORE_MODE}")
 
 def clear_directory(directory_path):
-    for filename in os.listdir(directory_path):
-        file_path = os.path.join(directory_path, filename)
-        try:
-            if os.path.isfile(file_path) or os.path.islink(file_path):
-                os.unlink(file_path)
-            elif os.path.isdir(file_path):
-                shutil.rmtree(file_path)
-        except Exception as e:
-            logger.error(f"Failed to delete {file_path}. Reason: {e}")
-
+    directory = safe_path(directory_path)
+    if directory.exists():
+        for item in directory.iterdir():
+            try:
+                if item.is_file() or item.is_symlink():
+                    item.unlink()
+                elif item.is_dir():
+                    shutil.rmtree(item)
+            except Exception as e:
+                logger.error(f"Failed to delete {item}. Reason: {e}")
+    else:
+        logger.error(f"{directory} does not exist!")
 
 def ensure_store(store):
     try:
@@ -72,10 +75,10 @@ def refresh_store(force_reload:bool = False):
                 if STORE_MODE == "memory":
                     store = Store()                    
                 else:
-                    if os.path.exists(STORE_DIRECTORY):
+                    if STORE_DIRECTORY.exists():
                         clear_directory(STORE_DIRECTORY)
                     else:
-                        os.makedirs(STORE_DIRECTORY, exist_ok=True)
+                        STORE_DIRECTORY.mkdir(parents=True,exist_ok=True)
                     try:
                         store = Store(path=STORE_DIRECTORY)
                     except Exception as e:
@@ -98,7 +101,7 @@ def refresh_store(force_reload:bool = False):
                             rdf_data = lib.fetch_rdf_export()
                             with tempfile.NamedTemporaryFile(delete=False, suffix=".rdf") as tmp:
                                 tmp.write(rdf_data)
-                                tmp_path = tmp.name
+                                tmp_path = Path(tmp.name)
                             try:
                                 before = len(store)
                                 store.bulk_load(
@@ -110,7 +113,7 @@ def refresh_store(force_reload:bool = False):
                                 after = len(store)
                                 logger.info(f"Loaded {after - before} triples from RDF export for '{lib.name}'")
                             finally:
-                                os.unlink(tmp_path)
+                                tmp_path.unlink(missing_ok=True)
                         except Exception as e:
                             logger.error(f"Error loading RDF from API for {lib.library_id}: {e}")
                     elif lib.load_mode == "manual_import":

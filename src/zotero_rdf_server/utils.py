@@ -1,12 +1,12 @@
 
 from datetime import datetime, timezone
 from urllib.parse import quote, urlparse
-from .store import Store, Quad, NamedNode, Literal, RdfFormat, DefaultGraph
+from pyoxigraph import Store, Quad, NamedNode, Literal, RdfFormat, DefaultGraph
 from rapidfuzz import fuzz
 import re
+from pathlib import Path
 from .logging_config import logger
 from .config import *
-
 
 def iri_to_filename(iri: str) -> str: #TODO move to utils
     parsed = urlparse(iri)

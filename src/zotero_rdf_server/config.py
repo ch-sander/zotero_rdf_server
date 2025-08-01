@@ -1,14 +1,49 @@
 import yaml, os
+from pathlib import Path
 from zotero_rdf_server.logging_config import logger, setup_logging
 
-config_path = os.getenv("CONFIG_FILE", "config.yaml")
-zotero_config_path = os.getenv("ZOTERO_CONFIG_FILE", "zotero.yaml")
+setup_logging("INFO")
+try:
+    WORKDIR = Path(os.getenv("WORKDIR", Path())).resolve()
+    logger.info(f"WORKDIR set to {WORKDIR}")
+    logger.info(f"Loading YAML...")
+except Exception as e:
+    logger.critical(f"Failed to set WORKDIR!")
 
-with open(config_path, "r") as f:
-    config = yaml.safe_load(f)
+def safe_path(path_str: str | Path | None, base_dir: Path | str = WORKDIR) -> Path:
+    if path_str:
+        p = Path(path_str) # if not isinstance(path_str, Path) else Path(path_str)
+        if base_dir:
+            base_dir = str(base_dir) if not isinstance(base_dir, Path) else Path(base_dir)
+        else:
+            base_dir = Path().resolve()
+            
+        return p if p.is_absolute() else (base_dir / p).resolve()
+    else:
+        return None
 
-with open(zotero_config_path, "r") as f:
-    zotero_config = yaml.safe_load(f)
+config_path = safe_path(os.getenv("CONFIG_FILE", "config.yaml"))
+zotero_config_path = safe_path(os.getenv("ZOTERO_CONFIG_FILE", "zotero.yaml"))
+
+try:
+    if config_path.is_file():
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f)
+        logger.info(f"{config_path} loaded!")
+    else:
+        logger.error(f"{config_path} not found!")
+except Exception as e:
+    logger.error(f"Failed to load {config_path}!")
+
+try:
+    if zotero_config_path.is_file():
+        with open(zotero_config_path, "r") as f:
+            zotero_config = yaml.safe_load(f)
+        logger.info(f"{zotero_config_path} loaded!")
+    else:
+        logger.error(f"{zotero_config_path} not found!")
+except Exception as e:
+    logger.error(f"Failed to load {zotero_config_path}!")
 
 config = config or {}
 zotero_config = zotero_config or {}
@@ -21,10 +56,10 @@ setup_logging(log_level)
 REFRESH_INTERVAL = config["server"].get("refresh_interval", 0)
 DELAY = config["server"].get("delay", 60)
 STORE_MODE = "directory"
-STORE_DIRECTORY = config["server"].get("store_directory", "/app/data")
-EXPORT_DIRECTORY = config["server"].get("export_directory", "/app/exports")
-IMPORT_DIRECTORY = config["server"].get("import_directory", "/app/import")
-BACKUP_DIRECTORY = config["server"].get("backup_directory", "/app/backup")
+STORE_DIRECTORY = safe_path(config["server"].get("store_directory", "/app/data"))
+EXPORT_DIRECTORY = safe_path(config["server"].get("export_directory", "/app/exports"))
+IMPORT_DIRECTORY = safe_path(config["server"].get("import_directory", "/app/import"))
+BACKUP_DIRECTORY = safe_path(config["server"].get("backup_directory", "/app/backup"))
 
 REFRESH = REFRESH_INTERVAL >= 0
 

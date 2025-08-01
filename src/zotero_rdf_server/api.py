@@ -22,7 +22,7 @@ async def export_graph(
     if graph and not checked_graph:
         raise HTTPException(status_code=400, detail=f"Invalid graph IRI. Use one of these or None: {all_graphs}")
 
-    os.makedirs(EXPORT_DIRECTORY, exist_ok=True)
+    EXPORT_DIRECTORY.mkdir(parents=True,exist_ok=True)
 
     rdf_format = RdfFormat.from_extension(format.lower())
     if rdf_format is None:
@@ -30,8 +30,9 @@ async def export_graph(
 
     extension = rdf_format.file_extension
     filename_base = iri_to_filename(graph) if graph else "zotero_store"
-    logger.info(filename_base)
-    path = os.path.join(EXPORT_DIRECTORY, f"{filename_base}.{extension}")
+    
+    path = EXPORT_DIRECTORY / f"{filename_base}.{extension}"
+    logger.info(f"Create {path}")
 
     kwargs = {}
     if graph:
@@ -119,14 +120,14 @@ async def list_graphs():
 @router.get("/csv", summary="Export CSV", description="Exports a named graph or the entire store as CSV or loads a CSV as RDF into the store", tags=["RDF"])
 async def get_csv(
     graph: str | None = Query(default=None, description="Named graph IRI (optional)"),
-    load_csv: str | None = Query(default=None, description="Load a CSV file into the store"),
+    load_csv: str | Path | None = Query(default=None, description="Load a CSV file into the store"),
     delete: bool | None = Query(default=False, description="Removes triples from graph if true, done before loading triples (you may only use subject IRIs to just delete)")
     ):
     from collections import defaultdict
     import csv
 
-    os.makedirs(EXPORT_DIRECTORY, exist_ok=True)
-    output_file = os.path.join(EXPORT_DIRECTORY, f"export.csv")
+    EXPORT_DIRECTORY.mkdir(parents=True,exist_ok=True)
+    output_file = EXPORT_DIRECTORY / "export.csv"
     delimiter = " | "
 
     from .store import store
@@ -156,7 +157,8 @@ async def get_csv(
                 row.append(delimiter.join(values))
             writer.writerow(row)
 
-    if load_csv and os.path.exists(load_csv) and load_csv is not output_file:
+    load_csv = safe_path(load_csv)
+    if load_csv and load_csv.is_file() and load_csv is not output_file:
         if delete:
             subjects = set()
             with open(load_csv, newline="", encoding="utf-8") as f:
@@ -251,14 +253,16 @@ async def znotes2rdf(
                         store.clear_graph(target_graph)
                     store.bulk_extend(input) # .quads_for_pattern(None, None, None, target_graph))
                 else:
-                    os.makedirs(EXPORT_DIRECTORY, exist_ok=True)
+                    EXPORT_DIRECTORY.mkdir(parents=True,exist_ok=True)
                     rdf_format = RdfFormat.from_extension(output_format.lower())
                     if rdf_format is None:
                         raise ValueError(f"Unsupported RDF format: {output_format}")
 
                     extension = rdf_format.file_extension
-                    filename_base = iri_to_filename(target_graph) if target_graph else "zotero_notes"
-                    path = os.path.join(EXPORT_DIRECTORY, f"{filename_base}.{extension}")
+                    filename_base = iri_to_filename(target_graph) if target_graph else "zotero_notes"                    
+                    
+                    path = EXPORT_DIRECTORY / f"{filename_base}.{extension}"
+
                     input.dump(output=path, format=rdf_format, prefixes=PREFIXES, from_graph = target_graph, base_iri= str(target_graph.value).rstrip('/') + '/' if target_graph else None)
 
                 return len(input)

@@ -18,10 +18,13 @@ class ZoteroLibrary:
         self.base_api_url = f"{ZOT_API_URL}{self.library_type}/{self.library_id}".strip("#/")
         self.base_url = str(config.get("base_uri", f"{ZOT_BASE_URL}{self.library_type}/{self.library_id}")).strip("/#")
         self.knowledge_base_graph = str(config.get("knowledge_base_graph", self.base_url)).strip("/#")
-        self.load_from = str(config.get("load_from",os.path.join(IMPORT_DIRECTORY, self.name))).replace("$",str(self.library_id))
+        
+        self.load_from = safe_path(str(config.get("load_from",IMPORT_DIRECTORY / self.name)).replace("$",str(self.library_id)))
+
         self.save_to = config.get("save_to")
         if self.save_to:
-            self.save_to = str(self.save_to).replace("$",str(self.library_id))
+            self.save_to = safe_path(str(self.save_to).replace("$",str(self.library_id)))
+
         self.headers = {"Zotero-API-Key": self.api_key} if self.api_key else {}
         self.map = config.get("map") or {}
         self.parser = config.get("notes_parser") or {}
@@ -130,9 +133,10 @@ class ZoteroLibrary:
 
         return results
 
-    def fetch_items(self, json_path:str = None) -> list:
+    def fetch_items(self, json_path:str | Path = None) -> list:
         if self.load_mode == "manual_import":
-            if not json_path or not os.path.isfile(json_path):
+            json_path = safe_path(json_path)
+            if not json_path or not json_path.is_file():
                 raise FileNotFoundError(f"JSON path not found: {json_path}")
 
             with open(json_path, "r", encoding="utf-8") as f:
@@ -147,9 +151,10 @@ class ZoteroLibrary:
         else:
             return None
 
-    def fetch_collections(self, json_path:str = None) -> list:
+    def fetch_collections(self, json_path:str | Path = None) -> list:
         if self.load_mode == "manual_import":
-            if not json_path or not os.path.isfile(json_path):
+            json_path = safe_path(json_path)
+            if not json_path or not json_path.is_file():
                 raise FileNotFoundError(f"JSON path not found: {json_path}")
 
             with open(json_path, "r", encoding="utf-8") as f:
