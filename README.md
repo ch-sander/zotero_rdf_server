@@ -66,8 +66,9 @@ Built with [FastAPI](https://fastapi.tiangolo.com/) and [Oxigraph](https://oxigr
 ## Mapping
 
 Zotero only provides strings — but some fields deserve more: Creators, Places, Tags, Publishers, etc. are better modeled as *entities*, not just literals. This app tries to detect when identical or similar values already exist and links them accordingly.
+
 <details>
-### <summary>Here's how it works</summary>
+<summary>Here's how it works</summary>
 
 - For certain fields (e.g. creators, tags, places), the system checks: *Have we seen this value before?*
 - If yes, and it's a close enough match (based on Levenshtein distance), the field is linked to the existing entity (a named node).
