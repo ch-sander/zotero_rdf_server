@@ -4,11 +4,13 @@ This server loads multiple Zotero libraries into an RDF graph,
 exposes a local SPARQL endpoint, and allows exporting the graph.
 A **visual query builder** is found in `/explorer` to explore the graph or go to [GitHub Pages](https://ch-sander.github.io/zotero_rdf_server/).
 
-### Why this Tool?
+## Why this Tool?
 
 While Zotero offers robust functionality for storing and collaboratively managing cloud-hosted libraries, it lacks support for federated access and cross-library exploration or search.
 This **Zotero RDF Server** is an initial attempt to fill that gap. It implements basic entity mapping (e.g., tags, creators), but remains tightly constrained by Zotero’s inherently textual data model and API structure.
 A logical next step would be to implement a **knowledge base mapping** layer to enable richer semantic interoperability.
+
+## One Thing You Need: Zotero!
 
 <details>
 <summary>📘 How to Create a Zotero Cloud Library</summary>
@@ -43,18 +45,47 @@ To use this tool, you need at least one Zotero cloud library (either **user** or
 [Groups](https://www.zotero.org/support/groups)  
 [API Guide](https://www.zotero.org/support/dev/web_api/v3/start)
 </details>
+
 ---
 
 ## Features
 
-- Load modes: JSON (via Zotero API), RDF (via API), or manual RDF import
-- Efficient graph loading using Pyoxigraph wherever possible
-- Configurable API query parameters (e.g., `itemType`, `tag`, `collection`)
-- Correct Zotero RDF namespace handling
-- Export as TriG or N-Quads
-- Docker and Compose support
-- Includes Oxigraph SPARQL server at port `7878`
-- *(FastAPI endpoint for `/sparql` not yet implemented)*
+This app provides a web API for working with RDF data, based on your Zotero libraries.
+
+- 🔁 Export RDF data from the store or individual named graphs (TRiG, Turtle, N-Triples, JSON-LD...)
+- 💾 Create and restore full store backups
+- 📥 Import/export RDF from/to CSV (with smart triple mapping)
+- 📝 Convert RDF blocks in Zotero Notes ↔ RDF graphs
+- 🧩 Parse semantic notes written in enhanced HTML as Zotero notes
+- 🔐 API config supports multiple libraries with sync settings
+- 🧪 Query and inspect your store via OpenAPI (see `/docs`)
+- ⚙️ Generate static RDF exports via [GitHub Actions](.github/workflows/rdf_export.yml) — see [local_z2rdf.py](local/local_z2rdf.py) for how it works
+
+Built with [FastAPI](https://fastapi.tiangolo.com/) and [Oxigraph](https://oxigraph.org/)
+
+## Mapping
+
+Zotero only provides strings — but some fields deserve more: Creators, Places, Tags, Publishers, etc. are better modeled as *entities*, not just literals. This app tries to detect when identical or similar values already exist and links them accordingly.
+<details>
+<summary>Here's how it works</summary>:
+
+- For certain fields (e.g. creators, tags, places), the system checks: *Have we seen this value before?*
+- If yes, and it's a close enough match (based on Levenshtein distance), the field is linked to the existing entity (a named node).
+- If not, a new entity is created.
+
+### Matching Details
+
+- Similarity is scored 0–100 via fuzzy string comparison and  thresholds can be adjusted in the config.
+- Comma-separated values (e.g. for places) can be split into multiple entities.
+- Creator roles (author, editor...) are modeled via blank nodes that link role and person.
+- Entities can be shared across libraries when stored in a global *Knwoledge Base*.
+- Libraries themselves are kept in *separate named graphs*.
+
+### Manual Reconciliation
+
+Fuzzy matching can't handle multilingual or semantically complex cases (e.g. “Aachen” vs. “Aix-la-Chapelle”). For that, manual cleanup is required — use the CSV export, edit, then re-import. If a Knowledge Base RDF file is loaded, this can set up all entities for libraries to match with. Basically, a skos:altLabel controls (in combination with the fuzzy threshold) which strings from Zotero's data are mapped to a Knowledge Base entity.
+
+</details>
 
 ## Parse Notes
 
