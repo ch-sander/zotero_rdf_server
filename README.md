@@ -10,8 +10,8 @@ While Zotero offers robust functionality for storing and collaboratively managin
 This **Zotero RDF Server** is an initial attempt to fill that gap. It implements basic entity mapping (e.g., tags, creators), but remains tightly constrained by Zotero’s inherently textual data model and API structure.
 A logical next step would be to implement a **knowledge base mapping** layer to enable richer semantic interoperability.
 
-
-## 📘 How to Create a Zotero Cloud Library
+<details>
+<summary>📘 How to Create a Zotero Cloud Library</summary>
 
 To use this tool, you need at least one Zotero cloud library (either **user** or **group**). Here’s how to set it up:
 
@@ -42,7 +42,7 @@ To use this tool, you need at least one Zotero cloud library (either **user** or
 [Zotero Web Library](https://www.zotero.org/support/web_library)  
 [Groups](https://www.zotero.org/support/groups)  
 [API Guide](https://www.zotero.org/support/dev/web_api/v3/start)
-
+</details>
 ---
 
 ## Features
@@ -62,8 +62,8 @@ As a plugin, you can parse your HTML Zotero notes with the [Semantic-HTML](https
 
 ## Configuration
 
-Place both YAML filenames in your `.env` (example in [env.backup](env.backup)), not in the code or Dockerfile. Only these two environment variables need updating when you rename or move configuration files.
-Docker-Compose will mount these files into `/app` and your Python code loads them via `os.getenv(...)` with sensible defaults (`config.yaml` and `zotero.yaml`).
+Place both YAML filenames in your `.env` (example in [.env.backup](.env.backup)), not in the code or Dockerfile.
+Docker-Compose will mount these files into `/app` (or any other directory set in `.env`) and your Python code loads them via `os.getenv(...)` with sensible defaults (`config.yaml` and `zotero.yaml`).
 
 ### `config.yaml`
 
