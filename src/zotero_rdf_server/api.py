@@ -260,7 +260,7 @@ async def znotes2rdf(
 
                     extension = rdf_format.file_extension
                     filename_base = iri_to_filename(target_graph) if target_graph else "zotero_notes"                    
-                    
+
                     path = EXPORT_DIRECTORY / f"{filename_base}.{extension}"
 
                     input.dump(output=path, format=rdf_format, prefixes=PREFIXES, from_graph = target_graph, base_iri= str(target_graph.value).rstrip('/') + '/' if target_graph else None)
@@ -489,5 +489,4 @@ def clear_log_file():
     except Exception as e:
         return HTMLResponse(content=f"Error clearing log file: {e}", status_code=500)
 
-    # Nach dem Löschen zurück zur Viewer-Seite
     return RedirectResponse(url="/logs", status_code=303)
