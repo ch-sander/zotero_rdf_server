@@ -2,6 +2,11 @@ name: Generate and Push OpenAPI
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - src/zotero_rdf_server/api.py
 
 permissions:
   contents: write

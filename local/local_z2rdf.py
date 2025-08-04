@@ -21,7 +21,7 @@ print("WORKDIR =", Path.cwd().resolve())
 
 from zotero_rdf_server.main import app
 
-def generate_openapi(output_path: Path = WORKDIR / "docs" / "openapi.json", html_output_path: Path = WORKDIR / "docs" / "endpoints.html") -> None:
+def generate_openapi(output_path: Path, html_output_path: Path) -> None:
     schema = get_openapi(
         title=app.title,
         version=app.version,
@@ -77,6 +77,8 @@ def main():
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     parser_openapi = subparsers.add_parser("generate_openapi")
+    parser_openapi.add_argument("--output", type=Path, default=WORKDIR / "docs" / "openapi.json")
+    parser_openapi.add_argument("--html-output", type=Path, default=WORKDIR / "docs" / "openapi.html")
 
     parser_rdf = subparsers.add_parser("export_rdf")
     parser_rdf.add_argument("--force", action="store_true", help="Force reloading Store")
@@ -84,7 +86,8 @@ def main():
     args = parser.parse_args()
 
     if args.command == "generate_openapi":
-        generate_openapi()
+        generate_openapi(output_path=args.output, html_output_path=args.html_output)
+
     elif args.command == "export_rdf":
         asyncio.run(export_rdf(force=args.force))
 
