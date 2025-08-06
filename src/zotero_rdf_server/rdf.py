@@ -672,6 +672,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                         domain_prop = safeNamedNode(fuzzy["domainProperty"])
                         target_prop = safeNamedNode(fuzzy["targetProperty"])
                         fuzzy_threshold = fuzzy.get('threshold', fuzzy_threshold)
+                        regex = fuzzy.get('regex', False)
                     except KeyError:
                         continue
                     
@@ -683,7 +684,8 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                                 filter_target_store,
                                 lit_value,
                                 threshold=fuzzy_threshold,
-                                predicates=[target_prop]
+                                predicates=[target_prop],
+                                regex=regex
                             )
 
                             if matched_node:
