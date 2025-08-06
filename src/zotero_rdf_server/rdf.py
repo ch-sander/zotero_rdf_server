@@ -482,9 +482,15 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
 
     if items:
         item_type_fields = lib.map.get("item_type") or []
+        ignore_tags = lib.map.get("ignore_tags") or []
         for item in items:
             try:
                 item_data = item.get("data", {})
+
+                item_tags = [t.get("tag") for t in item_data.get("tags", []) if isinstance(t, dict)]
+                if any(ig in item_tags for ig in ignore_tags):
+                    continue
+                
                 creators = item_data.get("creators") or []
                 first_creator = creators[0].get("lastName") if creators and "lastName" in creators[0] else "NO CREATOR"
                 title = item_data.get("title") or "NO TITLE"
@@ -493,6 +499,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
                 language = item_data.get("language")
                 key = item_data.get("key",uuid4())            
                 node_uri = NamedNode(f"{lib.base_url}/items/{key}")
+
                 if lib.map.get("named_library"):
                     property_str = lib.map.get("named_library", "inLibrary")
                     store.add(Quad(node_uri, safeNamedNode(property_str) if property_str.startswith("http") else safeNamedNode(f"{ZOT_NS}{property_str}"), safeNamedNode(a_library_href), graph_name=GRAPH_URI))
