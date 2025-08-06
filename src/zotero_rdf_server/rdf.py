@@ -575,10 +575,11 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
             raise ValueError("Invalid metadata input")
 
     except Exception as e:
-        logger.warning(f"No metadata found, using fallback: {e}")
+        logger.warning(f"No metadata found: {e}")
         metadata = {
             "wasGeneratedBy": os.path.basename(__file__)
         }
+        logger.warning(f"Using fallback: {metadata}")
 
     map_KB = lib.parser.get("knowledge_base_mapping", False)
     if map_KB:        
