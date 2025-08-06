@@ -16,7 +16,7 @@ defaults:
   knowledge_base_graph: "https://www.zotero.org/entities" # Will be used to create identical uuids for named nodes accross multiple libraries in the union graph. If not given, uses base_uri. A knowledge base to be loaded into the graph can be set as library below, with library_type: "knowledge base".
   notes_parser: # loads the semantic-html package to parse notes HTML to JSON-LD and load into Store
     knowledge_base_mapping: true # Will map found entities in notes parsing to the library's knowledge base (knowledge_base_graph)
-    fuzzy: 90
+    fuzzy: 90 # the minimum fuzzy score (threshold in %) to match strings as identical entities (places, persons). Defaults to 90 if missing. Can be set in mapping.json, too.
     base_uri: "https://semantic-html.org" # graph for the parser result RDF to be stored in. Uses the library's base_uri as default
     auto: true # hook parser into loading process if true
     mapping: "/app/parser/mapping.json" # load file or build dict here
@@ -27,6 +27,8 @@ defaults:
     # rdf_mapping: [creators,tags,collections,parentItem,parentCollection] # if not specified, uses reasonable defaults for entities and datatypes
     item_type: ["_item","itemType"] # takes values from field for rdf type. Start with _ sets constant type predicate. If not indicated, uses "item". If not starting with "http" will use defaul vocab from context.
     collection_type: ["_collection"] # If not indicated, uses "collection"
+    ignore_tags: ["*ignore"] # Exclude items with any of these tags
+    fuzzy: 90 # the minimum fuzzy score (threshold in %) to match strings as identical entities (places, persons). Defaults to 90 if missing
     named_library: "inLibrary" # if specified will add an object property by that name with a named node for the library's named graph URI to facilitate queries accross multiple named graphs
     additional:
       - property: "http://www.w3.org/2000/01/rdf-schema#label"
