@@ -1,0 +1,21 @@
+# This template is specifically for importing/sharing, using better 
+# notes 'import from clipboard': copy the content and
+# goto Zotero menu bar, click Tools->New Template from Clipboard.  
+# Do not copy-paste this to better notes template editor directly.
+name: "[text]New KB Resource"
+zoteroVersion: "7.0.15"
+pluginVersion: "2.5.1"
+savedAt: "2025-06-15T09:20:32.918Z"
+content: |-
+  // @use-markdown
+  <h1>:type:Label</h1><pre>
+  @prefix rdf: &lt;http://www.w3.org/1999/02/22-rdf-syntax-ns#&gt; .
+  @prefix rdfs: &lt;http://www.w3.org/2000/01/rdf-schema#&gt; .
+  @prefix xsd: &lt;http://www.w3.org/2001/XMLSchema#&gt; .
+  @prefix owl: &lt;http://www.w3.org/2002/07/owl#&gt; .
+  @prefix skos: &lt;http://www.w3.org/2004/02/skos/core#&gt; .
+  @prefix zot: &lt;http://www.zotero.org/namespaces/export#&gt; .
+  &lt;urn:uuid:${ crypto.randomUUID() }&gt; rdfs:label "Label" ;
+  	a :type .
+  </pre>
+  
