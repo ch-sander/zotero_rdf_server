@@ -595,6 +595,9 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
     ):
         result_store = Store()
 
+        def _subjects(store, graph=None):
+            return {q.subject for q in store.quads_for_pattern(None, None, None, graph)}
+
         if knowledge_base is None:
             return result_store
         for rule in knowledge_base:
@@ -610,25 +613,31 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
             # AND
             filter_source_subjects = set()
             filter_target_subjects = set()
-            logger.debug("Rule found!")
-            for a in and_rules:
-                try:
-                    src_qs = source_store.quads_for_pattern(
-                        None,
-                        safeNamedNode(a["domainProperty"]),
-                        safeNamedNode(a["domainNode"]),
-                        None
-                    )
-                    tgt_qs = target_store.quads_for_pattern(
-                        None,
-                        safeNamedNode(a["targetProperty"]),
-                        safeNamedNode(a["targetNode"]),
-                        entity_graph_uri
-                    )
-                    filter_source_subjects.update(q.subject for q in src_qs)
-                    filter_target_subjects.update(q.subject for q in tgt_qs)
-                except KeyError:
-                    logger.warning("Invalid AND rule")
+            logger.debug("Rule definition found!")
+            if and_rules:
+                logger.debug("AND Rule definition found!")
+                for a in and_rules: 
+                    try:
+                        src_qs = source_store.quads_for_pattern(
+                            None,
+                            safeNamedNode(a["domainProperty"]),
+                            safeNamedNode(a["domainNode"]),
+                            None
+                        )
+                        tgt_qs = target_store.quads_for_pattern(
+                            None,
+                            safeNamedNode(a["targetProperty"]),
+                            safeNamedNode(a["targetNode"]),
+                            entity_graph_uri
+                        )
+                        filter_source_subjects.update(q.subject for q in src_qs)
+                        filter_target_subjects.update(q.subject for q in tgt_qs)
+                    except KeyError:
+                        logger.warning("Invalid AND rule")
+            else: # fallback if no AND rules
+                logger.debug("No AND Rule definition found!")
+                filter_source_subjects = _subjects(source_store, None)
+                filter_target_subjects = _subjects(target_store, entity_graph_uri)
 
             filter_source_store = Store()
             filter_target_store = Store()
@@ -644,6 +653,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
 
                 # OR
                 for or_rule in or_rules:
+                    logger.debug("OR Rule found!")
                     try:
                         dom_prop = safeNamedNode(or_rule["domainProperty"])
                         tgt_prop = safeNamedNode(or_rule["targetProperty"])
