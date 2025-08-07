@@ -14,8 +14,10 @@ def iri_to_filename(iri: str) -> str: #TODO move to utils
     safe = "_".join(parts)
     return re.sub(r"[^\w\-\.]", "_", safe)
 
-def safeNamedNode(uri: str | NamedNode, enforce: bool = True) -> NamedNode | Literal:
+def safeNamedNode(uri: str | NamedNode, enforce: bool = True, allow_None: bool = False) -> NamedNode | Literal:
     INTERNAL_IRI_PREFIX = "http://internal.invalid/"
+    if uri == None and allow_None: #TODO not tested
+        return None
     if isinstance(uri, NamedNode):
         return uri
     if not isinstance(uri, str):

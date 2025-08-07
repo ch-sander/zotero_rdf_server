@@ -137,16 +137,19 @@
                 "targetProperty": "http://www.w3.org/2004/02/skos/core#altLabel"
             }
             ],
-            "AND": [
+            "POOL": [
             {
-                "comment": "filters target and source datasets as inner join for property-object pairs.",                
+                "comment": "filters target and source dataset subjects by property and object. Each pair given is by default (operator key is not neccessary) an addidive to the pool (OR not AND). Recursive filtering (AND) is experimental. Property or Object may be None.",
+                "operator": "OR",
                 "domainProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-                "domainNode": "https://semantic-html.org/vocab#Entity",
+                "domainObject": "https://semantic-html.org/vocab#Entity"
+            }, {
+                "operator":"OR",
                 "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-                "targetNode": "http://www.zotero.org/namespaces/export#place"
+                "targetObject": "http://www.zotero.org/namespaces/export#place"
             }
             ],
-            "OR": [
+            "SAME": [
             {
                 "comment": "if source resource matches node in any target resource, FUZZY will be skipped and a link will directly be created from source to target using mapProperty.",  
                 "domainProperty": "http://www.w3.org/2002/07/owl#sameAs",

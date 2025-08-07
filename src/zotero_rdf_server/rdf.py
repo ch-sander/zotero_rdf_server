@@ -603,8 +603,8 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
             return result_store
         for rule in knowledge_base:
             fuzzy_rules = rule.get("FUZZY", [])
-            and_rules = rule.get("AND", [])
-            or_rules = rule.get("OR", [])
+            pool_rules = rule.get("POOL", [])
+            same_rules = rule.get("SAME", [])
             map_prop = safeNamedNode(rule.get("mapProperty", OWL_SAME_AS))
             KB_graph = rule.get("knowledgeBaseGraph", None)
             entity_graph_uri = safeNamedNode(KB_graph) if KB_graph else KB_GRAPH
@@ -614,50 +614,78 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
             # AND
             filter_source_subjects = set()
             filter_target_subjects = set()
-            logger.debug("Rule definition found!")
-            if and_rules:
-                logger.debug("AND Rule definition found!")
-                for a in and_rules: 
-                    try:
-                        src_qs = source_store.quads_for_pattern(
+            filter_source_store = Store()
+            filter_target_store = Store()
+            logger.debug("KB definition found!")
+            if pool_rules:
+                logger.debug("POOL Rule definition found!")
+                for p in pool_rules:
+
+                    operator = p.get('operator', "OR")
+                    comment = p.get('comment')
+                    if comment and isinstance(comment,str):
+                        logger.debug(comment)
+                    domainProperty = p.get('domainProperty', None)
+                    domainObject = p.get('domainObject', None)                    
+                    targetProperty = p.get('targetProperty', None)
+                    targetObject = p.get('targetObject', None)
+
+                    if domainProperty or domainObject:
+                        if operator == "AND":
+                            pool_source = filter_source_store
+                        else:
+                            pool_source = source_store
+
+                        src_qs = pool_source.quads_for_pattern(
                             None,
-                            safeNamedNode(a["domainProperty"]),
-                            safeNamedNode(a["domainNode"]),
+                            safeNamedNode(domainProperty, allow_None = True),
+                            safeNamedNode(domainObject, allow_None = True),
                             None
                         )
-                        tgt_qs = target_store.quads_for_pattern(
+                        filter_source_subjects.update(q.subject for q in src_qs)
+                        for s in src_qs:
+                            filter_source_store.bulk_extend(pool_source.quads_for_pattern(s.subject, None, None, None))                        
+                    else:
+                        logger.warning("Invalid POOL rule")
+
+                    if targetProperty or targetObject:
+                        if operator == "AND":
+                            pool_target = filter_target_store
+                        else:
+                            pool_target = target_store
+                        
+                        tgt_qs = pool_target.quads_for_pattern(
                             None,
-                            safeNamedNode(a["targetProperty"]),
-                            safeNamedNode(a["targetNode"]),
+                            safeNamedNode(targetProperty, allow_None = True),
+                            safeNamedNode(targetObject, allow_None = True),
                             entity_graph_uri
                         )
-                        filter_source_subjects.update(q.subject for q in src_qs)
                         filter_target_subjects.update(q.subject for q in tgt_qs)
-                    except KeyError:
-                        logger.warning("Invalid AND rule")
-            else: # fallback if no AND rules
-                logger.debug("No AND Rule definition found!")
+                        for s in tgt_qs:
+                            filter_target_store.bulk_extend(pool_target.quads_for_pattern(s, None, None, entity_graph_uri))
+                    else:
+                        logger.warning("Invalid POOL rule")
+            else: # fallback if no POOL rules
+                logger.debug("No POOL Rule definition found!")
                 filter_source_subjects = _subjects(source_store, None)
                 filter_target_subjects = _subjects(target_store, entity_graph_uri)
 
-            filter_source_store = Store()
-            filter_target_store = Store()
-            for s in filter_source_subjects:
-                filter_source_store.bulk_extend(source_store.quads_for_pattern(s, None, None, None))
-            for s in filter_target_subjects:
-                filter_target_store.bulk_extend(target_store.quads_for_pattern(s, None, None, entity_graph_uri))
+            # for s in filter_source_subjects:
+            #     filter_source_store.bulk_extend(source_store.quads_for_pattern(s, None, None, None))
+            # for s in filter_target_subjects:
+            #     filter_target_store.bulk_extend(target_store.quads_for_pattern(s, None, None, entity_graph_uri))
                 
             logger.info(f"Found graphs in filtered source store: {list(filter_source_store.named_graphs())}")
 
             for domain_node in filter_source_subjects:
                 value_matched = False
 
-                # OR
-                for or_rule in or_rules:
-                    logger.debug("OR Rule found!")
+                # SAME
+                for same_rule in same_rules:
+                    logger.debug("SAME Rule found!")
                     try:
-                        dom_prop = safeNamedNode(or_rule["domainProperty"])
-                        tgt_prop = safeNamedNode(or_rule["targetProperty"])
+                        dom_prop = safeNamedNode(same_rule["domainProperty"])
+                        tgt_prop = safeNamedNode(same_rule["targetProperty"])
                     except KeyError:
                         continue
 
@@ -671,7 +699,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                                 tq.subject,
                                 dp.graph_name
                             ))
-                            logger.debug(f"[OR] Matched {lit_value} by identity: {domain_node} → {tq.subject}")
+                            logger.debug(f"[SAME] Matched {lit_value} by identity: {domain_node} → {tq.subject}")
                             value_matched = True
                             ensure_alt_label(result_store, tq.subject, lit_value, alt_label_prop, entity_graph_uri)
 
@@ -722,12 +750,12 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                                 base_uri = lib.parser.get('base_uri', f"{str(entity_graph_uri.value).rstrip('/')}") 
                                 new_node = safeNamedNode(f"{base_uri}/{iri_suffix}") # {KB_graph}/semantic_html/{iri_suffix}
 
-                                for a in and_rules:
+                                for p in pool_rules:
                                     try:
                                         result_store.add(Quad(
                                             new_node,
-                                            safeNamedNode(a["targetProperty"]),
-                                            safeNamedNode(a["targetNode"]),
+                                            safeNamedNode(p["targetProperty"]),
+                                            safeNamedNode(p["targetObject"]),
                                             entity_graph_uri
                                         ))
                                     except KeyError:
