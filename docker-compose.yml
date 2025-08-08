@@ -21,7 +21,7 @@ services:
       - "${BACKUP_DIRECTORY:-./app/backup}:/app/backup"
     restart: unless-stopped
   oxigraph:
-    image: ghcr.io/oxigraph/oxigraph:latest
+    image: ghcr.io/oxigraph/oxigraph:main
     container_name: ${OXIGRAPH_CONTAINER}
     ports:
       - "7879:7879"
