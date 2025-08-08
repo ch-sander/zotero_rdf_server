@@ -643,10 +643,11 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                             None
                         )
                         filter_source_subjects.update(q.subject for q in src_qs)
+                        logger.info(f"POOL rule found (domain). Added {len(filter_source_subjects)}")
                         for s in src_qs:
                             filter_source_store.bulk_extend(pool_source.quads_for_pattern(s.subject, None, None, None))                        
                     else:
-                        logger.warning("Invalid POOL rule")
+                        logger.warning("No POOL rule (domain not found)")
 
                     if targetProperty or targetObject:
                         if operator == "AND":
@@ -661,10 +662,12 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                             entity_graph_uri
                         )
                         filter_target_subjects.update(q.subject for q in tgt_qs)
+                        logger.info(f"POOL rule found (target). Added {len(filter_target_subjects)}")
                         for s in tgt_qs:
                             filter_target_store.bulk_extend(pool_target.quads_for_pattern(s, None, None, entity_graph_uri))
                     else:
-                        logger.warning("Invalid POOL rule")
+                        logger.warning("No POOL rule (target not found)")
+
             else: # fallback if no POOL rules
                 logger.debug("No POOL Rule definition found!")
                 filter_source_subjects = _subjects(source_store, None)
@@ -675,7 +678,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
             # for s in filter_target_subjects:
             #     filter_target_store.bulk_extend(target_store.quads_for_pattern(s, None, None, entity_graph_uri))
                 
-            logger.info(f"Found graphs in filtered source store: {list(filter_source_store.named_graphs())}")
+            logger.info(f"LEN filtered source store: {len(filter_source_store)}. Found graphs in filtered source store: {list(filter_source_store.named_graphs())}")
 
             for domain_node in filter_source_subjects:
                 value_matched = False
