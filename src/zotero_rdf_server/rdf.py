@@ -482,14 +482,14 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
 
     if items:
         item_type_fields = lib.map.get("item_type") or []
-        ignore_tags = lib.map.get("ignore_tags") or []
+        # ignore_tags = lib.map.get("ignore_tags") or []
         for item in items:
             try:
                 item_data = item.get("data", {})
 
                 item_tags = [t.get("tag") for t in item_data.get("tags", []) if isinstance(t, dict)]
-                if any(ig in item_tags for ig in ignore_tags):
-                    continue
+                # if any(ig in item_tags for ig in ignore_tags):
+                #     continue
                 
                 creators = item_data.get("creators") or []
                 first_creator = creators[0].get("lastName") if creators and "lastName" in creators[0] else "NO CREATOR"
