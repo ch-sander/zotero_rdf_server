@@ -3,11 +3,11 @@
       "SemanticNote"
     ],
     "Document": {
-      "tags": [
-        "p"
-      ],
+        "xpath": [
+            "//p"
+        ],
       "types": [
-        "Doc"
+        "Paragraph"
       ]
     },
     "Annotation": {
@@ -50,7 +50,10 @@
         "xpath": [
             "//h1",
             "//h2",
-            "//h3"
+            "//h3",
+            "//h4",
+            "//h5",
+            "//h6"
         ],
         "types": [
             "Structure"
@@ -117,14 +120,14 @@
             ],
             "POOL": [
             {
-                "comment": "filters target and source dataset subjects by property and object. Each pair given is by default (operator key is not neccessary) an addidive to the pool (OR not AND). Recursive filtering (AND) is experimental. Property or Object may be None.",
+                "comment": "filters target and source dataset subjects by property and object. Each pair given is by default (operator key is not neccessary) an additive to the pool (OR not AND). Recursive filtering (AND) is experimental. Property or Object may be None.",
                 "operator": "OR",
                 "domainProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
                 "domainObject": "https://semantic-html.org/vocab#Entity"
             }, {
                 "operator":"OR",
                 "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-                "targetObject": "http://www.zotero.org/namespaces/export#creator"
+                "targetObject": "http://www.zotero.org/namespaces/export#person"
             },
             {
                 "operator":"OR",
@@ -154,6 +157,7 @@
             }
         },
         {
+            "comment":"This is a second rule",
             "FUZZY": [
             {
                 "threshold": 90,

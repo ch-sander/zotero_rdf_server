@@ -60,6 +60,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
     black = map.get("black") or []
     lang_map = map.get("language_map", LANG_MAP)
     rdf_mapping = map.get("rdf_mapping") or []
+    creator_types = map.get("creator_types") or []
     fuzzy_threshold = map.get("fuzzy", 90)
     def zotero_property_map(predicate_str: str, object: str | dict | list, map: dict):
 
@@ -80,14 +81,15 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 return parser.parse(str(text), dayfirst=dayfirst, default=datetime(1, 1, 1))
             except (ValueError, TypeError):
                 return text
-        def make_entity(object_value,my_type,):
+            
+        def make_entity(object_value,my_type):
             # Normalize and split values
             value = object_value.strip()
             items = [p.strip() for p in re.split(r"[;]", value) if p.strip()] # Do not split on comma!
 
             for item in items:
                 pool_store = Store()
-                pool_store.bulk_extend(store.quads_for_pattern(None,safeNamedNode(f"{ns_prefix}{my_type}"),None,ENTITY_GRAPH_URI))
+                pool_store.bulk_extend(store.quads_for_pattern(None,NamedNode(RDF_TYPE), safeNamedNode(f"{ns_prefix}{my_type}"),ENTITY_GRAPH_URI))
                 node, score, matched_label = fuzzy_match_label(
                     pool_store,
                     item,
@@ -142,6 +144,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     return None
                 
                 ### CREATORS ###
+                ### TODO: "person" not hard-coded
 
                 if predicate_str == "creators":
                     if "name" in object:
@@ -152,12 +155,12 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     bnode = BlankNode()
                     store.add(Quad(subject, predicate_node, bnode, graph_name=GRAPH_URI))                    
                     store.add(Quad(bnode, NamedNode(RDF_TYPE), NamedNode(f"{ns_prefix}creatorRole"), graph_name=GRAPH_URI))
-
                     pool_store = Store()
-                    pool_store.bulk_extend(store.quads_for_pattern(None,NamedNode(f"{ns_prefix}person"),None,ENTITY_GRAPH_URI))
+                    pool_store.bulk_extend(store.quads_for_pattern(None,NamedNode(RDF_TYPE), safeNamedNode(f"{ns_prefix}person"),ENTITY_GRAPH_URI))
+
                     creator_node, score, matched_label = fuzzy_match_label(
                         pool_store,
-                        item,
+                        label,
                         threshold=fuzzy_threshold
                     )
 
@@ -165,7 +168,8 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         creator_uuid = uuid5(ENTITY_UUID, label) if fuzzy_threshold <= 100 else uuid4()
                         creator_node = safeNamedNode(f"{knowledge_base_graph}/person/{creator_uuid}")
                         
-                        store.add(Quad(creator_node, NamedNode(RDF_TYPE), safeNamedNode(f"{ns_prefix}person"), graph_name=ENTITY_GRAPH_URI))
+                        # TODO: Check if working
+                        # store.add(Quad(creator_node, NamedNode(RDF_TYPE), safeNamedNode(f"{ns_prefix}person"), graph_name=ENTITY_GRAPH_URI))
                         
                         store.add(Quad(creator_node, NamedNode(RDFS_LABEL), Literal(str(label)), graph_name=ENTITY_GRAPH_URI))
 
@@ -184,6 +188,8 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     alts = {(q.object.value).lower() for q in store.quads_for_pattern(creator_node, NamedNode(SKOS_ALT), None, graph_name=ENTITY_GRAPH_URI)}
                     if label.lower() not in alts:
                         store.add(Quad(creator_node, NamedNode(SKOS_ALT), Literal(label), graph_name=ENTITY_GRAPH_URI))
+
+                    apply_rdf_types(store, creator_node, object, creator_types, "person", knowledge_base_graph, ns_prefix)
 
                     store.add(Quad(bnode, NamedNode(f"{ns_prefix}hasCreator"), creator_node, graph_name=GRAPH_URI))
                     return None
@@ -484,22 +490,33 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
         item_type_fields = lib.map.get("item_type") or []
         # ignore_tags = lib.map.get("ignore_tags") or []
         for item in items:
+            node_uri = None
             try:
                 item_data = item.get("data", {})
 
-                item_tags = [t.get("tag") for t in item_data.get("tags", []) if isinstance(t, dict)]
+                # item_tags = [t.get("tag") for t in item_data.get("tags", []) if isinstance(t, dict)]
                 # if any(ig in item_tags for ig in ignore_tags):
                 #     continue
                 
                 creators = item_data.get("creators") or []
-                first_creator = creators[0].get("lastName") if creators and "lastName" in creators[0] else "NO CREATOR"
+                if creators and "lastName" in creators[0]:
+                    first_creator = creators[0].get("lastName") 
+                elif creators and "name" in creators[0]:
+                    first_creator = creators[0].get("name") 
+                else:
+                    first_creator = "NO CREATOR"
+
                 title = item_data.get("title") or "NO TITLE"
                 date = item_data.get("date") or "NO DATE"
                 label = f"{first_creator}: {title} ({date})"
                 language = item_data.get("language")
                 key = item_data.get("key",uuid4())            
                 node_uri = NamedNode(f"{lib.base_url}/items/{key}")
+            except Exception as e:
+                logger.error(f"Invalid data preparation for items!")
+                continue    
 
+            try:
                 if lib.map.get("named_library"):
                     property_str = lib.map.get("named_library", "inLibrary")
                     store.add(Quad(node_uri, safeNamedNode(property_str) if property_str.startswith("http") else safeNamedNode(f"{ZOT_NS}{property_str}"), safeNamedNode(a_library_href), graph_name=GRAPH_URI))
@@ -582,6 +599,13 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
         logger.warning(f"Using fallback: {metadata}")
 
     map_KB = lib.parser.get("knowledge_base_mapping", False)
+    tag_filter = lib.parser.get("tag_filter")
+    predicate = lib.parser.get("predicate")
+    query = lib.parser.get("query")
+    if predicate and isinstance(predicate, str): note_predicate = safeNamedNode(predicate)
+    if query and isinstance(query, str) and "SELECT" in str(query).upper(): query_str = query
+
+
     if map_KB:        
         fuzzy_threshold = lib.parser.get("fuzzy", 90)
         knowledge_base = mapping.pop("KnowledgeBase") or []
@@ -636,18 +660,19 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                         else:
                             pool_source = source_store
 
-                        src_qs = pool_source.quads_for_pattern(
+                        src_qs = list(pool_source.quads_for_pattern(
                             None,
                             safeNamedNode(domainProperty, allow_None = True),
                             safeNamedNode(domainObject, allow_None = True),
                             None
-                        )
+                        ))
+
                         filter_source_subjects.update(q.subject for q in src_qs)
                         logger.info(f"POOL rule found (domain). Added {len(filter_source_subjects)}")
-                        for s in src_qs:
-                            filter_source_store.bulk_extend(pool_source.quads_for_pattern(s.subject, None, None, None))                        
+                        for q in src_qs:
+                            filter_source_store.bulk_extend(pool_source.quads_for_pattern(q.subject, None, None, None))                        
                     else:
-                        logger.warning("No POOL rule (domain not found)")
+                        logger.warning(f"No domain POOL rule applied, couldn't find {domainProperty} or {domainObject}")
 
                     if targetProperty or targetObject:
                         if operator == "AND":
@@ -655,18 +680,19 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                         else:
                             pool_target = target_store
                         
-                        tgt_qs = pool_target.quads_for_pattern(
+                        tgt_qs = list(pool_target.quads_for_pattern(
                             None,
                             safeNamedNode(targetProperty, allow_None = True),
                             safeNamedNode(targetObject, allow_None = True),
                             entity_graph_uri
-                        )
+                        ))
+
                         filter_target_subjects.update(q.subject for q in tgt_qs)
                         logger.info(f"POOL rule found (target). Added {len(filter_target_subjects)}")
-                        for s in tgt_qs:
-                            filter_target_store.bulk_extend(pool_target.quads_for_pattern(s, None, None, entity_graph_uri))
+                        for q in tgt_qs:
+                            filter_target_store.bulk_extend(pool_target.quads_for_pattern(q.subject, None, None, entity_graph_uri))
                     else:
-                        logger.warning("No POOL rule (target not found)")
+                        logger.warning(f"No target POOL rule applied, couldn't find {targetProperty} or {targetObject}")
 
             else: # fallback if no POOL rules
                 logger.debug("No POOL Rule definition found!")
@@ -680,12 +706,18 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                 
             logger.info(f"LEN filtered source store: {len(filter_source_store)}. Found graphs in filtered source store: {list(filter_source_store.named_graphs())}")
 
+            logger.info(f"LEN filtered target store: {len(filter_target_store)}. Found graphs in filtered target store: {list(filter_target_store.named_graphs())}")
+
+            if same_rules:
+                logger.debug(f"{len(same_rules)} SAME Rules found!")
+            if fuzzy_rules:
+                logger.debug(f"{len(fuzzy_rules)} FUZZY Rules found!")
+
             for domain_node in filter_source_subjects:
                 value_matched = False
 
                 # SAME
-                for same_rule in same_rules:
-                    logger.debug("SAME Rule found!")
+                for same_rule in same_rules:                    
                     try:
                         dom_prop = safeNamedNode(same_rule["domainProperty"])
                         tgt_prop = safeNamedNode(same_rule["targetProperty"])
@@ -724,11 +756,16 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                         regex = fuzzy.get('regex', False)
                     except KeyError:
                         continue
-                    
+
+
+                    # logger.info("############################################")
+                    # logger.info(len(filter_source_store))
+
                     for dp in filter_source_store.quads_for_pattern(domain_node, domain_prop, None):
                         lit_value = str(dp.object.value)
 
                         try:
+                            
                             matched_node, score, label = fuzzy_match_label(
                                 filter_target_store,
                                 lit_value,
@@ -795,24 +832,48 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
     plugin = ParseNotePlugin(mapping=mapping, metadata=metadata)
     logger.debug("Plugin initialized")
     count = 0
+
+
     # Search notes in library graph
+    # TODO: predicate not sufficient?
+    if tag_filter and not query_str:
+        # PREFIX zot: <{ZOT_NS}>
+        # SELECT DISTINCT ?s ?p ?o WHERE {{
+        # ?s zot:tags/zot:tag "{tag_filter}".
+        # BIND({str(predicate) if predicate else "zot:note"} as ?p)
+        # ?s ?p ?o.
+        # }}
+        query_str = f"""
+        PREFIX zot: <{ZOT_NS}>
+        SELECT DISTINCT ?s ?p ?o
+        WHERE {{
+        GRAPH <{GRAPH_URI.value}> {{ ?s zot:note ?o . BIND({str(predicate) if predicate else "zot:note"} AS ?p) ?s zot:tags ?t . }}
+        GRAPH <{KB_GRAPH.value}>  {{ ?t zot:tag ?val . FILTER(STR(?val) = "{tag_filter}") }}
+        }}
+        """
+
 
     if query_str and "SELECT" in query_str.upper(): 
         logger.debug(f"using query pattern: {query_str}")
-        bindings = store.query(query_str,default_graph=GRAPH_URI)
+        bindings = store.query(query_str, use_default_graph_as_union=True)
+        results = list(bindings)
+        logger.info("Number of rows: %s", len(results))
         note_quads = []
-        for row in bindings:  # QuerySolutions
+        for row in results:  # QuerySolutions            
+            tmp_predicate = row['p'] if 'p' in row else note_predicate
+            
             quad = Quad(
-                subject=row["s"],
-                predicate=row["p"],
-                object=row["o"],
-                graph=GRAPH_URI
+                subject=row["s"], # the note IRI
+                predicate=tmp_predicate,
+                object=row["o"], # the HTML
+                graph_name=GRAPH_URI
             )
             note_quads.append(quad)
     else:
         logger.debug(f"using predicate pattern: {note_predicate}")
-        note_quads = store.quads_for_pattern(None, note_predicate, None, GRAPH_URI)
+        note_quads = list(store.quads_for_pattern(None, note_predicate, None, GRAPH_URI))
 
+    
     if delete:
         logger.warning("Deleting quads!")
 
@@ -840,7 +901,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                 logger.warning(f"Did not delete graph, as identical to library graph!")
         except Exception as e:
             logger.error(f"Error when deleting triples: {e}")
-
+    logger.info("Number of note_quads: %s", len(note_quads))
     parser_store = Store()
     for quad in note_quads:
         subject = quad.subject
@@ -851,20 +912,20 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
             html = obj.value
             note_uri = subject.value if hasattr(subject, "value") else str(subject)
             result = plugin.run(html_str=html, note_uri=note_uri)
-            logger.debug(json.dumps(result, indent=2))            
+            logger.debug(json.dumps(result, indent=2))    # TODO debug        
             
             try:
                 tmp_store = Store()
                 tmp_store.load(json.dumps(result["JSON-LD"]), format=RdfFormat.JSON_LD, to_graph=SEMANTIC_HTML_GRAPH)
                 parser_store.extend(tmp_store)
-                logger.debug(tmp_store.dump(format=RdfFormat.TRIG).decode("utf-8"))
+                # logger.debug(tmp_store.dump(format=RdfFormat.TRIG).decode("utf-8"))
                 logger.debug("JSON-LD parsed")                    
             except Exception as e:
                 logger.error(f"Error when parsing note: {e}")
     logger.info(f"Parsed {count} notes!")
 
     try:
-        if push:            
+        if push and count > 0:            
             store.bulk_extend(parser_store)
             logger.info(f"Extended store from parser results: {len(parser_store)} quads")
             if map_KB and knowledge_base:
