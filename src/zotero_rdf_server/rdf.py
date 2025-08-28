@@ -1,8 +1,8 @@
-import os
 from uuid import uuid5, NAMESPACE_URL, uuid4
 import json, re
 from datetime import datetime
 from dateutil import parser
+from pathlib import Path
 
 from .store import Store, Quad, NamedNode, Literal, RdfFormat, BlankNode
 from .logging_config import logger
@@ -13,26 +13,26 @@ from .utils import *
 
 
 def import_rdf_from_disk(lib: ZoteroLibrary, store: Store):
-
-    subdir = lib.load_from if lib.load_from else os.path.join(IMPORT_DIRECTORY, lib.name)
-    if not os.path.isdir(subdir):
+    subdir = Path(lib.load_from) if lib.load_from else Path(IMPORT_DIRECTORY) / lib.name
+    subdir = subdir.resolve()
+    if not subdir.is_dir():
         logger.warning(f"Directory not found for manual import: {subdir}")
         return
 
     logger.info(f"Importing RDF files for '{lib.name}' from {subdir} to {lib.base_url}")
-    for filename in os.listdir(subdir):
-        logger.info(f"Found: {filename}")
-        filepath = os.path.join(subdir, filename)
-        ext = os.path.splitext(filename)[1].lstrip('.').lower()
+    for filepath in subdir.iterdir():
+        if not filepath.is_file():
+            continue
+        logger.info(f"Found: {filepath.name}")
+        ext = filepath.suffix.lstrip('.').lower()
         if ext == "json":  # call for JSON
-            logger.warning(f"A {filename} will be parsed as Zotero Export JSON file. For JSON-LD, use .jsonld extension instead!")
-            json_path = os.path.join(subdir, filename)
-            build_graph_for_library(lib, store, json_path=json_path)
+            logger.warning(f"A {filepath.name} will be parsed as Zotero Export JSON file. For JSON-LD, use .jsonld extension instead!")
+            build_graph_for_library(lib, store, json_path=filepath)
             continue
 
         fmt = RdfFormat.from_extension(ext)
         if fmt is None:
-            logger.info(f"Skipping unsupported file: {filename}")
+            logger.info(f"Skipping unsupported file: {filepath.name}")
             continue
 
         before = len(store)
@@ -43,7 +43,7 @@ def import_rdf_from_disk(lib: ZoteroLibrary, store: Store):
             to_graph=NamedNode(lib.base_url)
         )
         after = len(store)
-        logger.info(f"Imported {after - before} triples from {filename}")
+        logger.info(f"Imported {after - before} triples from {filepath.name}")
 
 
 def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, ns_prefix: str, base_uri: str, map: dict, knowledge_base_graph: str = None, language: str = None):
@@ -381,7 +381,7 @@ def apply_additional_properties(store: Store, node: NamedNode, data: dict, specs
             logger.error(f"Invalid data at {node} for {raw_value}")
             continue
 
-def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = None):    
+def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Path = None):    
     json_path_items = None
     json_path_collections = None
 
@@ -414,19 +414,20 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
         if not json_path_items:
             collections = lib.fetch_collections(json_path=json_path_collections)
     except Exception as e:
-        logger.warning(f"Could not fetch collections for {lib.library_id}: {e}")
-        
-    #if log_level=="DEBUG":
+        logger.warning(f"Could not fetch collections for {lib.library_id}: {e}")        
+
     if lib.save_to:
         try:
-            path = lib.save_to #.join(EXPORT_DIRECTORY, "Zotero JSON", lib.name)
-            os.makedirs(path, exist_ok=True)
+            path = Path(lib.save_to) #.join(EXPORT_DIRECTORY, "Zotero JSON", lib.name)
+            path.mkdir(parents=True, exist_ok=True)
+            path=path.resolve()
             if items:
-                with open(os.path.join(path, f"{lib.library_id}_items.json"), "w", encoding="utf-8") as f:
+                with (path / f"{lib.library_id}_items.json").open("w", encoding="utf-8") as f:
                     json.dump(items, f, ensure_ascii=False, indent=2)
+
             if collections:
-                with open(os.path.join(path, f"{lib.library_id}_collections.json"), "w", encoding="utf-8") as f:
-                    json.dump(collections, f, ensure_ascii=False, indent=2)        
+                with (path / f"{lib.library_id}_collections.json").open("w", encoding="utf-8") as f:
+                    json.dump(collections, f, ensure_ascii=False, indent=2)      
             logger.info(f"Stored JSON for {lib.library_id} in {path}")
         except Exception as e:
             logger.error(f"Error saving JSON for {lib.library_id} to {lib.save_to}: {e}")
@@ -494,6 +495,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str = No
             try:
                 item_data = item.get("data", {})
 
+                # Done via API params
                 # item_tags = [t.get("tag") for t in item_data.get("tags", []) if isinstance(t, dict)]
                 # if any(ig in item_tags for ig in ignore_tags):
                 #     continue
@@ -554,10 +556,11 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
             mapping = raw_mapping
 
         elif isinstance(raw_mapping, str):
-            if os.path.exists(raw_mapping):
-                with open(raw_mapping) as f:
+            path = Path(raw_mapping).resolve()
+            if path.exists():
+                with path.open() as f:
                     mapping = json.load(f)
-                logger.info(f"Parser mapping loaded from file: {raw_mapping}")
+                logger.info(f"Parser mapping loaded from file: {path}")
             else:
                 mapping = json.loads(raw_mapping)
                 logger.info("Parser mapping loaded from JSON string")
@@ -581,10 +584,11 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
             metadata = raw_metadata
 
         elif isinstance(raw_metadata, str):
-            if os.path.exists(raw_metadata):
-                with open(raw_metadata) as f:
+            path = Path(raw_metadata).resolve()
+            if path.exists():
+                with path.open() as f:
                     metadata = json.load(f)
-                logger.info(f"Parser metadata loaded from file: {raw_metadata}")
+                logger.info(f"Parser metadata loaded from file: {path}")
             else:
                 metadata = json.loads(raw_metadata)
                 logger.info("Parser metadata loaded from JSON string")
@@ -594,7 +598,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
     except Exception as e:
         logger.warning(f"No metadata found: {e}")
         metadata = {
-            "wasGeneratedBy": os.path.basename(__file__)
+            "wasGeneratedBy": Path(__file__).name
         }
         logger.warning(f"Using fallback: {metadata}")
 
@@ -833,9 +837,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
     logger.debug("Plugin initialized")
     count = 0
 
-
     # Search notes in library graph
-    # TODO: predicate not sufficient?
     if tag_filter and not query_str:
         # PREFIX zot: <{ZOT_NS}>
         # SELECT DISTINCT ?s ?p ?o WHERE {{
@@ -854,6 +856,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
 
 
     if query_str and "SELECT" in query_str.upper(): 
+        if "$GRAPH" in query_str: query_str = query_str.replace("$GRAPH",GRAPH_URI.value)
         logger.debug(f"using query pattern: {query_str}")
         bindings = store.query(query_str, use_default_graph_as_union=True)
         results = list(bindings)
