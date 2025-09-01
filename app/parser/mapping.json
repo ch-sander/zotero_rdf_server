@@ -127,7 +127,7 @@
             }, {
                 "operator":"OR",
                 "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-                "targetObject": "http://www.zotero.org/namespaces/export#person"
+                "targetObject": "http://www.zotero.org/namespaces/export#actor"
             },
             {
                 "operator":"OR",
@@ -174,7 +174,11 @@
                 "operator":"OR",
                 "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
                 "targetObject": "http://www.zotero.org/namespaces/export#tag"
-            }
+            }, {
+                "operator":"OR",
+                "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+                "targetObject": "http://www.w3.org/2004/02/skos/core#Concept"
+            }            
             ],
             "SAME": [
             {

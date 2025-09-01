@@ -8,11 +8,30 @@ from pathlib import Path
 from .logging_config import logger
 from .config import *
 
-def iri_to_filename(iri: str) -> str: #TODO move to utils
+def iri_to_filename(iri: str) -> str:
     parsed = urlparse(iri)
     parts = [parsed.netloc] + parsed.path.strip("/").split("/")
     safe = "_".join(parts)
     return re.sub(r"[^\w\-\.]", "_", safe)
+
+def make_iri(val: str | list[str], pref: str, enforce_list: bool = False) -> str | list[str]:
+    is_str_input = isinstance(val, str)
+    vals = [val] if is_str_input else val
+
+    pref = pref.strip()
+    result = []
+
+    for v in vals:
+        v = v.strip()
+        if not v.startswith("http"):
+            result.append(f"{pref}{v}")
+        else:
+            result.append(v)
+
+    if enforce_list:
+        return result
+    return result[0] if is_str_input else result
+
 
 def safeNamedNode(uri: str | NamedNode, enforce: bool = True, allow_None: bool = False) -> NamedNode | Literal:
     INTERNAL_IRI_PREFIX = "http://internal.invalid/"
@@ -29,23 +48,28 @@ def safeNamedNode(uri: str | NamedNode, enforce: bool = True, allow_None: bool =
 
     parsed = urlparse(uri)
     if not parsed.scheme:
-        logger.info(f"Invalid IRI input (missing scheme), converting to Literal or synthetic IRI: {uri}")
-        if enforce:
-            fallback = quote(uri, safe="")
-            logger.warning(f"Replaced {uri} with {INTERNAL_IRI_PREFIX}{fallback}")
-            return NamedNode(f"{INTERNAL_IRI_PREFIX}{fallback}")
-        logger.warning(f"Stores {uri} as Literal")
-        return safeLiteral(uri)
+        logger.info(f"Invalid IRI input (missing scheme), prepending 'http://': {uri}")
+        uri = "http://" + uri
+        parsed = urlparse(uri)
 
-    try:
-        safe_iri = quote(uri, safe=':/#?&=%')
-        return NamedNode(safe_iri)
-    except ValueError as e:
-        logger.info(f"Invalid IRI converted to Literal or synthetic IRI: {uri} – {e}")
-        if enforce:
-            fallback = quote(uri, safe="")
-            return NamedNode(f"{INTERNAL_IRI_PREFIX}{fallback}")
-        return safeLiteral(uri)
+    if parsed.scheme and parsed.netloc:
+        try:
+            safe_iri = quote(uri, safe=':/#?&=%')
+            return NamedNode(safe_iri)
+        except ValueError as e:
+            logger.info(f"Invalid IRI converted to Literal or synthetic IRI: {uri} – {e}")
+            if enforce:
+                fallback = quote(uri, safe="")
+                return NamedNode(f"{INTERNAL_IRI_PREFIX}{fallback}")
+            return safeLiteral(uri)
+
+    logger.warning(f"IRI still invalid after normalization: {uri}")
+    if enforce:
+        fallback = quote(uri, safe="")
+        logger.warning(f"Replaced {uri} with {INTERNAL_IRI_PREFIX}{fallback}")
+        return NamedNode(f"{INTERNAL_IRI_PREFIX}{fallback}")
+    logger.warning(f"Stores {uri} as Literal")
+    return safeLiteral(uri)
 
 def safeLiteral(value) -> Literal:
     try:
