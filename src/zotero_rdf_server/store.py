@@ -137,6 +137,7 @@ def refresh_store(force_reload:bool = False):
                             ensure_store(store)
                             time.sleep(2)
                             logger.info("Start Parser Plugin")
+                            # TODO read predicate/query, and tag filter from YAML?
                             parse_all_notes(lib, store, delete=True)
                         except Exception as e:
                             logger.error(f"Error parsing notes: {e}")

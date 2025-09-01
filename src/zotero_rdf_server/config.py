@@ -92,7 +92,11 @@ ZOTERO_CONFIGS = zotero_config.get("context", {})
 ZOTERO_KB_CONFIG = [] # TODO not yet in use
 ZOTERO_LIBRARIES_CONFIGS = []
 LIMIT = zotero_config.get("limit", 100)
-
+MAX_DATA = zotero_config.get("max_data", 0)
+try:
+    MAX_DATA = int(MAX_DATA)
+except:
+    MAX_DATA = int(0)
 
 for lib_cfg in zotero_config.get("libraries", []):
     merged_cfg = set_defaults(lib_cfg, ZOTERO_DEFAULT_CONFIGS, ZOTERO_DEFAULT_MODE)
@@ -110,7 +114,7 @@ RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 XSD_NS = "http://www.w3.org/2001/XMLSchema#"
 SKOS_ALT = "http://www.w3.org/2004/02/skos/core#altLabel"
 OWL_SAME_AS = "http://www.w3.org/2002/07/owl#sameAs"
-PREFIXES = {"zot":ZOT_NS, "rdfs":"http://www.w3.org/2000/01/rdf-schema#", "owl":"http://www.w3.org/2002/07/owl#", "rdf":"http://www.w3.org/1999/02/22-rdf-syntax-ns#", "xsd":XSD_NS, "skos":"http://www.w3.org/2004/02/skos/core#"}
+PREFIXES = {"zot":ZOT_NS, "rdfs":"http://www.w3.org/2000/01/rdf-schema#", "owl":"http://www.w3.org/2002/07/owl#", "rdf":"http://www.w3.org/1999/02/22-rdf-syntax-ns#", "xsd":XSD_NS, "skos":"http://www.w3.org/2004/02/skos/core#", "prov":"http://www.w3.org/ns/prov#"}
 REGEX_PATTERN = f"{ZOT_NS}regex"
 
 LANG_MAP = {

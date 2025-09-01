@@ -46,7 +46,6 @@ async def export_graph(
         
     logger.info(f"Checked graph: {checked_graph!r}")
     logger.info(f"Graph triples: {len(list(store.quads_for_pattern(None,None,None,checked_graph)))}")
-
     store.dump(output=path, format=rdf_format, prefixes=PREFIXES, from_graph=checked_graph, base_iri= str(checked_graph.value).rstrip('/') + '/' if checked_graph else None) #
     return {"success":f"Export to: {path}"}
     # return FileResponse(path, filename=os.path.basename(path))
@@ -409,6 +408,8 @@ async def parse_notes(
         lib = ZoteroLibrary(lib_cfg)
         if not graph or graph == lib.base_url:
             result=parse_all_notes(lib, store, note_predicate=predicate, query_str=query, delete=delete,push=push) # TODO no graph given
+        else:
+            return {"warning":f"{graph} not yet supported but defined via config"}
     return {"success":f"{result} notes parsed"}
 
 ###LOGS###

@@ -3,96 +3,77 @@
       "SemanticNote"
     ],
     "Document": {
-      "tags": [
-        "p"
-      ],
+        "xpath": [
+            "//p"
+        ],
       "types": [
-        "Doc"
+        "Paragraph"
       ]
     },
     "Annotation": {
-      "Concept": {
-        "tags": [
-          "em"
-        ],
-        "styles": [
-          "font-style:italic"
-        ],
-        "types": [
-          "Annotation",
-          "Concept"
-        ]
-      },
-      "Entity": {
-        "tags": [
-          "strong"
-        ],
-        "types": [
-            "Annotation",
-            "Entity"
-          ]
-      },
-      "Entity2": {
-        "regex": [
-          "#\\\\w+#?"
-        ],
-        "types": [
-          "Annotation",
-          "Entity"
-        ]
-      },
-      "Reference1": {
-        "tags": [
-          "u"
-        ],
-        "types": [
-          "Reference"
-        ]
-      },
-      "Reference2": {
-        "tags": [
-          "span"
-        ],
-        "class": "citation",
-        "types": [
-          "Reference Zotero"
-        ]
-      }
+        "Entity": {
+            "xpath": [
+                "//em | //i | //span[contains(@style, \"italic\")]"
+            ],
+            "split": "\\s*(?:,|\\band\\b|\\+|\\&)\\s*",
+            "types": [
+                "Entity"
+            ]
+        },
+        "Concept": {
+            "xpath": [
+                "//strong"
+            ],
+            "types": [
+                "Concept"
+            ],
+            "split": "\\s*(?:,|\\band\\b|\\+|\\&)\\s*"
+        },
+        "Reference": {
+            "xpath": [
+                "//u"
+            ],
+            "types": [
+                "Reference"
+            ]
+        }
     },
     "Locator": {
-      "tags": [
-        "code"
-      ],
-      "types": [
-        "Page-Locator"
-      ]
+        "xpath": [
+            "//code"
+        ],
+        "types": [
+            "Page-Locator"
+        ]
     },
     "Structure": {
-      "tags": [
-        "h1",
-        "h2",
-        "h3"
-      ],
-      "types": [
-        "Structure"
-      ]
+        "xpath": [
+            "//h1",
+            "//h2",
+            "//h3",
+            "//h4",
+            "//h5",
+            "//h6"
+        ],
+        "types": [
+            "Structure"
+        ]
     },
     "Quotation": {
-      "tags": [
-        "blockquote"
-      ],
-      "types": [
-        "Quotation"
-      ]
+        "xpath": [
+            "//blockquote"
+        ],
+        "types": [
+            "Quotation"
+        ]
     },
     "IGNORE": {
-      "tags": [
-        "pre",
-        "img"
-      ],
-      "regex": [
-        "#"
-      ]
+        "xpath": [
+            "//pre"
+        ],
+        "regex": [
+            "#"
+        ]
     },
     "@context": {
       "prov": "http://www.w3.org/ns/prov#",
@@ -137,16 +118,24 @@
                 "targetProperty": "http://www.w3.org/2004/02/skos/core#altLabel"
             }
             ],
-            "AND": [
+            "POOL": [
             {
-                "comment": "filters target and source datasets as inner join for property-object pairs.",                
+                "comment": "filters target and source dataset subjects by property and object. Each pair given is by default (operator key is not neccessary) an additive to the pool (OR not AND). Recursive filtering (AND) is experimental. Property or Object may be None.",
+                "operator": "OR",
                 "domainProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-                "domainNode": "https://semantic-html.org/vocab#Entity",
+                "domainObject": "https://semantic-html.org/vocab#Entity"
+            }, {
+                "operator":"OR",
                 "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-                "targetNode": "http://www.zotero.org/namespaces/export#place"
+                "targetObject": "http://www.zotero.org/namespaces/export#actor"
+            },
+            {
+                "operator":"OR",
+                "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+                "targetObject": "http://www.zotero.org/namespaces/export#place"
             }
             ],
-            "OR": [
+            "SAME": [
             {
                 "comment": "if source resource matches node in any target resource, FUZZY will be skipped and a link will directly be created from source to target using mapProperty.",  
                 "domainProperty": "http://www.w3.org/2002/07/owl#sameAs",
@@ -156,7 +145,51 @@
             "allowCreate": true,
             "mapProperty": "http://www.w3.org/2002/07/owl#sameAs",
             "altLabel": "http://www.w3.org/2004/02/skos/core#altLabel",
-            "knowledgeBaseGraph": "https://www.raramagnetica.de/entities",
+            "knowledgeBaseGraph": "https://scigma.de/entities",
+            "ADD": {
+            "http://www.w3.org/2000/01/rdf-schema#comment": {
+                "@value": "Auto-generated entity from semantic note",
+                "@language": "en"
+            },
+            "http://purl.org/dc/terms/source": {
+                "@id": "https://semantic-html.org"
+            }
+            }
+        },
+        {
+            "comment":"This is a second rule",
+            "FUZZY": [
+            {
+                "threshold": 90,
+                "domainProperty": "https://semantic-html.org/vocab#text",
+                "targetProperty": "http://www.w3.org/2004/02/skos/core#altLabel"
+            }
+            ],
+            "POOL": [
+            {
+                "operator": "OR",
+                "domainProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+                "domainObject": "https://semantic-html.org/vocab#Concept"
+            }, {
+                "operator":"OR",
+                "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+                "targetObject": "http://www.zotero.org/namespaces/export#tag"
+            }, {
+                "operator":"OR",
+                "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+                "targetObject": "http://www.w3.org/2004/02/skos/core#Concept"
+            }            
+            ],
+            "SAME": [
+            {
+                "domainProperty": "http://www.w3.org/2002/07/owl#sameAs",
+                "targetProperty": "http://www.w3.org/2002/07/owl#sameAs"
+            }
+            ],
+            "allowCreate": true,
+            "mapProperty": "http://www.w3.org/2002/07/owl#sameAs",
+            "altLabel": "http://www.w3.org/2004/02/skos/core#altLabel",
+            "knowledgeBaseGraph": "https://scigma.de/entities",
             "ADD": {
             "http://www.w3.org/2000/01/rdf-schema#comment": {
                 "@value": "Auto-generated concept from semantic note",

@@ -75,7 +75,7 @@ class ZoteroLibrary:
         else:
             logger.info(f"{self.name}: Valid library config!") 
 
-    def fetch_paginated(self, endpoint: str) -> list:
+    def fetch_paginated(self, endpoint: str, max_data: int = MAX_DATA) -> list:
         results = []
         start = 0
         logger.info("Initialize session")
@@ -87,6 +87,9 @@ class ZoteroLibrary:
             allowed_methods=["GET"]
         )
         adapter = HTTPAdapter(max_retries=retries)
+        filter_collection = self.api_query_params.pop("collection", None)
+        if endpoint == "items" and filter_collection and isinstance(filter_collection, str):
+            endpoint = f"collections/{filter_collection}/items"
 
         with requests.Session() as session:
             session.mount("https://", adapter)
@@ -106,7 +109,7 @@ class ZoteroLibrary:
                     params=params
                 )
                 prepared = req.prepare()
-                logger.debug(f"Sending API request: {prepared.method} {prepared.url}")
+                logger.info(f"Sending API request: {prepared.method} {prepared.url}")
                 for k, v in prepared.headers.items():
                     logger.debug(f"Header: {k}: {v}")
 
@@ -127,7 +130,10 @@ class ZoteroLibrary:
 
                 results.extend(data)
                 logger.info(f"Fetched {len(data)} items (start={start})")
-                start += LIMIT
+                start += LIMIT                
+                if max_data and max_data > 0 and start >= max_data:
+                    logger.warning(f"Aborting pagination: max of {max_data} items reached.")
+                    break
 
                 time.sleep(1)
 

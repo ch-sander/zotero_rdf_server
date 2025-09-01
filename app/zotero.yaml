@@ -4,6 +4,7 @@ context:
   base: "https://www.zotero.org/"
   schema: "https://api.zotero.org/schema" # if given, will create a basic OWL ontology as named graph with IRI of vocab
   limit: 100 # chunk size per API request
+  max_data: 0 # max items (0 = no limit)
 
 defaults:
   mode: "override" # "merge" or "default". Defines how defaults are enforced for library setups specified below
@@ -22,28 +23,37 @@ defaults:
     mapping: "/app/parser/mapping.json" # load file or build dict here
     metadata: "/app/parser/meta.json" # load file or build dict here
   map: # skip this dict if no specs needed. Will ignore empty lists as constraints
-    # white: [title,date] # a white list (will only include these and those in named)
+    # white: [title,date] # a white list (will only include these and those in rdf_mapping)
     # black: [title,date] # a black list (will ingore these)
     # rdf_mapping: [creators,tags,collections,parentItem,parentCollection] # if not specified, uses reasonable defaults for entities and datatypes
-    item_type: ["_item","itemType"] # takes values from field for rdf type. Start with _ sets constant type predicate. If not indicated, uses "item". If not starting with "http" will use defaul vocab from context.
-    collection_type: ["_collection"] # If not indicated, uses "collection"
-    ignore_tags: ["*ignore"] # Exclude items with any of these tags
+    item_type: ["item","_itemType"] # takes values from field for rdf:type. Start with _ to set the value of the respecitve key (i.e. metadata field name) in the Zotero data, otherwise sets constant type predicate. If not indicated, uses "item". If not starting with "http" will use defaul vocab from context.
+    collection_type: ["collection"] # If not indicated, uses "collection"
     fuzzy: 90 # the minimum fuzzy score (threshold in %) to match strings as identical entities (places, persons). Defaults to 90 if missing
     named_library: "inLibrary" # if specified will add an object property by that name with a named node for the library's named graph URI to facilitate queries accross multiple named graphs
+    creator:
+      types: ["actor"] # RDF type for each creator
+      role_types: ["creatorRole"] # RDF type for each creator role node
+      role_node: "BlankNode" # or "uuid4" for each creator role node 
+      property: "hasCreator" # RDF property for each creator role node to creator node
+      fuzzy: 80 # fuzzy score specific to creator name labels. If not set, uses fuzzy score set above.
+    tag:
+      types: ["tag"] # RDF type for each tag
+      fuzzy: 100 # fuzzy score specific to tag labels. If not set, uses 100.
     additional:
       - property: "http://www.w3.org/2000/01/rdf-schema#label"
-        value: "name"
+        value: "_name" # Start with _ to set the value of the respecitve key (i.e. metadata field name) in the Zotero data, otherwise sets constant value as object. If not starting with "http" will use defaul vocab from context.
         named_node: false
       - property: "http://www.w3.org/2000/01/rdf-schema#label"
-        value: "tag"
+        value: "_tag"
         named_node: false
       - property: "http://www.w3.org/2002/07/owl#sameAs"
-        value: "url"
+        value: "_url"
         named_node: true
-  # api_query_params:
+  # api_query_params: # these parameters are directly transformed to GET parameters as outlined for Zotero API (v3)
     # itemType: "book"  # optional, freely configurable
     # tag: "important"  # optional, freely configurable
-    # collection: "XYZ123"  # optional
+    # collection: "XYZ123"  # optional, currently not supported by Zotero API (v3). The internal parser supports
+                            # limiting search to one collection.
 
 libraries:
   - name: Knowledge_Base # stores known named entities (once created automatically from mapping, exported via API, manually refined etc.)
