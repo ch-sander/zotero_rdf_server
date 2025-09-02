@@ -32,6 +32,9 @@ def make_iri(val: str | list[str], pref: str, enforce_list: bool = False) -> str
         return result
     return result[0] if is_str_input else result
 
+def _remove_all(store: Store, s: NamedNode, p: NamedNode, g: NamedNode = None):
+    for q in list(store.quads_for_pattern(s, p, None, g)):
+        store.remove(q)
 
 def safeNamedNode(uri: str | NamedNode, enforce: bool = True, allow_None: bool = False) -> NamedNode | Literal:
     INTERNAL_IRI_PREFIX = "http://internal.invalid/"
@@ -103,7 +106,7 @@ def fuzzy_match_label(pool_store:Store, label:str, threshold=90, graph_name:Name
     best_label = None
     logger.debug(f"Fuzzy matching '{label}' against existing pool of {len(pool_store)} quads (threshold: {threshold})")
 
-    for quad in pool_store: # TODO use candidates!
+    for quad in pool_store:
         subject = quad.subject
         for pred in predicates: # [SKOS_ALT, RDFS_LABEL] Not really needed as every label should also be a altLabel
 
@@ -135,7 +138,7 @@ def fuzzy_match_label(pool_store:Store, label:str, threshold=90, graph_name:Name
                     except re.error as e:
                         logger.warning(f"Invalid regex pattern '{pattern_str}' on {subject}: {e}")
    
-    if best_score >= threshold:
+    if best_score >= threshold: # TODO return dict for all matches above threshold in descending order to match source on multiple KB items
         logger.debug(f"Best match: {best_match} with label '{best_label}' (score: {best_score})")
         return best_match, best_score, best_label
     else:

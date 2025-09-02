@@ -327,6 +327,7 @@ async def rdf2znotes(
     if graph and not checked_graph:
         raise HTTPException(status_code=400, detail=f"Invalid graph IRI: {checked_graph}. Use one of these or None: {all_graphs}")
     from .store import store
+    
     def run_export(api_key, library_id, library_type, collection_id=None):
         logger.info(f"Exporting RDF to Zotero Notes for library_id={library_id}, collection={collection_id}")
         source = open(input_file) if input_file else store

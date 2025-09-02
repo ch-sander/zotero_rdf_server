@@ -11,6 +11,7 @@ class ZoteroLibrary:
         self.name = config["name"]
         self.load_mode = config.get("load_mode", "json")
         self.library_type = config.get("library_type", None)
+        if self.library_type == "group": self.library_type == "groups"
         self.library_id = config.get("library_id", None)
         self.api_key = config.get("api_key", None)
         self.rdf_export_format = config.get("rdf_export_format", "rdf_zotero")
@@ -54,7 +55,7 @@ class ZoteroLibrary:
         if not self.load_mode in ["json", "rdf", "manual_import"]:
             passing = False
             logger.warning(f"{self.name}: Invalid load_mode {self.load_mode}!")
-        if not self.library_type in ["groups", "user", "knowledge base"]:
+        if not self.library_type in ["groups", "user", "knowledge base"]:            
             passing = False
             logger.error(f"{self.name}: Invalid library_type {self.library_type}!")
         if not self.rdf_export_format in ["rdf_zotero", "rdf_bibliontology"] and self.load_mode == "rdf":
