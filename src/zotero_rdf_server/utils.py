@@ -1,9 +1,9 @@
 
 from datetime import datetime, timezone
 from urllib.parse import quote, urlparse
-from pyoxigraph import Store, Quad, NamedNode, Literal, RdfFormat, DefaultGraph
+from pyoxigraph import Store, Quad, NamedNode, Literal, RdfFormat, DefaultGraph, BlankNode
 from rapidfuzz import fuzz
-import re
+import re, json
 from pathlib import Path
 from .logging_config import logger
 from .config import *
@@ -32,9 +32,21 @@ def make_iri(val: str | list[str], pref: str, enforce_list: bool = False) -> str
         return result
     return result[0] if is_str_input else result
 
-def _remove_all(store: Store, s: NamedNode, p: NamedNode, g: NamedNode = None):
-    for q in list(store.quads_for_pattern(s, p, None, g)):
+def store_remove_all(store: Store, s: NamedNode = None, p: NamedNode = None, o: NamedNode | BlankNode | Literal = None, g: NamedNode | DefaultGraph = None):
+    for q in list(store.quads_for_pattern(s, p, o, g)):
         store.remove(q)
+
+def store_move_subject(store: Store, src: NamedNode, dst: NamedNode, g: NamedNode | DefaultGraph = None):
+    """
+    Re-subject all triples from src to dst: (src, p, o) -> (dst, p, o).
+    If multiple identical (dst, p, o) exist, add() is idempotent in PyOxigraph.
+    """
+    to_move = list(store.quads_for_pattern(src, None, None, g))
+    for q in to_move:
+        # remove original
+        store.remove(q)
+        # add with new subject
+        store.add(Quad(dst, q.predicate, q.object, g))
 
 def safeNamedNode(uri: str | NamedNode, enforce: bool = True, allow_None: bool = False) -> NamedNode | Literal:
     INTERNAL_IRI_PREFIX = "http://internal.invalid/"
@@ -89,6 +101,47 @@ def ensure_rdf_format(format=None, fallback=RdfFormat.TRIG):
             return RdfFormat.from_media_type(format) or RdfFormat.from_extension(format) or fallback
         else:
             return format
+
+
+def load_dict_like(
+    raw: str | dict | Path | None,
+    default: dict | None = None,
+    label: str = "config"
+) -> dict:
+
+    try:
+        if isinstance(raw, dict):
+            return raw
+
+        elif isinstance(raw, Path):
+            path = raw.resolve()
+            if path.exists():
+                with path.open(encoding="utf-8") as f:
+                    data = json.load(f)
+                logger.info(f"{label}: loaded from file {path}")
+                return data
+            
+        elif isinstance(raw, str):
+            path = Path(raw).resolve()
+            if path.exists():
+                with path.open(encoding="utf-8") as f:
+                    data = json.load(f)
+                logger.info(f"{label}: loaded from file {path}")
+                return data
+            else:
+                data = json.loads(raw)
+                logger.info(f"{label}: loaded from JSON string")
+                return data
+
+        elif raw is None:
+            raise ValueError("Input is None")
+
+        else:
+            raise ValueError(f"Invalid input type: {type(raw)}")
+
+    except Exception as e:
+        logger.warning(f"{label}: failed to load ({e}), using fallback")
+        return default.copy() if default else {}
 
 def ensure_alt_label(store: Store, node: NamedNode, lit_value: str, alt_label_prop: NamedNode = NamedNode(SKOS_ALT), graph: NamedNode = DefaultGraph()):
     existing_labels = {

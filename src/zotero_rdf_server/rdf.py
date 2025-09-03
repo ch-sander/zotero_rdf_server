@@ -565,60 +565,20 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
     GRAPH_URI = safeNamedNode(lib.base_url) # Source graph of notes
     SEMANTIC_HTML_GRAPH = safeNamedNode(lib.parser.get("base_uri", {lib.base_url}))
     KB_GRAPH = safeNamedNode(lib.knowledge_base_graph)
-    # Mapping
-    raw_mapping = lib.parser.get("mapping")
-    mapping = {}
-
-    try:
-        if isinstance(raw_mapping, dict):
-            mapping = raw_mapping
-
-        elif isinstance(raw_mapping, str):
-            path = Path(raw_mapping).resolve()
-            if path.exists():
-                with path.open() as f:
-                    mapping = json.load(f)
-                logger.info(f"Parser mapping loaded from file: {path}")
-            else:
-                mapping = json.loads(raw_mapping)
-                logger.info("Parser mapping loaded from JSON string")
-        else:
-            raise ValueError("Invalid mapping input")
-
-    except Exception as e:
-        logger.warning(f"No mapping found, using fallback: {e}")
-        mapping = {
-            '@context': {
-                '@base': lib.base_url,
-                '@vocab': ZOT_NS
-            }
-        }
     
-    raw_metadata = lib.parser.get("metadata")
-    metadata = {}
+    mapping = load_dict_like(
+        lib.parser.get("mapping"),
+        default={"@context": {"@base": lib.base_url, "@vocab": ZOT_NS}},
+        label="Parser mapping"
+    )
 
-    try:
-        if isinstance(raw_metadata, dict):
-            metadata = raw_metadata
+    metadata = load_dict_like(
+        lib.parser.get("metadata"),
+        default={"wasGeneratedBy": Path(__file__).name},
+        label="Parser metadata"
+    )
 
-        elif isinstance(raw_metadata, str):
-            path = Path(raw_metadata).resolve()
-            if path.exists():
-                with path.open() as f:
-                    metadata = json.load(f)
-                logger.info(f"Parser metadata loaded from file: {path}")
-            else:
-                metadata = json.loads(raw_metadata)
-                logger.info("Parser metadata loaded from JSON string")
-        else:
-            raise ValueError("Invalid metadata input")
 
-    except Exception as e:
-        logger.warning(f"No metadata found: {e}")
-        metadata = {
-            "wasGeneratedBy": Path(__file__).name
-        }
-        logger.warning(f"Using fallback: {metadata}")
 
     map_KB = lib.parser.get("knowledge_base_mapping", False)
     tag_filter = lib.parser.get("tag_filter")

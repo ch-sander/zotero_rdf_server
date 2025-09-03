@@ -1,12 +1,13 @@
 import xml.etree.ElementTree as ET
-from typing import List, Tuple, Optional, Dict, Literal, Set
+from typing import List, Tuple, Optional, Dict, Literal, Set, Mapping, Any
 from pyoxigraph import Store, RdfFormat, NamedNode, BlankNode, DefaultGraph, Quad
-from zotero_rdf_server.utils import ensure_rdf_format, safeNamedNode, _remove_all
+from zotero_rdf_server.utils import ensure_rdf_format, safeNamedNode, store_remove_all, store_move_subject, load_dict_like
 from zotero_rdf_server.logging_config import logger
-import time, json
+import time, json, uuid
 from zotero_rdf_server.config import *
 from collections import defaultdict
 from datetime import datetime
+from zotero_rdf_server.models import ZoteroLibrary
 
 try:
     from pyzotero import zotero
@@ -145,13 +146,15 @@ def znotes_to_rdf(api_key, library_id, library_type, collection_id, input_format
     else:
         return tmp_store
     
-def taxonomy_to_html(store: Store, map: dict = {}, query:str = None, add_header: bool = True) -> str:
+def taxonomy_to_html(store: Store, kb_graph:str, map: dict = {}, query:str = None, add_header: bool = True) -> str:
     if query and "SELECT" in query.upper():
         sparql = query
     else:
+        if map is None: map = {}
         LABEL_PROPS = map.get("labels", ["skos:prefLabel", RDFS_LABEL])
         PREFERRED_LANGS = ["en", "la", "de", ""] # ordered
-        TYPES = map.get("types", [SKOS_CONCEPT])
+        PROPS = map.get("props", [RDF_TYPE])
+        OBJECTS = map.get("objects", [SKOS_CONCEPT])
         BROADER = map.get("broaders", [SKOS_BROADER])
 
         def fmt_term(term: str) -> str:
@@ -162,7 +165,8 @@ def taxonomy_to_html(store: Store, map: dict = {}, query:str = None, add_header:
                 return f"<{t}>"
             return t
 
-        values_types  = " ".join(fmt_term(t) for t in TYPES)
+        objs  = " ".join(fmt_term(t) for t in OBJECTS)
+        props = " | ".join(fmt_term(p) for p in PROPS)
         label_path = " | ".join(fmt_term(p) for p in LABEL_PROPS)
         broader_path = " | ".join(fmt_term(b) for b in BROADER)
         prefix_block = "\n".join(f"PREFIX {k}: <{v}>" for k, v in PREFIXES.items())
@@ -172,18 +176,18 @@ def taxonomy_to_html(store: Store, map: dict = {}, query:str = None, add_header:
 
         SELECT ?c ?parent ?lp ?lv
         WHERE {{
-        ?c rdf:type ?t .
-        VALUES ?t {{ {values_types} }}
+        ?c ({props}) ?t .
+        VALUES ?t {{ {objs} }}
         OPTIONAL {{ ?c ({broader_path}) ?parent . }}
         OPTIONAL {{ ?c ({label_path}) ?lv . FILTER(isLiteral(?lv)) }}
         }}
         """        
-
+    KB_GRAPH = safeNamedNode(kb_graph)
     try:
-        rows = list(store.query(query=sparql)) # TODO graph default_graph=DefaultGraph()
-        print(f"{len(rows)} rows found for taxonomy") # TODO logger.info
+        rows = list(store.query(query=sparql,default_graph=KB_GRAPH))
+        logger.info(f"{len(rows)} rows found for taxonomy")
     except Exception as e:
-        print(f"Error for query {sparql}: {e}") # TODO logger.error
+        logger.error(f"Error for query {sparql}: {e}")
 
     def rank_lang(lang: str) -> int:
         # low = better
@@ -288,14 +292,11 @@ def html_to_note(
     api_key: str,
     library_id: str | int,
     library_type: Literal["user", "group", "groups"] = "group",
+    collection_id: str = None,
     note_key: str | None = None,
     mode: Literal["overwrite", "append", "prepend"] = "overwrite",
     separator: str = "\n\n"
 ) -> str:
-    """
-    Create or update a Zotero note with given HTML. 
-    Returns the web URI of the note.
-    """
     if library_type == "groups": library_type == "group"
     zot = zotero.Zotero(library_id, library_type, api_key)
 
@@ -327,10 +328,10 @@ def html_to_note(
         new_item = {
             "itemType": "note",
             "note": html,
-            "collections": [],
+            "collections": [collection_id] if collection_id else [],
         }
-        resp = zot.create_items([new_item])[0]
-        note_key = resp["key"]
+        resp = zot.create_items([new_item])
+        note_key = resp.get("key", resp)
 
     return note_key
 
@@ -351,7 +352,7 @@ def note_to_html(
 
 def html_to_taxonomy(html:str,note_uri:str=None, mapping:dict = None, metadata:dict = None) -> Store:
     from zotero_rdf_server.plugins.parse_note import ParseNotePlugin
-    # TODO
+    
     mapping = {
         "@type": ["Taxonomy"],
         "Structure": {
@@ -372,7 +373,7 @@ def html_to_taxonomy(html:str,note_uri:str=None, mapping:dict = None, metadata:d
                         },
                         "text": {
                                 "@id": RDFS_LABEL,
-                                "@type": "@value"
+                                "@type": "http://www.w3.org/2001/XMLSchema#string"
                         },
                     }
     } if not mapping else mapping
@@ -390,120 +391,186 @@ def html_to_taxonomy(html:str,note_uri:str=None, mapping:dict = None, metadata:d
 
 def taxononmy_to_store(
     *,
-    tax_store: Store, # parsed HTML note as RDF
-    kb_store: Store, # knowledge base
-    map: Optional[Dict[str, str]] = None,
-    update_broader: bool = True,
-    update_label: bool = True,
+    tax_store: Store, # source store for taxonomy from HTML
+    kb_store: Store, # target store containing the knowledge base
+    kb_graph: str,
+    map: Optional[Dict[str, str]] = None,    
     label_language: Optional[str] = None   # e.g., "la", "de"; None -> untagged literal
 ) -> None:
     
-    def _merge_props(cfg: Optional[Dict[str, str]]) -> Dict[str, str]:
+    def _strip_modifier(text: str, prefixes: Dict[str, str]) -> tuple[str, Optional[str]]:
+        """
+        Returns (clean_text, modifier or None), e.g. ("Term", "delete") for "!Term".
+        Only checks prefix at the very start of the string (after leading whitespace).
+        """
+        if text is None:
+            return "", None
+        t = text.lstrip()
+        for name, sym in prefixes.items():
+            if t.startswith(sym):
+                return t[len(sym):].lstrip(), name
+        return text, None
+
+    def _merge_props(cfg: Optional[Mapping[str, Any]]) -> dict[str, Any]: # TODO not well tested
         defaults = {
-            "type_props":       [RDF_TYPE],
-            "source_type":      SKOS_CONCEPT,
+            "source_props":       [RDF_TYPE],
+            "source_objects":      [SKOS_CONCEPT],
             "source_sameAs":    OWL_SAME_AS,
             "source_text":      RDFS_LABEL,
             "source_broader":   SKOS_BROADER,
+            "props": [RDF_TYPE],
+            "objects": [SKOS_CONCEPT],
             "broaders":          [SKOS_BROADER],
             "labels":            [RDFS_LABEL],
+            "sameAs": OWL_SAME_AS,
             "update_broader":   True,
-            "update_label":     True
+            "update_label":     True,
+            "update_modifiers": False,
+            "modifier_prefixes": {
+                    "add": "+",
+                    "delete": "!",
+                    "softmerge": "<",
+                    "merge": "="
+            }
         }
         if not cfg:
             return defaults
         out = defaults.copy()
-        out.update({k: v for k, v in cfg.items() if isinstance(k, str) and v and (isinstance(v, str) or isinstance(v, list))})
+        out.update({k: v for k, v in cfg.items() if isinstance(k, str) and v and (isinstance(v, (str, list, dict, bool)))})
         return out
-    
+
     p = _merge_props(map)
-    update_broader = p.pop("update_broader", update_broader)
-    update_label = p.pop("update_label", update_label)
+    KB_GRAPH = safeNamedNode(kb_graph)
+    update_broader   = bool(p.get("update_broader", True))
+    update_label     = bool(p.get("update_label", True))
+    update_modifiers = bool(p.get("update_modifiers", False))
 
-    # 1) Collect all Structure nodes and their sameAs/text
-    #    structures: node_id -> {"sameAs": <IRI or None>, "text": <str or None>}
+    # Collect all Structure nodes and their sameAs/text
+    # structures: node_id -> {"sameAs": <IRI or None>, "text": <str or None>}
     structures: Dict[str, Dict[str, Optional[str]]] = {}
-    for t in p["type_props"]:
-        for q in tax_store.quads_for_pattern(None, safeNamedNode(t), safeNamedNode(p["source_type"]), None):
-            node = q.subject
-            node_id = str(getattr(node, "value", node))  # NamedNode/BlankNode -> stable string id
-            entry = structures.setdefault(node_id, {"sameAs": None, "text": None})
+    for t in p["source_props"]:
+        for o in p["source_objects"]:
+            for q in tax_store.quads_for_pattern(None, safeNamedNode(t), safeNamedNode(o), None):
+                node = q.subject
+                node_id = str(getattr(node, "value", node))
+                entry = structures.setdefault(node_id, {"sameAs": None, "text": None, "modifier": None})
 
-            # sameAs (allow multiple; pick the first non-empty)
-            for qq in tax_store.quads_for_pattern(node, safeNamedNode(p["source_sameAs"]), None, None):
-                if getattr(qq.object, "value", None):
-                    entry["sameAs"] = entry["sameAs"] or str(qq.object.value)
+                # sameAs
+                for qq in tax_store.quads_for_pattern(node, safeNamedNode(p["source_sameAs"]), None, None):
+                    if getattr(qq.object, "value", None):
+                        entry["sameAs"] = entry["sameAs"] or str(qq.object.value)
 
-            # text (label candidate)
-            for qq in tax_store.quads_for_pattern(node, safeNamedNode(p["source_text"]), None, None):
-                if getattr(qq.object, "value", None):
-                    # keep the first non-empty
-                    entry["text"] = entry["text"] or str(qq.object.value)
+                # text (parse modifier if enabled)
+                for qq in tax_store.quads_for_pattern(node, safeNamedNode(p["source_text"]), None, None):
+                    if getattr(qq.object, "value", None):
+                        raw = str(qq.object.value)
+                        if update_modifiers:
+                            clean, mod = _strip_modifier(raw, p["modifier_prefixes"])
+                            # store first non-empty; first modifier wins
+                            if entry["text"] is None and clean:
+                                entry["text"] = clean
+                            if entry["modifier"] is None and mod:
+                                entry["modifier"] = mod
+                            if entry["modifier"] == "add" and not entry.get("sameAs"):
+                                entry["sameAs"] = f"{kb_graph}/{uuid.uuid4()}"
+                        else:
+                            if entry["text"] is None and raw:
+                                entry["text"] = raw
 
-    # 2) Build child->parents mapping via inStructure, but resolved through sameAs
+    # Build child->parents mapping via inStructure, but resolved through sameAs
     child_to_parents: Dict[str, Set[str]] = {}
     touched_subjects: Set[str] = set()
-
     for rel in tax_store.quads_for_pattern(None, safeNamedNode(p["source_broader"]), None, None):
         child_node  = rel.subject
         parent_node = rel.object
-
         child_id  = str(getattr(child_node,  "value", child_node))
         parent_id = str(getattr(parent_node, "value", parent_node))
-
         child_same  = structures.get(child_id,  {}).get("sameAs")
         parent_same = structures.get(parent_id, {}).get("sameAs")
-
         if child_same and parent_same:
             child_to_parents.setdefault(child_same, set()).add(parent_same)
             touched_subjects.add(child_same)
 
-    # 3) Subjects that only need labels (no parents)
+    # Subjects that only need labels (no parents)
     if update_label:
         for node_id, data in structures.items():
             if data.get("sameAs") and data.get("text"):
                 touched_subjects.add(data["sameAs"])
 
-    # 4) Apply updates in 'store'
+    # Apply updates in 'store'
     for subj_iri in sorted(touched_subjects):
-        subj = safeNamedNode(subj_iri)
+        subj = safeNamedNode(subj_iri,enforce=True)
+        # find structure entry (first one mapping to subj)
+        # note: multiple nodes may map to same sameAs; first modifier wins by design
+        mod = None
+        text_val: Optional[str] = None
+        for node_id, data in structures.items():
+            if data.get("sameAs") == subj_iri:
+                if mod is None:
+                    mod = data.get("modifier")
+                if text_val is None and data.get("text"):
+                    text_val = data["text"]
+                if mod and text_val:
+                    break
 
+        parents = sorted(child_to_parents.get(subj_iri, set()))
+
+        if update_modifiers and mod == "delete":
+            # Delete ALL triples where subject == this resource
+            store_remove_all(kb_store, subj, None, g=KB_GRAPH)
+            continue
+
+        if update_modifiers and mod == "merge":            # 
+            # move all (child, p, o) -> (parent, p, o)
+            # delete any remaining child-subject triples
+            for par in parents:
+                store_move_subject(kb_store, subj, safeNamedNode(par), KB_GRAPH)
+            store_remove_all(kb_store, subj, g=KB_GRAPH)
+            continue
+
+        if update_modifiers and mod == "softmerge":
+            # Only link via owl:sameAs; no broader/label modifications for the child
+            for par in parents:
+                kb_store.add(Quad(subj, safeNamedNode(p["sameAs"]), safeNamedNode(par), KB_GRAPH))
+            continue
+
+        if update_modifiers and mod == "add":
+            for p in p["props"]:
+                for o in p["objects"]:
+                    kb_store.add(Quad(subj, safeNamedNode(p), safeNamedNode(o), KB_GRAPH))
+
+        # default or 'add' (or modifiers disabled)
         if update_broader:
             for b in p["broaders"]:
-                # remove all existing broader
-                _remove_all(kb_store, subj, safeNamedNode(b)) # TODO DefaultGraph()
-                # add each parent from mapping
-                for parent_iri in sorted(child_to_parents.get(subj_iri, set())):
-                    kb_store.add(Quad(subj, safeNamedNode(b), safeNamedNode(parent_iri), None)) # TODO DefaultGraph()
+                store_remove_all(kb_store, subj, safeNamedNode(b), g=KB_GRAPH)
+                for parent_iri in parents:
+                    kb_store.add(Quad(subj, safeNamedNode(b), safeNamedNode(parent_iri), KB_GRAPH))
 
-        if update_label:
-            # find a text for this subject (first non-empty)
+        if update_label and text_val:
             for l in p["labels"]:
-                text_val: Optional[str] = None
-                for node_id, data in structures.items():
-                    if data.get("sameAs") == subj_iri and data.get("text"):
-                        text_val = data["text"]
-                        break
-                if text_val is not None:
-                    _remove_all(kb_store, subj, safeNamedNode(l)) # TODO DefaultGraph()
-                    if label_language:
-                        kb_store.add(Quad(subj, safeNamedNode(l), Literal(text_val, language=label_language), None)) # TODO DefaultGraph()
-                    else:
-                        kb_store.add(Quad(subj, safeNamedNode(l), Literal(text_val), None)) # TODO DefaultGraph()
+                store_remove_all(kb_store, subj, safeNamedNode(l), g=KB_GRAPH)
+                if label_language:
+                    kb_store.add(Quad(subj, safeNamedNode(l), Literal(text_val, language=label_language), KB_GRAPH))
+                else:
+                    kb_store.add(Quad(subj, safeNamedNode(l), Literal(text_val), KB_GRAPH))
 
-def pipeline(): # TODO in API
-    BASE = ""
-    lib_cfg ={
-    "api_key" : "",
-    "library_id": "",
-    "library_type" : "group",
-    "note_key":""}
-    tax_map = None
-    source_store = Store()
-    html_in = taxonomy_to_html(source_store, map=tax_map)
-    note_key = html_to_note(html_in, **lib_cfg)
+
+def pipeline(lib:ZoteroLibrary, source_store:Store, job:Literal["writeNote", "writeStore"] = "writeNote", note_key: str = None): # TODO in API
+    BASE = lib.base_url
+
+    lib_cfg =lib.sync
+    sync_base_uri = lib_cfg.pop("base_uri")
+    note_key = lib.taxonomy["note_key"] if not note_key else note_key
+    tax_map =  load_dict_like(lib.sync.get("mapping", None),label="Taxonomy mapping")  
+    if job == "writeNote":
+        html_in = taxonomy_to_html(source_store, kb_graph= BASE, map=tax_map)
+        note_key = html_to_note(html=html_in, note_key=note_key, **lib_cfg)
+        return note_key
     # Editing
-    lib_cfg.update("note_key", note_key)
-    html_out = note_to_html(**lib_cfg)
-    tax_store = html_to_taxonomy(html_out, note_uri=f"{BASE}{note_key}")
-    taxononmy_to_store(tax_store=tax_store,kb_store=source_store, map=tax_map)
+    if job == "writeStore":
+        # lib_cfg.update("note_key", note_key)
+        lib_cfg.pop("collection_id")
+        html_out = note_to_html(note_key=note_key,**lib_cfg)
+        tax_store = html_to_taxonomy(html=html_out, note_uri=f"{sync_base_uri}/{note_key}", mapping=tax_map)
+        taxononmy_to_store(tax_store=tax_store,kb_store=source_store, kb_graph= BASE, map=tax_map)
+        return len(tax_store)

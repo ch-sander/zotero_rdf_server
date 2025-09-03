@@ -413,6 +413,43 @@ async def parse_notes(
             return {"warning":f"{graph} not yet supported but defined via config"}
     return {"success":f"{result} notes parsed"}
 
+@router.get("/taxonomy", summary="Parses taxonomy between Knowledge Base and Zotero", description="Creates a structured HTML from RDF taxonomies, and parses structured HTML back as RDF", tags=["RDF", "Plugins"])
+async def taxonomy(
+    graph: str | None = Query(default=None, description="Named graph IRI (optional) to read RDF resources from. Will use this named graph to detect Zotero library sync configuration to write to collection if no config parameters are given to the endpoint."),
+    task: str | None = Query(default="writeNote", description=""),
+    # input_file: str = Query(default=None, description="Reads from Store if no input file specified"),
+    # input_format: str = Query(default="trig", description="Input RDF format (default: trig). Only relevant if input file given"),
+    # output_format: str = Query(default="ttl", description="Output RDF format for note display (e.g. ttl, nt, json-ld)"),
+    # output_file: str = Query(default="ttl", description="Output RDF format for note display (e.g. ttl, nt, json-ld)"),
+    mapping: str = Query(default=None, description="Configuration mapping, loads from library config by default"),
+    api_key: str | None = Query(default=None, description="Zotero API key (overrides config)"),
+    library_id: str | None = Query(default=None, description="Zotero Library ID (overrides config)"),
+    library_type: str | None = Query(default=None, description="Zotero Library type (user or group, overrides config)"),
+    note_key: str | None = Query(default=None, description="Zotero note key, creates new if none (overrides config)")
+):
+    from zotero_rdf_server.plugins.rdf_znotes import pipeline
+    checked_graph, all_graphs = get_graph(graph)
+    if graph and not checked_graph:
+        raise HTTPException(status_code=400, detail=f"Invalid graph IRI: {checked_graph}. Use one of these or None: {all_graphs}")
+    from .store import store
+    # if api_key and library_id and library_type and collection_id:
+    #     result = pipeline(api_key, library_id, library_type)
+    #     return result
+    res = []
+    for lib_cfg in ZOTERO_LIBRARIES_CONFIGS:
+        lib = ZoteroLibrary(lib_cfg)
+        logger.info(f"Checking config for library: {lib.name}")
+        if (
+            (not graph or graph == lib.base_url) and
+            lib.sync and
+            lib.sync.get("api_key") and
+            lib.sync.get("library_id") and
+            lib.sync.get("library_type") and
+            lib.taxonomy
+        ):
+            res.append({"success": pipeline(lib=lib, source_store=store, job=task, note_key=note_key)})
+    return res
+
 ###LOGS###
 @router.get("/logs", response_class=HTMLResponse)
 def logs_page():

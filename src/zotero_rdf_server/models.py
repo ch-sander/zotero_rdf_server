@@ -41,7 +41,10 @@ class ZoteroLibrary:
             self.sync = config["sync"]
             self.sync['base_uri'] = f"{ZOT_BASE_URL}{self.sync['library_type']}/{self.sync['library_id']}"
 
-
+        self.taxonomy = {}
+        if config.get("taxonomy"):
+            self.taxonomy = config["taxonomy"]
+            self.taxonomy['note_key'] = config.get('note_key', None)
 
         # check settings
 
