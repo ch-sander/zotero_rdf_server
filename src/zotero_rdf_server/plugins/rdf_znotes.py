@@ -31,7 +31,7 @@ def safe_create_items(zot, items, retries=3, wait=5):
             time.sleep(wait)
     raise Exception("Failed to create items after retries")
 
-def describe_resources(source, input_format: str = "trig", output_format: str = "ttl", prefixes: dict = None, label_predicate: Optional[str] = "http://www.w3.org/2000/01/rdf-schema#label", type_predicate: Optional[str] = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type", graph: str | NamedNode = None) -> List[Tuple[str, str, str]]:
+def describe_resources(source, input_format: str = "trig", output_format: str = "ttl", prefixes: dict = None, label_predicate: Optional[str] = RDFS_LABEL, type_predicate: Optional[str] = RDF_TYPE, graph: str | NamedNode = None) -> List[Tuple[str, str, str]]:
     
     if graph:
         graph = safeNamedNode(graph) if not isinstance(graph, NamedNode) else graph
@@ -44,7 +44,7 @@ def describe_resources(source, input_format: str = "trig", output_format: str = 
         store.bulk_load(input=source, format=input_format)
 
     label_pred_uri = safeNamedNode(label_predicate) if label_predicate else None
-    type_pred_uri = safeNamedNode(type_predicate) if type_predicate else NamedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#type")
+    type_pred_uri = safeNamedNode(type_predicate) if type_predicate else NamedNode(RDF_TYPE)
 
     blocks = []
     subjects = set(q.subject for q in store.quads_for_pattern(None, None, None, graph))
@@ -555,22 +555,55 @@ def taxononmy_to_store(
                     kb_store.add(Quad(subj, safeNamedNode(l), Literal(text_val), KB_GRAPH))
 
 
-def pipeline(lib:ZoteroLibrary, source_store:Store, job:Literal["writeNote", "writeStore"] = "writeNote", note_key: str = None): # TODO in API
-    BASE = lib.base_url
+def pipeline(lib:ZoteroLibrary | dict, source_store:Store, job:Literal["writeNote", "writeStore"] = "writeNote", note_key: str = None, file:str = None):
+    try:
+        if isinstance(lib, ZoteroLibrary):
+            BASE = lib.base_url
+            lib_cfg = lib.sync
+            sync_base_uri = lib_cfg.pop("base_uri", lib.base_url)
+            tax_map = load_dict_like(lib.taxonomy.get("mapping", None), label="Taxonomy mapping")
+            note_key = note_key or lib.taxonomy.get("note_key") or uuid.uuid4()
+            logger.info("Loaded taxonomy config from ZoteroLibrary object.")
 
-    lib_cfg =lib.sync
-    sync_base_uri = lib_cfg.pop("base_uri")
-    note_key = lib.taxonomy["note_key"] if not note_key else note_key
-    tax_map =  load_dict_like(lib.sync.get("mapping", None),label="Taxonomy mapping")  
+        elif isinstance(lib, dict):
+            BASE = lib.get("graph")
+            sync_base_uri = BASE
+            tax_map = load_dict_like(lib.get("mapping", None), label="Taxonomy mapping")
+            note_key = note_key or or uuid.uuid4()
+            logger.info("Loaded taxonomy config from dictionary.")
+
+        else:
+            logger.error("No valid taxonomy config: invalid 'lib' type.")
+            return "no valid taxonomy config"
+
+    except Exception as e:
+        logger.error(f"No valid taxonomy config: {e}")
+        return "no valid taxonomy config", e  
+    
     if job == "writeNote":
-        html_in = taxonomy_to_html(source_store, kb_graph= BASE, map=tax_map)
-        note_key = html_to_note(html=html_in, note_key=note_key, **lib_cfg)
-        return note_key
-    # Editing
-    if job == "writeStore":
-        # lib_cfg.update("note_key", note_key)
-        lib_cfg.pop("collection_id")
-        html_out = note_to_html(note_key=note_key,**lib_cfg)
+        html_in = taxonomy_to_html(source_store, kb_graph = BASE, map=tax_map)
+        if not file:
+            res = html_to_note(html=html_in, note_key=note_key, **lib_cfg)
+        else:
+            EXPORT_DIRECTORY.mkdir(parents=True,exist_ok=True)
+            html_file = EXPORT_DIRECTORY / file
+            res = html_in
+            with open(html_file, "w", encoding="utf-8") as f:
+                f.write(res)
+        return res
+
+    if job == "writeStore":        
+        
+        if file:
+            html_file = IMPORT_DIRECTORY / file
+            html_out = ""
+            if html_file.is_file():
+                with open(html_file, encoding="utf-8") as f:
+                    html_out = f.read()
+        else:
+            lib_cfg.pop("collection_id")
+            html_out = note_to_html(note_key=note_key,**lib_cfg)
+ 
         tax_store = html_to_taxonomy(html=html_out, note_uri=f"{sync_base_uri}/{note_key}", mapping=tax_map)
         taxononmy_to_store(tax_store=tax_store,kb_store=source_store, kb_graph= BASE, map=tax_map)
         return len(tax_store)

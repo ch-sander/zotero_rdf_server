@@ -7,8 +7,8 @@ from .config import *
 from .utils import *
 
 class ZoteroLibrary:
-    def __init__(self, config: dict):
-        self.name = config["name"]
+    def __init__(self, config: dict, check: bool = True):
+        self.name = config.get("name", "no name")
         self.load_mode = config.get("load_mode", "json")
         self.library_type = config.get("library_type", None)
         if self.library_type == "group": self.library_type == "groups"
@@ -47,37 +47,37 @@ class ZoteroLibrary:
             self.taxonomy['note_key'] = config.get('note_key', None)
 
         # check settings
+        if check:
+            passing = True
+            if not any([str(self.base_url).startswith("http"),str(self.base_api_url).startswith("http"),str(self.knowledge_base_graph).startswith("http")]):
+                passing = False
+                logger.warning(f"{self.name}: Some library config variable is expected to be a IRI/URI but is not!")
+            if not str(self.library_id).isdigit() and not self.library_type == "knowledge base":
+                passing = False
+                logger.error(f"{self.name}: Invalid library ID --> {type(self.library_id)}!")
+            if not self.load_mode in ["json", "rdf", "manual_import"]:
+                passing = False
+                logger.warning(f"{self.name}: Invalid load_mode {self.load_mode}!")
+            if not self.library_type in ["groups", "user", "knowledge base"]:            
+                passing = False
+                logger.error(f"{self.name}: Invalid library_type {self.library_type}!")
+            if not self.rdf_export_format in ["rdf_zotero", "rdf_bibliontology"] and self.load_mode == "rdf":
+                passing = False
+                logger.warning(f"{self.name}: rdf_export_format {self.rdf_export_format} has not been tested!")
+            if any([(self.name and not isinstance(self.name,str)),(self.api_key and not isinstance(self.api_key,str)),(self.map and not isinstance(self.map,dict)),(self.api_query_params and not isinstance(self.api_query_params,dict)),(self.map.get("white") and not isinstance(self.map["white"],list))]):
+                passing = False
+                logger.warning(f"{self.name}: Invalid optional argument!")
 
-        passing = True
-        if not any([str(self.base_url).startswith("http"),str(self.base_api_url).startswith("http"),str(self.knowledge_base_graph).startswith("http")]):
-            passing = False
-            logger.warning(f"{self.name}: Some library config variable is expected to be a IRI/URI but is not!")
-        if not str(self.library_id).isdigit() and not self.library_type == "knowledge base":
-            passing = False
-            logger.error(f"{self.name}: Invalid library ID --> {type(self.library_id)}!")
-        if not self.load_mode in ["json", "rdf", "manual_import"]:
-            passing = False
-            logger.warning(f"{self.name}: Invalid load_mode {self.load_mode}!")
-        if not self.library_type in ["groups", "user", "knowledge base"]:            
-            passing = False
-            logger.error(f"{self.name}: Invalid library_type {self.library_type}!")
-        if not self.rdf_export_format in ["rdf_zotero", "rdf_bibliontology"] and self.load_mode == "rdf":
-            passing = False
-            logger.warning(f"{self.name}: rdf_export_format {self.rdf_export_format} has not been tested!")
-        if any([(self.name and not isinstance(self.name,str)),(self.api_key and not isinstance(self.api_key,str)),(self.map and not isinstance(self.map,dict)),(self.api_query_params and not isinstance(self.api_query_params,dict)),(self.map.get("white") and not isinstance(self.map["white"],list))]):
-            passing = False
-            logger.warning(f"{self.name}: Invalid optional argument!")
-
-        if not passing:
-            logger.error(f"####################################################")
-            logger.error(f"####################################################")
-            logger.error(f"####################################################")
-            logger.error(f"{self.name}: Problematic library config, check warnings!")
-            logger.error(f"####################################################")
-            logger.error(f"####################################################")
-            logger.error(f"####################################################")
-        else:
-            logger.info(f"{self.name}: Valid library config!") 
+            if not passing:
+                logger.error(f"####################################################")
+                logger.error(f"####################################################")
+                logger.error(f"####################################################")
+                logger.error(f"{self.name}: Problematic library config, check warnings!")
+                logger.error(f"####################################################")
+                logger.error(f"####################################################")
+                logger.error(f"####################################################")
+            else:
+                logger.info(f"{self.name}: Valid library config!") 
 
     def fetch_paginated(self, endpoint: str, max_data: int = MAX_DATA) -> list:
         results = []

@@ -24,7 +24,7 @@ async def export_graph(
 
     EXPORT_DIRECTORY.mkdir(parents=True,exist_ok=True)
 
-    rdf_format = RdfFormat.from_extension(format.lower())
+    rdf_format = ensure_rdf_format(format=format) # RdfFormat.from_extension(format.lower())
     if rdf_format is None:
         raise ValueError(f"Unsupported RDF format: {format}")
 
@@ -253,7 +253,7 @@ async def znotes2rdf(
                     store.bulk_extend(input) # .quads_for_pattern(None, None, None, target_graph))
                 else:
                     EXPORT_DIRECTORY.mkdir(parents=True,exist_ok=True)
-                    rdf_format = RdfFormat.from_extension(output_format.lower())
+                    rdf_format = ensure_rdf_format(format=output_format) # RdfFormat.from_extension(output_format.lower())
                     if rdf_format is None:
                         raise ValueError(f"Unsupported RDF format: {output_format}")
 
@@ -417,11 +417,9 @@ async def parse_notes(
 async def taxonomy(
     graph: str | None = Query(default=None, description="Named graph IRI (optional) to read RDF resources from. Will use this named graph to detect Zotero library sync configuration to write to collection if no config parameters are given to the endpoint."),
     task: str | None = Query(default="writeNote", description=""),
-    # input_file: str = Query(default=None, description="Reads from Store if no input file specified"),
-    # input_format: str = Query(default="trig", description="Input RDF format (default: trig). Only relevant if input file given"),
-    # output_format: str = Query(default="ttl", description="Output RDF format for note display (e.g. ttl, nt, json-ld)"),
-    # output_file: str = Query(default="ttl", description="Output RDF format for note display (e.g. ttl, nt, json-ld)"),
-    mapping: str = Query(default=None, description="Configuration mapping, loads from library config by default"),
+    html_file: bool = Query(default=False, description=f"Stores to HTML file (instead of Zotero note) or reads from HTML file (instead of from Zotero note). Depends on task. File read from {IMPORT_DIRECTORY} and saved to {EXPORT_DIRECTORY}. Graph name must be given and will be used for file name, all library configs will be ignored. Provide a mapping or rely on defaults"),
+    format: str = Query(default="trig", description="Input RDF format (default: trig). Only relevant if input file given."),
+    mapping: str = Query(default=None, description="Configuration mapping (dict or file path), loads from library config by default"),
     api_key: str | None = Query(default=None, description="Zotero API key (overrides config)"),
     library_id: str | None = Query(default=None, description="Zotero Library ID (overrides config)"),
     library_type: str | None = Query(default=None, description="Zotero Library type (user or group, overrides config)"),
@@ -432,22 +430,37 @@ async def taxonomy(
     if graph and not checked_graph:
         raise HTTPException(status_code=400, detail=f"Invalid graph IRI: {checked_graph}. Use one of these or None: {all_graphs}")
     from .store import store
-    # if api_key and library_id and library_type and collection_id:
-    #     result = pipeline(api_key, library_id, library_type)
-    #     return result
+
     res = []
-    for lib_cfg in ZOTERO_LIBRARIES_CONFIGS:
-        lib = ZoteroLibrary(lib_cfg)
-        logger.info(f"Checking config for library: {lib.name}")
-        if (
-            (not graph or graph == lib.base_url) and
-            lib.sync and
-            lib.sync.get("api_key") and
-            lib.sync.get("library_id") and
-            lib.sync.get("library_type") and
-            lib.taxonomy
-        ):
-            res.append({"success": pipeline(lib=lib, source_store=store, job=task, note_key=note_key)})
+    if html_file:
+        if graph:        
+            filename_base = iri_to_filename(graph)       
+            file = f"{filename_base}.html"
+            cfg = {'graph':graph, 'mapping':mapping}
+            res.append({"success": pipeline(lib=cfg, source_store=store, job=task, note_key=note_key, file=file)})
+        else:
+            res.append({"error": "graph missing"})
+    else:    
+        if api_key and library_id and library_type:
+            lib = ZoteroLibrary({'sync':{'api_key':api_key,'library_id':library_id,'library_type':library_type}}, False)
+            if mapping:
+                lib.taxonomy["mapping"] = mapping
+            res.append({"success": pipeline(lib=lib, source_store=store, job=task, note_key=note_key, file=None)})
+        else:
+            for lib_cfg in ZOTERO_LIBRARIES_CONFIGS:
+                lib = ZoteroLibrary(lib_cfg)
+                logger.info(f"Checking config for library: {lib.name}")
+                if (
+                    (not graph or graph == lib.base_url) and
+                    lib.sync and
+                    lib.sync.get("api_key") and
+                    lib.sync.get("library_id") and
+                    lib.sync.get("library_type") and
+                    lib.taxonomy
+                ):
+                    if mapping:
+                        lib.taxonomy["mapping"] = mapping
+                    res.append({"success": pipeline(lib=lib, source_store=store, job=task, note_key=note_key, file=None)})
     return res
 
 ###LOGS###
