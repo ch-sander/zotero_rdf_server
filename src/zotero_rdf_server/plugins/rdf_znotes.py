@@ -569,7 +569,7 @@ def pipeline(lib:ZoteroLibrary | dict, source_store:Store, job:Literal["writeNot
             BASE = lib.get("graph")
             sync_base_uri = BASE
             tax_map = load_dict_like(lib.get("mapping", None), label="Taxonomy mapping")
-            note_key = note_key or or uuid.uuid4()
+            note_key = note_key or uuid.uuid4()
             logger.info("Loaded taxonomy config from dictionary.")
 
         else:
