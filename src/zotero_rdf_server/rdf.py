@@ -10,7 +10,7 @@ from .config import *
 from .models import ZoteroLibrary
 from .utils import *
 
-
+DEFAULT_ENTITIES = ["place","publisher","series"]
 
 def import_rdf_from_disk(lib: ZoteroLibrary, store: Store):
     subdir = Path(lib.load_from) if lib.load_from else Path(IMPORT_DIRECTORY) / lib.name
@@ -60,6 +60,8 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
     black = map.get("black") or []
     lang_map = map.get("language_map", LANG_MAP)
     rdf_mapping = map.get("rdf_mapping") or []
+    rdf_mapping_fields = [entry.get("field") if isinstance(entry, dict) and "field" in entry else str(entry) for entry in rdf_mapping] # TODO untested!
+    
     creator_map = map.get("creator") or {}
     tag_map = map.get("tag") or {}
     fuzzy_threshold = map.get("fuzzy", 90)
@@ -83,7 +85,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             except (ValueError, TypeError):
                 return text
             
-        def make_entity(object_value,my_type):
+        def make_entity(object_value,my_type, specific_threshold=fuzzy_threshold):
             # Normalize and split values
             value = object_value.strip()
             items = [p.strip() for p in re.split(r"[;]", value) if p.strip()] # Do not split on comma!
@@ -94,11 +96,11 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 node, score, matched_label = fuzzy_match_label(
                     pool_store,
                     item,
-                    threshold=fuzzy_threshold
+                    threshold=specific_threshold
                 )
 
                 if not node:
-                    iri_suffix = uuid5(ENTITY_UUID, item) if fuzzy_threshold <= 100 else uuid4()
+                    iri_suffix = uuid5(ENTITY_UUID, item) if specific_threshold <= 100 else uuid4()
                     node = safeNamedNode(f"{knowledge_base_graph}/{iri_suffix}") #safeNamedNode(f"{knowledge_base_graph}/{my_type}/{iri_suffix}")
                     store.add(Quad(node, NamedNode(RDF_TYPE), safeNamedNode(f"{ns_prefix}{my_type}"), graph_name=ENTITY_GRAPH_URI))
                     store.add(Quad(node, NamedNode(RDFS_LABEL), Literal(item), graph_name=ENTITY_GRAPH_URI))
@@ -119,8 +121,8 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             if not object:
                 return None
             
-            if rdf_mapping and predicate_str not in rdf_mapping: # no mapping if none specified or predicate not specified for mapping
-                return None if isinstance(object, dict) else Literal(str(object))
+            if rdf_mapping_fields and predicate_str not in rdf_mapping_fields: # no mapping if none specified or predicate not specified for mapping
+                return Literal(str(object)) if isinstance(object, str) else None
             predicate_node = NamedNode(f"{ns_prefix}{predicate_str}")
             if isinstance(object, dict): # dicts as named nodes
                 
@@ -272,8 +274,20 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     return Literal(str(object),datatype=NamedNode(f"{XSD_NS}dateTime"))
                 
                 # ENTITY #
-                elif isinstance(object, str) and ((not rdf_mapping and predicate_str in ["place","publisher","series"]) or predicate_str in rdf_mapping):
+                elif isinstance(object, str) and ((not rdf_mapping_fields and predicate_str in DEFAULT_ENTITIES) or predicate_str in rdf_mapping_fields):
                     logger.debug(f"UUID Entity for {predicate_str}: {object}")
+
+                    fuzzy_threshold_specific = next(
+                        (
+                            entry["fuzzy"]
+                            for entry in rdf_mapping
+                            if isinstance(entry, dict)
+                            and entry.get("field") == predicate_str
+                            and "fuzzy" in entry
+                        ),
+                        fuzzy_threshold  # fallback
+                    )
+
                     make_entity(object,predicate_str)
                     return None
                 
@@ -297,7 +311,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             predicate = safeNamedNode(f"{ns_prefix}{field}")
 
             if white:
-                if field not in white and field not in rdf_mapping:
+                if field not in white and field not in rdf_mapping_fields:
                     logger.debug(f"Skipping {field} (not in whitelist)")
                     continue
             elif black and field in black:
