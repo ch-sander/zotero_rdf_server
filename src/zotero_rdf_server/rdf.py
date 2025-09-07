@@ -288,7 +288,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         fuzzy_threshold  # fallback
                     )
 
-                    make_entity(object,predicate_str)
+                    make_entity(object,predicate_str,fuzzy_threshold_specific)
                     return None
                 
                 # LITERAL #
