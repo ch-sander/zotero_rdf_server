@@ -62,11 +62,14 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
     rdf_mapping = map.get("rdf_mapping") or []
     rdf_mapping_fields = [entry.get("field") if isinstance(entry, dict) and "field" in entry else str(entry) for entry in rdf_mapping] # TODO untested!
     
-    creator_map = map.get("creator") or {}
-    tag_map = map.get("tag") or {}
     fuzzy_threshold = map.get("fuzzy", 90)
     def zotero_property_map(predicate_str: str, object: str | dict | list, map: dict):
-
+        field_map = next((entry
+                            for entry in rdf_mapping
+                            if isinstance(entry, dict)
+                            and entry.get("field") == predicate_str
+                        ), {})
+        
         def parse_date(text, dayfirst=True):
             text = text.strip()
             RANGE_SEPARATORS = r"\s*[-–—]\s*"
@@ -85,14 +88,16 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             except (ValueError, TypeError):
                 return text
             
-        def make_entity(object_value,my_type, specific_threshold=fuzzy_threshold):
+        def make_entity(object_value,my_types, specific_threshold=fuzzy_threshold):
             # Normalize and split values
             value = object_value.strip()
             items = [p.strip() for p in re.split(r"[;]", value) if p.strip()] # Do not split on comma!
 
             for item in items:
                 pool_store = Store()
-                pool_store.bulk_extend(store.quads_for_pattern(None,NamedNode(RDF_TYPE), safeNamedNode(f"{ns_prefix}{my_type}"),ENTITY_GRAPH_URI))
+                for t in my_types:
+                    pool_store.bulk_extend(store.quads_for_pattern(None,NamedNode(RDF_TYPE), safeNamedNode(t),ENTITY_GRAPH_URI))
+
                 node, score, matched_label = fuzzy_match_label(
                     pool_store,
                     item,
@@ -101,13 +106,15 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
 
                 if not node:
                     iri_suffix = uuid5(ENTITY_UUID, item) if specific_threshold <= 100 else uuid4()
-                    node = safeNamedNode(f"{knowledge_base_graph}/{iri_suffix}") #safeNamedNode(f"{knowledge_base_graph}/{my_type}/{iri_suffix}")
-                    store.add(Quad(node, NamedNode(RDF_TYPE), safeNamedNode(f"{ns_prefix}{my_type}"), graph_name=ENTITY_GRAPH_URI))
+                    node = safeNamedNode(f"{knowledge_base_graph}/{iri_suffix}")
+                    apply_rdf_types(store=store,node=node,data={},type_fields=my_types,base_ns=ENTITY_GRAPH_URI.value,prefix_ns=ns_prefix)
+                    # for t in my_types:
+                    #     store.add(Quad(node, NamedNode(RDF_TYPE), safeNamedNode(t), graph_name=ENTITY_GRAPH_URI))
                     store.add(Quad(node, NamedNode(RDFS_LABEL), Literal(item), graph_name=ENTITY_GRAPH_URI))
 
-                    logger.debug(f"Created new {my_type}: {item}")
+                    logger.debug(f"Created new {my_types[0]}: {item}")
                 else:
-                    logger.debug(f"{my_type.capitalize()} '{item}' matched as '{matched_label}' (score {score})")
+                    logger.debug(f"{my_types[0].capitalize()} '{item}' matched as '{matched_label}' (score {score})")
 
                 alts = {(q.object.value).lower() for q in store.quads_for_pattern(node, NamedNode(SKOS_ALT), None, graph_name=ENTITY_GRAPH_URI)}
                 if item.lower() not in alts:
@@ -121,18 +128,18 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             if not object:
                 return None
             
-            if rdf_mapping_fields and predicate_str not in rdf_mapping_fields: # no mapping if none specified or predicate not specified for mapping
-                return Literal(str(object)) if isinstance(object, str) else None
+            # if rdf_mapping_fields and predicate_str not in rdf_mapping_fields: # no mapping if none specified or predicate not specified for mapping
+            #     return Literal(str(object)) if isinstance(object, str) else None
             predicate_node = NamedNode(f"{ns_prefix}{predicate_str}")
-            if isinstance(object, dict): # dicts as named nodes
+            if isinstance(object, dict) and predicate_str in rdf_mapping_fields: # dicts as named nodes
                 
                 ### TAGS ###
 
                 if predicate_str == "tags" and "tag" in object: # tags
-                    type_nodes = make_iri(tag_map.get("types",["tag"]),ns_prefix, enforce_list = True)
+                    type_nodes = make_iri(field_map.get("types",["tag"]),ns_prefix, enforce_list = True)
                     tag_value = object["tag"]
                     
-                    fuzzy_threshold_specific = tag_map.get("fuzzy") or 100
+                    fuzzy_threshold_specific = field_map.get("fuzzy") or 100
 
                     pool_store = Store()
                     for t in type_nodes:                        
@@ -173,12 +180,12 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         label = object["name"]
                     else:
                         label = f"{object.get('lastName', '')}, {object.get('firstName', '')}"
-
-                    type_nodes = make_iri(creator_map.get("types",["actor"]),ns_prefix, enforce_list = True)
-                    role_types  = make_iri(creator_map.get("role_types",["creatorRole"]),ns_prefix, enforce_list = True)
-                    role_property = make_iri(creator_map.get("property","hasCreator"),ns_prefix)
-                    role_node = creator_map.get("role_node") or "BlankNode"
-                    fuzzy_threshold_specific = creator_map.get("fuzzy") or fuzzy_threshold
+                    
+                    type_nodes = make_iri(field_map.get("types",["actor"]),ns_prefix, enforce_list = True)
+                    role_types  = make_iri(field_map.get("role_types",["creatorRole"]),ns_prefix, enforce_list = True)
+                    role_property = make_iri(field_map.get("property","hasCreator"),ns_prefix)
+                    role_node = field_map.get("role_node") or "BlankNode"
+                    fuzzy_threshold_specific = field_map.get("fuzzy") or fuzzy_threshold
 
                     bnode = BlankNode() if str(role_node).lower() == "blanknode" else safeNamedNode(f"{base_uri}/{uuid4()}")
                     store.add(Quad(subject, predicate_node, bnode, graph_name=GRAPH_URI))
@@ -274,21 +281,10 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     return Literal(str(object),datatype=NamedNode(f"{XSD_NS}dateTime"))
                 
                 # ENTITY #
-                elif isinstance(object, str) and ((not rdf_mapping_fields and predicate_str in DEFAULT_ENTITIES) or predicate_str in rdf_mapping_fields):
+                elif isinstance(object, str) and (predicate_str in rdf_mapping_fields):
                     logger.debug(f"UUID Entity for {predicate_str}: {object}")
-
-                    fuzzy_threshold_specific = next(
-                        (
-                            entry["fuzzy"]
-                            for entry in rdf_mapping
-                            if isinstance(entry, dict)
-                            and entry.get("field") == predicate_str
-                            and "fuzzy" in entry
-                        ),
-                        fuzzy_threshold  # fallback
-                    )
-
-                    make_entity(object,predicate_str,fuzzy_threshold_specific)
+                    ent_types = make_iri(field_map.get("types", [predicate_str]), ns_prefix, True) 
+                    make_entity(object, ent_types,field_map.get("fuzzy", fuzzy_threshold))
                     return None
                 
                 # LITERAL #
