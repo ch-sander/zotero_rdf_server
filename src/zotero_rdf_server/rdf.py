@@ -49,26 +49,20 @@ def import_rdf_from_disk(lib: ZoteroLibrary, store: Store):
 def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, ns_prefix: str, base_uri: str, map: dict, knowledge_base_graph: str = None, language: str = None):
     GRAPH_URI = safeNamedNode(base_uri)
     
-    if knowledge_base_graph is None:
+    if not knowledge_base_graph:
         knowledge_base_graph = base_uri
 
-    knowledge_base_graph=knowledge_base_graph
     ENTITY_GRAPH_URI = safeNamedNode(knowledge_base_graph)
-
     ENTITY_UUID = uuid5(NAMESPACE_URL, knowledge_base_graph)
+
     white = map.get("white") or []
     black = map.get("black") or []
     lang_map = map.get("language_map", LANG_MAP)
-    rdf_mapping = map.get("rdf_mapping") or []
-    rdf_mapping_fields = [entry.get("field") if isinstance(entry, dict) and "field" in entry else str(entry) for entry in rdf_mapping] # TODO untested!
-    
-    fuzzy_threshold = map.get("fuzzy", 90)
+    rdf_mapping = map.get("rdf_mapping") or {}    
+    fuzzy_threshold = map.get("fuzzy", FUZZY)
+
     def zotero_property_map(predicate_str: str, object: str | dict | list, map: dict):
-        field_map = next((entry
-                            for entry in rdf_mapping
-                            if isinstance(entry, dict)
-                            and entry.get("field") == predicate_str
-                        ), {})
+        field_map = rdf_mapping.get(predicate_str) or {}
         
         def parse_date(text, dayfirst=True):
             text = text.strip()
@@ -111,7 +105,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     # for t in my_types:
                     #     store.add(Quad(node, NamedNode(RDF_TYPE), safeNamedNode(t), graph_name=ENTITY_GRAPH_URI))
                     store.add(Quad(node, NamedNode(RDFS_LABEL), Literal(item), graph_name=ENTITY_GRAPH_URI))
-
+                    add_timestamp(store=store, node=node, graph=ENTITY_GRAPH_URI)
                     logger.debug(f"Created new {my_types[0]}: {item}")
                 else:
                     logger.debug(f"{my_types[0].capitalize()} '{item}' matched as '{matched_label}' (score {score})")
@@ -128,10 +122,15 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             if not object:
                 return None
             
-            # if rdf_mapping_fields and predicate_str not in rdf_mapping_fields: # no mapping if none specified or predicate not specified for mapping
-            #     return Literal(str(object)) if isinstance(object, str) else None
+            if field_map.get("value"):
+                new_object = field_map.get("value")
+                logger.warning(f"Overwriting {predicate_str}: '{new_object}' instead of '{object}'")
+                object = new_object
+
+            fuzzy_threshold_specific = field_map.get("fuzzy") or fuzzy_threshold
+
             predicate_node = NamedNode(f"{ns_prefix}{predicate_str}")
-            if isinstance(object, dict) and predicate_str in rdf_mapping_fields: # dicts as named nodes
+            if isinstance(object, dict): # dicts as named nodes
                 
                 ### TAGS ###
 
@@ -156,6 +155,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         apply_rdf_types(store, tag_node, {}, type_nodes, "tag", knowledge_base_graph, ns_prefix)
                         
                         store.add(Quad(tag_node, NamedNode(RDFS_LABEL), Literal(tag_value), graph_name=ENTITY_GRAPH_URI))
+                        add_timestamp(store=store, node=tag_node, graph=ENTITY_GRAPH_URI)
                         logger.debug(f"Tag added: {tag_value}")
                         for key, val in object.items():
                             if val:
@@ -209,6 +209,8 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                        
                         store.add(Quad(creator_node, NamedNode(RDFS_LABEL), Literal(str(label)), graph_name=ENTITY_GRAPH_URI))
 
+                        add_timestamp(store=store, node=creator_node, graph=ENTITY_GRAPH_URI)
+
                         apply_rdf_types(store, creator_node, {}, type_nodes, "actor", knowledge_base_graph, ns_prefix)
 
                         logger.debug(f"Creator added: {label}")
@@ -228,6 +230,18 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         store.add(Quad(creator_node, NamedNode(SKOS_ALT), Literal(label), graph_name=ENTITY_GRAPH_URI))                    
 
                     store.add(Quad(bnode, NamedNode(role_property), creator_node, graph_name=GRAPH_URI))
+                    return None
+
+
+            # ENTITY #
+            elif isinstance(object, str) and field_map:
+                if field_map.get("named_node"):
+                    logger.debug(f"Named node for {predicate_str}: {object}")
+                    return safeNamedNode(object,enforce=True)
+                else:
+                    logger.debug(f"UUID Entity for {predicate_str}: {object}")
+                    ent_types = make_iri(field_map.get("types", [predicate_str]), ns_prefix, True) 
+                    make_entity(object, ent_types,fuzzy_threshold_specific)
                     return None
 
             ### DATATYPES ###
@@ -252,8 +266,6 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
 
                 # URL #
                 elif predicate_str in ["url","dc:relation","doi","owl:sameAs"] and (object.startswith("http") or object.startswith("www.")): # url
-                    # if object.startswith("www."): object = f"http://{object}"
-                    # store.add(Quad(subject, predicate_node, safeNamedNode(object.strip(), enforce=True), graph_name=GRAPH_URI))
                     return safeNamedNode(object.strip(), enforce=True)
                 
                 # DOI #
@@ -280,16 +292,9 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 elif predicate_str in ["dateModified","accessDate","dateAdded"]: # dateTime
                     return Literal(str(object),datatype=NamedNode(f"{XSD_NS}dateTime"))
                 
-                # ENTITY #
-                elif isinstance(object, str) and (predicate_str in rdf_mapping_fields):
-                    logger.debug(f"UUID Entity for {predicate_str}: {object}")
-                    ent_types = make_iri(field_map.get("types", [predicate_str]), ns_prefix, True) 
-                    make_entity(object, ent_types,field_map.get("fuzzy", fuzzy_threshold))
-                    return None
-                
                 # LITERAL #
                 else:
-                    return Literal(str(object))
+                    return safeLiteral(str(object))
                 
             else:
                 logger.error(f"Error: pass dict or str but got {type(object)}: {object}")
@@ -307,7 +312,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             predicate = safeNamedNode(f"{ns_prefix}{field}")
 
             if white:
-                if field not in white and field not in rdf_mapping_fields:
+                if field not in white and not rdf_mapping.get(field):
                     logger.debug(f"Skipping {field} (not in whitelist)")
                     continue
             elif black and field in black:
@@ -335,7 +340,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         if obj is not None:
                             store.add(Quad(subject, predicate, obj, graph_name=GRAPH_URI))
 
-            elif value is not None:
+            elif value is not None: # Literal/str
                 obj = zotero_property_map(field, value, map)
                 if obj is not None:
                     store.add(Quad(subject, predicate, obj, graph_name=GRAPH_URI))

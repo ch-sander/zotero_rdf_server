@@ -213,7 +213,7 @@ def process_language_and_title(
     return Literal(title, language=fallback) if title else Literal(language_field)
 
 def add_timestamp(store: Store, node: NamedNode, graph: NamedNode):
-    store.add(Quad(node, NamedNode("http://www.w3.org/ns/prov#generatedAtTime"), Literal(datetime.now(timezone.utc).isoformat(),datatype=NamedNode(f"{XSD_NS}dateTime")), graph_name=graph))
+    store.add(Quad(node, NamedNode(PROV_TIMESTAMP), Literal(datetime.now(timezone.utc).isoformat(),datatype=NamedNode(f"{XSD_NS}dateTime")), graph_name=graph))
 
 def library_href(library_meta: dict):
     return (
