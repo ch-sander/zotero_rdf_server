@@ -593,7 +593,6 @@ def pipeline(lib:ZoteroLibrary | dict, source_store:Store, job:Literal["writeNot
         return res
 
     if job == "writeStore":        
-        
         if file:
             html_file = IMPORT_DIRECTORY / file
             html_out = ""

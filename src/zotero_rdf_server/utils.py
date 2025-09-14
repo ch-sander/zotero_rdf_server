@@ -101,8 +101,7 @@ def ensure_rdf_format(format=None, fallback=RdfFormat.TRIG):
             return RdfFormat.from_media_type(format) or RdfFormat.from_extension(format) or fallback
         else:
             return format
-
-
+    
 def load_dict_like(
     raw: str | dict | Path | None,
     default: dict | None = None,
@@ -116,22 +115,36 @@ def load_dict_like(
         elif isinstance(raw, Path):
             path = raw.resolve()
             if path.exists():
+                suffix = path.suffix.lower()
                 with path.open(encoding="utf-8") as f:
-                    data = json.load(f)
+                    content = f.read()
                 logger.info(f"{label}: loaded from file {path}")
-                return data
             
-        elif isinstance(raw, str):
-            path = Path(raw).resolve()
-            if path.exists():
-                with path.open(encoding="utf-8") as f:
-                    data = json.load(f)
-                logger.info(f"{label}: loaded from file {path}")
-                return data
             else:
-                data = json.loads(raw)
-                logger.info(f"{label}: loaded from JSON string")
-                return data
+                raise FileNotFoundError(f"{label}: file not found: {path}")
+
+        elif isinstance(raw, str):
+            parsed = urlparse(raw)
+
+            if parsed.scheme in ('http', 'https'):
+                response = requests.get(raw)
+                response.raise_for_status()
+                content = response.text
+                suffix = Path(parsed.path).suffix.lower()
+                logger.info(f"{label}: loaded from URL {raw}")
+
+            else:
+                path = Path(raw).resolve()
+                if path.exists():
+                    suffix = path.suffix.lower()
+                    with path.open(encoding="utf-8") as f:
+                        content = f.read()
+                    logger.info(f"{label}: loaded from file {path}")
+                else:
+                    # Try to interpret as raw JSON string
+                    data = json.loads(raw)
+                    logger.info(f"{label}: loaded from JSON string")
+                    return data
 
         elif raw is None:
             raise ValueError("Input is None")
@@ -139,10 +152,18 @@ def load_dict_like(
         else:
             raise ValueError(f"Invalid input type: {type(raw)}")
 
+        # Parse YAML or JSON depending on suffix
+        if suffix in ('.yaml', '.yml'):
+            return yaml.safe_load(content)
+        elif suffix == '.json':
+            return json.loads(content)
+        else:
+            raise ValueError(f"{label}: unsupported file type: {suffix}")
+
     except Exception as e:
         logger.warning(f"{label}: failed to load ({e}), using fallback")
         return default.copy() if default else {}
-
+    
 def ensure_alt_label(store: Store, node: NamedNode, lit_value: str, alt_label_prop: NamedNode = NamedNode(SKOS_ALT), graph: NamedNode = DefaultGraph()):
     existing_labels = {
         q.object.value.lower()
@@ -222,3 +243,4 @@ def library_href(library_meta: dict):
         .get("alternate", {})
         .get("href")
     )
+

@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter
 from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse
+from typing import Literal as TypeLiteral
 import logging
 from pathlib import Path
 import asyncio
@@ -416,9 +417,8 @@ async def parse_notes(
 @router.get("/taxonomy", summary="Parses taxonomy between Knowledge Base and Zotero", description="Creates a structured HTML from RDF taxonomies, and parses structured HTML back as RDF", tags=["RDF", "Plugins"])
 async def taxonomy(
     graph: str | None = Query(default=None, description="Named graph IRI (optional) to read RDF resources from. Will use this named graph to detect Zotero library sync configuration to write to collection if no config parameters are given to the endpoint."),
-    task: str | None = Query(default="writeNote", description=""),
+    task: TypeLiteral["writeNote", "writeStore"] = Query(default="writeNote", description="Either 'writeNote' to write from Store into HTML/note target or 'writeStore' to read from HTML/note to target Store"),
     html_file: bool = Query(default=False, description=f"Stores to HTML file (instead of Zotero note) or reads from HTML file (instead of from Zotero note). Depends on task. File read from {IMPORT_DIRECTORY} and saved to {EXPORT_DIRECTORY}. Graph name must be given and will be used for file name, all library configs will be ignored. Provide a mapping or rely on defaults"),
-    format: str = Query(default="trig", description="Input RDF format (default: trig). Only relevant if input file given."),
     mapping: str = Query(default=None, description="Configuration mapping (dict or file path), loads from library config by default"),
     api_key: str | None = Query(default=None, description="Zotero API key (overrides config)"),
     library_id: str | None = Query(default=None, description="Zotero Library ID (overrides config)"),

@@ -84,7 +84,7 @@ def refresh_store(force_reload:bool = False):
                     except Exception as e:
                         logger.exception(f"Failed to load store: {e}")
 
-                if ZOT_SCHEMA: # TODO in Class?
+                if ZOT_SCHEMA:
                     try:
                         schema = requests.get(ZOT_SCHEMA).json()
                         zotero_schema(store,schema,ZOT_NS)

@@ -101,9 +101,8 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 if not node:
                     iri_suffix = uuid5(ENTITY_UUID, item) if specific_threshold <= 100 else uuid4()
                     node = safeNamedNode(f"{knowledge_base_graph}/{iri_suffix}")
-                    apply_rdf_types(store=store,node=node,data={},type_fields=my_types,base_ns=ENTITY_GRAPH_URI.value,prefix_ns=ns_prefix)
-                    # for t in my_types:
-                    #     store.add(Quad(node, NamedNode(RDF_TYPE), safeNamedNode(t), graph_name=ENTITY_GRAPH_URI))
+                    apply_rdf_types(store=store,node=node,data={},type_fields=my_types, default_type=predicate_str, base_ns=ENTITY_GRAPH_URI.value,prefix_ns=ns_prefix)
+
                     store.add(Quad(node, NamedNode(RDFS_LABEL), Literal(item), graph_name=ENTITY_GRAPH_URI))
                     add_timestamp(store=store, node=node, graph=ENTITY_GRAPH_URI)
                     logger.debug(f"Created new {my_types[0]}: {item}")

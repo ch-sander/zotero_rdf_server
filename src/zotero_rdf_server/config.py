@@ -1,6 +1,8 @@
-import yaml, os
+import yaml, os, requests, json
 from pathlib import Path
 from zotero_rdf_server.logging_config import logger, setup_logging
+from urllib.parse import urlparse
+
 
 setup_logging("INFO")
 try:
@@ -9,6 +11,31 @@ try:
     logger.info(f"Loading YAML...")
 except Exception as e:
     logger.critical(f"Failed to set WORKDIR!")
+
+def load_config(source):
+    parsed = urlparse(str(source))
+
+    if parsed.scheme in ('http', 'https'):
+        response = requests.get(source)
+        response.raise_for_status()
+        content = response.text
+        suffix = Path(parsed.path).suffix.lower()
+    else:
+        source_path = Path(source)
+        if not source_path.is_file():
+            raise FileNotFoundError(f"Configuration file not found: {source}")
+        content = source_path.read_text(encoding="utf-8")
+        suffix = source_path.suffix.lower()
+
+    if suffix in ('.yaml', '.yml'):
+        config = yaml.safe_load(content)
+    elif suffix == '.json':
+        config = json.loads(content)
+    else:
+        raise ValueError(f"Unsupported config file format: {suffix}")
+
+    logger.info(f"Configuration loaded from {source}")
+    return config
 
 def safe_path(path_str: str | Path | None, base_dir: Path | str = WORKDIR) -> Path:
     if path_str:
@@ -26,22 +53,12 @@ config_path = safe_path(os.getenv("CONFIG_FILE", "config.yaml"))
 zotero_config_path = safe_path(os.getenv("ZOTERO_CONFIG_FILE", "zotero.yaml"))
 
 try:
-    if config_path.is_file():
-        with open(config_path, "r") as f:
-            config = yaml.safe_load(f)
-        logger.info(f"{config_path} loaded!")
-    else:
-        logger.error(f"{config_path} not found!")
+    config = load_config(config_path)
 except Exception as e:
     logger.error(f"Failed to load {config_path}!")
 
 try:
-    if zotero_config_path.is_file():
-        with open(zotero_config_path, "r") as f:
-            zotero_config = yaml.safe_load(f)
-        logger.info(f"{zotero_config_path} loaded!")
-    else:
-        logger.error(f"{zotero_config_path} not found!")
+    zotero_config = load_config(zotero_config_path)
 except Exception as e:
     logger.error(f"Failed to load {zotero_config_path}!")
 
