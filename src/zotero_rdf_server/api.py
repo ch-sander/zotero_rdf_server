@@ -1,6 +1,8 @@
-from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter
+from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Depends
 from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse
 from typing import Literal as TypeLiteral
+from typing import Optional
+from pydantic import BaseModel, Field
 import logging
 from pathlib import Path
 import asyncio
@@ -385,6 +387,220 @@ async def rdf2znotes(
     except Exception as e:
         logger.exception("Error during RDF to Zotero Notes export")
         raise HTTPException(status_code=500, detail=str(e))
+    
+
+# COMBINED ENDPOINT FOR ZOTERO NOTES TO RDF #
+# Currently not used as Swagger UI does not document params #
+
+# Parameters for writeStore (Notes → RDF)
+# class ZNotesToRDFParams(BaseModel):
+#     input_format: str = Field(
+#         default="ttl",
+#         description="Only for task=writeStore. RDF format used inside Zotero Notes (e.g. ttl, nt)"
+#     )
+#     output_format: Optional[str] = Field(
+#         default=None,
+#         description="Only for task=writeStore. Optional RDF export format (e.g. json-ld)"
+#     )
+#     push: bool = Field(
+#         default=True,
+#         description="Only for task=writeStore. Push loaded triples to store (true) or write to file (false)"
+#     )
+#     clear_graph: bool = Field(
+#         default=True,
+#         description="Only for task=writeStore. Clear existing graph before writing"
+#     )
+
+# # Parameters for writeNote (RDF → Zotero Notes)
+# class RDFToZNotesParams(BaseModel):
+#     input_file: Optional[str] = Field(
+#         default=None,
+#         description="Only for task=writeNote. Optional RDF file to read from instead of store"
+#     )
+#     input_format: str = Field(
+#         default="trig",
+#         description="Only for task=writeNote. Input RDF format (default: trig)"
+#     )
+#     output_format: str = Field(
+#         default="ttl",
+#         description="Only for task=writeNote. Format to write into Zotero Note block (e.g. ttl, nt, json-ld)"
+#     )
+#     clear_collection: bool = Field(
+#         default=False,
+#         description="Only for task=writeNote. If true, all existing notes in the target collection are deleted"
+#     )
+#     label_predicate: str = Field(
+#         default=RDFS_LABEL,
+#         description="Only for task=writeNote. Predicate to use as label for resources"
+#     )
+#     type_predicate: str = Field(
+#         default=RDF_TYPE,
+#         description="Only for task=writeNote. Predicate to use for RDF type detection"
+#     )
+
+# @router.get(
+#     "/znotes_rdf",
+#     summary="Convert between Zotero Notes and RDF",
+#     description="Use task=writeStore (notes → RDF) or task=writeNote (RDF → notes)",
+#     tags=["RDF", "Plugins"]
+# )
+# async def znotes_rdf(
+#     task: TypeLiteral["writeStore", "writeNote"] = Query(..., description="writeStore or writeNote"),
+#     graph: Optional[str] = Query(
+#         default=None,
+#         description="Optional. Named graph IRI used for both reading and writing RDF. Also used to resolve Zotero library config."
+#     ),
+#     api_key: Optional[str] = Query(
+#         default=None,
+#         description="Optional. Zotero API key (overrides config). Required if config is not used."
+#     ),
+#     library_id: Optional[str] = Query(
+#         default=None,
+#         description="Optional. Zotero library ID (overrides config). Required if config is not used."
+#     ),
+#     library_type: Optional[str] = Query(
+#         default=None,
+#         description="Optional. Zotero library type ('user' or 'group'). Required if config is not used."
+#     ),
+#     collection_id: Optional[str] = Query(
+#         default=None,
+#         description="Optional. Zotero collection ID. Only used if writing to or reading from a specific collection."
+#     ),
+#     write_store_params: ZNotesToRDFParams = Depends(),
+#     write_note_params: RDFToZNotesParams = Depends()
+# ):
+#     checked_graph, all_graphs = get_graph(graph)
+#     if graph and not checked_graph:
+#         raise HTTPException(status_code=400, detail=f"Invalid graph IRI: {graph}. Use one of: {all_graphs}")
+
+#     try:
+#         if task == "writeStore":
+#             # Lazy import
+#             from zotero_rdf_server.plugins.rdf_znotes import znotes_to_rdf
+
+#             g = checked_graph if checked_graph else safeNamedNode(graph)
+
+#             def process_config(api_key, library_id, library_type, collection_id=None, xgraph=g):
+#                 return znotes_to_rdf(
+#                     api_key=api_key,
+#                     library_id=library_id,
+#                     library_type=library_type,
+#                     collection_id=collection_id,
+#                     input_format=write_store_params.input_format,
+#                     output_format=None,
+#                     prefixes=PREFIXES,
+#                     graph=xgraph
+#                 )
+
+#             def save_result(input, target_graph):
+#                 target_graph = safeNamedNode(target_graph)
+#                 if target_graph:
+#                     if write_store_params.push:
+#                         if write_store_params.clear_graph:
+#                             store.clear_graph(target_graph)
+#                         store.bulk_extend(input)
+#                     else:
+#                         EXPORT_DIRECTORY.mkdir(parents=True, exist_ok=True)
+#                         fmt = ensure_rdf_format(write_store_params.output_format)
+#                         if fmt is None:
+#                             raise ValueError(f"Unsupported RDF format: {write_store_params.output_format}")
+#                         path = EXPORT_DIRECTORY / f"{iri_to_filename(target_graph)}.{fmt.file_extension}"
+#                         input.dump(
+#                             output=path,
+#                             format=fmt,
+#                             prefixes=PREFIXES,
+#                             from_graph=target_graph,
+#                             base_iri=str(target_graph.value).rstrip("/") + "/"
+#                         )
+#                     return len(input)
+#                 return 0
+
+#             total = 0
+#             if api_key and library_id and library_type:
+#                 total += save_result(process_config(api_key, library_id, library_type, collection_id), g)
+#             else:
+#                 for lib_cfg in ZOTERO_LIBRARIES_CONFIGS:
+#                     lib = ZoteroLibrary(lib_cfg)
+#                     if (
+#                         (not graph or graph == lib.base_url) and
+#                         lib.sync.get("api_key") and
+#                         lib.sync.get("library_id") and
+#                         lib.sync.get("library_type")
+#                     ):
+#                         total += save_result(
+#                             process_config(
+#                                 lib.sync["api_key"],
+#                                 lib.sync["library_id"],
+#                                 lib.sync["library_type"],
+#                                 lib.sync.get("collection_id"),
+#                                 g or lib.sync.get("base_uri")
+#                             ),
+#                             g
+#                         )
+
+#             if total == 0:
+#                 raise HTTPException(status_code=404, detail="No notes found to convert")
+#             return {"success": f"{total} triples loaded"}
+
+#         elif task == "writeNote":
+#             from zotero_rdf_server.plugins.rdf_znotes import describe_resources, rdf_to_znotes
+
+#             if write_note_params.input_file:
+#                 with open(write_note_params.input_file, "r", encoding="utf-8") as f:
+#                     source = f.read()
+#             else:
+#                 source = store
+
+#             blocks = describe_resources(
+#                 source=source,
+#                 input_format=write_note_params.input_format,
+#                 output_format=write_note_params.output_format,
+#                 prefixes=PREFIXES,
+#                 label_predicate=write_note_params.label_predicate,
+#                 type_predicate=write_note_params.type_predicate,
+#                 graph=checked_graph
+#             )
+
+#             if api_key and library_id and library_type and collection_id:
+#                 result = rdf_to_znotes(
+#                     blocks=blocks,
+#                     api_key=api_key,
+#                     library_id=library_id,
+#                     library_type=library_type,
+#                     collection_id=collection_id,
+#                     clear_collection=write_note_params.clear_collection
+#                 )
+#                 return result
+
+#             total = 0
+#             for lib_cfg in ZOTERO_LIBRARIES_CONFIGS:
+#                 lib = ZoteroLibrary(lib_cfg)
+#                 if (
+#                     (not graph or graph == lib.base_url) and
+#                     lib.sync.get("api_key") and
+#                     lib.sync.get("library_id") and
+#                     lib.sync.get("library_type")
+#                 ):
+#                     rdf_to_znotes(
+#                         blocks=blocks,
+#                         api_key=lib.sync["api_key"],
+#                         library_id=lib.sync["library_id"],
+#                         library_type=lib.sync["library_type"],
+#                         collection_id=lib.sync.get("collection_id"),
+#                         clear_collection=write_note_params.clear_collection
+#                     )
+#                     total += len(blocks)
+
+#             if total == 0:
+#                 raise HTTPException(status_code=404, detail="No Zotero Notes created")
+#             return {"success": f"{total} Zotero Notes created"}
+
+#         else:
+#             raise HTTPException(status_code=400, detail=f"Unknown task: {task}")
+
+#     except Exception as e:
+#         logger.exception("Zotero RDF sync error")
+#         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/parse_notes", summary="Parse notes", description="Triggers the parsing of all Zotero notes with semantic-html plugin", tags=["RDF", "Plugins"])
 async def parse_notes(
