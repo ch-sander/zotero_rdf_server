@@ -1,11 +1,9 @@
-from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Depends
+from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter
 from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse
 from typing import Literal as TypeLiteral
-from typing import Optional
-from pydantic import BaseModel, Field
 import logging
 from pathlib import Path
-import asyncio
+# import asyncio
 from .store import *
 from .rdf import *
 from .logging_config import logger, LogLevel
@@ -391,7 +389,9 @@ async def rdf2znotes(
 
 # COMBINED ENDPOINT FOR ZOTERO NOTES TO RDF #
 # Currently not used as Swagger UI does not document params #
-
+# from typing import Optional
+# from pydantic import BaseModel, Field
+# from fastapi import Depends
 # Parameters for writeStore (Notes → RDF)
 # class ZNotesToRDFParams(BaseModel):
 #     input_format: str = Field(
