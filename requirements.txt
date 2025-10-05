@@ -1,7 +1,7 @@
 fastapi
 uvicorn
 requests
-pyoxigraph>=0.4.11
+pyoxigraph>=0.5.0
 pyyaml
 python-dateutil
 rapidfuzz
