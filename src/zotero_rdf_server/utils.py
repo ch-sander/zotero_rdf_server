@@ -173,50 +173,40 @@ def ensure_alt_label(store: Store, node: NamedNode, lit_value: str, alt_label_pr
         store.add(Quad(node, alt_label_prop, Literal(lit_value), graph))
         logger.debug(f"[ALT] Added altLabel '{lit_value}' to {node}")
 
+def quads_by_type(store:Store,type_nodes:list, graph:NamedNode):
+    result_store = Store()
+    for t in type_nodes:
+        for quad in store.quads_for_pattern(
+            None,
+            NamedNode(RDF_TYPE),
+            safeNamedNode(t),
+            graph
+        ):
+            result_store.bulk_extend(store.quads_for_pattern(quad.subject, None, None, graph))
+    return result_store
 
-def fuzzy_match_label(pool_store:Store, label:str, threshold=90, graph_name:NamedNode = None, predicates:list = [SKOS_ALT], regex:bool=False, max_matches: int = 0):
+def fuzzy_match_label(pool_store:Store, label:str, threshold=90, graph_name:NamedNode = None, predicates:list = [SKOS_ALT], regex:bool=False, max_matches:int = 0):
 
     logger.debug(
         f"Fuzzy matching '{label}' against existing pool of {len(pool_store)} quads "
         f"(threshold: {threshold}, max_matches={max_matches})"
     )
 
-    # best_score = 0
-    # best_match = None
-    # best_label = None
-    # for quad in pool_store:
-    #     subject = quad.subject
-    #     for pred in predicates: # [SKOS_ALT, RDFS_LABEL] Not really needed as every label should also be a altLabel
-
-    #         for label_quad in pool_store.quads_for_pattern(
-    #             subject, 
-    #             safeNamedNode(pred), 
-    #             None, 
-    #             graph_name=graph_name
-    #             ):
-    #             existing_label = str(label_quad.object.value)
-    #             score = fuzz.ratio(existing_label.lower(), label.lower())
-    #             logger.debug(f"Compared '{label}' with '{existing_label}' → score: {score}")
-    #             if score == 100 and threshold <=100:
-    #                 return subject, 100, existing_label
-    #             if score > best_score:
-    #                 best_score = score
-    #                 best_match = subject
-    #                 best_label = existing_label
-
     label_map = {}  # label:str -> list of subjects
-    for quad in pool_store:
-        subject = quad.subject
-        for pred in predicates:
-            for label_quad in pool_store.quads_for_pattern(
-                subject,
+
+    for pred in predicates:
+        for label_quad in pool_store.quads_for_pattern(
+                None,
                 safeNamedNode(pred),
                 None,
                 graph_name=graph_name
             ):
-                lbl = str(label_quad.object.value)
-                label_map.setdefault(lbl, []).append(subject)
+            lbl = str(label_quad.object.value)
+            label_map.setdefault(lbl, []).append(label_quad.subject)
 
+    def lower_processor(label:str):
+        return label.lower()
+    
     # Fuzzy Matching
     if label_map:
         if max_matches > 0:
@@ -224,6 +214,7 @@ def fuzzy_match_label(pool_store:Store, label:str, threshold=90, graph_name:Name
                 label,
                 label_map.keys(),
                 scorer=fuzz.ratio,
+                processor=lower_processor,
                 score_cutoff=threshold,
                 limit=max_matches
             )
@@ -241,6 +232,7 @@ def fuzzy_match_label(pool_store:Store, label:str, threshold=90, graph_name:Name
             result = process.extractOne(
                 label,
                 label_map.keys(),
+                processor=lower_processor,
                 scorer=fuzz.ratio,
                 score_cutoff=threshold
             )

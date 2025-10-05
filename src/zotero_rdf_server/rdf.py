@@ -88,9 +88,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             items = [p.strip() for p in re.split(r"[;]", value) if p.strip()] # Do not split on comma!
 
             for item in items:
-                pool_store = Store()
-                for t in my_types:
-                    pool_store.bulk_extend(store.quads_for_pattern(None,NamedNode(RDF_TYPE), safeNamedNode(t),ENTITY_GRAPH_URI))
+                pool_store = quads_by_type(store,my_types,ENTITY_GRAPH_URI)
 
                 node, score, matched_label = fuzzy_match_label(
                     pool_store,
@@ -139,9 +137,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     
                     fuzzy_threshold_specific = field_map.get("fuzzy") or 100
 
-                    pool_store = Store()
-                    for t in type_nodes:                        
-                        pool_store.bulk_extend(store.quads_for_pattern(None, NamedNode(RDF_TYPE), safeNamedNode(t), ENTITY_GRAPH_URI))
+                    pool_store = quads_by_type(store,type_nodes,ENTITY_GRAPH_URI)
 
                     tag_node, score, matched_label = fuzzy_match_label(
                         pool_store,
@@ -191,10 +187,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
 
                     apply_rdf_types(store, bnode, {}, role_types, "creatorRole", base_uri, ns_prefix)
 
-                    pool_store = Store()
-
-                    for t in type_nodes:                        
-                        pool_store.bulk_extend(store.quads_for_pattern(None,NamedNode(RDF_TYPE), safeNamedNode(t),ENTITY_GRAPH_URI))
+                    pool_store = quads_by_type(store,type_nodes,ENTITY_GRAPH_URI)
 
                     creator_node, score, matched_label = fuzzy_match_label(
                         pool_store,
@@ -901,13 +894,14 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
     for quad in note_quads:
         subject = quad.subject
         obj = quad.object
-
+        
+        # THE ACTUAL PARSING
         if isinstance(obj, Literal):
             count += 1
             html = obj.value
             note_uri = subject.value if hasattr(subject, "value") else str(subject)
             result = plugin.run(html_str=html, note_uri=note_uri)
-            logger.debug(json.dumps(result, indent=2))    # TODO debug        
+            logger.debug(json.dumps(result, indent=2))
             
             try:
                 tmp_store = Store()
