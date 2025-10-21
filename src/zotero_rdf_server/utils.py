@@ -4,6 +4,7 @@ from urllib.parse import quote, urlparse
 from pyoxigraph import Store, Quad, NamedNode, Literal, RdfFormat, DefaultGraph, BlankNode
 from rapidfuzz import fuzz, process
 import re, json
+from copy import deepcopy
 from pathlib import Path
 from .logging_config import logger
 from .config import *
@@ -101,69 +102,104 @@ def ensure_rdf_format(format=None, fallback=RdfFormat.TRIG):
             return RdfFormat.from_media_type(format) or RdfFormat.from_extension(format) or fallback
         else:
             return format
-    
+  
+def _ensure_dict(obj, label: str) -> dict:
+    if isinstance(obj, dict):
+        return obj
+    raise ValueError(f"{label}: parsed content is not a mapping (got {type(obj).__name__})")
+
 def load_dict_like(
     raw: str | dict | Path | None,
     default: dict | None = None,
-    label: str = "config"
+    label: str = "config",
+    timeout: float = 10.0,
+    required: bool = False
 ) -> dict:
+    def _fallback(reason: str) -> dict:
+        if required:
+            raise
+        if default is not None:
+            logger.warning(f"{label}: {reason}; using fallback default")
+            return deepcopy(dict(default))
+        logger.warning(f"{label}: {reason}; using empty mapping")
+        return {}
 
     try:
         if isinstance(raw, dict):
-            return raw
+            return deepcopy(dict(raw))
 
-        elif isinstance(raw, Path):
+        if raw is None:
+            return deepcopy(dict(default)) if default is not None else {}
+
+        if isinstance(raw, Path):
             path = raw.resolve()
-            if path.exists():
-                suffix = path.suffix.lower()
-                with path.open(encoding="utf-8") as f:
-                    content = f.read()
-                logger.info(f"{label}: loaded from file {path}")
-            
-            else:
-                raise FileNotFoundError(f"{label}: file not found: {path}")
+            if not path.exists():
+                return _fallback(f"file not found: {path}")
+            content = path.read_text(encoding="utf-8")
+            suffix = path.suffix.lower()
 
         elif isinstance(raw, str):
             parsed = urlparse(raw)
-
-            if parsed.scheme in ('http', 'https'):
-                response = requests.get(raw)
-                response.raise_for_status()
-                content = response.text
+            if parsed.scheme in ("http", "https"):
+                try:
+                    resp = requests.get(raw, timeout=timeout)
+                    resp.raise_for_status()
+                except requests.RequestException as e:
+                    return _fallback(f"failed to fetch URL {raw}: {e}")
+                content = resp.text
                 suffix = Path(parsed.path).suffix.lower()
                 logger.info(f"{label}: loaded from URL {raw}")
-
             else:
-                path = Path(raw).resolve()
+                path = Path(raw).expanduser().resolve()
                 if path.exists():
+                    content = path.read_text(encoding="utf-8")
                     suffix = path.suffix.lower()
-                    with path.open(encoding="utf-8") as f:
-                        content = f.read()
                     logger.info(f"{label}: loaded from file {path}")
                 else:
-                    # Try to interpret as raw JSON string
-                    data = json.loads(raw)
-                    logger.info(f"{label}: loaded from JSON string")
-                    return data
+                    try:
+                        data = json.loads(raw)
+                        logger.info(f"{label}: loaded from JSON string")
+                        return _ensure_dict(data, label)
+                    except json.JSONDecodeError:
+                        try:
+                            data = yaml.safe_load(raw)
+                            logger.info(f"{label}: loaded from YAML string")
+                            return _ensure_dict(data, label)
+                        except yaml.YAMLError as e:
+                            return _fallback(f"string is neither valid JSON nor YAML: {e}")
 
-        elif raw is None:
-            raise ValueError("Input is None")
+        if suffix in (".yaml", ".yml"):
+            data = yaml.safe_load(content)
+            logger.info(f"{label}: parsed YAML")
+            return _ensure_dict(data, label)
+        if suffix == ".json" or not suffix:
+            try:
+                data = json.loads(content)
+                logger.info(f"{label}: parsed JSON")
+                return _ensure_dict(data, label)
+            except json.JSONDecodeError:
+                try:
+                    data = yaml.safe_load(content)
+                    logger.info(f"{label}: parsed YAML (no/unknown suffix)")
+                    return _ensure_dict(data, label)
+                except yaml.YAMLError as e:
+                    return _fallback(f"failed to parse content as JSON/YAML: {e}")
 
-        else:
-            raise ValueError(f"Invalid input type: {type(raw)}")
+        try:
+            data = json.loads(content)
+            logger.info(f"{label}: parsed JSON despite suffix {suffix}")
+            return _ensure_dict(data, label)
+        except json.JSONDecodeError:
+            try:
+                data = yaml.safe_load(content)
+                logger.info(f"{label}: parsed YAML despite suffix {suffix}")
+                return _ensure_dict(data, label)
+            except yaml.YAMLError:
+                return _fallback(f"unsupported file type: {suffix}")
 
-        # Parse YAML or JSON depending on suffix
-        if suffix in ('.yaml', '.yml'):
-            return yaml.safe_load(content)
-        elif suffix == '.json':
-            return json.loads(content)
-        else:
-            raise ValueError(f"{label}: unsupported file type: {suffix}")
-
-    except Exception as e:
-        logger.warning(f"{label}: failed to load ({e}), using fallback")
-        return default.copy() if default else {}
-    
+    except Exception as _:
+        return _fallback("unexpected error during load")
+        
 def ensure_alt_label(store: Store, node: NamedNode, lit_value: str, alt_label_prop: NamedNode = NamedNode(SKOS_ALT), graph: NamedNode = DefaultGraph()):
     existing_labels = {
         q.object.value.lower()
@@ -185,7 +221,7 @@ def quads_by_type(store:Store,type_nodes:list, graph:NamedNode):
             result_store.bulk_extend(store.quads_for_pattern(quad.subject, None, None, graph))
     return result_store
 
-def fuzzy_match_label(pool_store:Store, label:str, threshold=90, graph_name:NamedNode = None, predicates:list = [SKOS_ALT], regex:bool=False, max_matches:int = 0):
+def fuzzy_match_label(pool_store:Store, label:str, threshold=90, graph_name:NamedNode = None, predicates:list = [SKOS_ALT], regex:bool=False, max_matches:int = 1):
 
     logger.debug(
         f"Fuzzy matching '{label}' against existing pool of {len(pool_store)} quads "
@@ -209,7 +245,7 @@ def fuzzy_match_label(pool_store:Store, label:str, threshold=90, graph_name:Name
     
     # Fuzzy Matching
     if label_map:
-        if max_matches > 0:
+        if max_matches > 1:
             results = process.extract(
                 label,
                 label_map.keys(),
@@ -263,7 +299,7 @@ def fuzzy_match_label(pool_store:Store, label:str, threshold=90, graph_name:Name
                     f"Invalid regex pattern '{pattern_str}' on {subject}: {e}"
                 )
         if regex_matches:
-            return regex_matches[:max_matches] if max_matches > 0 else regex_matches[0]
+            return regex_matches[:max_matches] if max_matches > 1 else regex_matches[0]
         
     # if regex and any(c in label for c in ".^$*+?{}[]\\|()"):
     #     for pattern_quad in pool_store:
@@ -284,7 +320,7 @@ def fuzzy_match_label(pool_store:Store, label:str, threshold=90, graph_name:Name
     #     return None, 0, None
 
     logger.debug("No fuzzy match found above threshold.")
-    return [] if max_matches > 0 else (None, 0, None)
+    return [] if max_matches > 1 else (None, 0, None)
 
 def process_language_and_title(
     title: str | None,
