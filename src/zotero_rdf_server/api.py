@@ -626,8 +626,10 @@ async def parse_notes(
         lib = ZoteroLibrary(lib_cfg)
         if not graph or graph == lib.base_url:
             result=parse_all_notes(lib, store, note_predicate=predicate, query_str=query, delete=delete,push=push) # TODO no graph given
+        elif graph and graph != lib.base_url:
+            logger.debug(f"{graph} skipped")
         else:
-            return {"warning":f"{graph} not yet supported but defined via config"}
+            logger.warning(f"{graph} not yet supported but defined via config")
     return {"success":f"{result} notes parsed"}
 
 @router.get("/taxonomy", summary="Parses taxonomy between Knowledge Base and Zotero", description="Creates a structured HTML from RDF taxonomies, and parses structured HTML back as RDF", tags=["RDF", "Plugins"])
