@@ -26,7 +26,10 @@ class ZoteroLibrary:
         if self.save_to:
             self.save_to = safe_path(str(self.save_to).replace("$",str(self.library_id)))
 
-        self.headers = {"Zotero-API-Key": self.api_key} if self.api_key else {}
+        self.headers = {"Zotero-API-Key": self.api_key,
+                        "Zotero-API-Version": "3",
+                        "Accept": "application/json",
+                        "User-Agent": "zotero_rdf_server/0.1 (+raramagnetica@gmail.com)"}
         self.map = config.get("map") or {}
         self.parser = config.get("notes_parser") or {}
 
