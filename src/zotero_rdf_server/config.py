@@ -2,6 +2,7 @@ import yaml, os, requests, json
 from pathlib import Path
 from zotero_rdf_server.logging_config import logger, setup_logging
 from urllib.parse import urlparse
+import sys
 
 
 setup_logging("INFO")
@@ -53,14 +54,19 @@ config_path = safe_path(os.getenv("CONFIG_FILE", "config.yaml"))
 zotero_config_path = safe_path(os.getenv("ZOTERO_CONFIG_FILE", "zotero.yaml"))
 
 try:
-    config = load_config(config_path)
+    config =  load_config(config_path)
 except Exception as e:
-    logger.error(f"Failed to load {config_path}!")
+    logger.critical(f"Failed to load {config_path}: {e}!")
+    logger.critical(f"EXITING")
+    sys.exit(1)
+    
 
 try:
     zotero_config = load_config(zotero_config_path)
 except Exception as e:
-    logger.error(f"Failed to load {zotero_config_path}!")
+    logger.critical(f"Failed to load {zotero_config_path}: {e}!")
+    logger.critical(f"EXITING")
+    sys.exit(1)
 
 config = config or {}
 zotero_config = zotero_config or {}
