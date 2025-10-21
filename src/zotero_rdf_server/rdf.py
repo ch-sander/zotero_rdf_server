@@ -575,7 +575,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
     
     mapping = load_dict_like(
         lib.parser.get("mapping"),
-        default={"@context": {"@base": lib.base_url, "@vocab": ZOT_NS}},
+        default={"@context": {"@base": lib.base_url, "@vocab": ZOT_NS}}, # TODO fallback not sufficient
         label="Parser mapping"
     )
 
@@ -597,7 +597,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
 
     if map_KB:        
         fuzzy_threshold = lib.parser.get("fuzzy", 90)
-        knowledge_base = mapping.pop("KnowledgeBase") or []
+        knowledge_base = mapping.pop("KnowledgeBase", [])
         # entity_graph_uri = safeNamedNode(lib.knowledge_base_graph)
         logger.debug(f"Map semantic entites to KB following: {knowledge_base}")
 
