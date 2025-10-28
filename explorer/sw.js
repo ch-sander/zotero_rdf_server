@@ -12,22 +12,29 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
-function termToSRJ(t){
-  if (t.termType === 'NamedNode') return { type:'uri', value:t.value };
-  if (t.termType === 'BlankNode') return { type:'bnode', value:t.value };
-  // Literal
-  const base = { type:'literal', value:t.value };
-  if (t.language) return { ...base, 'xml:lang': t.language };
-  const dt = t.datatype && t.datatype.value;
-  return (dt && dt !== 'http://www.w3.org/2001/XMLSchema#string') ? { ...base, datatype: dt } : base;
+function toWebBody(data) {
+  if (typeof data === 'string') return data;
+  if (data && typeof data.getReader === 'function') return data;
+  if (data && typeof data.on === 'function') {
+    return new ReadableStream({
+      start(controller) {
+        data.on('data', chunk => controller.enqueue(
+          typeof chunk === 'string' ? new TextEncoder().encode(chunk) : chunk
+        ));
+        data.on('end', () => controller.close());
+        data.on('error', e => controller.error(e));
+      }
+    });
+  }
+  return JSON.stringify(data);
 }
 
-async function handleSparql(req){
+async function handleSparql(req) {
   const url = new URL(req.url);
   const ds = url.searchParams.get('ds');
   if (!ds) {
-    return new Response(JSON.stringify({ error:'missing ?ds' }), {
-      status:400, headers:{ 'content-type':'application/json; charset=utf-8' }
+    return new Response(JSON.stringify({ error: 'missing ?ds' }), {
+      status: 400, headers: { 'content-type': 'application/json; charset=utf-8' }
     });
   }
   const datasetUrl = new URL(ds, self.registration.scope).href;
@@ -35,42 +42,24 @@ async function handleSparql(req){
 
   try {
     const engine = new self.Comunica.QueryEngine();
-    const bindingsStream = await engine.queryBindings(query, {
+
+    const result = await engine.query(query, {
       sources: [datasetUrl],
       unionDefaultGraph: true
     });
 
-    const vars = new Set();
-    const rows = [];
+    const { data, mediaType } = await engine.resultToString(
+      result,
+      'application/sparql-results+json'
+    );
 
-    await new Promise((resolve, reject) => {
-      bindingsStream.on('data', b => {
-        const vts = b.variables ?? b._variables ?? [];
-        for (const v of vts) vars.add(v.value || v);
-        const row = {};
-        if (typeof b.forEach === 'function') {
-          b.forEach((term, name) => { row[(name.value || name)] = termToSRJ(term); });
-        } else {
-          for (const v of vts) {
-            const t = b.get(v);
-            if (t) row[(v.value || v)] = termToSRJ(t);
-          }
-        }
-        rows.push(row);
-      });
-      bindingsStream.on('end', resolve);
-      bindingsStream.on('error', reject);
+    return new Response(toWebBody(data), {
+      headers: { 'content-type': (mediaType || 'application/sparql-results+json') + '; charset=utf-8' }
     });
 
-    const varList = vars.size ? Array.from(vars) : Object.keys(rows[0] || {});
-    const body = JSON.stringify({ head: { vars: varList }, results: { bindings: rows } });
-
-    return new Response(body, {
-      headers: { 'content-type':'application/sparql-results+json; charset=utf-8' }
-    });
   } catch (e) {
     return new Response(JSON.stringify({ error: String(e) }), {
-      status:500, headers:{ 'content-type':'application/json; charset=utf-8' }
+      status: 500, headers: { 'content-type': 'application/json; charset=utf-8' }
     });
   }
 }
