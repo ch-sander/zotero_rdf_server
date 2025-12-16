@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+message: >-
+  If you use this software, please cite it using the metadata from this file.
+title:  >-
+  Zotero RDF Server
+type: software
+license: MIT
+url: https://github.com/ch-sander/zotero_rdf_server
+authors: 
+  - family-names: Sander
+    given-names: Christoph
+    orcid: "https://orcid.org/0000-0003-4452-0107"
+date-released: 2025-10-01
