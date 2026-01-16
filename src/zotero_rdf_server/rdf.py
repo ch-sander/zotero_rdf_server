@@ -406,7 +406,7 @@ def apply_additional_properties(store: Store, node: NamedNode, data: dict, specs
             logger.error(f"Invalid data at {node} for {raw_value}")
             continue
 
-def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Path = None):    
+def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Path = None, write_to_store:bool = True):    
     json_path_items = None
     json_path_collections = None
 
@@ -512,6 +512,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
     else:
         logger.warning("No collections!") if not json_path_items else None
 
+    all_items = []
     if items:
         item_type_fields = lib.map.get("item_type") or []
         # ignore_tags = lib.map.get("ignore_tags") or []
@@ -539,30 +540,45 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
                 language = item_data.get("language")
                 key = item_data.get("key",uuid4())            
                 node_uri = NamedNode(f"{lib.base_url}/items/{key}")
+                all_items.append({
+                    "creator": first_creator,
+                    "title": title,
+                    "date": date,
+                    "label": label,
+                    "language": language,
+                    "key": key,
+                    "node_uri": node_uri,
+                    "item_data": item_data,
+                })
             except Exception as e:
                 logger.error(f"Invalid data preparation for items!")
                 continue    
+            
+            if write_to_store:
+                try:
+                    if lib.map.get("named_library"):
+                        property_str = lib.map.get("named_library", "inLibrary")
+                        store.add(Quad(node_uri, safeNamedNode(property_str) if property_str.startswith("http") else safeNamedNode(f"{ZOT_NS}{property_str}"), safeNamedNode(a_library_href), graph_name=GRAPH_URI))
 
-            try:
-                if lib.map.get("named_library"):
-                    property_str = lib.map.get("named_library", "inLibrary")
-                    store.add(Quad(node_uri, safeNamedNode(property_str) if property_str.startswith("http") else safeNamedNode(f"{ZOT_NS}{property_str}"), safeNamedNode(a_library_href), graph_name=GRAPH_URI))
+                    if label:
+                        store.add(Quad(node_uri, NamedNode(RDFS_LABEL), Literal(label), graph_name=GRAPH_URI))
 
-                if label:
-                    store.add(Quad(node_uri, NamedNode(RDFS_LABEL), Literal(label), graph_name=GRAPH_URI))
+                    apply_rdf_types(store, node_uri, item_data, item_type_fields, "item", lib.base_url, ZOT_NS)
 
-                apply_rdf_types(store, node_uri, item_data, item_type_fields, "item", lib.base_url, ZOT_NS)
+                    item_additional = map.get("additional") or []
+                    apply_additional_properties(store, node_uri, item_data, item_additional, lib.base_url, ZOT_NS)
 
-                item_additional = map.get("additional") or []
-                apply_additional_properties(store, node_uri, item_data, item_additional, lib.base_url, ZOT_NS)
-
-                add_rdf_from_dict(store, node_uri, item_data, ZOT_NS, lib.base_url, map, lib.knowledge_base_graph,language)
-                add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
-    
-            except Exception as e:
-                logger.error(f"Invalid data at {node_uri}. See next errors for details!")
-                continue
-        logger.info(f"--> Loaded {len(items)} items for {lib.name} to store")
+                    add_rdf_from_dict(store, node_uri, item_data, ZOT_NS, lib.base_url, map, lib.knowledge_base_graph,language)
+                    add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
+        
+                except Exception as e:
+                    logger.error(f"Invalid data at {node_uri}. See next errors for details!")
+                    continue
+        if write_to_store:
+            logger.info(f"--> Loaded {len(items)} items for {lib.name} to store")
+        else:
+            logger.info(f"--> Loaded {len(items)} items for {lib.name} to dictionnary")
+            return all_items
     else:
         logger.warning("No items!") if not json_path_collections else None
 
