@@ -512,8 +512,9 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
     else:
         logger.warning("No collections!") if not json_path_items else None
 
-    all_items = []
+    
     if items:
+        all_items = []
         item_type_fields = lib.map.get("item_type") or []
         # ignore_tags = lib.map.get("ignore_tags") or []
         for item in items:
@@ -548,7 +549,9 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
                     "language": language,
                     "key": key,
                     "node_uri": node_uri,
-                    "item_data": item_data,
+                    "item_type":  item_data.get("itemType") or "item",
+                    "item_tags":  item_data.get("tags") or [],
+                    "item_raw": item,
                 })
             except Exception as e:
                 logger.error(f"Invalid data preparation for items!")
