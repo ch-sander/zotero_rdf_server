@@ -14,6 +14,7 @@ class ZoteroLibrary:
         if self.library_type == "group": self.library_type == "groups"
         self.library_id = config.get("library_id", None)
         self.api_key = config.get("api_key", None)
+        self.user = config.get("user", ZOT_API_USER)
         self.rdf_export_format = config.get("rdf_export_format", "rdf_zotero")
         self.api_query_params = config.get("api_query_params") or {}
         self.base_api_url = f"{ZOT_API_URL}{self.library_type}/{self.library_id}".strip("#/")
@@ -29,7 +30,7 @@ class ZoteroLibrary:
         self.headers = {"Zotero-API-Key": self.api_key,
                         "Zotero-API-Version": "3",
                         "Accept": "application/json",
-                        "User-Agent": "zotero_rdf_server/0.1 (+raramagnetica@gmail.com)"}
+                        "User-Agent": self.user}
         self.map = config.get("map") or {}
         self.parser = config.get("notes_parser") or {}
 
