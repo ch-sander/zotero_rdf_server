@@ -127,17 +127,19 @@ for lib_cfg in zotero_config.get("libraries", []):
         ZOTERO_KB_CONFIG.append(merged_cfg)
     ZOTERO_LIBRARIES_CONFIGS.append(merged_cfg)
 
-# --- Constants ---
+# Zotero Constants
 ZOT_NS = ZOTERO_CONFIGS.get("vocab", "http://www.zotero.org/namespaces/export#")
 ZOT_API_URL = ZOTERO_CONFIGS.get("api_url", "https://api.zotero.org/")
+ZOT_API_USER = ZOTERO_CONFIGS.get("user", "Zotero RDF Server App")
 ZOT_BASE_URL = ZOTERO_CONFIGS.get("base_url", "https://www.zotero.org/")
 ZOT_SCHEMA = ZOTERO_CONFIGS.get("schema") # "https://api.zotero.org/schema"
 
-# RDF Properties
+# RDF Constants
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 XSD_NS = "http://www.w3.org/2001/XMLSchema#"
 SKOS_ALT = "http://www.w3.org/2004/02/skos/core#altLabel"
+SKOS_PREF = "http://www.w3.org/2004/02/skos/core#prefLabel"
 SKOS_BROADER = "http://www.w3.org/2004/02/skos/core#broader"
 SKOS_CONCEPT = "http://www.w3.org/2004/02/skos/core#Concept"
 PROV_TIMESTAMP = "http://www.w3.org/ns/prov#generatedAtTime"
@@ -145,8 +147,8 @@ OWL_SAME_AS = "http://www.w3.org/2002/07/owl#sameAs"
 PREFIXES = {"zot":ZOT_NS, "rdfs":"http://www.w3.org/2000/01/rdf-schema#", "owl":"http://www.w3.org/2002/07/owl#", "rdf":"http://www.w3.org/1999/02/22-rdf-syntax-ns#", "xsd":XSD_NS, "skos":"http://www.w3.org/2004/02/skos/core#", "prov":"http://www.w3.org/ns/prov#"}
 REGEX_PATTERN = f"{ZOT_NS}regex"
 
+# Additional Constants
 FUZZY = 90
-
 LANG_MAP = {
                 "de": ["deutsch", "german", "allemand", "alemán", "tedesco", "deu", "ger", "de"],
                 "en": ["englisch", "english", "anglais", "inglés", "inglese", "eng", "en"],
