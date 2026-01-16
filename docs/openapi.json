@@ -769,6 +769,168 @@
         }
       }
     },
+    "/taxonomy": {
+      "get": {
+        "tags": [
+          "RDF",
+          "Plugins"
+        ],
+        "summary": "Parses taxonomy between Knowledge Base and Zotero",
+        "description": "Creates a structured HTML from RDF taxonomies, and parses structured HTML back as RDF",
+        "operationId": "taxonomy_taxonomy_get",
+        "parameters": [
+          {
+            "name": "graph",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Named graph IRI (optional) to read RDF resources from. Will use this named graph to detect Zotero library sync configuration to write to collection if no config parameters are given to the endpoint.",
+              "title": "Graph"
+            },
+            "description": "Named graph IRI (optional) to read RDF resources from. Will use this named graph to detect Zotero library sync configuration to write to collection if no config parameters are given to the endpoint."
+          },
+          {
+            "name": "task",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "writeNote",
+                "writeStore"
+              ],
+              "type": "string",
+              "description": "Either 'writeNote' to write from Store into HTML/note target or 'writeStore' to read from HTML/note to target Store",
+              "default": "writeNote",
+              "title": "Task"
+            },
+            "description": "Either 'writeNote' to write from Store into HTML/note target or 'writeStore' to read from HTML/note to target Store"
+          },
+          {
+            "name": "html_file",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Stores to HTML file (instead of Zotero note) or reads from HTML file (instead of from Zotero note). Depends on task. File read from /home/runner/work/zotero_rdf_server/zotero_rdf_server/local/import and saved to /home/runner/work/zotero_rdf_server/zotero_rdf_server/local/exports. Graph name must be given and will be used for file name, all library configs will be ignored. Provide a mapping or rely on defaults",
+              "default": false,
+              "title": "Html File"
+            },
+            "description": "Stores to HTML file (instead of Zotero note) or reads from HTML file (instead of from Zotero note). Depends on task. File read from /home/runner/work/zotero_rdf_server/zotero_rdf_server/local/import and saved to /home/runner/work/zotero_rdf_server/zotero_rdf_server/local/exports. Graph name must be given and will be used for file name, all library configs will be ignored. Provide a mapping or rely on defaults"
+          },
+          {
+            "name": "mapping",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Configuration mapping (dict or file path), loads from library config by default",
+              "title": "Mapping"
+            },
+            "description": "Configuration mapping (dict or file path), loads from library config by default"
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Zotero API key (overrides config)",
+              "title": "Api Key"
+            },
+            "description": "Zotero API key (overrides config)"
+          },
+          {
+            "name": "library_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Zotero Library ID (overrides config)",
+              "title": "Library Id"
+            },
+            "description": "Zotero Library ID (overrides config)"
+          },
+          {
+            "name": "library_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Zotero Library type (user or group, overrides config)",
+              "title": "Library Type"
+            },
+            "description": "Zotero Library type (user or group, overrides config)"
+          },
+          {
+            "name": "note_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Zotero note key, creates new if none (overrides config)",
+              "title": "Note Key"
+            },
+            "description": "Zotero note key, creates new if none (overrides config)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/logs": {
       "get": {
         "summary": "Logs Page",
