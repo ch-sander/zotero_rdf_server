@@ -3,6 +3,7 @@ context:
   api_url: "https://api.zotero.org/"
   base: "https://www.zotero.org/"
   schema: "https://api.zotero.org/schema" # if given, will create a basic OWL ontology as named graph with IRI of vocab
+  user: "zotero_rdf_server/0.1 (+raramagnetica@gmail.com)" # set User-Agent to identify in Zotero API requests in header. Can also be set per library.
   limit: 100 # chunk size per API request
   max_data: 0 # max items (0 = no limit)
 
@@ -15,6 +16,9 @@ defaults:
   rdf_export_format: "rdf_zotero" # "rdf_zotero" or "rdf_bibliontology" only needed if load_mode = "rdf"
   # base_uri: "https://www.example.com#" used as the uri for the library named graph and as the base uri for all named nodes created for zotero items and collections. By default is "{context.base}{libraries.library_type}/{libraries.library_id}" as specified in this yaml
   knowledge_base_graph: "https://www.zotero.org/entities" # Will be used to create identical uuids for named nodes accross multiple libraries in the union graph. If not given, uses base_uri. A knowledge base to be loaded into the graph can be set as library below, with library_type: "knowledge base".
+  taxonomy: # requires sync config for library (adding Zotero notes to remote libary)
+    note_key : null # create if none
+    mapping: "/app/taxonomy/mapping.json"
   notes_parser: # loads the semantic-html package to parse notes HTML to JSON-LD and load into Store
     knowledge_base_mapping: true # Will map found entities in notes parsing to the library's knowledge base (knowledge_base_graph)
     fuzzy: 90 # the minimum fuzzy score (threshold in %) to match strings as identical entities (places, persons). Defaults to 90 if missing. Can be set in mapping.json, too.
@@ -30,21 +34,27 @@ defaults:
     collection_type: ["collection"] # If not indicated, uses "collection"
     fuzzy: 90 # the minimum fuzzy score (threshold in %) to match strings as identical entities (places, persons). Defaults to 90 if missing
     named_library: "inLibrary" # if specified will add an object property by that name with a named node for the library's named graph URI to facilitate queries accross multiple named graphs
-    creator:
-      types: ["actor"] # RDF type for each creator
-      role_types: ["creatorRole"] # RDF type for each creator role node
-      role_node: "BlankNode" # or "uuid4" for each creator role node 
-      property: "hasCreator" # RDF property for each creator role node to creator node
-      fuzzy: 80 # fuzzy score specific to creator name labels. If not set, uses fuzzy score set above.
-    tag:
-      types: ["tag"] # RDF type for each tag
-      fuzzy: 100 # fuzzy score specific to tag labels. If not set, uses 100.
+    rdf_mapping: # creates entities for defined fields (Literals otherwise)
+      publisher:
+        fuzzy: 90 # uses default set above if missing
+        types: ["publisher"] # uses field name if missing
+        # value: "" # setting this will overwrite Zotero input data (dict or str)
+      series:
+        fuzzy: 80
+      rights:
+        named_node: true # will use value as IRI for a named node (hence, no fuzzy or type needed, no node matching or creation)
+      creators:
+        fuzzy: 90
+        types: ["actor"] # adds defined Zotero namespace if not a complete IRI        
+        role_types: ["creatorRole"]
+        role_node: "uuid4" # or "uuid4"
+        property: "hasCreator"
+      tags:
+        fuzzy: 100
+        types: ["tag","http://www.w3.org/2004/02/skos/core#Concept"]
     additional:
-      - property: "http://www.w3.org/2000/01/rdf-schema#label"
-        value: "_name" # Start with _ to set the value of the respecitve key (i.e. metadata field name) in the Zotero data, otherwise sets constant value as object. If not starting with "http" will use defaul vocab from context.
-        named_node: false
-      - property: "http://www.w3.org/2000/01/rdf-schema#label"
-        value: "_tag"
+      - property: "http://www.w3.org/2004/02/skos/core#prefLabel"
+        value: "_tag" # Start with _ to set the value of the respecitve key (i.e. metadata field name) in the Zotero data, otherwise sets constant value as object. If not starting with "http" will use defaul vocab from context.
         named_node: false
       - property: "http://www.w3.org/2002/07/owl#sameAs"
         value: "_url"
