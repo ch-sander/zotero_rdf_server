@@ -14,7 +14,7 @@ try:
 except ImportError:
     import subprocess, sys
     logger.warning("pyzotero not found. Installing...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "pyzotero"])
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "pyzotero==1.5.9"])
 
     try:
         from pyzotero import zotero
@@ -174,7 +174,7 @@ def taxonomy_to_html(store: Store, kb_graph:str, map: dict = {}, query:str = Non
         sparql = f"""
         {prefix_block}
 
-        SELECT ?c ?parent ?lp ?lv
+        SELECT DISTINCT ?c ?parent ?lp ?lv
         WHERE {{
         ?c ({props}) ?t .
         VALUES ?t {{ {objs} }}
