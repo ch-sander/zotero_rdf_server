@@ -78,6 +78,7 @@
     "@context": {
       "prov": "http://www.w3.org/ns/prov#",
       "owl": "http://www.w3.org/2002/07/owl#",
+      "xsd": "http://www.w3.org/2001/XMLSchema#",
       "@vocab": "https://semantic-html.org/vocab#",
       "note": {
         "@id": "inNote",
@@ -85,6 +86,10 @@
       },
       "structure": {
         "@id": "inStructure",
+        "@type": "@id"
+      },
+      "quotation": {
+        "@id": "inQuotation",
         "@type": "@id"
       },
       "locator": {
@@ -99,7 +104,7 @@
         "@type": "@id"
       },
       "level": {
-        "@id": "doco:hasLevel",
+        "@id": "hasLevel",
         "@type": "xsd:int"
       },
       "generatedAtTime": {

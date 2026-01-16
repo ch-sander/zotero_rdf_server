@@ -1,0 +1,49 @@
+{
+    "parser": {
+        "@type": ["Taxonomy"],
+        "Structure": {
+            "xpath": ["//h1", "//h2", "//h3", "//h4", "//h5", "//h6"],
+            "types": ["http://www.w3.org/2004/02/skos/core#Concept"]
+        },
+        "IGNORE": {
+            "xpath": ["//pre"]
+        },
+        "@context": {
+            "@vocab": "https://semantic-html.org/vocab#",
+            "structure": {
+                "@id": "http://www.w3.org/2004/02/skos/core#broader",
+                "@type": "@id"
+            },
+            "sameAs": {
+                "@id": "http://www.w3.org/2002/07/owl#sameAs",
+                "@type": "@id"
+            },
+            "text": {
+                "@id": "http://www.w3.org/2000/01/rdf-schema#label",
+                "@type": "http://www.w3.org/2001/XMLSchema#string"
+            }
+        }
+    },
+    "map": {
+        "comment": "All _source keys pertain both to the RDF result of the parser while other keys are for the target store, used to retrieve the taxonomy and to adjust it. One may keep the parser set up but change the ontology in the knowledge base, e.g. organizing hierarchies for places or types differently. Lists follow OR logic for retrieval and AND for writing. 'modifier_prefixes' are prefixed prepended in the HTML taxonomy to trigger dedicated adjustments in the target store: 'add' and 'delete' will do just that with the respective node. 'softmerge' (via sameAs) and 'merge' will do that related to their parent node.",
+        "source_props": ["http://www.w3.org/1999/02/22-rdf-syntax-ns#type"],
+        "source_objects": ["http://www.w3.org/2004/02/skos/core#Concept"],
+        "source_sameAs": "http://www.w3.org/2002/07/owl#sameAs",
+        "source_text": "http://www.w3.org/2000/01/rdf-schema#label",
+        "source_broader": "http://www.w3.org/2004/02/skos/core#broader",
+        "props": ["http://www.w3.org/1999/02/22-rdf-syntax-ns#type"],
+        "objects": ["http://www.w3.org/2004/02/skos/core#Concept"],
+        "broaders": ["http://www.w3.org/2004/02/skos/core#broader"],
+        "labels": ["http://www.w3.org/2000/01/rdf-schema#label"],
+        "sameAs": "http://www.w3.org/2002/07/owl#sameAs",
+        "update_broader": true,
+        "update_label": true,
+        "update_modifiers": true,
+        "modifier_prefixes": {
+            "add": "+",
+            "delete": "!",
+            "softmerge": "<",
+            "merge": "="
+        }
+    }
+}

@@ -1,6 +1,9 @@
-import yaml, os
+import yaml, os, requests, json
 from pathlib import Path
 from zotero_rdf_server.logging_config import logger, setup_logging
+from urllib.parse import urlparse
+import sys
+
 
 setup_logging("INFO")
 try:
@@ -9,6 +12,31 @@ try:
     logger.info(f"Loading YAML...")
 except Exception as e:
     logger.critical(f"Failed to set WORKDIR!")
+
+def load_config(source):
+    parsed = urlparse(str(source))
+
+    if parsed.scheme in ('http', 'https'):
+        response = requests.get(source)
+        response.raise_for_status()
+        content = response.text
+        suffix = Path(parsed.path).suffix.lower()
+    else:
+        source_path = Path(source)
+        if not source_path.is_file():
+            raise FileNotFoundError(f"Configuration file not found: {source}")
+        content = source_path.read_text(encoding="utf-8")
+        suffix = source_path.suffix.lower()
+
+    if suffix in ('.yaml', '.yml'):
+        config = yaml.safe_load(content)
+    elif suffix == '.json':
+        config = json.loads(content)
+    else:
+        raise ValueError(f"Unsupported config file format: {suffix}")
+
+    logger.info(f"Configuration loaded from {source}")
+    return config
 
 def safe_path(path_str: str | Path | None, base_dir: Path | str = WORKDIR) -> Path:
     if path_str:
@@ -26,24 +54,19 @@ config_path = safe_path(os.getenv("CONFIG_FILE", "config.yaml"))
 zotero_config_path = safe_path(os.getenv("ZOTERO_CONFIG_FILE", "zotero.yaml"))
 
 try:
-    if config_path.is_file():
-        with open(config_path, "r") as f:
-            config = yaml.safe_load(f)
-        logger.info(f"{config_path} loaded!")
-    else:
-        logger.error(f"{config_path} not found!")
+    config =  load_config(config_path)
 except Exception as e:
-    logger.error(f"Failed to load {config_path}!")
+    logger.critical(f"Failed to load {config_path}: {e}!")
+    logger.critical(f"EXITING")
+    sys.exit(1)
+    
 
 try:
-    if zotero_config_path.is_file():
-        with open(zotero_config_path, "r") as f:
-            zotero_config = yaml.safe_load(f)
-        logger.info(f"{zotero_config_path} loaded!")
-    else:
-        logger.error(f"{zotero_config_path} not found!")
+    zotero_config = load_config(zotero_config_path)
 except Exception as e:
-    logger.error(f"Failed to load {zotero_config_path}!")
+    logger.critical(f"Failed to load {zotero_config_path}: {e}!")
+    logger.critical(f"EXITING")
+    sys.exit(1)
 
 config = config or {}
 zotero_config = zotero_config or {}
@@ -109,13 +132,20 @@ ZOT_NS = ZOTERO_CONFIGS.get("vocab", "http://www.zotero.org/namespaces/export#")
 ZOT_API_URL = ZOTERO_CONFIGS.get("api_url", "https://api.zotero.org/")
 ZOT_BASE_URL = ZOTERO_CONFIGS.get("base_url", "https://www.zotero.org/")
 ZOT_SCHEMA = ZOTERO_CONFIGS.get("schema") # "https://api.zotero.org/schema"
+
+# RDF Properties
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 XSD_NS = "http://www.w3.org/2001/XMLSchema#"
 SKOS_ALT = "http://www.w3.org/2004/02/skos/core#altLabel"
+SKOS_BROADER = "http://www.w3.org/2004/02/skos/core#broader"
+SKOS_CONCEPT = "http://www.w3.org/2004/02/skos/core#Concept"
+PROV_TIMESTAMP = "http://www.w3.org/ns/prov#generatedAtTime"
 OWL_SAME_AS = "http://www.w3.org/2002/07/owl#sameAs"
 PREFIXES = {"zot":ZOT_NS, "rdfs":"http://www.w3.org/2000/01/rdf-schema#", "owl":"http://www.w3.org/2002/07/owl#", "rdf":"http://www.w3.org/1999/02/22-rdf-syntax-ns#", "xsd":XSD_NS, "skos":"http://www.w3.org/2004/02/skos/core#", "prov":"http://www.w3.org/ns/prov#"}
 REGEX_PATTERN = f"{ZOT_NS}regex"
+
+FUZZY = 90
 
 LANG_MAP = {
                 "de": ["deutsch", "german", "allemand", "alemán", "tedesco", "deu", "ger", "de"],
