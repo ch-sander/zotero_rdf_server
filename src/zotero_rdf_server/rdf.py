@@ -581,7 +581,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
 
     metadata = load_dict_like(
         lib.parser.get("metadata"),
-        default={"wasGeneratedBy": Path(__file__).name},
+        default={"wasGeneratedBy": lib.user},
         label="Parser metadata"
     )
 
