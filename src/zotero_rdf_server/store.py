@@ -8,6 +8,7 @@ from .models import ZoteroLibrary
 from .utils import *
 from .rdf import *
 from .schema import zotero_schema
+from importlib.util import find_spec
 
 store = Store()
 
@@ -132,13 +133,22 @@ def refresh_store(force_reload:bool = False):
                     else:
                         logger.warning(f"Unknown load_mode '{lib.load_mode}' for '{lib.name}' — skipping.")
 
-                    if lib.parser.get("auto")==True:
+                    if (lib.plugin or {}).get("notes_parser", {}).get("auto") is True:
                         try:
                             ensure_store(store)
                             time.sleep(2)
                             logger.info("Start Parser Plugin")
                             # TODO read predicate/query, and tag filter from YAML?
-                            parse_all_notes(lib, store, delete=True)
+                            
+                            if find_spec(".plugins.parse_note.parse_all_notes") is not None:
+                                try:
+                                    from .plugins.parser.parse_note import parse_all_notes
+                                    parse_all_notes(lib, store, delete=True)
+                                except ImportError:
+                                    logger.exception("parse_all_notes import failed!")                                
+                            else:                       
+                                logger.exception(f"parse_all_notes module not found!")
+                            
                         except Exception as e:
                             logger.error(f"Error parsing notes: {e}")
                     else:
