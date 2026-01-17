@@ -12,6 +12,10 @@ from .models import ZoteroLibrary
 from .utils import *
 
 router = APIRouter()
+plugin_router = APIRouter(
+    prefix="/plugin",
+    tags=["Plugins"],
+)
 
 @router.get("/export", summary="Create export", description=f"Exports the store or a named graph to {EXPORT_DIRECTORY}", tags=["data"])
 async def export_graph(
@@ -205,7 +209,7 @@ async def get_csv(
 
 ### PLUGINS ###
 
-@router.get(
+@plugin_router.get(
     "/znotes2rdf",
     summary="Zotero Notes to RDF",
     description="Writes all RDF blocks in Zotero Notes HTML into RDF, either Store or file.",
@@ -222,7 +226,7 @@ async def znotes2rdf(
     library_type: str | None = Query(default=None, description="Zotero Library type (user or group, overrides config)"),
     collection_id: str | None = Query(default=None, description="Zotero Collection ID (overrides config)")
 ):
-    from zotero_rdf_server.plugins.rdf_znotes import znotes_to_rdf
+    from zotero_rdf_server.plugins.rdf_notes.rdf_znotes import znotes_to_rdf
     from .store import store
 
     checked_graph, all_graphs = get_graph(graph)    
@@ -308,7 +312,7 @@ async def znotes2rdf(
         logger.exception("Error during Zotero Notes to RDF export")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/rdf2znotes", summary="RDF to Zotero Notes", description="Creates Zotero Notes with RDF dump block from Store or RDF dataset", tags=["RDF", "Plugins"])
+@plugin_router.get("/rdf2znotes", summary="RDF to Zotero Notes", description="Creates Zotero Notes with RDF dump block from Store or RDF dataset", tags=["RDF", "Plugins"])
 async def rdf2znotes(
     clear_collection: bool = Query(default=False, description="Delete all existing notes in collection"),
     graph: str | None = Query(default=None, description="Named graph IRI (optional) to read RDF resources from. Will use this named graph to detect Zotero library sync configuration to write to collection if no config parameters are given to the endpoint."),
@@ -323,7 +327,7 @@ async def rdf2znotes(
     collection_id: str | None = Query(default=None, description="Zotero Collection ID (overrides config)")
 ):
     
-    from zotero_rdf_server.plugins.rdf_znotes import describe_resources, rdf_to_znotes
+    from zotero_rdf_server.plugins.rdf_notes.rdf_znotes import describe_resources, rdf_to_znotes
     checked_graph, all_graphs = get_graph(graph)
     if graph and not checked_graph:
         raise HTTPException(status_code=400, detail=f"Invalid graph IRI: {checked_graph}. Use one of these or None: {all_graphs}")
@@ -602,7 +606,7 @@ async def rdf2znotes(
 #         logger.exception("Zotero RDF sync error")
 #         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/parse_notes", summary="Parse notes", description="Triggers the parsing of all Zotero notes with semantic-html plugin", tags=["RDF", "Plugins"])
+@plugin_router.get("/parse_notes", summary="Parse notes", description="Triggers the parsing of all Zotero notes with semantic-html plugin", tags=["RDF", "Plugins"])
 async def parse_notes(
     delete: bool = Query(default=False, description="Delete all existing triples related to parsed note"),
     graph: str | None = Query(default=None, description="Named graph IRI containing the items/notes (optional)"),
@@ -632,7 +636,7 @@ async def parse_notes(
             logger.warning(f"{graph} not yet supported but defined via config")
     return {"success":f"{result} notes parsed"}
 
-@router.get("/taxonomy", summary="Parses taxonomy between Knowledge Base and Zotero", description="Creates a structured HTML from RDF taxonomies, and parses structured HTML back as RDF", tags=["RDF", "Plugins"])
+@plugin_router.get("/taxonomy", summary="Parses taxonomy between Knowledge Base and Zotero", description="Creates a structured HTML from RDF taxonomies, and parses structured HTML back as RDF", tags=["RDF", "Plugins"])
 async def taxonomy(
     graph: str | None = Query(default=None, description="Named graph IRI (optional) to read RDF resources from. Will use this named graph to detect Zotero library sync configuration to write to collection if no config parameters are given to the endpoint."),
     task: TypeLiteral["writeNote", "writeStore"] = Query(default="writeNote", description="Either 'writeNote' to write from Store into HTML/note target or 'writeStore' to read from HTML/note to target Store"),
@@ -643,7 +647,7 @@ async def taxonomy(
     library_type: str | None = Query(default=None, description="Zotero Library type (user or group, overrides config)"),
     note_key: str | None = Query(default=None, description="Zotero note key, creates new if none (overrides config)")
 ):
-    from zotero_rdf_server.plugins.rdf_znotes import pipeline
+    from zotero_rdf_server.plugins.rdf_notes.rdf_znotes import pipeline
     checked_graph, all_graphs = get_graph(graph)
     if graph and not checked_graph:
         raise HTTPException(status_code=400, detail=f"Invalid graph IRI: {checked_graph}. Use one of these or None: {all_graphs}")
@@ -682,6 +686,7 @@ async def taxonomy(
     return res
 
 ###LOGS###
+
 @router.get("/logs", response_class=HTMLResponse)
 def logs_page():
     try:

@@ -1,13 +1,22 @@
 import subprocess
 import sys, json, html
 from zotero_rdf_server.logging_config import logger
+from pathlib import Path
+
+here = Path(__file__).resolve().parent
+requirements = here / "requirements.txt"
 
 
 try:
     from semantic_html.parser import parse_note
 except ImportError:
     logger.warning("semantic-html not found. Installing...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "https://github.com/ch-sander/semantic-html/releases/download/v0.5.3/semantic_html-0.5.3-py3-none-any.whl"])
+    subprocess.check_call([
+        sys.executable,
+        "-m", "pip",
+        "install",
+        "-r", str(requirements),
+    ])
     # semantic-html 
     # semantic-html git+https://github.com/ch-sander/semantic-html.git
     # https://github.com/ch-sander/semantic-html/releases/download/v0.2.0/semantic_html-0.5.3-py3-none-any.whl

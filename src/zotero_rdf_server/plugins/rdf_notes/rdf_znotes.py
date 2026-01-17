@@ -8,13 +8,22 @@ from zotero_rdf_server.config import *
 from collections import defaultdict
 from datetime import datetime
 from zotero_rdf_server.models import ZoteroLibrary
+from pathlib import Path
+
+here = Path(__file__).resolve().parent
+requirements = here / "requirements.txt"
 
 try:
     from pyzotero import zotero
 except ImportError:
     import subprocess, sys
     logger.warning("pyzotero not found. Installing...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "pyzotero==1.5.9"])
+    subprocess.check_call([
+            sys.executable,
+            "-m", "pip",
+            "install",
+            "-r", str(requirements),
+        ])
 
     try:
         from pyzotero import zotero
@@ -351,7 +360,7 @@ def note_to_html(
     return current_html
 
 def html_to_taxonomy(html:str,note_uri:str=None, mapping:dict = None, metadata:dict = None) -> Store:
-    from zotero_rdf_server.plugins.parse_note import ParseNotePlugin
+    from zotero_rdf_server.plugins.parser.parse_note import ParseNotePlugin
     
     mapping = {
         "@type": ["Taxonomy"],

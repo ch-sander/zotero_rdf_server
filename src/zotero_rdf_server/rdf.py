@@ -586,7 +586,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
         logger.warning("No items!") if not json_path_collections else None
 
 def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode = NamedNode(f"{ZOT_NS}note"), query_str: str = None, delete:bool = False, push:bool=True):
-    from zotero_rdf_server.plugins.parse_note import ParseNotePlugin
+    from zotero_rdf_server.plugins.parser.parse_note import ParseNotePlugin
 
     GRAPH_URI = safeNamedNode(lib.base_url) # Source graph of notes
     SEMANTIC_HTML_GRAPH = safeNamedNode(lib.parser.get("base_uri", {lib.base_url}))
