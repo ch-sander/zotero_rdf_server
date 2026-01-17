@@ -75,8 +75,8 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
     from zotero_rdf_server.plugins.parser.parse_note import ParseNotePlugin
     parser_cfg = lib.plugin.get("notes_parser") or {}
     GRAPH_URI = safeNamedNode(lib.base_url) # Source graph of notes
-    SEMANTIC_HTML_GRAPH = safeNamedNode(parser_cfg.get("base_uri", {lib.base_url}))
-    KB_GRAPH = safeNamedNode(lib.knowledge_base_graph)
+    SEMANTIC_HTML_GRAPH = safeNamedNode(parser_cfg.get("base_uri", lib.base_url)) # graph to store RDF parsed from notes
+    KB_GRAPH = safeNamedNode(lib.knowledge_base_graph) # graph to link SEMANTIC_HTML_GRAPH entites to
     
     mapping = load_dict_like(
         parser_cfg.get("mapping"),

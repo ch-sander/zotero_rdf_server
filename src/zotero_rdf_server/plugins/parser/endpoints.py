@@ -36,6 +36,7 @@ async def parse_notes(
     for lib_cfg in ZOTERO_LIBRARIES_CONFIGS: # TODO improve
         lib = ZoteroLibrary(lib_cfg)
         if not graph or graph == lib.base_url:
+            logger.info(f"starting note parsing for {lib.base_url}...")
             result=parse_all_notes(lib, store, note_predicate=predicate, query_str=query, delete=delete,push=push) # TODO no graph given
         elif graph and graph != lib.base_url:
             logger.debug(f"{graph} skipped")

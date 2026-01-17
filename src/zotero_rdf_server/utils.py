@@ -50,6 +50,9 @@ def store_move_subject(store: Store, src: NamedNode, dst: NamedNode, g: NamedNod
         store.add(Quad(dst, q.predicate, q.object, g))
 
 def safeNamedNode(uri: str | NamedNode, enforce: bool = True, allow_None: bool = False) -> NamedNode | Literal:
+    if not isinstance(uri, (str, NamedNode)):
+        raise TypeError("invalid type!")
+    
     INTERNAL_IRI_PREFIX = "http://internal.invalid/"
     if uri == None and allow_None: #TODO not tested
         return None
