@@ -279,15 +279,50 @@
         }
       }
     },
-    "/znotes2rdf": {
+    "/logs": {
+      "get": {
+        "summary": "Logs Page",
+        "operationId": "logs_page_logs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/logs/clear": {
+      "post": {
+        "summary": "Clear Log File",
+        "operationId": "clear_log_file_logs_clear_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugin/znotes2rdf": {
       "get": {
         "tags": [
+          "Plugins",
           "RDF",
           "Plugins"
         ],
         "summary": "Zotero Notes to RDF",
         "description": "Writes all RDF blocks in Zotero Notes HTML into RDF, either Store or file.",
-        "operationId": "znotes2rdf_znotes2rdf_get",
+        "operationId": "znotes2rdf_plugin_znotes2rdf_get",
         "parameters": [
           {
             "name": "graph",
@@ -456,15 +491,16 @@
         }
       }
     },
-    "/rdf2znotes": {
+    "/plugin/rdf2znotes": {
       "get": {
         "tags": [
+          "Plugins",
           "RDF",
           "Plugins"
         ],
         "summary": "RDF to Zotero Notes",
         "description": "Creates Zotero Notes with RDF dump block from Store or RDF dataset",
-        "operationId": "rdf2znotes_rdf2znotes_get",
+        "operationId": "rdf2znotes_plugin_rdf2znotes_get",
         "parameters": [
           {
             "name": "clear_collection",
@@ -650,15 +686,16 @@
         }
       }
     },
-    "/parse_notes": {
+    "/plugin/parse_notes": {
       "get": {
         "tags": [
+          "Plugins",
           "RDF",
           "Plugins"
         ],
         "summary": "Parse notes",
         "description": "Triggers the parsing of all Zotero notes with semantic-html plugin",
-        "operationId": "parse_notes_parse_notes_get",
+        "operationId": "parse_notes_plugin_parse_notes_get",
         "parameters": [
           {
             "name": "delete",
@@ -769,15 +806,16 @@
         }
       }
     },
-    "/taxonomy": {
+    "/plugin/taxonomy": {
       "get": {
         "tags": [
+          "Plugins",
           "RDF",
           "Plugins"
         ],
         "summary": "Parses taxonomy between Knowledge Base and Zotero",
         "description": "Creates a structured HTML from RDF taxonomies, and parses structured HTML back as RDF",
-        "operationId": "taxonomy_taxonomy_get",
+        "operationId": "taxonomy_plugin_taxonomy_get",
         "parameters": [
           {
             "name": "graph",
@@ -925,40 +963,6 @@
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
                 }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/logs": {
-      "get": {
-        "summary": "Logs Page",
-        "operationId": "logs_page_logs_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/logs/clear": {
-      "post": {
-        "summary": "Clear Log File",
-        "operationId": "clear_log_file_logs_clear_post",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
               }
             }
           }
