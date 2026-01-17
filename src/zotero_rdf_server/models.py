@@ -32,8 +32,6 @@ class ZoteroLibrary:
                         "Accept": "application/json",
                         "User-Agent": self.user}
         self.map = config.get("map") or {}
-        self.parser = config.get("notes_parser") or {}
-
         self.sync = {}
 
         if (
@@ -44,7 +42,10 @@ class ZoteroLibrary:
         ):
             self.sync = config["sync"]
             self.sync['base_uri'] = f"{ZOT_BASE_URL}{self.sync['library_type']}/{self.sync['library_id']}"
-
+        
+        # PLUG-IN Config
+        self.plugin = config.get("plugin") or {}
+        self.parser = config.get("notes_parser") or {}
         self.taxonomy = {}
         if config.get("taxonomy"):
             self.taxonomy = config["taxonomy"]
