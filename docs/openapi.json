@@ -313,16 +313,134 @@
         }
       }
     },
-    "/plugin/znotes2rdf": {
+    "/plugin/parser/parse_notes": {
       "get": {
         "tags": [
-          "Plugins",
+          "RDF",
+          "Plugins"
+        ],
+        "summary": "Parse notes",
+        "description": "Triggers the parsing of all Zotero notes with semantic-html plugin",
+        "operationId": "parse_notes_plugin_parser_parse_notes_get",
+        "parameters": [
+          {
+            "name": "delete",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Delete all existing triples related to parsed note",
+              "default": false,
+              "title": "Delete"
+            },
+            "description": "Delete all existing triples related to parsed note"
+          },
+          {
+            "name": "graph",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Named graph IRI containing the items/notes (optional)",
+              "title": "Graph"
+            },
+            "description": "Named graph IRI containing the items/notes (optional)"
+          },
+          {
+            "name": "note_predicate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "predicate for note HTML",
+              "default": "http://www.zotero.org/namespaces/export#note",
+              "title": "Note Predicate"
+            },
+            "description": "predicate for note HTML"
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Query to retrieve notes, requires ?s ?p ?o as bindings (optional)",
+              "title": "Query"
+            },
+            "description": "Query to retrieve notes, requires ?s ?p ?o as bindings (optional)"
+          },
+          {
+            "name": "push",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Push triples to store (true by default)",
+              "default": true,
+              "title": "Push"
+            },
+            "description": "Push triples to store (true by default)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugin/rdf_notes/znotes2rdf": {
+      "get": {
+        "tags": [
           "RDF",
           "Plugins"
         ],
         "summary": "Zotero Notes to RDF",
         "description": "Writes all RDF blocks in Zotero Notes HTML into RDF, either Store or file.",
-        "operationId": "znotes2rdf_plugin_znotes2rdf_get",
+        "operationId": "znotes2rdf_plugin_rdf_notes_znotes2rdf_get",
         "parameters": [
           {
             "name": "graph",
@@ -491,16 +609,15 @@
         }
       }
     },
-    "/plugin/rdf2znotes": {
+    "/plugin/rdf_notes/rdf2znotes": {
       "get": {
         "tags": [
-          "Plugins",
           "RDF",
           "Plugins"
         ],
         "summary": "RDF to Zotero Notes",
         "description": "Creates Zotero Notes with RDF dump block from Store or RDF dataset",
-        "operationId": "rdf2znotes_plugin_rdf2znotes_get",
+        "operationId": "rdf2znotes_plugin_rdf_notes_rdf2znotes_get",
         "parameters": [
           {
             "name": "clear_collection",
@@ -686,136 +803,15 @@
         }
       }
     },
-    "/plugin/parse_notes": {
+    "/plugin/rdf_notes/taxonomy": {
       "get": {
         "tags": [
-          "Plugins",
-          "RDF",
-          "Plugins"
-        ],
-        "summary": "Parse notes",
-        "description": "Triggers the parsing of all Zotero notes with semantic-html plugin",
-        "operationId": "parse_notes_plugin_parse_notes_get",
-        "parameters": [
-          {
-            "name": "delete",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "description": "Delete all existing triples related to parsed note",
-              "default": false,
-              "title": "Delete"
-            },
-            "description": "Delete all existing triples related to parsed note"
-          },
-          {
-            "name": "graph",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Named graph IRI containing the items/notes (optional)",
-              "title": "Graph"
-            },
-            "description": "Named graph IRI containing the items/notes (optional)"
-          },
-          {
-            "name": "note_predicate",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "predicate for note HTML",
-              "default": "http://www.zotero.org/namespaces/export#note",
-              "title": "Note Predicate"
-            },
-            "description": "predicate for note HTML"
-          },
-          {
-            "name": "query",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Query to retrieve notes, requires ?s ?p ?o as bindings (optional)",
-              "title": "Query"
-            },
-            "description": "Query to retrieve notes, requires ?s ?p ?o as bindings (optional)"
-          },
-          {
-            "name": "push",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "boolean"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Push triples to store (true by default)",
-              "default": true,
-              "title": "Push"
-            },
-            "description": "Push triples to store (true by default)"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/plugin/taxonomy": {
-      "get": {
-        "tags": [
-          "Plugins",
           "RDF",
           "Plugins"
         ],
         "summary": "Parses taxonomy between Knowledge Base and Zotero",
         "description": "Creates a structured HTML from RDF taxonomies, and parses structured HTML back as RDF",
-        "operationId": "taxonomy_plugin_taxonomy_get",
+        "operationId": "taxonomy_plugin_rdf_notes_taxonomy_get",
         "parameters": [
           {
             "name": "graph",
