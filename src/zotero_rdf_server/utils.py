@@ -8,6 +8,7 @@ from copy import deepcopy
 from pathlib import Path
 from .logging_config import logger
 from .config import *
+import subprocess, importlib
 
 def iri_to_filename(iri: str) -> str:
     parsed = urlparse(iri)
@@ -350,3 +351,53 @@ def library_href(library_meta: dict):
         .get("href")
     )
 
+def ensure_import(module, attr=None, requirements=None):
+    """
+    Ensures that a module (optionally with attribute) is importable.
+    If not, installs requirements and retries.
+
+    Returns:
+        module or attribute
+    """
+    try:
+        mod = importlib.import_module(module)
+    except ImportError:
+        if requirements is None:
+            raise
+
+        logger.warning("%s not found. Installing dependencies...", module)
+        subprocess.check_call([
+            sys.executable,
+            "-m", "pip",
+            "install",
+            "-r", str(requirements),
+        ])
+        mod = importlib.import_module(module)
+
+    return getattr(mod, attr) if attr else mod
+
+def require_symbol(module_name: str, symbol: str, *, hint:str = None):
+    if importlib.util.find_spec(module_name) is None:
+        msg = f"Required module not found: {module_name}"
+        if hint:
+            msg += f" ({hint})"
+        logger.error(msg)
+        raise ModuleNotFoundError(msg)
+
+    try:
+        mod = importlib.import_module(module_name)
+    except Exception as e:
+        msg = f"Module exists but failed to import: {module_name}"
+        if hint:
+            msg += f" ({hint})"
+        logger.error(msg)
+        raise ImportError(msg) from e
+
+    try:
+        return getattr(mod, symbol)
+    except AttributeError as e:
+        msg = f"Module '{module_name}' does not provide required symbol '{symbol}'"
+        if hint:
+            msg += f" ({hint})"
+        logger.error(msg)
+        raise AttributeError(msg) from e

@@ -1,6 +1,6 @@
 import yaml, os, requests, json
 from pathlib import Path
-from zotero_rdf_server.logging_config import logger, setup_logging
+from .logging_config import logger, setup_logging
 from urllib.parse import urlparse
 import sys
 

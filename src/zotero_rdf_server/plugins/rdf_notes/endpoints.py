@@ -29,7 +29,12 @@ async def znotes2rdf(
     library_type: str | None = Query(default=None, description="Zotero Library type (user or group, overrides config)"),
     collection_id: str | None = Query(default=None, description="Zotero Collection ID (overrides config)")
 ):
-    from zotero_rdf_server.plugins.rdf_notes.rdf_znotes import znotes_to_rdf
+    # from zotero_rdf_server.plugins.rdf_notes.rdf_znotes import znotes_to_rdf
+    znotes_to_rdf = require_symbol(
+                                "zotero_rdf_server.plugins.rdf_notes.rdf_znotes",
+                                "znotes_to_rdf",
+                                hint="Enable/install the 'znotes_to_rdf' plugin (and its dependencies).",
+                                )
     from zotero_rdf_server.store import store
 
     checked_graph, all_graphs = get_graph(graph)    

@@ -1,14 +1,10 @@
 import subprocess
 import sys, json, html
-from zotero_rdf_server.logging_config import logger
-from pathlib import Path
-
 from uuid import uuid5, NAMESPACE_URL, uuid4
 import json, re
 from datetime import datetime
 from dateutil import parser
 from pathlib import Path
-
 from zotero_rdf_server.store import Store, Quad, NamedNode, Literal, RdfFormat, BlankNode
 from zotero_rdf_server.logging_config import logger
 from zotero_rdf_server.config import *
@@ -18,25 +14,11 @@ from zotero_rdf_server.utils import *
 here = Path(__file__).resolve().parent
 requirements = here / "requirements.txt"
 
-
-try:
-    from semantic_html.parser import parse_note
-except ImportError:
-    logger.warning("semantic-html not found. Installing...")
-    subprocess.check_call([
-        sys.executable,
-        "-m", "pip",
-        "install",
-        "-r", str(requirements),
-    ])
-    # semantic-html 
-    # semantic-html git+https://github.com/ch-sander/semantic-html.git
-    # https://github.com/ch-sander/semantic-html/releases/download/v0.2.0/semantic_html-0.5.3-py3-none-any.whl
-    try:
-        from semantic_html.parser import parse_note
-    except ImportError:
-        logger.error("semantic-html could not be imported after installation.")
-        raise
+semantic_parse_note = ensure_import(
+    "semantic_html.parser",
+    attr="parse_note",
+    requirements=requirements,
+)
 
 
 class ParseNotePlugin:
@@ -45,7 +27,7 @@ class ParseNotePlugin:
         self.metadata = metadata or {}
         if not mapping:
             logger.error("No config for parser provided.")
-            raise 
+            raise ValueError("No config for parser provided.") 
 
     def run(
         self,
@@ -59,7 +41,7 @@ class ParseNotePlugin:
 
         html_str = html.unescape(html_str)
 
-        result = parse_note(
+        result = semantic_parse_note (
             html_input=html_str,
             mapping=self.mapping,
             note_uri=note_uri,
@@ -72,7 +54,7 @@ class ParseNotePlugin:
 
 
 def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode = NamedNode(f"{ZOT_NS}note"), query_str: str = None, delete:bool = False, push:bool=True):
-    from zotero_rdf_server.plugins.parser.parse_note import ParseNotePlugin
+    # from zotero_rdf_server.plugins.parser.parse_note import ParseNotePlugin
     parser_cfg = lib.plugin.get("notes_parser") or {}
     GRAPH_URI = safeNamedNode(lib.base_url) # Source graph of notes
     SEMANTIC_HTML_GRAPH = safeNamedNode(parser_cfg.get("base_uri", lib.base_url)) # graph to store RDF parsed from notes
