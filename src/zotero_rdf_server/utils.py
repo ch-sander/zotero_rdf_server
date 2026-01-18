@@ -8,7 +8,7 @@ from copy import deepcopy
 from pathlib import Path
 from .logging_config import logger
 from .config import *
-import subprocess, importlib
+import subprocess, importlib, sys
 
 def iri_to_filename(iri: str) -> str:
     parsed = urlparse(iri)
@@ -352,13 +352,6 @@ def library_href(library_meta: dict):
     )
 
 def ensure_import(module, attr=None, requirements=None):
-    """
-    Ensures that a module (optionally with attribute) is importable.
-    If not, installs requirements and retries.
-
-    Returns:
-        module or attribute
-    """
     try:
         mod = importlib.import_module(module)
     except ImportError:

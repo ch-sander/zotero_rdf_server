@@ -1,0 +1,14 @@
+kraken:
+  models_dir: "./models"
+  default_models:
+    print: "CATMuS-Print-Large"
+    handwriting: "BLLA"
+  models:
+    CATMuS-Print-Large:
+      file: "catmus-print-large.mlmodel"
+      url: "https://…/catmus-print-large.mlmodel"
+      sha256: "…"
+    BLLA:
+      file: "blla.mlmodel"
+      url: "https://…/blla.mlmodel"
+      sha256: "…"
