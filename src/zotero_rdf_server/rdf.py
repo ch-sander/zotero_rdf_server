@@ -536,23 +536,31 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
                 title = item_data.get("title")
                 if not title:
                     title = item_data.get("key","NO KEY")
-                date = item_data.get("date") or "NO DATE"
-                label = f"{first_creator}: {title} ({date})".strip()
+                date = item_data.get("date")
+                volume = item_data.get("volume")
+                label = (
+                            f"{first_creator}: {title}"
+                            f"{f' vol. {volume}' if volume else ''}"
+                            f"{f' ({date})' if date else ''}"
+                        ).strip()
+
                 language = item_data.get("language")
                 key = item_data.get("key",uuid4())            
                 node_uri = NamedNode(f"{lib.base_url}/items/{key}")
-                all_items.append({
-                    "creator": first_creator,
-                    "title": title,
-                    "date": date,
-                    "label": label,
-                    "language": language,
-                    "key": key,
-                    "node_uri": node_uri.value,
-                    "item_type":  item_data.get("itemType") or "item",
-                    "item_tags":  item_data.get("tags") or [],
-                    "item_raw": item,
-                })
+
+                if write_to_store == False:
+                    all_items.append({
+                        "creator": first_creator,
+                        "title": title,
+                        "date": date,
+                        "label": label,
+                        "language": language,
+                        "key": key,
+                        "node_uri": node_uri.value,
+                        "item_type":  item_data.get("itemType") or "item",
+                        "item_tags":  item_data.get("tags") or [],
+                        "item_raw": item,
+                    })
             except Exception as e:
                 logger.error(f"Invalid data preparation for items!")
                 continue    
@@ -579,7 +587,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
                     continue
         if write_to_store:
             logger.info(f"--> Loaded {len(items)} items for {lib.name} to store")
-        else:
+        elif write_to_store == False:
             logger.info(f"--> Loaded {len(items)} items for {lib.name} to dictionnary")
             return all_items
     else:

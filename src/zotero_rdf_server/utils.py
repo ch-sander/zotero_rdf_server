@@ -112,6 +112,17 @@ def _ensure_dict(obj, label: str) -> dict:
         return obj
     raise ValueError(f"{label}: parsed content is not a mapping (got {type(obj).__name__})")
 
+
+def _parse_csv_to_dict(content: str, label: str) -> dict:
+    import csv
+    from io import StringIO
+    try:
+        reader = csv.DictReader(StringIO(content))
+        rows = list(reader)
+        return {"rows": rows}
+    except Exception as e:
+        raise ValueError(f"{label}: failed to parse CSV: {e}")    
+
 def load_dict_like(
     raw: str | dict | Path | None,
     default: dict | None = None,
@@ -170,7 +181,14 @@ def load_dict_like(
                             logger.info(f"{label}: loaded from YAML string")
                             return _ensure_dict(data, label)
                         except yaml.YAMLError as e:
-                            return _fallback(f"string is neither valid JSON nor YAML: {e}")
+                            if "," in raw.splitlines()[0]:
+                                try:
+                                    data = _parse_csv_to_dict(raw, label)
+                                    logger.info(f"{label}: parsed CSV (sniffed)")
+                                    return data
+                                except Exception:
+                                    pass
+                            return _fallback(f"string is not valid: {e}")
 
         if suffix in (".yaml", ".yml"):
             data = yaml.safe_load(content)
@@ -187,8 +205,15 @@ def load_dict_like(
                     logger.info(f"{label}: parsed YAML (no/unknown suffix)")
                     return _ensure_dict(data, label)
                 except yaml.YAMLError as e:
-                    return _fallback(f"failed to parse content as JSON/YAML: {e}")
-
+                    return _fallback(f"failed to parse content as JSON/YAML: {e}")                
+        if suffix == ".csv":
+            try:
+                data = _parse_csv_to_dict(content, label)
+                logger.info(f"{label}: parsed CSV")
+                return data
+            except Exception as e:
+                return _fallback(str(e))
+            
         try:
             data = json.loads(content)
             logger.info(f"{label}: parsed JSON despite suffix {suffix}")
@@ -198,12 +223,75 @@ def load_dict_like(
                 data = yaml.safe_load(content)
                 logger.info(f"{label}: parsed YAML despite suffix {suffix}")
                 return _ensure_dict(data, label)
-            except yaml.YAMLError:
-                return _fallback(f"unsupported file type: {suffix}")
-
+            except yaml.YAMLError:                
+                if "," in content.splitlines()[0]:
+                    try:
+                        data = _parse_csv_to_dict(content, label)
+                        logger.info(f"{label}: parsed CSV (sniffed)")
+                        return data
+                    except Exception:
+                        pass
+                return _fallback("failed to parse content")
+            
     except Exception as _:
-        return _fallback("unexpected error during load")
-        
+        return _fallback("unexpected error")
+
+
+def load_text_like(
+    raw: str | Path | None,
+    default: str | None = None,
+    label: str = "text",
+    timeout: float = 10.0,
+    required: bool = False,
+) -> str:
+    def _fallback(reason: str) -> str:
+        if required:
+            raise
+        if default is not None:
+            logger.warning(f"{label}: {reason}; using fallback default")
+            return str(default)
+        logger.warning(f"{label}: {reason}; using empty string")
+        return ""
+
+    try:
+        if raw is None:
+            return str(default) if default is not None else ""
+
+        if isinstance(raw, Path):
+            path = raw.expanduser().resolve()
+            if not path.exists():
+                return _fallback(f"file not found: {path}")
+            logger.info(f"{label}: loaded from file {path}")
+            return path.read_text(encoding="utf-8")
+
+        if isinstance(raw, str):
+            parsed = urlparse(raw)
+            if parsed.scheme in ("http", "https"):
+                try:
+                    resp = requests.get(raw, timeout=timeout)
+                    resp.raise_for_status()
+                    logger.info(f"{label}: loaded from URL {raw}")
+                    return resp.text
+                except requests.RequestException as e:
+                    return _fallback(f"failed to fetch URL {raw}: {e}")
+
+            path = Path(raw).expanduser().resolve()
+            if path.exists():
+                logger.info(f"{label}: loaded from file {path}")
+                return path.read_text(encoding="utf-8")
+
+            # plain string
+            logger.info(f"{label}: using raw string")
+            return raw
+
+        return _fallback(f"unsupported input type: {type(raw)}")
+
+    except Exception:
+        if required:
+            raise
+        return _fallback("unexpected error")
+
+
 def ensure_alt_label(store: Store, node: NamedNode, lit_value: str, alt_label_prop: NamedNode = NamedNode(SKOS_ALT), graph: NamedNode = DefaultGraph()):
     existing_labels = {
         q.object.value.lower()

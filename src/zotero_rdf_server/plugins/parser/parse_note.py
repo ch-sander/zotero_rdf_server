@@ -333,20 +333,22 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
         bindings = store.query(query_str, use_default_graph_as_union=True)
         results = list(bindings)
         logger.info("Number of rows: %s", len(results))
-        note_quads = []
-        for row in results:  # QuerySolutions            
-            tmp_predicate = row['p'] if 'p' in row else note_predicate
-            
-            quad = Quad(
-                subject=row["s"], # the note IRI
-                predicate=tmp_predicate,
-                object=row["o"], # the HTML
-                graph_name=GRAPH_URI
-            )
-            note_quads.append(quad)
+        # note_quads = []
+        note_items = [(row["s"], row["o"]) for row in results]
+        # for row in results:  # QuerySolutions                 
+            # tmp_predicate = row['p'] if 'p' in row else note_predicate            
+            # quad = Quad(
+            #     subject=row["s"], # the note IRI
+            #     predicate=tmp_predicate,
+            #     object=row["o"], # the HTML
+            #     graph_name=GRAPH_URI
+            # )
+            # note_quads.append(quad)
     else:
         logger.debug(f"using predicate pattern: {note_predicate}")
-        note_quads = list(store.quads_for_pattern(None, note_predicate, None, GRAPH_URI))
+        # note_quads = list(store.quads_for_pattern(None, note_predicate, None, GRAPH_URI))
+        quads = store.quads_for_pattern(None, note_predicate, None, GRAPH_URI)
+        note_items = [(q.subject, q.object) for q in quads]
 
     
     if delete:
@@ -376,11 +378,15 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                 logger.warning(f"Did not delete graph, as identical to library graph!")
         except Exception as e:
             logger.error(f"Error when deleting triples: {e}")
-    logger.info("Number of note_quads: %s", len(note_quads))
+    logger.info("Number of notes: %s", len(note_items))
     parser_store = Store()
-    for quad in note_quads:
-        subject = quad.subject
-        obj = quad.object
+
+    for s, o in note_items:
+        subject = s
+        obj = o
+    # for quad in note_quads:
+    #     subject = quad.subject
+    #     obj = quad.object
         
         # THE ACTUAL PARSING
         if isinstance(obj, Literal):

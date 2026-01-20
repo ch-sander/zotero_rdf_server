@@ -9,7 +9,7 @@ from zotero_rdf_server.config import *
 from zotero_rdf_server.models import ZoteroLibrary
 from zotero_rdf_server.utils import *
 
-router = APIRouter()
+router = APIRouter(tags=["Notes RDF Interface"])
 
 
 @router.get(
