@@ -12,3 +12,6 @@ app/exports
 /public_server_app
 explorer/index-dev.html
 *.log
+/app/opensearch-data
+/src/models
+/src/zotero_rdf_server/plugins/fts/models
