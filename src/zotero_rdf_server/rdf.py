@@ -138,7 +138,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 pred_node = safeNamedNode(f"{ns_prefix}{predicate_str}") # TODO take from upper function
                 store.add(Quad(subject, pred_node, node, graph_name=GRAPH_URI))
 
-            return None
+            return None # TODO maybe return node?
         
         try:
             if not object:
@@ -194,7 +194,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     if tag_value.lower() not in alts:
                         store.add(Quad(tag_node, NamedNode(SKOS_ALT), Literal(tag_value), graph_name=ENTITY_GRAPH_URI))
 
-                    return None
+                    return None # TODO maybe return tag_node?
                 
                 ### CREATORS ###
 
@@ -250,19 +250,19 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         store.add(Quad(creator_node, NamedNode(SKOS_ALT), Literal(label), graph_name=ENTITY_GRAPH_URI))                    
 
                     store.add(Quad(bnode, NamedNode(role_property), creator_node, graph_name=GRAPH_URI))
-                    return None
+                    return None # TODO maybe return creator_node?
 
 
             # ENTITY #
             elif isinstance(object, str) and field_map:
-                if field_map.get("named_node"):
+                if field_map.get("named_node"): # TODO handle as URL datatype?
                     logger.debug(f"Named node for {predicate_str}: {object}")
                     return safeNamedNode(object,enforce=True)
                 else:
                     logger.debug(f"UUID Entity for {predicate_str}: {object}")
                     ent_types = make_iri(field_map.get("types", [predicate_str]), ns_prefix, True) 
                     make_entity(object, ent_types,fuzzy_threshold_specific)
-                    return None
+                    return None # TODO maybe return make_entity?
 
             ### DATATYPES ### TODO define in field_map, too! Indent -->
 
@@ -329,7 +329,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
 
     for field, value in data.items():
         try:
-            predicate = safeNamedNode(f"{ns_prefix}{field}")
+            predicate = safeNamedNode(f"{ns_prefix}{field}") # TODO allow list
 
             if white:
                 if field not in white and not rdf_mapping.get(field):
@@ -339,33 +339,21 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 logger.debug(f"Skipping {field} (in blacklist)")
                 continue
             values = value if isinstance(value, list) else [value]
-            # if isinstance(value, dict):
-            #     obj = zotero_property_map(field, value, map)
-            #     if obj is None:
-            #         continue
-            #     bnode = BlankNode()
-            #     store.add(Quad(subject, predicate, bnode, graph_name=GRAPH_URI))
-            #     add_rdf_from_dict(store, bnode, value, ns_prefix, base_uri, map, knowledge_base_graph)
 
-            # elif isinstance(value, list):
             for item in values:
                 if isinstance(item, dict):
                     if zotero_property_map(field, item, map) is None:
                         continue
                     bnode = BlankNode()
                     store.add(Quad(subject, predicate, bnode, graph_name=GRAPH_URI))
-                    add_rdf_from_dict(store, bnode, item, ns_prefix, base_uri, map, knowledge_base_graph)
+                    add_rdf_from_dict(store, bnode, item, ns_prefix, base_uri, map, knowledge_base_graph) # TODO maybe store.add(Quad(bnode, predicate, add_rdf_from_dict returned node, graph_name=GRAPH_URI))
                 elif item: # Literal/str
                     obj = zotero_property_map(field, item, map)
                     if obj is not None:
                         store.add(Quad(subject, predicate, obj, graph_name=GRAPH_URI))
 
-            # elif value is not None: # Literal/str
-            #     obj = zotero_property_map(field, value, map)
-            #     if obj is not None:
-            #         store.add(Quad(subject, predicate, obj, graph_name=GRAPH_URI))
         except Exception as e:
-            logger.error(f"Invalid data for: [{field}, {value}]")
+            logger.error(f"Invalid data for: [{field}, {value}]: {e}")
             continue        
 
 def apply_rdf_types(store: Store, node: NamedNode, data: dict, type_fields: list[str], default_type: str, base_ns: str, prefix_ns: str = ZOT_NS):
