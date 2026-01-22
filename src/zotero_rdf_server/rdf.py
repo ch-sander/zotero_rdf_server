@@ -46,6 +46,7 @@ def import_rdf_from_disk(lib: ZoteroLibrary, store: Store):
         logger.info(f"Imported {after - before} triples from {filepath.name}")
 
 
+
 def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, ns_prefix: str, base_uri: str, map: dict, knowledge_base_graph: str = None, language: str = None):
     GRAPH_URI = safeNamedNode(base_uri)
     
@@ -61,8 +62,22 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
     rdf_mapping = map.get("rdf_mapping") or {}    
     fuzzy_threshold = map.get("fuzzy", FUZZY)
 
+    def get_field_map(key: str) -> dict:
+        return rdf_mapping.get(key) or {}
+    
+    def get_properties(key: str, map: dict) -> list:
+        field_map = get_field_map(key)
+        if field_map.get("properties"):
+            for new_property in make_iri(field_map.get("properties"), pref=ns_prefix, enforce_list=True):                    
+                logger.warning(f"Overwriting {predicate_node.value} as 'new_property'")
+                predicate_node = safeNamedNode(new_property)
+        else:
+            make_iri(key, pref=ns_prefix, enforce_list=True)
+
+    
     def zotero_property_map(predicate_str: str, object: str | dict | list, map: dict):
-        field_map = rdf_mapping.get(predicate_str) or {}
+        
+        field_map = get_field_map(predicate_str)
         
         def parse_date(text, dayfirst=True):
             text = text.strip()
@@ -83,9 +98,19 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 return text
             
         def make_entity(object_value,my_types, specific_threshold=fuzzy_threshold):
-            # Normalize and split values
-            value = object_value.strip()
-            items = [p.strip() for p in re.split(r"[;]", value) if p.strip()] # Do not split on comma!
+            # Normalize and split values            
+
+            if isinstance(object_value, list):
+                seq = object_value
+            else:
+                seq = [object_value]
+
+            items = []
+            for s in seq:
+                if isinstance(s, str):
+                    s = s.strip()
+                    if s:
+                        items.extend(p for p in re.split(r"\s*;\s*", s) if p)
 
             for item in items:
                 pool_store = quads_by_type(store,my_types,ENTITY_GRAPH_URI)
@@ -110,7 +135,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 alts = {(q.object.value).lower() for q in store.quads_for_pattern(node, NamedNode(SKOS_ALT), None, graph_name=ENTITY_GRAPH_URI)}
                 if item.lower() not in alts:
                     store.add(Quad(node, NamedNode(SKOS_ALT), Literal(item), graph_name=ENTITY_GRAPH_URI))
-                pred_node = safeNamedNode(f"{ns_prefix}{predicate_str}")
+                pred_node = safeNamedNode(f"{ns_prefix}{predicate_str}") # TODO take from upper function
                 store.add(Quad(subject, pred_node, node, graph_name=GRAPH_URI))
 
             return None
@@ -126,7 +151,10 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
 
             fuzzy_threshold_specific = field_map.get("fuzzy") or fuzzy_threshold
 
-            predicate_node = NamedNode(f"{ns_prefix}{predicate_str}")
+            predicates = get_properties(predicate_str, field_map) # TODO do not iterate entire parsing to not create blanknodes etc. per predicate for same value
+
+            predicate_node = safeNamedNode(f"{ns_prefix}{predicate_str}")
+
             if isinstance(object, dict): # dicts as named nodes
                 
                 ### TAGS ###
@@ -152,7 +180,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         store.add(Quad(tag_node, NamedNode(RDFS_LABEL), Literal(tag_value), graph_name=ENTITY_GRAPH_URI))
                         add_timestamp(store=store, node=tag_node, graph=ENTITY_GRAPH_URI)
                         logger.debug(f"Tag added: {tag_value}")
-                        for key, val in object.items():
+                        for key, val in object.items(): # TODO define key in field map
                             if val:
                                 pred = NamedNode(f"{ns_prefix}{key}")                                
                                 store.add(Quad(tag_node, pred, Literal(str(val)), graph_name=ENTITY_GRAPH_URI))
@@ -236,7 +264,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     make_entity(object, ent_types,fuzzy_threshold_specific)
                     return None
 
-            ### DATATYPES ###
+            ### DATATYPES ### TODO define in field_map, too! Indent -->
 
             elif isinstance(object, (str, int, datetime, float)):
                 val = str(object)
@@ -292,7 +320,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 logger.error(f"Error: pass dict or str but got {type(object)}: {object}")
 
         except Exception as e:
-            logger.error(f"Error: {e}")
+            logger.error(f"Mapping error: {e}")
             return None
         
     #############################################
@@ -310,32 +338,32 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             elif black and field in black:
                 logger.debug(f"Skipping {field} (in blacklist)")
                 continue
-            
-            if isinstance(value, dict):
-                obj = zotero_property_map(field, value, map)
-                if obj is None:
-                    continue
-                bnode = BlankNode()
-                store.add(Quad(subject, predicate, bnode, graph_name=GRAPH_URI))
-                add_rdf_from_dict(store, bnode, value, ns_prefix, base_uri, map, knowledge_base_graph)
+            values = value if isinstance(value, list) else [value]
+            # if isinstance(value, dict):
+            #     obj = zotero_property_map(field, value, map)
+            #     if obj is None:
+            #         continue
+            #     bnode = BlankNode()
+            #     store.add(Quad(subject, predicate, bnode, graph_name=GRAPH_URI))
+            #     add_rdf_from_dict(store, bnode, value, ns_prefix, base_uri, map, knowledge_base_graph)
 
-            elif isinstance(value, list):
-                for item in value:
-                    if isinstance(item, dict):
-                        if zotero_property_map(field, item, map) is None:
-                            continue
-                        bnode = BlankNode()
-                        store.add(Quad(subject, predicate, bnode, graph_name=GRAPH_URI))
-                        add_rdf_from_dict(store, bnode, item, ns_prefix, base_uri, map, knowledge_base_graph)
-                    else:
-                        obj = zotero_property_map(field, item, map)
-                        if obj is not None:
-                            store.add(Quad(subject, predicate, obj, graph_name=GRAPH_URI))
+            # elif isinstance(value, list):
+            for item in values:
+                if isinstance(item, dict):
+                    if zotero_property_map(field, item, map) is None:
+                        continue
+                    bnode = BlankNode()
+                    store.add(Quad(subject, predicate, bnode, graph_name=GRAPH_URI))
+                    add_rdf_from_dict(store, bnode, item, ns_prefix, base_uri, map, knowledge_base_graph)
+                elif item: # Literal/str
+                    obj = zotero_property_map(field, item, map)
+                    if obj is not None:
+                        store.add(Quad(subject, predicate, obj, graph_name=GRAPH_URI))
 
-            elif value is not None: # Literal/str
-                obj = zotero_property_map(field, value, map)
-                if obj is not None:
-                    store.add(Quad(subject, predicate, obj, graph_name=GRAPH_URI))
+            # elif value is not None: # Literal/str
+            #     obj = zotero_property_map(field, value, map)
+            #     if obj is not None:
+            #         store.add(Quad(subject, predicate, obj, graph_name=GRAPH_URI))
         except Exception as e:
             logger.error(f"Invalid data for: [{field}, {value}]")
             continue        
@@ -375,7 +403,7 @@ def apply_additional_properties(store: Store, node: NamedNode, data: dict, specs
     GRAPH_URI = NamedNode(base_ns)
     for spec in specs:
         try:
-            property_str = spec.get("property")
+            property_str = spec.get("property")  # TODO allow list
             value_spec = spec.get("value")
             prefix = spec.get("prefix")
             named_node = spec.get("named_node", False)
@@ -383,7 +411,7 @@ def apply_additional_properties(store: Store, node: NamedNode, data: dict, specs
             if not property_str or not value_spec:
                 continue
 
-            predicate = safeNamedNode(make_iri(property_str, prefix_ns))
+            predicate = safeNamedNode(make_iri(property_str, prefix_ns)) # TODO allow list
 
             if value_spec.startswith("_"):
                 raw_value = data.get(value_spec.lstrip("_"))
