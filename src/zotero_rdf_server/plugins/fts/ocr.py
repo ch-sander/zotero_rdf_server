@@ -621,7 +621,7 @@ def iter_text_pages(
     # If text file found and not overwrite, use as result and skip download + OCR
     if (
         save_text == "active"
-        and save_image != "active"
+        and save_image == "skip"
         and txt_dir is not None
         and any(txt_dir.glob(f"*.{txt_ext}"))
     ):      
