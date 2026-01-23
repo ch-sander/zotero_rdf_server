@@ -538,34 +538,44 @@ def apply_additional_properties(
         raw_value = None
         try:
             if spec.get("load"):
-                load_spec = spec["load"] or {}
+                load_block = spec["load"] or {}
 
-                input_ = load_spec.get("input", None)
-                path_ = load_spec.get("path", None)
+                load_specs = load_block if isinstance(load_block, list) else [load_block]
 
-                if input_ is not None:
-                    input_ = resolve_data_token(input_)
-                if path_ is not None:
-                    input_ = resolve_data_token(load_text_like(resolve_data_token(path_), label="RDF loading"))
-                    path_ = None
+                for load_spec in load_specs:
+                    load_spec = load_spec or {}
 
-                fmt = resolve_rdf_format(load_spec.get("format", None))
-                base_iri = load_spec.get("base_iri", None)
-                if base_iri is not None:
-                    base_iri = resolve_value_spec(base_iri)
+                    input_ = load_spec.get("input", None)
+                    path_ = load_spec.get("path", None)
 
-                to_graph = resolve_to_graph(load_spec.get("to_graph", GRAPH_URI))
-                lenient = bool(load_spec.get("lenient", False))
+                    if input_ is not None:
+                        input_ = resolve_data_token(input_)
 
-                store.load(
-                    input=input_,
-                    format=fmt,
-                    path=path_,
-                    base_iri=base_iri,
-                    to_graph=to_graph,
-                    lenient=lenient,
-                )
-                logger.debug("Loaded RDF via store.load()")
+                    if path_ is not None:
+                        input_ = resolve_data_token(
+                            load_text_like(resolve_data_token(path_), label="RDF loading")
+                        )
+                        path_ = None
+
+                    fmt = resolve_rdf_format(load_spec.get("format", None))
+
+                    base_iri = load_spec.get("base_iri", None)
+                    if base_iri is not None:
+                        base_iri = resolve_value_spec(base_iri)
+
+                    to_graph = resolve_to_graph(load_spec.get("to_graph", GRAPH_URI))
+                    lenient = bool(load_spec.get("lenient", False))
+
+                    store.load(
+                        input=input_,
+                        format=fmt,
+                        path=path_,
+                        base_iri=base_iri,
+                        to_graph=to_graph,
+                        lenient=lenient,
+                    )
+
+                logger.debug("Loaded RDF via store.load() (one or many specs)")
                 continue
 
             property_str = spec.get("property")
