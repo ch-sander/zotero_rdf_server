@@ -418,10 +418,6 @@ def apply_rdf_types(store: Store, node: NamedNode, data: dict, type_fields: list
                 logger.error(f"Invalid rdf:type at {node} for value '{type_str}': {e}")
                 continue
 
-
-_PLACEHOLDER_NODE_RE = re.compile(r"\{\{\s*node\s*\}\}|\{\s*node\s*\}")
-_DATA_TOKEN_RE = re.compile(r"(?<!\w)_(?P<key>[A-Za-z0-9]+)(?!\w)")
-
 def apply_additional_properties_deprecated(store: Store, node: NamedNode, data: dict, specs: list[dict], base_ns: str, prefix_ns: str = ZOT_NS):
     GRAPH_URI = NamedNode(base_ns)
     for spec in specs:
@@ -600,7 +596,6 @@ def apply_additional_properties(
         except Exception as e:
             logger.error(f"Invalid additional spec at {node}: {e} (raw_value={raw_value})")
             continue
-
 
 def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Path = None, write_to_store:bool = True):    
     json_path_items = None
@@ -788,6 +783,3 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
             return all_items
     else:
         logger.warning("No items!") if not json_path_collections else None
-
-
-
