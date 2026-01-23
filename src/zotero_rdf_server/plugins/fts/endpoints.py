@@ -87,7 +87,6 @@ def ocr_url(
         None,
         description='Segmenter override: "BLLA" (package fallback) or a model name from YAML.',
     ),
-
     # OCR behavior
     binarize: bool = Query(True, description="If true, apply nlbin binarization before segmentation/OCR."),
 
@@ -100,7 +99,6 @@ def ocr_url(
         200, ge=72, le=600,
         description="DPI used to rasterize PDF pages.",
     ),
-
     # Embedded PDF text policy (matches your dataclass defaults)
     pdf_text_enabled: bool = Query(
         True,
@@ -114,10 +112,50 @@ def ocr_url(
         0.6, ge=0.0, le=1.0,
         description="Minimum alphabetic ratio to accept embedded PDF text.",
     ),
+    img_out: Optional[str] = Query(
+        None,
+        description="Relative directory (under EXPORT_DIRECTORY) to store page images.",
+    ),
+    txt_out: Optional[str] = Query(
+        None,
+        description="Relative directory (under EXPORT_DIRECTORY) to store page texts.",
+    ),
+    img_ext: str = Query(
+        "jpg",
+        description="Image file extension (jpg, png, webp, ...).",
+    ),
+    txt_ext: str = Query(
+        "txt",
+        description="Text file extension.",
+    ),
+    skip_existing_text: str = Query(
+        "skip",
+        pattern="^(skip|overwrite|active)$",
+        description="What to do if text file already exists.",
+    ),
+    skip_existing_image: str = Query(
+        "skip",
+        pattern="^(skip|overwrite|active)$",
+        description="What to do if image file already exists.",
+    ),
+    on_error: str = Query(
+        "raise",
+        pattern="^(log|raise|skip|empty)$",
+        description="Behaviour if OCR/text extraction fails.",
+    )
 ) -> Union[OcrResponse, StreamingResponse, dict]:
     # Local imports to avoid heavy imports at app startup (and to match your earlier pattern).
-    from .ocr import iter_pages, page_to_text, PdfTextPolicy
+    from .ocr import iter_text_pages, PdfTextPolicy
 
+    text_image_file_kwargs = {
+        "img_out": img_out,
+        "txt_out": txt_out,
+        "img_ext": img_ext,
+        "txt_ext": txt_ext,
+        "skip_existing_text": skip_existing_text,
+        "skip_existing_image": skip_existing_image,
+        "on_error": on_error,
+    }
     pdf_text_policy = PdfTextPolicy(
         enabled=pdf_text_enabled,
         min_chars=pdf_text_min_chars,
@@ -125,22 +163,24 @@ def ocr_url(
     )
 
     def iter_page_results() -> Iterator[dict]:
-        for item in iter_pages(
+        for page_no, text in iter_text_pages(
             url,
-            iiif_max_width=iiif_max_width,
-            pdf_dpi=pdf_dpi,
-            pdf_text_policy=pdf_text_policy,
-        ):
-            text = page_to_text(
-                item,
+            # doc_id=url          
+            iter_kwargs=dict(
+                iiif_max_width=iiif_max_width,
+                pdf_dpi=pdf_dpi,
+                pdf_text_policy=pdf_text_policy,
+            ),
+            page_to_text_kwargs=dict(
                 config_path=config_path,
                 domain=domain,
                 model_name=model_name,
                 segmenter=segmenter,
                 binarize=binarize,
-            )
-            yield {"index": item.index, "text": text}
-
+            ),
+            text_image_file_kwargs=text_image_file_kwargs,
+        ):
+            yield {"index": page_no, "text": text}
     try:
         if output == "ndjson":
             def gen():
@@ -206,45 +246,6 @@ def ocr_url(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OCR failed: {e}")
 
-
-@router.get("/dev-test")
-def dev_test_ingest():
-    from .db import index_stream
-    from .ocr import iter_pages, page_to_text
-    logger.debug("d")
-    # --- test input ---
-    url = "https://dlib.biblhertz.it/iiif/khagenarna2403/manifest.json"
-    doc_id = "dev-test-001"
-
-    # --- OCR page generator (matches PagesFn) ---
-    def pages_fn(u: str):
-        for item in iter_pages(u):
-            text = page_to_text(item)
-            yield item.index, text
-
-    # --- optional metadata (flat dict, string values) ---
-    meta = {
-        "source": "dev-test",
-        "env": "local",
-    }
-
-    # --- call ingest ---
-    run_id = index_stream(
-        url=url,
-        doc_id=doc_id,
-        url_to_text_pages_fn=pages_fn,
-        targets="ocr-pages-write", # alias or index
-        meta=meta,
-    )
-
-    return {
-        "status": "ok",
-        "run_id": run_id,
-        "url": url,
-        "doc_id": doc_id,
-        "targets": ["ocr-pages-write"],
-    }
-
 class OpenSearchDocRequest(BaseModel):
     doc_id: str | None = Field(default=None, description="Optional _id; generated if omitted")
     targets: str | list[str]
@@ -279,6 +280,7 @@ def ingest_route(
     open_search_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for Open Search Config", examples=[None]),
     ocr_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for OCR Config", examples=[None]),
     model_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for Kraken Config", examples=[None]),
+    file_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for File Output", examples=[{'img_out':'kraken/images','txt_out':'kraken/texts','save_text':'active','save_image':'active'}]),
 ):
     from .pipeline import ingest_pipeline
     run_ids: List[str] = []
@@ -329,7 +331,7 @@ def ingest_route(
                             )
                         
                         config_path_x = config_path or os_cfg.get("config_path")
-                        query_x = query or os_cfg.get("query")
+                        query_x = query or cfg.get("query")
 
                         if not query_x:
                             raise HTTPException(
@@ -337,11 +339,12 @@ def ingest_route(
                                 detail="With no input, you must provide 'query' parameter",
                             )
                         
-                        ocr_x = ocr if ocr is not None else os_cfg.get("ocr", False)
+                        ocr_x = ocr if ocr is not None else cfg.get("ocr", False)
 
                         
                         iter_pages_kwargs = ocr_kwargs if ocr_kwargs is not None else dict(kraken_cfg.get("ocr_kwargs") or {})
                         page_to_text_kwargs = model_kwargs if model_kwargs is not None else dict(kraken_cfg.get("model_kwargs") or {})
+                        text_image_file_kwargs = file_kwargs if file_kwargs is not None else dict(kraken_cfg.get("file_kwargs") or {})
                         
                         items = [] 
 
@@ -363,7 +366,7 @@ def ingest_route(
                                                 targets=targets_x, 
                                                 ocr=ocr_x,
                                                 iter_pages_kwargs=iter_pages_kwargs,
-                                                page_to_text_kwargs=page_to_text_kwargs,
+                                                page_to_text_kwargs=page_to_text_kwargs, text_image_file_kwargs=text_image_file_kwargs,
                                                 config_path=config_path_x))
                     
                 elif graph and graph != lib.base_url:
@@ -407,6 +410,7 @@ def ingest_route(
                                             ocr=ocr,
                                             iter_pages_kwargs=ocr_kwargs,
                                             page_to_text_kwargs=model_kwargs,
+                                            text_image_file_kwargs=file_kwargs,
                                             config_path=config_path))
         else:
             raise HTTPException(
@@ -438,6 +442,7 @@ def ingest_route(
                                         ocr=ocr,
                                         iter_pages_kwargs=ocr_kwargs,
                                         page_to_text_kwargs=model_kwargs,
+                                        text_image_file_kwargs=file_kwargs,
                                         config_path=config_path))
     return {
         "status": "ok",

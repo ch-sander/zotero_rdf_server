@@ -11,7 +11,7 @@ SELECT ?file
        (SAMPLE(?library) AS ?library)
        (SAMPLE(?library_label) AS ?library_label)
        (GROUP_CONCAT(DISTINCT ?text_1724_13; SEPARATOR = "; ") AS ?parent_tags)
-       (SAMPLE(?_id) AS ?_id)
+       (SAMPLE(CONCAT(STR(?library_label), ":", STR(?_id))) AS ?_id)
        (SAMPLE(?parent_key) AS ?parent_key)
        #(SAMPLE(?content) AS ?content)
        (SAMPLE(?file_label) AS ?file_label)

@@ -24,6 +24,7 @@ def ingest_pipeline(
     ocr:bool=False,
     iter_pages_kwargs:dict={},
     page_to_text_kwargs:dict={},
+    text_image_file_kwargs:dict={},
     config_path:str=None
 ):
     from .db import index_stream
@@ -33,7 +34,7 @@ def ingest_pipeline(
     logger.debug(f"Ingest Pipeline started with {len(items)} items...")
     page_to_text_kwargs['config_path'] = config_path if (not page_to_text_kwargs.get('config_path') and config_path) else page_to_text_kwargs.get('config_path')
     if ocr:
-        from .ocr import iter_pages, page_to_text, PdfTextPolicy
+        from .ocr import iter_text_pages, PdfTextPolicy
         
 
 
@@ -41,11 +42,14 @@ def ingest_pipeline(
         if isinstance(ptp, dict):
             iter_pages_kwargs["pdf_text_policy"] = PdfTextPolicy.from_json(ptp)
 
-
         def pages_fn(u: str):
-            for item in iter_pages(u, **iter_pages_kwargs):
-                text = page_to_text(item, **page_to_text_kwargs)
-                yield item.index, text
+            yield from iter_text_pages(
+                u,
+                doc_id=doc_id,
+                iter_kwargs=iter_pages_kwargs,
+                page_to_text_kwargs=page_to_text_kwargs,
+                text_image_file_kwargs=text_image_file_kwargs,  # or None
+            )
 
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc).isoformat()

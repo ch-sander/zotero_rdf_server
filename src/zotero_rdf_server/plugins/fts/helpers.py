@@ -290,3 +290,8 @@ def detect_url_kind(
     except requests.RequestException:
         # Conservative fallback
         return "text"
+
+def safe_doc_id(doc_id: str) -> str:
+    s = doc_id.strip()
+    s = re.sub(r"[^\w.\-]+", "_", s, flags=re.UNICODE)
+    return s[:200] or "doc"
