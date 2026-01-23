@@ -1,5 +1,14 @@
+logging:
+  active: true
+  store: ./logs
+  templates:
+    kraken:
+      trig: ""
+    open-search:
+      trig: ""
+
 kraken:
-  # models_dir: "./models"
+  models_dir: "/app/plugins/fts/models"
 
   active:
     domain: "print"        # print | handwriting | medieval | ...
@@ -7,7 +16,7 @@ kraken:
     segmentation: "BLLA"   # "BLLA" or name from models (e.g., "MySegModel")
 
   default_models:
-    print: "CATMuS-Print-Large"
+    print: "McCATMuS" # "CATMuS-Print-Large"
     handwriting: "McCATMuS"
     medieval: "CATMuS-Medieval"
 
@@ -54,18 +63,23 @@ kraken:
     #   checksum_algo: "md5"
     #   checksum: "0e3f0e1c5e954c8b673ef5dbd0865058"
 
-
 open-search:
-  version: 1
   client:
     hosts:
       - host: opensearch # see in docker-compose.yml
         port: 9200
   meta:
-    owner: "my-app"
+    owner: "zotero-rdf-server"
     environment: "dev"
     # Minimum OpenSearch version this config is designed for
     opensearch_min_version: "2.0.0"
+
+  bulk:
+    chunk_size: 1
+    # max_chunk_bytes=5 * 1024 * 1024,
+    max_retries: 3
+    initial_backoff: 1
+    max_backof: 32
 
   component_templates:
     # Analysis settings for OCR indexing & search
@@ -83,21 +97,27 @@ open-search:
                   - "ﬀ=>ff"
                   - "ﬃ=>ffi"
                   - "ﬄ=>ffl"
+                  - "æ=>ae"
+                  - "œ=>oe"
                   - "’=>'"
                   - "‘=>'"
                   - "“=>\""
                   - "”=>\""
                   - "­=>"
+                  - "·=> "
               ocr_search_extra_map:
                 type: mapping
                 mappings:
                   - "æ=>ae"
                   - "œ=>oe"
                   - "v=>u"
+                  - "j=>i"
+                  - "ae=>e"
+                  - "e=>ae"
             filter:
               latin_stop_minimal:
                 type: stop
-                stopwords: ["et", "in", "ad", "de", "non", "est"]
+                stopwords: ["et", "in", "ad", "de", "ut"]
             analyzer:
               latin_ocr_index:
                 type: custom
@@ -131,6 +151,25 @@ open-search:
                   type: keyword
                   ignore_above: 256
 
+  ingest_pipelines:
+    ocr_meta_pipeline_v1:
+      description: "Split meta.parent_tags by ';' and normalize tag markers"
+      processors:
+        # "ONLINE; IIIF; handbook" -> ["ONLINE","IIIF","handbook"]
+        - split:
+            field: "meta.parent_tags"
+            separator: "\\s*;\\s*"
+
+        # remove leading '*' from each tag value (works on arrays too)
+        - gsub:
+            field: "meta.parent_tags"
+            pattern: "^\\*"
+            replacement: ""
+
+        # trim whitespace on each element (optional but nice)
+        - trim:
+            field: "meta.parent_tags"
+
   index_templates:
   
     ocr_pages_template_v1:
@@ -138,12 +177,13 @@ open-search:
       priority: 200
       composed_of:
         - ct_ocr_pages_v1
-    template:
-      # Optional but useful defaults
-      settings:
-        index:
-          number_of_shards: 1
-          number_of_replicas: 1
+      template:
+        # Optional but useful defaults
+        settings:
+          index:
+            number_of_shards: 1
+            number_of_replicas: 1
+            default_pipeline: "ocr_meta_pipeline_v1"
 
   indices:
 
@@ -159,5 +199,6 @@ open-search:
         - ct_ocr_pages_v1
     - put_index_templates:
         - ocr_pages_template_v1
+    - put_ingest_pipelines: [ocr_meta_pipeline_v1]
     - create_indices:
         - ocr-pages-000001

@@ -15,3 +15,4 @@ explorer/index-dev.html
 /app/opensearch-data
 /src/models
 /src/zotero_rdf_server/plugins/fts/models
+*.mlmodel

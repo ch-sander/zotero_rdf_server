@@ -1,9 +1,10 @@
 from __future__ import annotations
 from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Body
 from fastapi.responses import StreamingResponse, FileResponse
-from typing import Literal as TypeLiteral, Literal, Any, Dict
-import logging
+from typing import Literal, Any, Dict, Iterator, List, Optional, Union
 from pathlib import Path
+import json
+from pydantic import BaseModel, Field
 # from zotero_rdf_server.store import *
 # from zotero_rdf_server.rdf import *
 # from zotero_rdf_server.logging_config import logger, LogLevel
@@ -15,20 +16,7 @@ from dataclasses import dataclass
 from .helpers import plugin_logger
 logger=plugin_logger()
 
-router = APIRouter()
-
-
-import json
-from typing import Iterator, List, Optional, Union
-from pydantic import BaseModel, Field
-
-router = APIRouter(tags=["OCR"])
-
-@dataclass(frozen=True)
-class PdfTextPolicy:
-    enabled: bool = True
-    min_chars: int = 80
-    min_alpha_ratio: float = 0.6
+router = APIRouter(tags=["FTS"])
 
 class OcrPage(BaseModel):
     index: int = Field(..., description="0-based page index")
@@ -128,7 +116,7 @@ def ocr_url(
     ),
 ) -> Union[OcrResponse, StreamingResponse, dict]:
     # Local imports to avoid heavy imports at app startup (and to match your earlier pattern).
-    from .ocr import iter_pages, page_to_text
+    from .ocr import iter_pages, page_to_text, PdfTextPolicy
 
     pdf_text_policy = PdfTextPolicy(
         enabled=pdf_text_enabled,
@@ -257,8 +245,6 @@ def dev_test_ingest():
         "targets": ["ocr-pages-write"],
     }
 
-
-
 class OpenSearchDocRequest(BaseModel):
     doc_id: str | None = Field(default=None, description="Optional _id; generated if omitted")
     targets: str | list[str]
@@ -275,124 +261,188 @@ def ingest_opensearch(req: OpenSearchDocRequest = Body(...)):
     )
     return {"status": "ok", "run_id": run_id}
 
-def _meta_flat_strings(d: Dict[str, Any]) -> Dict[str, str]:
-    out: Dict[str, str] = {}
-    for k, v in d.items():
-        if v is None:
-            continue
-        if isinstance(v, (str, int, float, bool)):
-            out[k] = str(v)
-        else:
-            out[k] = json.dumps(v, ensure_ascii=False)
-    return out
-
 JsonObj = Dict[str, Any]
 JsonBody = Union[JsonObj, List[JsonObj]]
 
 @router.post("/pipeline")
-def ingest_route( # TODO add graph and set defaults per library: indices, sparql query --> see note parsing
-    input: Optional[JsonBody] = Body(default=None),
-    targets: str = Query(..., description="Index or alias"),
-    ocr: bool = Query(False, description="If true, run OCR pages ingest via pages_fn"),
-    # Fallback-Quelle, wenn input_json=None:
-    q: Optional[str] = Query(default=None, description="SPARQL SELECT query (used when body is null)"),
-    # store_path: Optional[str] = Query(default=None, description="Oxigraph store path (used when body is null)"),
+def ingest_route(
+    input: Optional[JsonBody] = Body(default=None, examples=[None]),
+    targets: str | list = Query(default=None, description="Index or alias"),
+    ocr: bool = Query(None, description="If true, run OCR pages ingest via pages_fn"), 
+    query: Optional[str] = Query(default=None, description="SPARQL SELECT query or path to file with query code (used when body is null)"),
+    graph: str | None = Query(default=None, description="Named graph IRI containing the attachments or documents (optional)"),
+    config_path: Optional[str] = Query(
+        None,
+        description="Path to YAML config. If omitted: ENV FTS_CONFIG, otherwise ./config.yml",
+    ),
+    store_path: Optional[str] = Query(default=None, description="Oxigraph store path (defaults to main store)"),
+    open_search_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for Open Search Config", examples=[None]),
+    ocr_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for OCR Config", examples=[None]),
+    model_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for Kraken Config", examples=[None]),
 ):
-    from .db import index_stream
+    from .pipeline import ingest_pipeline
+    run_ids: List[str] = []
 
     if input is None:
-        if not q:
+        try:
+            if store_path:
+                logger.warning(f"Reading from store in {store_path}")
+                from pyoxigraph import Store, NamedNode
+                store = Store.read_only(store_path)
+            else:
+                from zotero_rdf_server.store import store, NamedNode
+                from zotero_rdf_server.utils import load_text_like
+                logger.warning(f"Reading from main store")
+        except Exception as e:
+            logger.error(f"Reading from main store failed: {e}")                        
             raise HTTPException(
                 status_code=400,
-                detail="If body is null, you must provide 'q' query parameter",
+                detail="Reading from store failed",
             )
 
-        # from pyoxigraph import Store
-        # store = Store.read_only(store_path)
-        from zotero_rdf_server.store import store
-        from zotero_rdf_server.utils import load_text_like
-        try:
-            query=load_text_like(q,label="Ingest Pipeline SPARQL Query")
-            items: List[Dict[str, Any]] = [
-                {v: sol[v].value for v in sol}
-                for sol in store.query(query, use_default_graph_as_union=True)
-            ]
-        except Exception as e:
-            logger.error(f"Query failed: {e}")
-            items = []
+        if graph or (graph is None and query is None):  # take one or multple graphs if no query given in API
+            from zotero_rdf_server.store import get_graph
+            checked_graph, all_graphs = get_graph(graph)
+            if not checked_graph:
+                raise HTTPException(status_code=400, detail=f"Invalid graph IRI. Use one of these or None: {all_graphs}")
+            from zotero_rdf_server.models import ZoteroLibrary
+            from zotero_rdf_server.config import ZOTERO_LIBRARIES_CONFIGS
+            for lib_cfg in ZOTERO_LIBRARIES_CONFIGS:
+                lib = ZoteroLibrary(lib_cfg)            
+                if not graph or graph == lib.base_url:
+                    logger.info(f"starting FTS pipeline for {lib.base_url}...")
+                    
+                    cfg = lib.plugin.get("fts") or [{}]
+                    cfg = [cfg] if isinstance(cfg,dict) else cfg
+                    if len(cfg)>1:
+                        logger.warning(f"Running {len(cfg)} FTS configuration for library {lib.base_url}")
+                    for ncfg in cfg: # allow multiple runs per library
+
+                        os_cfg = open_search_kwargs if open_search_kwargs is not None else (ncfg.get("open-search") or {})
+                        kraken_cfg = (ncfg.get("kraken") or {})
+                        targets_x = targets or os_cfg.get("targets")
+
+                        if not targets_x:
+                            raise HTTPException(
+                                status_code=400,
+                                detail="Missing target indices/index",
+                            )
+                        
+                        config_path_x = config_path or os_cfg.get("config_path")
+                        query_x = query or os_cfg.get("query")
+
+                        if not query_x:
+                            raise HTTPException(
+                                status_code=400,
+                                detail="With no input, you must provide 'query' parameter",
+                            )
+                        
+                        ocr_x = ocr if ocr is not None else os_cfg.get("ocr", False)
+
+                        
+                        iter_pages_kwargs = ocr_kwargs if ocr_kwargs is not None else dict(kraken_cfg.get("ocr_kwargs") or {})
+                        page_to_text_kwargs = model_kwargs if model_kwargs is not None else dict(kraken_cfg.get("model_kwargs") or {})
+                        
+                        items = [] 
+
+                        try:
+                            sparql_query=load_text_like(query_x,label="Ingest Pipeline SPARQL Query")
+                            logger.debug(f"{sparql_query}")
+                            items = [
+                                {v: sol[v].value for v in sol}
+                                for sol in store.query(sparql_query, use_default_graph_as_union=False, default_graph=[NamedNode(lib.base_url), NamedNode(lib.knowledge_base_graph)])
+                            ]
+                            logger.debug(f"{len(items)} items found")       
+                        except Exception as e:
+                            logger.error(f"Query failed: {e}")
+                            items = []
+                        del store
+
+                        
+                        run_ids.append(ingest_pipeline(items=items,
+                                                targets=targets_x, 
+                                                ocr=ocr_x,
+                                                iter_pages_kwargs=iter_pages_kwargs,
+                                                page_to_text_kwargs=page_to_text_kwargs,
+                                                config_path=config_path_x))
+                    
+                elif graph and graph != lib.base_url:
+                    logger.debug(f"{graph} skipped")
+                else:
+                    logger.warning(f"{graph} not yet supported but defined via config")
+
+        elif graph is None and query: # query directly
+            if not targets:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Missing target indices/index",
+                )
+            logger.info("Starting FTS pipeline for entire store with query...")
+            try:
+                
+                sparql_query=load_text_like(query,label="Ingest Pipeline SPARQL Query")
+                logger.debug(f"{sparql_query}")
+                bindings = store.query(sparql_query, use_default_graph_as_union=True)
+                var_names = [v.value for v in bindings.variables]
+                logger.info(f"{var_names}")
+                items = []
+                for sol in bindings:
+                    items.append({
+                        name: (sol[name].value if sol[name] is not None else None)
+                        for name in var_names
+                    })
+                logger.debug(f"{items}")
+            except Exception as e:
+                logger.error(f"Query failed: {e}")
+                raise HTTPException(
+                    status_code=400,
+                    detail="Query failed",
+                )
+
+            del store
+            ocr = True if ocr is True else False
+
+            run_ids.append(ingest_pipeline(items=items,
+                                            targets=targets, 
+                                            ocr=ocr,
+                                            iter_pages_kwargs=ocr_kwargs,
+                                            page_to_text_kwargs=model_kwargs,
+                                            config_path=config_path))
+        else:
+            raise HTTPException(
+                    status_code=400,
+                    detail="Missing parameters for query!",
+                )
+
     else:
-        
+        logger.warning(f"Input {input}")  # use given bindings
+        if not targets:
+            raise HTTPException(
+                status_code=400,
+                detail="Missing target indices/index",
+            )
+        items = []
+
         if isinstance(input, str):
             from zotero_rdf_server.utils import load_dict_like
-            input = load_dict_like(input,label="Ingest Pipeline Input")
-
+            input = load_dict_like(input,label="Ingest Pipeline Input") # TODO not proper, yet, for lists (CSV should work)!
         if isinstance(input, dict):
             items = [input]
         elif isinstance(input, list) and all(isinstance(x, dict) for x in input):
             items = input
         else:
             raise HTTPException(status_code=400, detail="Body must be a JSON object, a list of JSON objects, or null")
-
-
-
-    pages_fn = None
-    if ocr:
-        from .ocr import iter_pages, page_to_text
-
-        def pages_fn(u: str):
-            for item in iter_pages(u):
-                text = page_to_text(item)
-                yield item.index, text
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc).isoformat()
-    run_ids: List[str] = []
-
-    for obj in items:
-        payload = dict(obj)
-
-        doc_id = payload.pop("_id", None)
-        url = payload.pop("_url", None)
-        text = payload.pop("_text", "")
-        sequence = payload.pop("_idx", None)
-
-        meta = _meta_flat_strings(payload)
-
-        if ocr:
-            if not url:
-                raise HTTPException(status_code=400, detail="ocr=true requires '_url' in each item")
-
-            run_ids.append(
-                index_stream(
-                    url=url,
-                    doc_id=doc_id,
-                    url_to_text_pages_fn=pages_fn,  # type: ignore[arg-type]
-                    targets=targets,
-                    meta=meta,
-                )
-            )
-        else:
-            d: Dict[str, Any] = {"ingest_ts": now, "meta": meta}
-            if url is not None:
-                d["url"] = url
-            if doc_id is not None:
-                d["doc_id"] = doc_id
-            if sequence is not None:
-                d["page"] = sequence
-            if text != "":
-                d["text"] = text
-
-            run_ids.append(
-                index_stream(
-                    targets=targets,
-                    doc_id=doc_id,
-                    doc=d,
-                )
-            )
-
+        ocr = True if ocr is True else False
+        run_ids.append(ingest_pipeline( items=items,
+                                        targets=targets, 
+                                        ocr=ocr,
+                                        iter_pages_kwargs=ocr_kwargs,
+                                        page_to_text_kwargs=model_kwargs,
+                                        config_path=config_path))
     return {
         "status": "ok",
         "run_ids": run_ids,
         "ocr_mode": ocr,
-        "targets": [targets],
-        "count": len(items),
+        "targets": targets,
+        "runs": len(run_ids),
     }

@@ -15,12 +15,12 @@ logger=plugin_logger()
 
 @lru_cache(maxsize=8)
 def get_os_config(config_path: Path) -> dict[str, Any]:
-    import yaml
-    # from zotero_rdf_server.utils import load_dict_like #TODO
-    
+    # import yaml
+    from zotero_rdf_server.utils import load_dict_like
+    cfg = load_dict_like(config_path,label="Open Search Config")
     path = Path(config_path).expanduser().resolve()
-    with path.open("r", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f) or {}
+    # with path.open("r", encoding="utf-8") as f:
+    #     cfg = yaml.safe_load(f) or {}
     # cfg = load_dict_like(path, "Open Search YAML")
     return cfg.get("open-search") or cfg
 
@@ -28,9 +28,15 @@ def get_os_config(config_path: Path) -> dict[str, Any]:
 def make_client(cfg: dict) -> OpenSearch:
     if "client" not in cfg:
         raise ValueError("Missing 'client' configuration")
-    return OpenSearch(**cfg["client"])
+    try:
+        cli = OpenSearch(**cfg["client"])
+        logger.debug("OS client created")
+        return cli
+    except Exception as e:
+        logger.critical("Client failed. Service running?")
 
 def ensure_ingest_pipeline(client: OpenSearch, *, name: str, body: dict) -> None:
+    logger.debug("putting ingest_pipeline")
     client.ingest.put_pipeline(id=name, body=body)
 
 def ensure_component_template(client: OpenSearch, *, name: str, body: dict) -> None:
@@ -39,6 +45,7 @@ def ensure_component_template(client: OpenSearch, *, name: str, body: dict) -> N
     body should be the component template body (e.g. {"template": {...}, ...})
     """
     # opensearchpy has indices.put_component_template in newer versions; fallback to perform_request for compatibility
+    logger.debug("putting component_template")
     try:
         client.cluster.put_component_template(name=name, body=body)
     except AttributeError:
@@ -53,6 +60,7 @@ def ensure_index_template(client: OpenSearch, *, name: str, body: dict) -> None:
     PUT _index_template/<name>
     body should be the composable index template body
     """
+    logger.debug("putting index_template")
     try:
         client.indices.put_index_template(name=name, body=body)
     except AttributeError:
@@ -90,7 +98,7 @@ def ensure_index_from_schema(client: OpenSearch, *, index: str, index_def: dict)
         client.indices.create(index=index, body=body)
     else:
         client.indices.create(index=index)
-
+    logger.debug("ensured index from schema")
 
 def provision_from_cfg(client: OpenSearch, cfg: dict) -> None:
     """
@@ -139,6 +147,7 @@ def provision_from_cfg(client: OpenSearch, cfg: dict) -> None:
             else:
                 # Unknown step: ignore to keep this minimal and non-breaking
                 continue
+        logger.debug("putting plan")
         return
 
     # Fallback: best-effort default order (safe for most cases)
@@ -163,7 +172,7 @@ def page_docs(
     *,
     targets: Iterable[str],
     url: str,
-    doc_id: str,
+    doc_id: str | None,
     pages: Iterator[Tuple[int, str]],
     meta: dict
 ) -> Iterator[Dict[str, Any]]:
@@ -185,6 +194,7 @@ def page_docs(
             }
             if doc_id is not None:
                 action["_id"] = f"{doc_id}:{sequence}"
+            logger.debug(f"yielded action for page={sequence} index={index_name}")
             yield action
 
 def doc_action(
@@ -215,6 +225,7 @@ def doc_action(
             }
             if doc_id is not None:
                 action["_id"] = doc_id
+            logger.debug(f"yielded action for index={index_name}")
             yield action
 
 def ingest_streaming_bulk(
@@ -225,8 +236,19 @@ def ingest_streaming_bulk(
     bulk_cfg: dict,
     run_id: str | None = None
 ) -> str:
+    now = datetime.now(timezone.utc).isoformat()
     run_id = run_id or uuid.uuid4().hex
 
+    # from rdflogger import LogEvent, log_event_via_trig_template
+    # event = LogEvent(
+    #     run_id=run_id,
+    #     level="ERROR",
+    #     message="OpenSearch bulk item failed",
+    #     ts=now,
+    #     doc_id=doc_id,
+    #     page=str(page_no),
+    #     target=index or "",
+    # )
     try:
         bulk_kwargs = dict(
             chunk_size=int(bulk_cfg.get("chunk_size", 250)),
@@ -237,97 +259,58 @@ def ingest_streaming_bulk(
             raise_on_error=False,
             raise_on_exception=False,
         )
-
+        logger.debug(f"bulk ingest with cfg: {bulk_kwargs}")
         # IMPORTANT: only pass a fixed index if you really want a single target
         if index is not None:
             bulk_kwargs["index"] = index
 
         for ok, item in streaming_bulk(client, actions, **bulk_kwargs):
+            
             op_key = next(iter(item.keys()))
             result = item[op_key]
             status = result.get("status")
             err = result.get("error")
+            logger.debug(f"ingest_streaming_bulk result: {result}")
 
             _id = result.get("_id", "")
-            doc_id, page = (_id.split(":", 1) + ["-1"])[:2] # TODO
-            page_no = int(page) if page.isdigit() else -1
+            # doc_id, page = (_id.split(":", 1) + ["-1"])[:2] # TODO
+            # page_no = int(page) if page.isdigit() else -1
+            logger.debug(f"OS Ingesting {_id} with status {status}: {err if err else 'no errors'}")
+
             # TODO logger in RDF
+            # log_event_via_trig_template(
+            #     store,
+            #     template_path="log_events.trig",
+            #     event=event
+            # )
         return run_id
     except Exception as e:
-        return e
+        logger.exception(f"ingest_streaming_bulk failed: {e}")
+        return str(e)
 
 
 PagesFn = Callable[[str], Iterator[Tuple[int, str]]]
-
-def index_url_pages_legacy(
-    *,
-    config_path: str | None = None,
-    url: str,
-    doc_id: str,
-    url_to_text_pages_fn: PagesFn,
-    # log_db_path: str,
-    targets: str | Iterable[str],
-    ocr_kwargs: dict | None = None,
-    meta : dict | None = None
-) -> str:
-    cfg_path = resolve_config_path(config_path)
-    cfg = get_os_config(cfg_path)
-    client = make_client(cfg)
-    provision_from_cfg(client, cfg)
-
-    # Normalize targets
-    if isinstance(targets, str):
-        targets_list = [targets]
-    else:
-        targets_list = list(targets)
-    if not targets_list:
-        raise ValueError("targets must not be empty")
-
-    pages_iter = url_to_text_pages_fn(url, **(ocr_kwargs or {}))
-
-    actions = page_docs(
-        targets=targets_list,
-        url=url,
-        doc_id=doc_id,
-        pages=pages_iter,
-        meta=meta or {}
-    )
-
-    # IMPORTANT: index=None so per-action _index is respected
-    run_id = ingest_streaming_bulk(
-        client,
-        actions=actions,
-        index=None,
-        bulk_cfg=cfg.get("bulk", {}),
-        # log_db_path=log_db_path,
-    )
-
-    # Refresh all touched targets (works for indices and aliases in most cases)
-    for t in targets_list:
-        try:
-            client.indices.refresh(index=t)
-        except Exception:
-            pass
-
-    return run_id
 
 def index_stream(
     *,
     config_path: str | None = None,
     # bisher:
     url: str | None = None,
-    doc_id: str | None,
+    doc_id: str | None = None,
     url_to_text_pages_fn: PagesFn | None = None,
     targets: str | Iterable[str],
     ocr_kwargs: dict | None = None,
     meta: dict | None = None,
     doc: Any | None = None,
 ) -> str:
-    
+    logger.debug(f"OS index_stream started...")
     cfg_path = resolve_config_path(config_path)
-    cfg = get_os_config(cfg_path)
-    client = make_client(cfg)
-    provision_from_cfg(client, cfg)
+    oscfg = get_os_config(cfg_path)
+    client = make_client(oscfg)
+    try:
+        provision_from_cfg(client, oscfg)
+    except Exception as e:
+        logger.critical(f"Open Search failed: {e}. Open Search running?")
 
     # Normalize targets
     if isinstance(targets, str):
@@ -366,7 +349,7 @@ def index_stream(
         client,
         actions=actions,
         index=None,
-        bulk_cfg=cfg.get("bulk", {}),
+        bulk_cfg=oscfg.get("bulk", {}),
     )
 
     for t in targets_list:

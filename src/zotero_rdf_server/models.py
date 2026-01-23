@@ -45,11 +45,11 @@ class ZoteroLibrary:
         
         # PLUG-IN Config
         self.plugin = config.get("plugin") or {}
-        self.parser = config.get("notes_parser") or {}
-        self.taxonomy = {}
-        if config.get("taxonomy"):
-            self.taxonomy = config["taxonomy"]
-            self.taxonomy['note_key'] = config.get('note_key', None)
+        # self.parser = config.get("notes_parser") or {}
+        # self.taxonomy = {} # TODO put in plugin!
+        # if config.get("taxonomy"):
+        #     self.taxonomy = config["taxonomy"]
+        #     self.taxonomy['note_key'] = config.get('note_key', None)
 
         # check settings
         if check:

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Iterator, Optional, Dict, Any, List, Literal, Union, Tuple
+from dataclasses import dataclass, fields
+from typing import Iterator, Optional, Dict, Any, List, Literal, Union, Tuple, Mapping
 import io, json, os, tempfile
 import requests
 from PIL import Image
 from functools import lru_cache
 from pathlib import Path
-from .helpers import ensure_import, _hash_file,  resolve_config_path, _download, plugin_logger
+from .helpers import ensure_import, _hash_file,  resolve_config_path, _download, plugin_logger, detect_url_kind
 
 from .helpers import plugin_logger
 logger=plugin_logger()
@@ -26,15 +26,26 @@ class PdfTextPolicy:
     min_chars: int = 80
     min_alpha_ratio: float = 0.6
 
+    @classmethod # policy = PdfTextPolicy.from_json(request.json.get("pdf_text_policy"))
+    def from_json(cls, data: Mapping[str, Any]) -> "PdfTextPolicy":
+        try:
+            return cls(
+                enabled=bool(data.get("enabled", True)),
+                min_chars=int(data.get("min_chars", 80)),
+                min_alpha_ratio=float(data.get("min_alpha_ratio", 0.6)),
+            )
+        except (TypeError, ValueError):
+            return cls()
+    
 @lru_cache(maxsize=8)
 def get_kraken_cfg(config_path: Path) -> dict[str, Any]:
-    import yaml
-    # from zotero_rdf_server.utils import load_dict_like #TODO
+    # import yaml
+    from zotero_rdf_server.utils import load_dict_like
     
-    path = Path(config_path).expanduser().resolve()
-    with path.open("r", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f) or {}
-    # cfg = load_dict_like(path, "Kraken YAML")
+    # path = Path(config_path).expanduser().resolve()
+    # with path.open("r", encoding="utf-8") as f:
+    #     cfg = yaml.safe_load(f) or {}
+    cfg = load_dict_like(config_path, "Kraken Config")
     return cfg.get("kraken") or cfg
 
 def resolve_domain(*, config_path: Path, domain: Optional[str]) -> str:
@@ -158,7 +169,7 @@ def is_usable_pdf_text(text: str, policy: PdfTextPolicy) -> bool:
     alpha = sum(c.isalpha() for c in t)
     return (alpha / max(len(t), 1)) >= policy.min_alpha_ratio
 
-def detect_url_kind(url: str, timeout: int = 30) -> str:
+def detect_url_kind_deprecated(url: str, timeout: int = 30) -> str:
     # "pdf" | "json"
     try:
         h = requests.head(url, allow_redirects=True, timeout=timeout)
@@ -250,17 +261,23 @@ def iter_pages(
     pdf_dpi: int = 200,
     pdf_text_policy: PdfTextPolicy = PdfTextPolicy(),
     timeout: int = 30,
+    file_formats: list | None = None
 ) -> Iterator[PageItem]:
 
-    kind = detect_url_kind(url, timeout=timeout) # TODO use .helpers.detect_url_kind
+    kind = detect_url_kind(url, timeout=timeout)
 
-    if kind == "json": # adjust to "iiif" #TODO
+    if file_formats and not kind in file_formats:
+        logger.warning(f"File {url} skipped as not in {file_formats}")
+        return
+
+    if kind in ("json", "iiif"):
         manifest = requests.get(url, timeout=timeout).json()
         img_urls = iiif_manifest_to_image_urls(manifest, max_width=iiif_max_width, fmt=iiif_format)
         if not img_urls:
             logger.warning(f"IIIF manifest {url} has no image canvases")
             return
         for i, img_url in enumerate(img_urls, start=1):
+            logger.debug(f"iter_pages yielding page={i}")
             yield PageItem(i, "image", fetch_pil_image(img_url), source=f"iiif:{img_url}")
         return
 
@@ -280,6 +297,7 @@ def iter_pages(
                     yield PageItem(i, "text", txt, source=f"pdf-text:{url}#page={i}")
                 else:
                     pil = doc[i-1].render(scale=pdf_dpi/72).to_pil()
+                    logger.debug(f"iter_pages yielding page={i}")
                     yield PageItem(i, "image", pil, source=f"pdf-image:{url}#page={i}")
         except Exception as e:
             logger.error(f"Reading PDF {url}: {e}")
@@ -290,7 +308,19 @@ def iter_pages(
             except OSError:
                 pass
         return
-
+    
+    if kind in ("text", "html", "xml"): # TODO XML parsing
+        try:
+            r = requests.get(url, timeout=timeout)
+            r.raise_for_status()
+            if not r.encoding:
+                r.encoding = "utf-8"
+            raw = r.text
+            logger.debug(f"iter_pages yielding page={i}")
+            yield PageItem(1, "text", raw, source=f"{kind}:{url}")
+        except Exception as e:
+            logger.error(f"Reading {kind.upper()} {url}: {e}")
+        return
     raise ValueError("Unknown URL type.")
 
 
@@ -303,28 +333,37 @@ def kraken_image_to_text(
     segmenter: str | None = None,
     binarize: bool = False,
 ) -> str:
-    ensure_import("kraken")
-    from kraken import binarization, blla, rpred #, pageseg
-    from kraken.lib import models
-    logger.debug("Kraken page recognition...")
-    cfg_path = resolve_config_path(config_path)
-    dom = resolve_domain(config_path=cfg_path, domain=domain)
-    recog_name = resolve_recognition_model_name(
-        config_path=cfg_path,
-        domain=dom,
-        model_name=model_name,
-    )
+    try:
+        ensure_import("kraken")
+        from kraken import binarization, blla, rpred #, pageseg
+        from kraken.lib import models
 
-    seg_model = load_segmentation_model(config_path=cfg_path, segmenter=segmenter)
+        
 
-    work = binarization.nlbin(im) if binarize else im
-    bounds = blla.segment(work, model=seg_model)
-    # seg = pageseg.segment(work)
-    model_path = str(resolve_kraken_model_path(config_path=cfg_path, model_name=recog_name))
-    net = models.load_any(model_path)
+        cfg_path = resolve_config_path(config_path)
+        dom = resolve_domain(config_path=cfg_path, domain=domain)
+        recog_name = resolve_recognition_model_name(
+            config_path=cfg_path,
+            domain=dom,
+            model_name=model_name,
+        )
 
-    preds = rpred.rpred(network=net, im=work, bounds=bounds)
-    return "\n".join(p.prediction for p in preds)
+        seg_model = load_segmentation_model(config_path=cfg_path, segmenter=segmenter)
+        logger.debug(f"Kraken page recognition with {recog_name}...")
+        work = binarization.nlbin(im) if binarize else im
+        bounds = blla.segment(work, model=seg_model)
+        # seg = pageseg.segment(work)
+        model_path = str(resolve_kraken_model_path(config_path=cfg_path, model_name=recog_name))
+        net = models.load_any(model_path)
+
+        preds = rpred.rpred(network=net, im=work, bounds=bounds)
+        ocr_page = "\n".join(p.prediction for p in preds)
+
+        logger.debug(ocr_page)
+
+        return ocr_page
+    except Exception as e:
+        logger.error(f"Kraken OCR failed: {e}")
 
 def page_to_text(
     item: PageItem,
@@ -333,11 +372,11 @@ def page_to_text(
     domain: str | None = None,
     model_name: str | None = None,
     segmenter: str | None = None,
-    binarize: bool = False,
+    binarize: bool = True,
 ) -> str:
     if item.kind == "text":
         return item.data  # type: ignore[return-value]
-
+    logger.debug(f"processing image {item.index} of {item.source}")
     return kraken_image_to_text(
         item.data,
         config_path=config_path,
@@ -346,4 +385,3 @@ def page_to_text(
         segmenter=segmenter,
         binarize=binarize,
     )
-

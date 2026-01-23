@@ -15,7 +15,19 @@ requirements = here / "requirements.txt"
 def plugin_logger(new:bool=True):
     if new:
         import logging
-        return logging.getLogger("fts_plugin")
+        logger = logging.getLogger("fts_plugin")
+        logger.setLevel(logging.DEBUG)
+        logger.propagate = False
+        if not logger.handlers:
+            h = logging.StreamHandler()
+            h.setLevel(logging.DEBUG)
+            formatter = logging.Formatter(
+                "[%(levelname)s] %(name)s: %(message)s"
+            )
+            h.setFormatter(formatter)
+            logger.addHandler(h)
+
+        return logger
     else:
         from zotero_rdf_server.logging_config import logger as logger_z
         return logger_z
