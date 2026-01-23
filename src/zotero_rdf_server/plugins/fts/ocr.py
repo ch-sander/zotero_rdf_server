@@ -170,23 +170,6 @@ def is_usable_pdf_text(text: str, policy: PdfTextPolicy) -> bool:
     alpha = sum(c.isalpha() for c in t)
     return (alpha / max(len(t), 1)) >= policy.min_alpha_ratio
 
-def detect_url_kind_deprecated(url: str, timeout: int = 30) -> str:
-    # "pdf" | "json"
-    try:
-        h = requests.head(url, allow_redirects=True, timeout=timeout)
-        ctype = (h.headers.get("Content-Type") or "").lower()
-        if "application/pdf" in ctype:
-            return "pdf"
-    except requests.RequestException:
-        pass
-
-    r = requests.get(url, stream=True, timeout=timeout)
-    r.raise_for_status()
-    first = r.raw.read(5)
-    if first == b"%PDF-":
-        return "pdf"
-    return "json" # TODO Better test
-
 def iiif_manifest_to_image_urls(manifest: Dict[str, Any], max_width: Optional[int]=2000, fmt: str="jpg") -> List[str]:
     def mk(service_id: str) -> str:
         size = f"{max_width}," if max_width else "full"
@@ -327,6 +310,17 @@ def iter_pages(
     raise ValueError("Unknown URL type.")
 
 
+import numpy as np
+
+def ink_ratio(pil_img):
+    g = pil_img.convert("L")
+    a = np.asarray(g)
+    bg = np.median(a)
+    thr = bg - 25
+    ink = (a < thr).mean()
+    return float(ink), float(bg), float(thr)
+
+
 def kraken_image_to_text(
     im: Image.Image,
     *,
@@ -335,8 +329,24 @@ def kraken_image_to_text(
     model_name: str | None = None,
     segmenter: str | None = None,
     binarize: bool = False,
+    ink_ratio_range: list | None = None # [0, 1]
 ) -> str:
     try:
+        if ink_ratio_range:
+            r, bg, thr = ink_ratio(im)
+            logger.debug(f"Found page (blank), r={r:.5f}, bg={bg:.1f}, thr={thr:.1f}")
+            if r < ink_ratio_range[0]:
+                logger.warning(
+                    f"Skipping page (blank), r={r:.5f}, bg={bg:.1f}, thr={thr:.1f}"
+                )
+                return ""
+
+            if r > ink_ratio_range[1]:
+                logger.warning(
+                    f"Skipping page (too dark/ornament), r={r:.3f}, bg={bg:.1f}"
+                )
+                return ""
+            
         ensure_import("kraken")
         from kraken import binarization, blla, rpred #, pageseg
         from kraken.lib import models
