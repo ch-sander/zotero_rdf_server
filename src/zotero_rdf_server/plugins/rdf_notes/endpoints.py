@@ -225,26 +225,28 @@ async def taxonomy(
             res.append({"success": pipeline(lib=cfg, source_store=store, job=task, note_key=note_key, file=file)})
         else:
             res.append({"error": "graph missing"})
-    else:    
+    else: 
         if api_key and library_id and library_type:
             lib = ZoteroLibrary({'sync':{'api_key':api_key,'library_id':library_id,'library_type':library_type}}, False)
+            tax_cfg = lib.plugin.get("taxonomy") or {}
             if mapping:
-                lib.taxonomy["mapping"] = mapping
+                tax_cfg["mapping"] = mapping
             res.append({"success": pipeline(lib=lib, source_store=store, job=task, note_key=note_key, file=None)})
         else:
             for lib_cfg in ZOTERO_LIBRARIES_CONFIGS:
                 lib = ZoteroLibrary(lib_cfg)
                 logger.info(f"Checking config for library: {lib.name}")
+                tax_cfg = lib.plugin.get("taxonomy") or {}
                 if (
                     (not graph or graph == lib.base_url) and
                     lib.sync and
                     lib.sync.get("api_key") and
                     lib.sync.get("library_id") and
                     lib.sync.get("library_type") and
-                    lib.taxonomy
+                    tax_cfg
                 ):
                     if mapping:
-                        lib.taxonomy["mapping"] = mapping
+                        tax_cfg["mapping"] = mapping
                     res.append({"success": pipeline(lib=lib, source_store=store, job=task, note_key=note_key, file=None)})
     return res
 

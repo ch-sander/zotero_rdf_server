@@ -90,7 +90,7 @@ Fuzzy matching can't handle multilingual or semantically complex cases (e.g. “
 
 ## Parse Notes
 
-As a plugin, you can parse your HTML Zotero notes with the [Semantic-HTML](https://github.com/ch-sander/semantic-html) package ([Docs](https://semantic-html.readthedocs.io/en/latest/)). It is only loaded if the trigger is set in the `config.yaml` or called via `/parse_notes` in the API. The results are parsed as RDF and loaded to the store. A mapping example for the RDF parsing is defined in `app/parser/mapping.json` and can be specified in `config.yaml` for each library
+As a plugin, you can parse your HTML Zotero notes with the [Semantic-HTML](https://github.com/ch-sander/semantic-html) package ([Docs](https://semantic-html.readthedocs.io/en/latest/)). It is only loaded if the trigger is set in the `config.yaml` or called via `/parse_notes` in the API. The results are parsed as RDF and loaded to the store. A mapping example for the RDF parsing is defined in `app/plugins/parser/mapping.json` and can be specified in `config.yaml` for each library
 
 ## Configuration
 

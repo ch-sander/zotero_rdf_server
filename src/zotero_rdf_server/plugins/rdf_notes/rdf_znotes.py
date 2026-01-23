@@ -564,8 +564,9 @@ def pipeline(lib:ZoteroLibrary | dict, source_store:Store, job:Literal["writeNot
             BASE = lib.base_url
             lib_cfg = lib.sync
             sync_base_uri = lib_cfg.pop("base_uri", lib.base_url)
-            tax_map = load_dict_like(lib.taxonomy.get("mapping", None), label="Taxonomy mapping")
-            note_key = note_key or lib.taxonomy.get("note_key") or uuid.uuid4()
+            tax_cfg = lib.plugin.get("taxonomy") or {}
+            tax_map = load_dict_like(tax_cfg.get("mapping", None), label="Taxonomy mapping")
+            note_key = note_key or tax_cfg.get("note_key") or uuid.uuid4()
             logger.info("Loaded taxonomy config from ZoteroLibrary object.")
 
         elif isinstance(lib, dict):

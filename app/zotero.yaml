@@ -19,14 +19,14 @@ defaults:
   plugin: # config related to plugins, not checked for consistency, and read by plugin individually, but per library
     taxonomy: # requires sync config for library (adding Zotero notes to remote libary)
       note_key : null # create if none
-      mapping: "/app/taxonomy/mapping.json"
+      mapping: "/app/plugins/taxonomy/mapping.json"
     notes_parser: # loads the semantic-html package to parse notes HTML to JSON-LD and load into Store
       knowledge_base_mapping: true # Will map found entities in notes parsing to the library's knowledge base (knowledge_base_graph)
       fuzzy: 90 # the minimum fuzzy score (threshold in %) to match strings as identical entities (places, persons). Defaults to 90 if missing. Can be set in mapping.json, too.
       base_uri: "https://semantic-html.org" # graph for the parser result RDF to be stored in. Uses the library's base_uri as default
       auto: true # hook parser into loading process if true
-      mapping: "/app/parser/mapping.json" # load file or build dict here
-      metadata: "/app/parser/meta.json" # load file or build dict here
+      mapping: "/app/plugins/parser/mapping.json" # load file or build dict here
+      metadata: "/app/plugins/parser/meta.json" # load file or build dict here
   map: # skip this dict if no specs needed. Will ignore empty lists as constraints
     # white: [title,date] # a white list (will only include these and those in rdf_mapping)
     # black: [title,date] # a black list (will ingore these)

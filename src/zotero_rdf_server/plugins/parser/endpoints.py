@@ -9,7 +9,6 @@ from zotero_rdf_server.logging_config import logger, LogLevel
 from zotero_rdf_server.config import *
 from zotero_rdf_server.models import ZoteroLibrary
 from zotero_rdf_server.utils import *
-from .parse_note import *
 
 router = APIRouter(tags=["Semantic Note Parsing"])
 
@@ -21,7 +20,7 @@ async def parse_notes(
     query: str | None = Query(default=None, description="Query to retrieve notes, requires ?s (=note item IRI) and ?o (=Note HTML) as bindings (optional)"),
     push: bool | None = Query(default=True, description="Push triples to store (true by default)")
     ):
-
+    from .parse_note import parse_all_notes
     from zotero_rdf_server.store import store
 
     checked_graph, all_graphs = get_graph(graph)
