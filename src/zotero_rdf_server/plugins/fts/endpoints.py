@@ -128,12 +128,12 @@ def ocr_url(
         "txt",
         description="Text file extension.",
     ),
-    skip_existing_text: str = Query(
+    safe_text: str = Query(
         "skip",
         pattern="^(skip|overwrite|active)$",
         description="What to do if text file already exists.",
     ),
-    skip_existing_image: str = Query(
+    safe_image: str = Query(
         "skip",
         pattern="^(skip|overwrite|active)$",
         description="What to do if image file already exists.",
@@ -152,8 +152,8 @@ def ocr_url(
         "txt_out": txt_out,
         "img_ext": img_ext,
         "txt_ext": txt_ext,
-        "skip_existing_text": skip_existing_text,
-        "skip_existing_image": skip_existing_image,
+        "safe_text": safe_text,
+        "safe_image": safe_image,
         "on_error": on_error,
     }
     pdf_text_policy = PdfTextPolicy(

@@ -163,6 +163,7 @@ def is_usable_pdf_text(text: str, policy: PdfTextPolicy) -> bool:
         return False
     if not text:
         return False
+    logger.debug(f"Found PDF text")
     t = text.strip()
     if len(t) < policy.min_chars:
         return False
@@ -239,6 +240,7 @@ def fetch_pil_image(url: str, timeout: int = 60) -> Image.Image:
         logger.error(f"Fetching image {url}: {e}")
 
 def stream_download_to_tempfile(url: str, suffix: str, timeout: int = 120) -> str:
+    logger.info(f"Downloading {url}")
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         with requests.get(url, stream=True, timeout=timeout) as r:
             r.raise_for_status()
@@ -294,13 +296,14 @@ def iter_pages(
             for i, page in enumerate(reader.pages, start=1):
                 txt = page.extract_text() or ""
                 if is_usable_pdf_text(txt, pdf_text_policy):
+                    logger.info(f"Using PDF text {url}")
                     yield PageItem(i, "text", txt, source=f"pdf-text:{url}#page={i}")
                 else:
                     pil = doc[i-1].render(scale=pdf_dpi/72).to_pil()
                     logger.debug(f"iter_pages yielding page={i}")
                     yield PageItem(i, "image", pil, source=f"pdf-image:{url}#page={i}")
         except Exception as e:
-            logger.error(f"Reading PDF {url}: {e}")
+            logger.error(f"Error reading PDF {url}: {e}")
 
         finally:
             try:
@@ -316,7 +319,7 @@ def iter_pages(
             if not r.encoding:
                 r.encoding = "utf-8"
             raw = r.text
-            logger.debug(f"iter_pages yielding page={i}")
+            logger.debug(f"iter_pages yielding page={1}")
             yield PageItem(1, "text", raw, source=f"{kind}:{url}")
         except Exception as e:
             logger.error(f"Reading {kind.upper()} {url}: {e}")
@@ -386,7 +389,7 @@ def page_to_text(
         binarize=binarize,
     )
 
-def iter_text_pages(
+def iter_text_pages_deprecated(
     url: str,
     *,
     doc_id: str,
@@ -409,7 +412,7 @@ def iter_text_pages(
     txt_ext: str = cfg.get("txt_ext", "txt")
 
     save_text: str = cfg.get("save_text", "skip") # "skip" | "overwrite" | "active"
-    save_image: str = cfg.get("save_text", "skip") # "skip" | "overwrite" | "active"
+    save_image: str = cfg.get("save_image", "skip") # "skip" | "overwrite" | "active"
     on_error: str = cfg.get("on_error", "log") # "raise" | "skip" | "empty" | "raise"
 
     if save_text not in {"skip", "overwrite", "active"}:
@@ -482,5 +485,251 @@ def iter_text_pages(
 
         if save_text != "skip":
             _maybe_save_text(page_no, txt)
+
+        yield page_no, txt
+
+def iter_text_pages(
+    url: str,
+    *,
+    doc_id: str = None,
+    iter_kwargs: Dict[str, Any],
+    page_to_text_kwargs: Dict[str, Any],
+    text_image_file_kwargs: Optional[Dict[str, Any]] = None,
+) -> Iterator[Tuple[int, str]]:
+    logger.debug(
+        f"iter_text_pages received: {[iter_kwargs, page_to_text_kwargs, text_image_file_kwargs]}"
+    )
+    cfg = text_image_file_kwargs or {}
+
+    try:
+        from zotero_rdf_server.config import EXPORT_DIRECTORY
+
+        EXPORT_DIRECTORY = Path(EXPORT_DIRECTORY)
+    except Exception:
+        EXPORT_DIRECTORY = Path().resolve()
+
+    img_out: Optional[str] = cfg.get("img_out", "images")
+    txt_out: Optional[str] = cfg.get("txt_out", "texts")
+    img_ext: str = cfg.get("img_ext", "jpg")
+    txt_ext: str = cfg.get("txt_ext", "txt")
+
+    save_text: str = cfg.get("save_text", "skip")  # "skip" | "overwrite" | "active"
+    save_image: str = cfg.get("save_image", "skip")  # "skip" | "overwrite" | "active"
+    on_error: str = cfg.get("on_error", "log")  # "raise" | "skip" | "empty" | "log"
+
+    if save_text not in {"skip", "overwrite", "active"}:
+        raise ValueError(f"save_text must be 'active', 'skip' or 'overwrite', got {save_text!r}")
+    if save_image not in {"skip", "overwrite", "active"}:
+        raise ValueError(f"save_image must be 'active', 'skip' or 'overwrite', got {save_image!r}")
+    if on_error not in {"raise", "skip", "empty", "log"}:
+        raise ValueError(f"on_error must be 'raise', 'skip', 'empty' or 'log', got {on_error!r}")
+
+    _doc_id = safe_doc_id(doc_id or url)
+
+    def _resolve_out(p: Optional[str]) -> Optional[Path]:
+        if not p:
+            return None
+        pp = Path(p)
+        if pp.is_absolute():
+            logger.error(f"Absolute paths are not allowed: {pp}")
+            return (EXPORT_DIRECTORY / _doc_id).resolve()
+        result_path = (EXPORT_DIRECTORY / pp / _doc_id).resolve()
+        logger.info(f"Export path set: {result_path}")
+        return result_path
+
+    img_dir = _resolve_out(img_out)
+    txt_dir = _resolve_out(txt_out)
+
+    def _save_pil(im, path: Path) -> None:
+        logger.debug(f"Stored file: {path}")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        im.save(path)
+
+    def _save_text(txt: str, path: Path) -> None:
+        logger.debug(f"Stored file: {path}")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(txt, encoding="utf-8")
+
+    def _text_path(page_no: int) -> Optional[Path]:
+        return None if txt_dir is None else (txt_dir / f"{page_no:04d}.{txt_ext}")
+
+    def _image_path(page_no: int) -> Optional[Path]:
+        return None if img_dir is None else (img_dir / f"{page_no:04d}.{img_ext}")
+
+    def _parse_page_no(path: Path) -> Optional[int]:
+        # erwartet 0001.txt / 0001.jpg etc.
+        try:
+            return int(path.stem)
+        except Exception:
+            return None
+
+    def _cached_pages() -> dict[str, list[int]]:
+        pages = {"text": [], "image": []}
+
+        if txt_dir and txt_dir.exists():
+            for p in txt_dir.glob(f"*.{txt_ext}"):
+                n = _parse_page_no(p)
+                if n is not None:
+                    pages["text"].append(n)
+
+        if img_dir and img_dir.exists():
+            for p in img_dir.glob(f"*.{img_ext}"):
+                n = _parse_page_no(p)
+                if n is not None:
+                    pages["image"].append(n)
+
+        pages["text"].sort()
+        pages["image"].sort()
+        return pages
+
+    def _iter_cached_image_pages(img_dir: Path, img_ext: str) -> Iterator[Tuple[int, Path]]:
+        files = sorted(img_dir.glob(f"*.{img_ext}"))
+        for f in files:
+            n = _parse_page_no(f)
+            if n is not None:
+                yield n, f
+
+    def _maybe_store_text(page_no: int, txt: str) -> None:
+        if save_text not in {"active", "overwrite"}:
+            return
+        tp = _text_path(page_no)
+        if tp is None:
+            return
+        if save_text == "overwrite" or not tp.exists():
+            _save_text(txt, tp)
+
+    def _yield_from_cache() -> Iterator[Tuple[int, str]]:
+        if txt_dir is None or not txt_dir.exists():
+            return iter(())
+        page_nos = sorted(
+            n for n in (_parse_page_no(p) for p in txt_dir.glob(f"*.{txt_ext}")) if n is not None
+        )
+
+        def _it() -> Iterator[Tuple[int, str]]:
+            for page_no in page_nos:
+                tp = _text_path(page_no)
+                if tp is None or not tp.exists():
+                    continue
+                yield page_no, tp.read_text(encoding="utf-8")
+
+        return _it()
+    
+    cached_page_set = _cached_pages()
+
+    logger.info(f"Found {len(set(cached_page_set['text']))} text files and {len(set(cached_page_set['image']))} image files in {txt_dir}")
+
+    # If text file found and not overwrite, use as result and skip download + OCR
+    if (
+        save_text == "active"
+        and save_image != "active"
+        and txt_dir is not None
+        and any(txt_dir.glob(f"*.{txt_ext}"))
+    ):      
+        logger.warning(f"Using {len(set(cached_page_set['text']))} text files in {txt_dir}")
+        yield from _yield_from_cache()
+        return    
+
+    # If image file found and not overwrite, use as result and skip download but proceed with OCR
+    if save_image == "active" and img_dir is not None and img_dir.exists():
+        cached_imgs = list(_iter_cached_image_pages(img_dir, img_ext))
+        if cached_imgs:
+            logger.warning(f"Using {len(set(cached_page_set['image']))} text files in {txt_dir}; no remote download")
+            for page_no, img_path in cached_imgs:
+                tp = _text_path(page_no)
+                if save_text == "active" and save_text != "overwrite" and tp and tp.exists():
+                    yield page_no, tp.read_text(encoding="utf-8")
+                    continue
+
+                try:
+                    with Image.open(img_path) as im:
+                        pil = im.copy()
+                    item = PageItem(page_no, "image", pil, source=f"cache-image:{img_path}")
+                    txt = page_to_text(item, **page_to_text_kwargs)  # OCR nur lokal
+                except Exception as e:
+                    logger.error(f"Failed to load cached image for page {page_no} from {img_path}: {e}")
+
+                    if on_error == "raise":
+                        raise
+                    if on_error == "skip":
+                        continue
+
+                if save_text in {"active", "overwrite"}:
+                    _maybe_store_text(page_no, txt)
+                yield page_no, txt
+            return
+    
+    for item in iter_pages(url, **iter_kwargs):
+        page_no = getattr(item, "sequence", None) or getattr(item, "index", None)
+        if page_no is None:
+            raise AttributeError("PageItem has neither .sequence nor .index")
+
+        # Image: if active and cached -> load from file and set in item.data
+        if save_image == "active":
+            ip = _image_path(page_no)
+            if ip is not None and ip.exists():
+                try:
+                    with Image.open(ip) as im:
+                        item.data = im.copy()
+                    item.kind = getattr(item, "kind", "image")
+                except Exception as e:
+                    logger.error(f"Failed to load cached image for page {page_no} from {str(ip)}: {e}")
+
+                    if on_error == "raise":
+                        raise
+                    if on_error == "skip":
+                        continue
+                    # empty/log -> weiter, dann ggf. OCR/remote
+
+        # Text: if active and cached -> read directly, no OCR
+        tp = _text_path(page_no)
+        if save_text == "active" and tp is not None and tp.exists():
+            try:
+                txt = tp.read_text(encoding="utf-8")
+            except Exception as e:
+                logger.error(f"Failed to load cached text for page {page_no} from {str(tp)}: {e}")
+                if on_error == "raise":
+                    raise
+                if on_error == "skip":
+                    continue
+                txt = ""
+            yield page_no, txt
+            continue
+
+        # Save image (active/overwrite)
+        if item.kind == "image" and save_image in {"active", "overwrite"} and img_dir is not None:
+            ip = _image_path(page_no)
+            if ip is not None and item.data is not None and hasattr(item.data, "save"):
+                if save_image == "overwrite" or not ip.exists():
+                    try:
+                        _save_pil(item.data, ip)
+                    except Exception as e:
+                        logger.error(f"Failed to store image page {page_no} to {str(ip)}: {e}")
+                        if on_error == "raise":
+                            raise
+                        if on_error == "skip":
+                            continue
+
+        # OCR / page_to_text
+        try:
+            txt = page_to_text(item, **page_to_text_kwargs)
+        except Exception as e:
+            logger.error(f"iter_text_pages error on page {page_no}: {e}")
+            if on_error == "raise":
+                raise
+            if on_error == "skip":
+                continue
+            txt = ""  # empty/log
+
+        # Save text (active/overwrite)
+        if save_text in {"active", "overwrite"} and tp is not None:
+            if save_text == "overwrite" or not tp.exists():
+                try:
+                    _save_text(txt, tp)
+                except Exception as e:
+                    logger.error(f"Failed to store text page {page_no} to {str(tp)}: {e}")
+                    if on_error == "raise":
+                        raise
+                    if on_error == "skip":
+                        continue
 
         yield page_no, txt
