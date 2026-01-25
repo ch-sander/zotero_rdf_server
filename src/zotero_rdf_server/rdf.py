@@ -65,9 +65,9 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
     def get_field_map(key: str) -> dict:
         return rdf_mapping.get(key) or {}
     
-    def get_properties(key: str) -> list:
-        field_map = get_field_map(key)
-        props = field_map.get("properties") or [key]
+    def get_properties(key: str) -> list:        
+        field_map = get_field_map(key)        
+        props = field_map.get("properties") or [key]        
         if len(props)>1:
             logger.debug(f"{len(props)} properties added for {key}: {props}")
         return make_iri(props, pref=ns_prefix, enforce_list=True)
@@ -194,7 +194,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 
                 ### CREATORS ###
 
-                if predicate_str == "creators":                    
+                elif predicate_str == "creators":                    
                     if "name" in object:
                         label = object["name"]
                     else:
@@ -203,12 +203,12 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     type_nodes = make_iri(field_map.get("types",["actor"]),ns_prefix, enforce_list = True)
                     role_types  = make_iri(field_map.get("role_types",["creatorRole"]),ns_prefix, enforce_list = True)
                     role_properties = make_iri(field_map.get("role_properties","hasCreator"),ns_prefix, True)
-                    role_node = field_map.get("role_node") or "BlankNode"
+                    # role_node_type = field_map.get("role_node") or "BlankNode"
                     fuzzy_threshold_specific = field_map.get("fuzzy") or fuzzy_threshold
 
-                    bnode = BlankNode() if str(role_node).lower() == "blanknode" else safeNamedNode(f"{base_uri}/{uuid4()}")
+                    role_node = safeNamedNode(f"{base_uri}/{uuid4()}") #BlankNode() if str(role_node_type).lower() == "blanknode" else safeNamedNode(f"{base_uri}/{uuid4()}")
 
-                    apply_rdf_types(store, bnode, {}, role_types, "creatorRole", base_uri, ns_prefix)
+                    apply_rdf_types(store, role_node, {}, role_types, "creatorRole", base_uri, ns_prefix)
 
                     pool_store = quads_by_type(store,type_nodes,ENTITY_GRAPH_URI)
 
@@ -234,9 +234,9 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                                 pred = safeNamedNode(f"{ns_prefix}{key}")
                                 store.add(Quad(creator_node, pred, Literal(str(val)), graph_name=ENTITY_GRAPH_URI))       
                             elif key == "creatorType" and val:
-                                store.add(Quad(bnode, NamedNode(RDFS_LABEL), Literal(str(val)), graph_name=GRAPH_URI))
-                                store.add(Quad(bnode, safeNamedNode(f"{ns_prefix}{key}"), safeNamedNode(f"{ns_prefix}{val}"), graph_name=GRAPH_URI))
-                                store.add(Quad(bnode, NamedNode(RDF_TYPE), safeNamedNode(f"{ns_prefix}{val}"), graph_name=GRAPH_URI))
+                                store.add(Quad(role_node, NamedNode(RDFS_LABEL), Literal(str(val)), graph_name=GRAPH_URI))
+                                store.add(Quad(role_node, safeNamedNode(f"{ns_prefix}{key}"), safeNamedNode(f"{ns_prefix}{val}"), graph_name=GRAPH_URI))
+                                store.add(Quad(role_node, NamedNode(RDF_TYPE), safeNamedNode(f"{ns_prefix}{val}"), graph_name=GRAPH_URI))
                     else:
                         logger.debug(f"Creator already exists: {label} as {matched_label} ({score})")
 
@@ -244,20 +244,36 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     if label.lower() not in alts:
                         store.add(Quad(creator_node, NamedNode(SKOS_ALT), Literal(label), graph_name=ENTITY_GRAPH_URI))                    
                     for role_property in role_properties:
-                        store.add(Quad(bnode, safeNamedNode(role_property), creator_node, graph_name=GRAPH_URI))
-                    return bnode
+                        store.add(Quad(role_node, safeNamedNode(role_property), creator_node, graph_name=GRAPH_URI))
+                    return role_node
+
+                elif predicate_str == "relations" and "dc:relation" in object: # relation
+                    related_item = object.pop("dc:relation")
+                    related_items = related_item if isinstance(related_item, list) else [related_item]
+                    for ri in related_items:
+                        store.add(Quad(subject, NamedNode("http://purl.org/dc/elements/1.1/relation"), safeNamedNode(ri), graph_name=GRAPH_URI))
+                    if object:
+                        logger.warning(f"Dropping from relations: {object}")
+                    return None
+                
+                # elif predicate_str == "links" and "alternate" in object: # links
+                #     alternate_item = object.pop("alternate")
+                #     href_alternate_item = alternate_item.pop("href")
+                #     if href_alternate_item or alternate_item:
+                #         logger.warning(f"Dropping from relations: {object}")
+                #     return safeNamedNode(href_alternate_item)
 
                 else: ### UNEXPECTED DICT ###
-                    logger.warning(f"RDF Mapping for unexpected dict in key {predicate_str}")
+                    logger.info(f"RDF Mapping for unexpected dict in key {predicate_str}, {object}, {subject.value}")
                     b = BlankNode()
-                    for k, v in object.items():
-                        preds = get_properties(k)
-                        vals = v if isinstance(v, list) else [v]
-                        for vv in vals:
-                            oo = zotero_property_map(k, vv, map)
-                            if oo:
-                                for p in preds:
-                                    store.add(Quad(b, safeNamedNode(p), oo, graph_name=GRAPH_URI))
+                    # for k, v in object.items():
+                    #     preds = get_properties(k)
+                    #     vals = v if isinstance(v, list) else [v]
+                    #     for vv in vals:
+                    #         oo = zotero_property_map(k, vv, map)
+                    #         if oo:
+                    #             for p in preds:
+                    #                 store.add(Quad(b, safeNamedNode(p), oo, graph_name=GRAPH_URI))
                     return b
                 
             # ENTITY #
@@ -269,9 +285,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     logger.debug(f"UUID Entity for {predicate_str}: {object}")
                     ent_types = make_iri(field_map.get("types", [predicate_str]), ns_prefix, True)
                     
-                    return make_entity(object, ent_types,fuzzy_threshold_specific)
-                
-            ### DATATYPES ### TODO define in field_map, too! Indent -->
+                    return make_entity(object, ent_types,fuzzy_threshold_specific)                
 
             elif isinstance(object, (str, int, datetime, float)):
 
@@ -310,9 +324,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     return process_language_and_title(title=None, language_field="en",mapping=lang_map)
 
                 # URL #
-                elif is_datatype(predicate_str, field_map, "url", ["url", "dc:relation", "doi", "owl:sameAs"]) and (
-                                    val.startswith("http") or val.startswith("www.")
-                                ): # url
+                elif is_datatype(predicate_str, field_map, "url", ["url", "dc:relation", "doi", "owl:sameAs", "href"]) and (val.startswith("http") or val.startswith("www.")): # url                    
                     return safeNamedNode(val.strip(), enforce=True)
                 
                 # DOI #
@@ -372,17 +384,21 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             elif black and field in black:
                 logger.debug(f"Skipping {field} (in blacklist)")
                 continue
+
             values = value if isinstance(value, list) else [value]
 
             for item in values:
                 obj = zotero_property_map(field, item, map) or None
-                for pred in predicates:
-                    predicate = safeNamedNode(pred)
-                    if isinstance(item, dict) and obj:                    
-                        store.add(Quad(subject, predicate, obj, graph_name=GRAPH_URI))
-                    elif item and obj: # Literal/str
-                        store.add(Quad(subject, predicate, obj, graph_name=GRAPH_URI))
-
+                if obj:
+                    for pred in predicates:                    
+                        predicate = safeNamedNode(pred)
+                        if isinstance(obj, (BlankNode, NamedNode, Literal)):
+                            store.add(Quad(subject, predicate, obj, graph_name=GRAPH_URI))
+                            if isinstance(item, dict) and isinstance(obj, (BlankNode)):                  
+                                # Recurse if unexpected dict that return BlankNode
+                                add_rdf_from_dict(store, obj, item, ns_prefix, base_uri, map, knowledge_base_graph)
+                        else:
+                            logger.warning(f"Received unexpected item in mapping for {pred}: {obj}")
         except Exception as e:
             logger.error(f"Invalid data for: [{field}, {value}]: {e}")
             continue        
@@ -463,9 +479,10 @@ def apply_additional_properties(
     specs: list[dict],
     base_ns: str,
     prefix_ns: str = ZOT_NS,
+    context: str = None
 ):
     GRAPH_URI = NamedNode(base_ns)
-
+    
     def resolve_data_token(s: str) -> str:
         if s is None:
             return s
@@ -491,7 +508,6 @@ def apply_additional_properties(
             raw = data.get(value_spec.lstrip("_"))
             return str(raw) if raw is not None and raw != "" else None
 
-        # ansonsten: template ersetzen
         return resolve_data_token(value_spec).strip()
 
     def resolve_rdf_format(fmt) -> RdfFormat | None:
@@ -536,76 +552,80 @@ def apply_additional_properties(
 
     for spec in specs:
         raw_value = None
-        try:
-            if spec.get("load"):
-                load_block = spec["load"] or {}
+        restrict_to = spec.get("add_to", ["item", "collection", "library"])
+        if context and context in restrict_to:
+            try:
+                if spec.get("load"):
+                    load_block = spec["load"] or []
 
-                load_specs = load_block if isinstance(load_block, list) else [load_block]
+                    load_specs = load_block if isinstance(load_block, list) else [load_block]
 
-                for load_spec in load_specs:
-                    load_spec = load_spec or {}
+                    for load_spec in load_specs:
+                        load_spec = load_spec or {}
+                        restrict_to = load_spec.get("add_to", ["item", "collection", "library"])
+                        
+                        if context and context in restrict_to:
+                            input_ = load_spec.get("input", None)
+                            path_ = load_spec.get("path", None)
 
-                    input_ = load_spec.get("input", None)
-                    path_ = load_spec.get("path", None)
+                            if input_ is not None:
+                                input_ = resolve_data_token(input_)
 
-                    if input_ is not None:
-                        input_ = resolve_data_token(input_)
+                            if path_ is not None:
+                                input_ = resolve_data_token(
+                                    load_text_like(resolve_data_token(path_), label="RDF loading")
+                                )
+                                path_ = None
 
-                    if path_ is not None:
-                        input_ = resolve_data_token(
-                            load_text_like(resolve_data_token(path_), label="RDF loading")
-                        )
-                        path_ = None
+                            fmt = resolve_rdf_format(load_spec.get("format", None))
 
-                    fmt = resolve_rdf_format(load_spec.get("format", None))
+                            base_iri = load_spec.get("base_iri", None)
+                            if base_iri is not None:
+                                base_iri = resolve_value_spec(base_iri)
 
-                    base_iri = load_spec.get("base_iri", None)
-                    if base_iri is not None:
-                        base_iri = resolve_value_spec(base_iri)
+                            to_graph = resolve_to_graph(load_spec.get("to_graph", GRAPH_URI.value))
+                            lenient = bool(load_spec.get("lenient", False))
 
-                    to_graph = resolve_to_graph(load_spec.get("to_graph", GRAPH_URI))
-                    lenient = bool(load_spec.get("lenient", False))
+                            store.load(
+                                input=input_,
+                                format=fmt,
+                                path=path_,
+                                base_iri=base_iri,
+                                to_graph=to_graph,
+                                lenient=lenient,
+                            )
 
-                    store.load(
-                        input=input_,
-                        format=fmt,
-                        path=path_,
-                        base_iri=base_iri,
-                        to_graph=to_graph,
-                        lenient=lenient,
-                    )
+                    logger.debug("Loaded RDF via store.load() (one or many specs)")
+                    continue
 
-                logger.debug("Loaded RDF via store.load() (one or many specs)")
+                property_str = spec.get("property")
+                value_spec = spec.get("value")
+                prefix = spec.get("prefix")
+                named_node = spec.get("named_node", False)
+
+                if not property_str or value_spec is None:
+                    continue
+
+                predicate = safeNamedNode(make_iri(property_str, prefix_ns))
+
+                raw_value = resolve_value_spec(value_spec)
+                if raw_value is None or raw_value == "":
+                    continue
+
+                if prefix:
+                    raw_value = make_iri(raw_value, prefix)
+
+                if named_node:
+                    obj = safeNamedNode(raw_value, enforce=True)
+                    store.add(Quad(node, predicate, obj, graph_name=GRAPH_URI))
+                    logger.debug(f"Added named node {obj.value}")
+                else:
+                    obj = Literal(str(raw_value))
+                    store.add(Quad(node, predicate, obj, graph_name=GRAPH_URI))
+
+            except Exception as e:
+                logger.error(f"Invalid additional spec at {node}: {e} (raw_value={raw_value})")
                 continue
-
-            property_str = spec.get("property")
-            value_spec = spec.get("value")
-            prefix = spec.get("prefix")
-            named_node = spec.get("named_node", False)
-
-            if not property_str or value_spec is None:
-                continue
-
-            predicate = safeNamedNode(make_iri(property_str, prefix_ns))
-
-            raw_value = resolve_value_spec(value_spec)
-            if raw_value is None or raw_value == "":
-                continue
-
-            if prefix:
-                raw_value = make_iri(raw_value, prefix)
-
-            if named_node:
-                obj = safeNamedNode(raw_value, enforce=True)
-                store.add(Quad(node, predicate, obj, graph_name=GRAPH_URI))
-                logger.debug(f"Added named node {obj.value}")
-            else:
-                obj = Literal(str(raw_value))
-                store.add(Quad(node, predicate, obj, graph_name=GRAPH_URI))
-
-        except Exception as e:
-            logger.error(f"Invalid additional spec at {node}: {e} (raw_value={raw_value})")
-            continue
 
 def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Path = None, write_to_store:bool = True):    
     json_path_items = None
@@ -689,7 +709,8 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
             sample_entry["library"],
             map.get("additional", []),
             lib.base_url,
-            ZOT_NS
+            ZOT_NS,
+            "library"
         )
 
     if collections:
@@ -705,7 +726,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
             apply_rdf_types(store, node_uri, col_data, collection_type_fields, "collection", lib.base_url, ZOT_NS)
 
             collection_additional = map.get("additional") or []
-            apply_additional_properties(store, node_uri, col_data, collection_additional, lib.base_url, ZOT_NS)
+            apply_additional_properties(store, node_uri, col_data, collection_additional, lib.base_url, ZOT_NS,"collection")
 
             add_rdf_from_dict(store, node_uri, col_data, ZOT_NS, lib.base_url, map, lib.knowledge_base_graph)
             add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
@@ -778,7 +799,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
                     apply_rdf_types(store, node_uri, item_data, item_type_fields, "item", lib.base_url, ZOT_NS)
 
                     item_additional = map.get("additional") or []
-                    apply_additional_properties(store, node_uri, item_data, item_additional, lib.base_url, ZOT_NS)
+                    apply_additional_properties(store, node_uri, item_data, item_additional, lib.base_url, ZOT_NS,"item")
 
                     add_rdf_from_dict(store, node_uri, item_data, ZOT_NS, lib.base_url, map, lib.knowledge_base_graph,language)
                     add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
