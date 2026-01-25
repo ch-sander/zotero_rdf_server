@@ -1,3 +1,4 @@
+inject_env: true # replacing ${VAR} in this YAML from .env. Use for secrets
 server:
   refresh_interval: 0 # seconds (min. 30), 0 = refresh at startup, -1 = do not refresh
   # store_mode: "memory"  # or "directory" currently hard-coded to "directory"

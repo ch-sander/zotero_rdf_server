@@ -140,11 +140,11 @@ ZOTERO_CONFIGS = zotero_config.get("context", {})
 ZOTERO_KB_CONFIG = [] # TODO not yet in use
 ZOTERO_LIBRARIES_CONFIGS = []
 LIMIT = zotero_config.get("limit", 100)
-MAX_DATA = zotero_config.get("max_data", 0)
-try:
-    MAX_DATA = int(MAX_DATA)
-except:
-    MAX_DATA = int(0)
+# MAX_DATA = zotero_config.get("max_data", 0)
+# try:
+#     MAX_DATA = int(MAX_DATA)
+# except:
+#     MAX_DATA = int(0)
 
 for lib_cfg in zotero_config.get("libraries", []):
     merged_cfg = set_defaults(lib_cfg, ZOTERO_DEFAULT_CONFIGS, ZOTERO_DEFAULT_MODE)

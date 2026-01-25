@@ -1,14 +1,15 @@
+inject_env: true # replacing ${VAR} in this YAML from .env. Use for secrets
 context:
   vocab: "http://www.zotero.org/namespaces/export#"
   api_url: "https://api.zotero.org/"
   base: "https://www.zotero.org/"
   schema: "https://api.zotero.org/schema" # if given, will create a basic OWL ontology as named graph with IRI of vocab
   user: "zotero_rdf_server/0.1 (+raramagnetica@gmail.com)" # set User-Agent to identify in Zotero API requests in header. Can also be set per library.
-  limit: 100 # chunk size per API request
-  max_data: 0 # max items (0 = no limit)
+  limit: 100 # chunk size per API request  
 
-defaults:
+defaults:  
   mode: "override" # "merge" or "default". Defines how defaults are enforced for library setups specified below
+  max_data: 0 # max items (0 or null = no limit) for paginated API "json" load (ignored in manual import or import from rdf)
   load_mode: "json"  # "json" or "rdf" or "manual_import".
                      # json: Will use Zotero's API (paginated) to get a full JSON of items and collections. You may set a file path in "save_to" to store a json dump locally that can be used further on as source for manual_import ("$" will be replaced by library_id for a path pattern).
                      # rdf: will use Zotero's API (paginated) to get full RDF of items. Parsing is done with Zotero's own translators, set in "rdf_export_format". You may set a directory path in "save_to" to store a json dump locally that can be used further on as source for manual_import.
@@ -74,7 +75,7 @@ libraries:
     load_mode: "manual_import"
     load_from: "/app/import/kb" # folder containing RDF file(s)
     # sync: # For Plugin: Define a secondary Zotero library to sync RDF from primary library to, each resource as one note (needs rw access for access token). Also used for writing RDF Zotero notes back into store (ro access sufficient). You may also use the primary library as the second one, but make sure to indicate a dedicated collection (or none so that one will be created)
-    #   api_key: "xxx"
+    #   api_key: "${SECRET_KEY}"
     #   library_type: "group"
     #   library_id: "000"
     #   collection_id: "000"
