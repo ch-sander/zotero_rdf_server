@@ -4,38 +4,61 @@ from .logging_config import logger, setup_logging
 from urllib.parse import urlparse
 import sys
 
+# RDF Constants
+RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
+XSD_NS = "http://www.w3.org/2001/XMLSchema#"
+SKOS_ALT = "http://www.w3.org/2004/02/skos/core#altLabel"
+SKOS_PREF = "http://www.w3.org/2004/02/skos/core#prefLabel"
+SKOS_BROADER = "http://www.w3.org/2004/02/skos/core#broader"
+SKOS_CONCEPT = "http://www.w3.org/2004/02/skos/core#Concept"
+PROV_TIMESTAMP = "http://www.w3.org/ns/prov#generatedAtTime"
+OWL_SAME_AS = "http://www.w3.org/2002/07/owl#sameAs"
+PURL_RELATED = "http://purl.org/dc/elements/1.1/relation"
+
+
+# Additional Constants
+FUZZY = 90
+LANG_MAP = {
+                "de": ["deutsch", "german", "allemand", "alemán", "tedesco", "deu", "ger", "de"],
+                "en": ["englisch", "english", "anglais", "inglés", "inglese", "eng", "en"],
+                "fr": ["französisch", "french", "français", "francese", "fre", "fra", "fr"],
+                "it": ["italienisch", "italian", "italien", "italiano", "ita", "it"],
+                "es": ["spanisch", "spanish", "español", "espanol", "esp", "spa", "es"],
+                "la": ["latein", "latin", "latino", "lat", "la"],
+                "pt": ["portugiesisch", "portuguese", "português", "por", "pt"],
+                "ru": ["russisch", "russian", "русский", "rus", "ru"],
+                "ja": ["japanisch", "japanese", "日本語", "jpn", "ja"],
+                "zh": ["chinesisch", "chinese", "中文", "漢語", "汉语", "chi", "zho", "zh"],
+                "ar": ["arabisch", "arabic", "العربية", "ara", "ar"],
+                "default": "und" # used if none found
+            }
+
 
 setup_logging("INFO")
 try:
     WORKDIR = Path(os.getenv("WORKDIR", Path())).resolve()
-    logger.info(f"WORKDIR set to {WORKDIR}")
-    logger.info(f"Loading YAML...")
+    logger.info(f"WORKDIR set to {WORKDIR}")    
 except Exception as e:
     logger.critical(f"Failed to set WORKDIR!")
 
 def load_config(source):
-    parsed = urlparse(str(source))
-
-    if parsed.scheme in ('http', 'https'):
-        response = requests.get(source)
-        response.raise_for_status()
-        content = response.text
-        suffix = Path(parsed.path).suffix.lower()
-    else:
-        source_path = Path(source)
-        if not source_path.is_file():
-            raise FileNotFoundError(f"Configuration file not found: {source}")
-        content = source_path.read_text(encoding="utf-8")
-        suffix = source_path.suffix.lower()
-
-    if suffix in ('.yaml', '.yml'):
-        config = yaml.safe_load(content)
-    elif suffix == '.json':
-        config = json.loads(content)
-    else:
-        raise ValueError(f"Unsupported config file format: {suffix}")
-
-    logger.info(f"Configuration loaded from {source}")
+    from .utils import load_dict_like
+    from dotenv import load_dotenv
+    config =  load_dict_like(source, f"Loading initial config")
+    logger.debug(json.dumps(config,indent=4))
+    if config.get("inject_env"):
+        try:
+            logger.error(f"Trying to inject .env into {source}")
+            from dotenv import load_dotenv
+            from string import Template
+            load_dotenv()
+            logger.debug(os.environ)
+            config_str = json.dumps(config)
+            config_str = Template(config_str).safe_substitute(os.environ)
+            config = json.loads(config_str)
+        except Exception as e:
+            logger.error(f"Could not inject .env into {source}: {e}")
     return config
 
 def safe_path(path_str: str | Path | None, base_dir: Path | str = WORKDIR) -> Path:
@@ -53,8 +76,9 @@ def safe_path(path_str: str | Path | None, base_dir: Path | str = WORKDIR) -> Pa
 config_path = safe_path(os.getenv("CONFIG_FILE", "config.yaml"))
 zotero_config_path = safe_path(os.getenv("ZOTERO_CONFIG_FILE", "zotero.yaml"))
 
-try:
-    config =  load_config(config_path)
+try:    
+    logger.info(f"Loading config YAML...")
+    config =  load_config(config_path)    
 except Exception as e:
     logger.critical(f"Failed to load {config_path}: {e}!")
     logger.critical(f"EXITING")
@@ -62,6 +86,7 @@ except Exception as e:
     
 
 try:
+    logger.info(f"Loading Zotero YAML...")
     zotero_config = load_config(zotero_config_path)
 except Exception as e:
     logger.critical(f"Failed to load {zotero_config_path}: {e}!")
@@ -133,33 +158,6 @@ ZOT_API_URL = ZOTERO_CONFIGS.get("api_url", "https://api.zotero.org/")
 ZOT_API_USER = ZOTERO_CONFIGS.get("user", "Zotero RDF Server App")
 ZOT_BASE_URL = ZOTERO_CONFIGS.get("base_url", "https://www.zotero.org/")
 ZOT_SCHEMA = ZOTERO_CONFIGS.get("schema") # "https://api.zotero.org/schema"
-
-# RDF Constants
-RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
-XSD_NS = "http://www.w3.org/2001/XMLSchema#"
-SKOS_ALT = "http://www.w3.org/2004/02/skos/core#altLabel"
-SKOS_PREF = "http://www.w3.org/2004/02/skos/core#prefLabel"
-SKOS_BROADER = "http://www.w3.org/2004/02/skos/core#broader"
-SKOS_CONCEPT = "http://www.w3.org/2004/02/skos/core#Concept"
-PROV_TIMESTAMP = "http://www.w3.org/ns/prov#generatedAtTime"
-OWL_SAME_AS = "http://www.w3.org/2002/07/owl#sameAs"
-PREFIXES = {"zot":ZOT_NS, "rdfs":"http://www.w3.org/2000/01/rdf-schema#", "owl":"http://www.w3.org/2002/07/owl#", "rdf":"http://www.w3.org/1999/02/22-rdf-syntax-ns#", "xsd":XSD_NS, "skos":"http://www.w3.org/2004/02/skos/core#", "prov":"http://www.w3.org/ns/prov#"}
 REGEX_PATTERN = f"{ZOT_NS}regex"
 
-# Additional Constants
-FUZZY = 90
-LANG_MAP = {
-                "de": ["deutsch", "german", "allemand", "alemán", "tedesco", "deu", "ger", "de"],
-                "en": ["englisch", "english", "anglais", "inglés", "inglese", "eng", "en"],
-                "fr": ["französisch", "french", "français", "francese", "fre", "fra", "fr"],
-                "it": ["italienisch", "italian", "italien", "italiano", "ita", "it"],
-                "es": ["spanisch", "spanish", "español", "espanol", "esp", "spa", "es"],
-                "la": ["latein", "latin", "latino", "lat", "la"],
-                "pt": ["portugiesisch", "portuguese", "português", "por", "pt"],
-                "ru": ["russisch", "russian", "русский", "rus", "ru"],
-                "ja": ["japanisch", "japanese", "日本語", "jpn", "ja"],
-                "zh": ["chinesisch", "chinese", "中文", "漢語", "汉语", "chi", "zho", "zh"],
-                "ar": ["arabisch", "arabic", "العربية", "ara", "ar"],
-                "default": "und" # used if none found
-            }
+PREFIXES = {"zot":ZOT_NS, "rdfs":"http://www.w3.org/2000/01/rdf-schema#", "owl":"http://www.w3.org/2002/07/owl#", "rdf":"http://www.w3.org/1999/02/22-rdf-syntax-ns#", "xsd":XSD_NS, "skos":"http://www.w3.org/2004/02/skos/core#", "prov":"http://www.w3.org/ns/prov#", "dc":"http://purl.org/dc/elements/1.1/", "schema":"https://schema.org/", "dct":"http://purl.org/dc/terms/"}
