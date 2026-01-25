@@ -3,11 +3,11 @@ from datetime import datetime, timezone
 from urllib.parse import quote, urlparse
 from pyoxigraph import Store, Quad, NamedNode, Literal, RdfFormat, DefaultGraph, BlankNode
 from rapidfuzz import fuzz, process
-import re, json
+import re, json, requests, yaml
 from copy import deepcopy
 from pathlib import Path
 from .logging_config import logger
-from .config import *
+# from .config import *
 import subprocess, importlib, sys
 
 def iri_to_filename(iri: str) -> str:
@@ -51,8 +51,9 @@ def store_move_subject(store: Store, src: NamedNode, dst: NamedNode, g: NamedNod
         store.add(Quad(dst, q.predicate, q.object, g))
 
 def safeNamedNode(uri: str | NamedNode, enforce: bool = True, allow_None: bool = False) -> NamedNode | Literal:
+
     if not isinstance(uri, (str, NamedNode)):
-        raise TypeError("invalid type!")
+        raise TypeError(f"invalid type {type(uri)} for {uri}")
     
     INTERNAL_IRI_PREFIX = "http://internal.invalid/"
     if uri == None and allow_None: #TODO not tested
@@ -65,9 +66,17 @@ def safeNamedNode(uri: str | NamedNode, enforce: bool = True, allow_None: bool =
             fallback = quote(str(uri), safe="")
             return NamedNode(f"{INTERNAL_IRI_PREFIX}{fallback}")
         return safeLiteral(uri)
-
+    uri = uri.strip("<>")
     parsed = urlparse(uri)
     if not parsed.scheme:
+
+        # import inspect # TODO DEBUG
+        # caller = inspect.stack()[1]
+        # filename = caller.filename
+        # lineno = caller.lineno
+        # funcname = caller.function
+        # logger.warning(f"Called from {filename}:{lineno} in {funcname}")
+
         logger.info(f"Invalid IRI input (missing scheme), prepending 'http://': {uri}")
         uri = "http://" + uri
         parsed = urlparse(uri)
@@ -291,8 +300,11 @@ def load_text_like(
             raise
         return _fallback("unexpected error")
 
+from .config import SKOS_ALT, RDF_TYPE, LANG_MAP, PROV_TIMESTAMP, XSD_NS # TODO unsafe
 
 def ensure_alt_label(store: Store, node: NamedNode, lit_value: str, alt_label_prop: NamedNode = NamedNode(SKOS_ALT), graph: NamedNode = DefaultGraph()):
+    
+    
     existing_labels = {
         q.object.value.lower()
         for q in store.quads_for_pattern(node, alt_label_prop, None, graph)

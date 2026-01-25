@@ -55,7 +55,7 @@ class ParseNotePlugin:
 
 def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode = NamedNode(f"{ZOT_NS}note"), query_str: str = None, delete:bool = False, push:bool=True):
     # from zotero_rdf_server.plugins.parser.parse_note import ParseNotePlugin
-    parser_cfgs = lib.plugin.get("notes_parser") or [{}]
+    parser_cfgs = lib.plugin.get("notes_parser") or []
     GRAPH_URI = safeNamedNode(lib.base_url) # Source graph of notes
     KB_GRAPH = safeNamedNode(lib.knowledge_base_graph) # graph to link SEMANTIC_HTML_GRAPH entites to
     count = 0

@@ -152,7 +152,7 @@ def refresh_store(force_reload:bool = False):
                         except Exception as e:
                             logger.error(f"Error parsing notes: {e}")
                     else:
-                        logger.info(f"No notes parsing for {lib.name} in {lib.parser}")
+                        logger.info(f"No notes parsing for {lib.name}")
 
                 logger.info(f"Zotero data refreshed successfully. {len(store)} triples, graphs: {list(store.named_graphs())}")
                 ensure_store(store)

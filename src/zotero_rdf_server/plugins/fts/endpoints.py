@@ -314,7 +314,7 @@ def ingest_route(
                 if not graph or graph == lib.base_url:
                     logger.info(f"starting FTS pipeline for {lib.base_url}...")
                     
-                    cfg = lib.plugin.get("fts") or [{}]
+                    cfg = lib.plugin.get("fts") or []
                     cfg = [cfg] if isinstance(cfg,dict) else cfg
                     if len(cfg)>1:
                         logger.warning(f"Running {len(cfg)} FTS configuration for library {lib.base_url}")
