@@ -59,6 +59,7 @@ This app provides a web API for working with RDF data, based on your Zotero libr
 - 🧩 Parse semantic notes written in enhanced HTML as Zotero notes
 - 🔐 API config supports multiple libraries with sync settings
 - 🧪 Query and inspect your store via OpenAPI (see `/docs`)
+- 📝 Process attachments with OCR ([Kraken](https://kraken.re/main/index.html)) and ingest to [Open Search](https://opensearch.org/)
 - ⚙️ Generate static RDF exports via [GitHub Actions](.github/workflows/rdf_export.yml) — see [local_z2rdf.py](local/local_z2rdf.py) for how it works
 
 Built with [FastAPI](https://fastapi.tiangolo.com/) and [Oxigraph](https://oxigraph.org/)
@@ -77,8 +78,8 @@ Zotero only provides strings — but some fields deserve more: Creators, Places,
 ### Matching Details
 
 - Similarity is scored 0–100 via fuzzy string comparison and  thresholds can be adjusted in the config.
-- Comma-separated values (e.g. for places) can be split into multiple entities.
-- Creator roles (author, editor...) are modeled via blank nodes that link role and person.
+- Comma-separated values (e.g. for places) can be split into multiple entities or literals via `re_split` config.
+- Creator roles (author, editor...) are modeled as uuid4 nodes that link role and person.
 - Entities can be shared across libraries when stored in a global *Knwoledge Base*.
 - Libraries themselves are kept in *separate named graphs*.
 
@@ -88,9 +89,36 @@ Fuzzy matching can't handle multilingual or semantically complex cases (e.g. “
 
 </details>
 
-## Parse Notes
+## Plugins
 
-As a plugin, you can parse your HTML Zotero notes with the [Semantic-HTML](https://github.com/ch-sander/semantic-html) package ([Docs](https://semantic-html.readthedocs.io/en/latest/)). It is only loaded if the trigger is set in the `config.yaml` or called via `/parse_notes` in the API. The results are parsed as RDF and loaded to the store. A mapping example for the RDF parsing is defined in `app/parser/mapping.json` and can be specified in `config.yaml` for each library
+Zotero RDF Server comes with plugins to advance its functionality. Most config is found in `/app/pligins/`. Respective API endpoints are behind `plugin` route.
+
+<details>
+<summary>These plugins are currently included</summary>
+
+### Parse Notes
+
+As a plugin, you can parse your HTML Zotero notes with the [Semantic-HTML](https://github.com/ch-sander/semantic-html) package ([Docs](https://semantic-html.readthedocs.io/en/latest/)). It is only loaded if the trigger is set in the `config.yaml` or called via `/parse_notes` in the API. The results are parsed as RDF and loaded to the store. A mapping example for the RDF parsing is defined in `app/plugins/parser/mapping.json` and can be specified in `config.yaml` for each library
+
+### Zotero Notes as Frontend editor
+
+Stored RDF can be serialized in TTL/TriG and saved per resource as Zotero note in dedicated collection. Helps to make manual corrections. The collection can be serialized back into the store from Zotero notes.
+
+The Taxonomy helper (with its own mapping, relying on the *Parse Notes* plugin) creates a hierarchical formatted list (via headers). Editing this list as Zotero note helps to add structure to your taxonomies (e.g. concepts in your knowledge base)
+
+### Full Text Search
+
+The FTS plugin reads URLs from store (e.g. attachments of items, linking to PDF files or IIIF manifest), processes these files with [Kraken](https://kraken.re/main/index.html) to retrieve OCR text, and ingests this text in a [Open Search](https://opensearch.org/) index (API and Dashbaord started as Docker containers).
+
+#### Kraken OCR
+
+Kraken can be used via custom models and typical parameters, as seen in API parameters. Rudementary caching is possible. All processing is streamed, no need to store files locally.
+
+#### Open Search indexing
+
+Target indices will ingest full text from OCR (or text passed as variable) and stores a metadata dictionnary from the initial SPARQL query. Further hints in the template SPARQL query file.
+
+</details>
 
 ## Configuration
 
@@ -130,7 +158,6 @@ Visit `/` when the app is running for the Swagger UI or `/redoc` for alternative
 A static documentation (OpenAPI) is found in [docs/openapi.json](docs/openapi.json) and [HTML](https://raw.githack.com/ch-sander/zotero_rdf_server/main/docs/openapi.html)
 
 
-
 ## License
 
-MIT License
+APGL

@@ -2,7 +2,7 @@ import requests, json, time
 from requests.adapters import HTTPAdapter, Retry
 from requests.exceptions import ReadTimeout, RequestException
 
-from .logging_config import logger, setup_logging
+from .logging_config import logger
 from .config import *
 from .utils import *
 
@@ -14,6 +14,7 @@ class ZoteroLibrary:
         if self.library_type == "group": self.library_type == "groups"
         self.library_id = config.get("library_id", None)
         self.api_key = config.get("api_key", None)
+        self.max_data = config.get("max_data", None)
         self.user = config.get("user", ZOT_API_USER)
         self.rdf_export_format = config.get("rdf_export_format", "rdf_zotero")
         self.api_query_params = config.get("api_query_params") or {}
@@ -45,11 +46,11 @@ class ZoteroLibrary:
         
         # PLUG-IN Config
         self.plugin = config.get("plugin") or {}
-        self.parser = config.get("notes_parser") or {}
-        self.taxonomy = {}
-        if config.get("taxonomy"):
-            self.taxonomy = config["taxonomy"]
-            self.taxonomy['note_key'] = config.get('note_key', None)
+        # self.parser = config.get("notes_parser") or {}
+        # self.taxonomy = {} # TODO put in plugin!
+        # if config.get("taxonomy"):
+        #     self.taxonomy = config["taxonomy"]
+        #     self.taxonomy['note_key'] = config.get('note_key', None)
 
         # check settings
         if check:
@@ -84,7 +85,7 @@ class ZoteroLibrary:
             else:
                 logger.info(f"{self.name}: Valid library config!") 
 
-    def fetch_paginated(self, endpoint: str, max_data: int = MAX_DATA) -> list:
+    def fetch_paginated(self, endpoint: str) -> list:
         results = []
         start = 0
         logger.info("Initialize session")
@@ -139,9 +140,13 @@ class ZoteroLibrary:
 
                 results.extend(data)
                 logger.info(f"Fetched {len(data)} items (start={start})")
-                start += LIMIT                
-                if max_data and max_data > 0 and start >= max_data:
-                    logger.warning(f"Aborting pagination: max of {max_data} items reached.")
+                start += LIMIT
+                # if self.max_data and int(self.max_data)>max_data:
+                #     logger.warning(f"Absolute max. of {max_data} items is less than maximum for this library (={int(self.max_data)}).")
+                    
+                # if (max_data and max_data > 0 and start >= max_data) or (self.max_data and int(self.max_data) > 0 and start >= self.max_data):
+                if self.max_data and int(self.max_data) > 0 and start >= self.max_data:
+                    logger.warning(f"Aborting pagination: max of {self.max_data} items reached.")
                     break
 
                 time.sleep(1)

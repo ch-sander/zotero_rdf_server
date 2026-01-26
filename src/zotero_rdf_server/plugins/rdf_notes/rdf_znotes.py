@@ -9,27 +9,15 @@ from collections import defaultdict
 from datetime import datetime
 from zotero_rdf_server.models import ZoteroLibrary
 from pathlib import Path
+from zotero_rdf_server.utils import ensure_import, require_symbol
 
 here = Path(__file__).resolve().parent
 requirements = here / "requirements.txt"
 
-try:
-    from pyzotero import zotero
-except ImportError:
-    import subprocess, sys
-    logger.warning("pyzotero not found. Installing...")
-    subprocess.check_call([
-            sys.executable,
-            "-m", "pip",
-            "install",
-            "-r", str(requirements),
-        ])
-
-    try:
-        from pyzotero import zotero
-    except ImportError:
-        logger.error("pyzotero could not be imported after installation.")
-        raise
+zotero = ensure_import(
+    "pyzotero.zotero",
+    requirements=requirements,
+)
 
 def safe_create_items(zot, items, retries=3, wait=5):
     for attempt in range(retries):
@@ -359,9 +347,15 @@ def note_to_html(
     current_html: str = item["data"].get("note", "")
     return current_html
 
+
+
 def html_to_taxonomy(html:str,note_uri:str=None, mapping:dict = None, metadata:dict = None) -> Store:
-    from zotero_rdf_server.plugins.parser.parse_note import ParseNotePlugin
-    
+    # from zotero_rdf_server.plugins.parser.parse_note import ParseNotePlugin
+    ParseNotePlugin = require_symbol(
+                                    "zotero_rdf_server.plugins.parser.parse_note",
+                                    "ParseNotePlugin",
+                                    hint="Enable/install the 'parse_note' plugin (and its dependencies).",
+                                    )
     mapping = {
         "@type": ["Taxonomy"],
         "Structure": {
@@ -570,8 +564,9 @@ def pipeline(lib:ZoteroLibrary | dict, source_store:Store, job:Literal["writeNot
             BASE = lib.base_url
             lib_cfg = lib.sync
             sync_base_uri = lib_cfg.pop("base_uri", lib.base_url)
-            tax_map = load_dict_like(lib.taxonomy.get("mapping", None), label="Taxonomy mapping")
-            note_key = note_key or lib.taxonomy.get("note_key") or uuid.uuid4()
+            tax_cfg = lib.plugin.get("taxonomy") or {}
+            tax_map = load_dict_like(tax_cfg.get("mapping", None), label="Taxonomy mapping")
+            note_key = note_key or tax_cfg.get("note_key") or uuid.uuid4()
             logger.info("Loaded taxonomy config from ZoteroLibrary object.")
 
         elif isinstance(lib, dict):

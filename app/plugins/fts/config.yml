@@ -1,0 +1,203 @@
+logging:
+  active: true
+  store: ./logs
+  templates:
+    kraken:
+      trig: ""
+    open-search:
+      trig: ""
+
+kraken:
+  models_dir: "/app/plugins/fts/models"
+
+  active:
+    domain: "print"        # print | handwriting | medieval | ...
+    model: null            # optional: hard override; if null -> domain default
+    segmentation: "BLLA"   # "BLLA" or name from models (e.g., "MySegModel")
+
+  default_models:
+    print: "McCATMuS" # "CATMuS-Print-Large"
+    handwriting: "McCATMuS"
+    medieval: "CATMuS-Medieval"
+
+  default_domain: "print"
+
+  models: # Note that download may fail, set path to local model file if possible
+    # --- CATMuS Print (Tiny/Small/Large) ---
+    CATMuS-Print-Tiny:
+      file: "catmus-print-fondue-tiny-2024-01-31.mlmodel"
+      url: "https://zenodo.org/records/10602357/files/catmus-print-fondue-tiny-2024-01-31.mlmodel?download=1"
+      checksum_algo: "md5"
+      checksum: "bd0553da6c68d5251d5e89b08cef0f76"
+
+    CATMuS-Print-Small:
+      file: "catmus-print-fondue-small-2024-01-31.mlmodel"
+      url: "https://zenodo.org/records/10602307/files/catmus-print-fondue-small-2024-01-31.mlmodel?download=1"
+      checksum_algo: "md5"
+      checksum: "d4b8a617cf57eeed1f7edb9ffb023271"
+
+    CATMuS-Print-Large:
+      file: "catmus-print-fondue-large.mlmodel"
+      url: "https://zenodo.org/records/10592716/files/catmus-print-fondue-large.mlmodel?download=1"
+      checksum_algo: "md5"
+      checksum: "9ed1ed4a6c34e1f4b292b380bf9c5543"
+
+    # --- CATMuS Medieval ---
+    CATMuS-Medieval:
+      file: "catmus-medieval.mlmodel"
+      url: "https://zenodo.org/records/12743230/files/catmus-medieval.mlmodel?download=1"
+      checksum_algo: "md5"
+      checksum: "02bb2e4e5bc681c11579a860c40dc5a4"
+
+    # --- McCATMuS  ---
+    McCATMuS:
+      file: "McCATMuS_nfd_nofix_V1.mlmodel"
+      url: "https://zenodo.org/records/13788177/files/McCATMuS_nfd_nofix_V1.mlmodel?download=1"
+      checksum_algo: "md5"
+      checksum: "e531463f631303c700750784b4f9ed63"
+
+    # --- (optional) BLLA as a download, if you do NOT want the package fallback ---
+    # BLLA:
+    #   file: "blla.mlmodel"
+    #   url: "https://zenodo.org/records/14602569/files/blla.mlmodel?download=1"
+    #   checksum_algo: "md5"
+    #   checksum: "0e3f0e1c5e954c8b673ef5dbd0865058"
+
+open-search:
+  client:
+    hosts:
+      - host: opensearch # see in docker-compose.yml
+        port: 9200
+  meta:
+    owner: "zotero-rdf-server"
+    environment: "dev"
+    # Minimum OpenSearch version this config is designed for
+    opensearch_min_version: "2.0.0"
+
+  bulk:
+    chunk_size: 1
+    # max_chunk_bytes=5 * 1024 * 1024,
+    max_retries: 3
+    initial_backoff: 1
+    max_backof: 32
+
+  component_templates:
+    # Analysis settings for OCR indexing & search
+    ct_ocr_pages_v1:
+      template:
+        settings:
+          analysis:
+            char_filter:
+              ocr_common_map:
+                type: mapping
+                mappings:
+                  - "ſ=>s"
+                  - "ﬁ=>fi"
+                  - "ﬂ=>fl"
+                  - "ﬀ=>ff"
+                  - "ﬃ=>ffi"
+                  - "ﬄ=>ffl"
+                  - "æ=>ae"
+                  - "œ=>oe"
+                  - "’=>'"
+                  - "‘=>'"
+                  - "“=>\""
+                  - "”=>\""
+                  - "­=>"
+                  - "·=> "
+              ocr_search_extra_map:
+                type: mapping
+                mappings:
+                  - "æ=>ae"
+                  - "œ=>oe"
+                  - "v=>u"
+                  - "j=>i"
+                  - "ae=>e"
+                  - "e=>ae"
+            filter:
+              latin_stop_minimal:
+                type: stop
+                stopwords: ["et", "in", "ad", "de", "ut"]
+            analyzer:
+              latin_ocr_index:
+                type: custom
+                char_filter: ["ocr_common_map"]
+                tokenizer: standard
+                filter: ["lowercase", "asciifolding"]
+              latin_ocr_search:
+                type: custom
+                char_filter: ["ocr_common_map", "ocr_search_extra_map"]
+                tokenizer: standard
+                filter: ["lowercase", "asciifolding", "latin_stop_minimal"]
+
+        mappings:
+          dynamic: false
+          properties:
+            url: { type: keyword }
+            doc_id: { type: keyword }
+            page: { type: integer }
+            ingest_ts: { type: date }
+            text:
+              type: text
+              analyzer: latin_ocr_index
+              search_analyzer: latin_ocr_search
+            meta:
+              type: object
+              dynamic: true
+          dynamic_templates:
+            - meta_as_keyword:
+                path_match: "meta.*"
+                mapping:
+                  type: keyword
+                  ignore_above: 256
+
+  ingest_pipelines:
+    ocr_meta_pipeline_v1:
+      description: "Split meta.parent_tags by ';' and normalize tag markers"
+      processors:
+        # "ONLINE; IIIF; handbook" -> ["ONLINE","IIIF","handbook"]
+        - split:
+            field: "meta.parent_tags"
+            separator: "\\s*;\\s*"
+
+        # remove leading '*' from each tag value (works on arrays too)
+        - gsub:
+            field: "meta.parent_tags"
+            pattern: "^\\*"
+            replacement: ""
+
+        # trim whitespace on each element (optional but nice)
+        - trim:
+            field: "meta.parent_tags"
+
+  index_templates:
+  
+    ocr_pages_template_v1:
+      index_patterns: ["zotero-ocr*"]
+      priority: 200
+      composed_of:
+        - ct_ocr_pages_v1
+      template:
+        # Optional but useful defaults
+        settings:
+          index:
+            number_of_shards: 1
+            number_of_replicas: 1
+            default_pipeline: "ocr_meta_pipeline_v1"
+
+  # indices:
+  #   # Optional bootstrap index. Recommended if you want to write to an alias.
+  #   zotero-ocr-000001:
+  #     aliases:
+  #       zotero-ocr-write:
+  #         is_write_index: true
+  #       zotero-ocr-read: {}
+
+  plan:
+    - put_component_templates:
+        - ct_ocr_pages_v1
+    - put_index_templates:
+        - ocr_pages_template_v1
+    - put_ingest_pipelines: [ocr_meta_pipeline_v1]
+    # - create_indices:
+    #     - zotero-ocr-000001

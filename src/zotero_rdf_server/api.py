@@ -38,7 +38,8 @@ def include_plugins(app: FastAPI, plugins_pkg: str = "zotero_rdf_server.plugins"
                 continue
 
             prefix = getattr(mod, "PLUGIN_PREFIX", f"{base_prefix}/{plugin_name}")
-            app.include_router(prouter, prefix=prefix)
+            app.include_router(prouter, prefix=prefix,
+                                tags=["Plugin"])
 
             logger.info("Loaded plugin %s at %s", plugin_name, prefix)
         except Exception:
