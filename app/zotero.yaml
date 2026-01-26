@@ -28,14 +28,14 @@ defaults:
       auto: true # hook parser into loading process if true
       mapping: "/app/plugins/parser/mapping.json" # load file or build dict here
       metadata: "/app/plugins/parser/meta.json" # load file or build dict here
-    fts: # Full Text Search Plugin. Loads text from URL, performs OCR, ingests to Open Search index (see docker compose configuration)
+    fts: # Full Text Search Plugin. Loads text from URL, performs OCR, ingests to Open Search index (see docker compose configuration). Lists of dictionnaries are possible, too.
       logging: # not deployed, yet
         ingest_into_graph: "" # whether the logging store shall be stored in the main store in a named graph by this IRI
       query: "/app/plugins/fts/fts.sparql" # SPARQL query to retrieve URLs for OCR/ingesting
       ocr: true
       open-search:
         targets: ["zotero-ocr"] # indices to target        
-        config_path: "/app/plugins/fts/config.yml"
+        config_path: "/app/plugins/fts/config.yml" # fallback FTS_CONFIG in ENV
       kraken:          
         model_kwargs:
           domain: print
