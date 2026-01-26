@@ -323,9 +323,510 @@
         }
       }
     },
+    "/plugin/fts/ocr": {
+      "get": {
+        "tags": [
+          "Plugin",
+          "FTS"
+        ],
+        "summary": "OCR a URL (PDF or IIIF) and return text per page",
+        "description": "Iterates pages from a PDF/IIIF URL and runs OCR. Output can be JSON, NDJSON (one JSON object per line), or ZIP. If `domain/model_name/segmenter` are omitted, defaults are resolved from YAML/ENV.",
+        "operationId": "ocr_url_plugin_fts_ocr_get",
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "PDF or IIIF URL",
+              "title": "Url"
+            },
+            "description": "PDF or IIIF URL"
+          },
+          {
+            "name": "output",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "json",
+                "ndjson",
+                "zip"
+              ],
+              "type": "string",
+              "description": "Output mode: json (single document), ndjson (one line per page), zip (metadata + pages as json/ndjson).",
+              "default": "json",
+              "title": "Output"
+            },
+            "description": "Output mode: json (single document), ndjson (one line per page), zip (metadata + pages as json/ndjson)."
+          },
+          {
+            "name": "config_path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Path to YAML config. If omitted: ENV FTS_CONFIG, otherwise ./config.yml",
+              "title": "Config Path"
+            },
+            "description": "Path to YAML config. If omitted: ENV FTS_CONFIG, otherwise ./config.yml"
+          },
+          {
+            "name": "domain",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Domain override (e.g., print/handwriting/medieval). If omitted, resolved from YAML/ENV.",
+              "title": "Domain"
+            },
+            "description": "Domain override (e.g., print/handwriting/medieval). If omitted, resolved from YAML/ENV."
+          },
+          {
+            "name": "model_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Recognition model name override. If omitted, resolved from YAML/ENV defaults for the domain.",
+              "title": "Model Name"
+            },
+            "description": "Recognition model name override. If omitted, resolved from YAML/ENV defaults for the domain."
+          },
+          {
+            "name": "segmenter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Segmenter override: \"BLLA\" (package fallback) or a model name from YAML.",
+              "title": "Segmenter"
+            },
+            "description": "Segmenter override: \"BLLA\" (package fallback) or a model name from YAML."
+          },
+          {
+            "name": "binarize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, apply nlbin binarization before segmentation/OCR.",
+              "default": true,
+              "title": "Binarize"
+            },
+            "description": "If true, apply nlbin binarization before segmentation/OCR."
+          },
+          {
+            "name": "iiif_max_width",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 8000,
+              "minimum": 200,
+              "description": "Maximum width for IIIF images (scaling parameter).",
+              "default": 2000,
+              "title": "Iiif Max Width"
+            },
+            "description": "Maximum width for IIIF images (scaling parameter)."
+          },
+          {
+            "name": "pdf_dpi",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 600,
+              "minimum": 72,
+              "description": "DPI used to rasterize PDF pages.",
+              "default": 200,
+              "title": "Pdf Dpi"
+            },
+            "description": "DPI used to rasterize PDF pages."
+          },
+          {
+            "name": "pdf_text_enabled",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, attempt to use embedded PDF text when it looks reliable.",
+              "default": true,
+              "title": "Pdf Text Enabled"
+            },
+            "description": "If true, attempt to use embedded PDF text when it looks reliable."
+          },
+          {
+            "name": "pdf_text_min_chars",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100000,
+              "minimum": 0,
+              "description": "Minimum character count to accept embedded PDF text.",
+              "default": 80,
+              "title": "Pdf Text Min Chars"
+            },
+            "description": "Minimum character count to accept embedded PDF text."
+          },
+          {
+            "name": "pdf_text_min_alpha_ratio",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "description": "Minimum alphabetic ratio to accept embedded PDF text.",
+              "default": 0.6,
+              "title": "Pdf Text Min Alpha Ratio"
+            },
+            "description": "Minimum alphabetic ratio to accept embedded PDF text."
+          },
+          {
+            "name": "img_out",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Relative directory (under EXPORT_DIRECTORY) to store page images.",
+              "title": "Img Out"
+            },
+            "description": "Relative directory (under EXPORT_DIRECTORY) to store page images."
+          },
+          {
+            "name": "txt_out",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Relative directory (under EXPORT_DIRECTORY) to store page texts.",
+              "title": "Txt Out"
+            },
+            "description": "Relative directory (under EXPORT_DIRECTORY) to store page texts."
+          },
+          {
+            "name": "img_ext",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Image file extension (jpg, png, webp, ...).",
+              "default": "jpg",
+              "title": "Img Ext"
+            },
+            "description": "Image file extension (jpg, png, webp, ...)."
+          },
+          {
+            "name": "txt_ext",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Text file extension.",
+              "default": "txt",
+              "title": "Txt Ext"
+            },
+            "description": "Text file extension."
+          },
+          {
+            "name": "safe_text",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(skip|overwrite|active)$",
+              "description": "What to do if text file already exists.",
+              "default": "skip",
+              "title": "Safe Text"
+            },
+            "description": "What to do if text file already exists."
+          },
+          {
+            "name": "safe_image",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(skip|overwrite|active)$",
+              "description": "What to do if image file already exists.",
+              "default": "skip",
+              "title": "Safe Image"
+            },
+            "description": "What to do if image file already exists."
+          },
+          {
+            "name": "on_error",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(log|raise|skip|empty)$",
+              "description": "Behaviour if OCR/text extraction fails.",
+              "default": "raise",
+              "title": "On Error"
+            },
+            "description": "Behaviour if OCR/text extraction fails."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OcrResponse"
+                }
+              },
+              "application/zip": {},
+              "application/x-ndjson": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugin/fts/opensearch": {
+      "post": {
+        "tags": [
+          "Plugin",
+          "FTS"
+        ],
+        "summary": "Ingest Opensearch",
+        "operationId": "ingest_opensearch_plugin_fts_opensearch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenSearchDocRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugin/fts/pipeline": {
+      "post": {
+        "tags": [
+          "Plugin",
+          "FTS"
+        ],
+        "summary": "Ingest Route",
+        "operationId": "ingest_route_plugin_fts_pipeline_post",
+        "parameters": [
+          {
+            "name": "targets",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {}
+                }
+              ],
+              "description": "Index or alias",
+              "title": "Targets"
+            },
+            "description": "Index or alias"
+          },
+          {
+            "name": "ocr",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, run OCR pages ingest via pages_fn",
+              "title": "Ocr"
+            },
+            "description": "If true, run OCR pages ingest via pages_fn"
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "SPARQL SELECT query or path to file with query code (used when body is null)",
+              "title": "Query"
+            },
+            "description": "SPARQL SELECT query or path to file with query code (used when body is null)"
+          },
+          {
+            "name": "graph",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Named graph IRI containing the attachments or documents (optional)",
+              "title": "Graph"
+            },
+            "description": "Named graph IRI containing the attachments or documents (optional)"
+          },
+          {
+            "name": "config_path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Path to YAML config. If omitted: ENV FTS_CONFIG, otherwise ./config.yml",
+              "title": "Config Path"
+            },
+            "description": "Path to YAML config. If omitted: ENV FTS_CONFIG, otherwise ./config.yml"
+          },
+          {
+            "name": "store_path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Oxigraph store path (defaults to main store)",
+              "title": "Store Path"
+            },
+            "description": "Oxigraph store path (defaults to main store)"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_ingest_route_plugin_fts_pipeline_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/plugin/parser/parse_notes": {
       "get": {
         "tags": [
+          "Plugin",
+          "Semantic Note Parsing",
           "RDF",
           "Plugins"
         ],
@@ -395,10 +896,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Query to retrieve notes, requires ?s ?p ?o as bindings (optional)",
+              "description": "Query to retrieve notes, requires ?s (=note item IRI) and ?o (=Note HTML) as bindings (optional)",
               "title": "Query"
             },
-            "description": "Query to retrieve notes, requires ?s ?p ?o as bindings (optional)"
+            "description": "Query to retrieve notes, requires ?s (=note item IRI) and ?o (=Note HTML) as bindings (optional)"
           },
           {
             "name": "push",
@@ -445,6 +946,8 @@
     "/plugin/rdf_notes/znotes2rdf": {
       "get": {
         "tags": [
+          "Plugin",
+          "Notes RDF Interface",
           "RDF",
           "Plugins"
         ],
@@ -622,6 +1125,8 @@
     "/plugin/rdf_notes/rdf2znotes": {
       "get": {
         "tags": [
+          "Plugin",
+          "Notes RDF Interface",
           "RDF",
           "Plugins"
         ],
@@ -816,6 +1321,8 @@
     "/plugin/rdf_notes/taxonomy": {
       "get": {
         "tags": [
+          "Plugin",
+          "Notes RDF Interface",
           "RDF",
           "Plugins"
         ],
@@ -978,6 +1485,103 @@
   },
   "components": {
     "schemas": {
+      "Body_ingest_route_plugin_fts_pipeline_post": {
+        "properties": {
+          "input": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input",
+            "examples": [
+              null
+            ]
+          },
+          "open_search_kwargs": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Search Kwargs",
+            "description": "Keyword Arguments for Open Search Config",
+            "examples": [
+              null
+            ]
+          },
+          "ocr_kwargs": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Kwargs",
+            "description": "Keyword Arguments for OCR Config",
+            "examples": [
+              null
+            ]
+          },
+          "model_kwargs": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Kwargs",
+            "description": "Keyword Arguments for Kraken Config",
+            "examples": [
+              null
+            ]
+          },
+          "file_kwargs": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Kwargs",
+            "description": "Keyword Arguments for File Output",
+            "examples": [
+              {
+                "img_out": "kraken/images",
+                "save_image": "active",
+                "save_text": "active",
+                "txt_out": "kraken/texts"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "Body_ingest_route_plugin_fts_pipeline_post"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1000,6 +1604,173 @@
           "ERROR"
         ],
         "title": "LogLevel"
+      },
+      "OcrPage": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "title": "Index",
+            "description": "0-based page index"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "Extracted text for this page"
+          }
+        },
+        "type": "object",
+        "required": [
+          "index",
+          "text"
+        ],
+        "title": "OcrPage"
+      },
+      "OcrResponse": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "Input URL (PDF or IIIF)"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain",
+            "description": "Effective domain override (if provided)"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Name",
+            "description": "Effective recognition model override (if provided)"
+          },
+          "segmenter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segmenter",
+            "description": "Effective segmenter override (if provided)"
+          },
+          "binarize": {
+            "type": "boolean",
+            "title": "Binarize",
+            "description": "Whether nlbin binarization was applied"
+          },
+          "iiif_max_width": {
+            "type": "integer",
+            "title": "Iiif Max Width",
+            "description": "Maximum width for IIIF image requests"
+          },
+          "pdf_dpi": {
+            "type": "integer",
+            "title": "Pdf Dpi",
+            "description": "DPI used for PDF rasterization"
+          },
+          "pdf_text_enabled": {
+            "type": "boolean",
+            "title": "Pdf Text Enabled",
+            "description": "Whether embedded PDF text extraction is enabled"
+          },
+          "pdf_text_min_chars": {
+            "type": "integer",
+            "title": "Pdf Text Min Chars",
+            "description": "Minimum characters required to accept embedded PDF text"
+          },
+          "pdf_text_min_alpha_ratio": {
+            "type": "number",
+            "title": "Pdf Text Min Alpha Ratio",
+            "description": "Minimum alphabetic character ratio required to accept embedded PDF text"
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/OcrPage"
+            },
+            "type": "array",
+            "title": "Pages",
+            "description": "Per-page OCR/text output"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "binarize",
+          "iiif_max_width",
+          "pdf_dpi",
+          "pdf_text_enabled",
+          "pdf_text_min_chars",
+          "pdf_text_min_alpha_ratio",
+          "pages"
+        ],
+        "title": "OcrResponse"
+      },
+      "OpenSearchDocRequest": {
+        "properties": {
+          "doc_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doc Id",
+            "description": "Optional _id; generated if omitted"
+          },
+          "targets": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ],
+            "title": "Targets"
+          },
+          "doc": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            ],
+            "title": "Doc"
+          }
+        },
+        "type": "object",
+        "required": [
+          "targets",
+          "doc"
+        ],
+        "title": "OpenSearchDocRequest"
       },
       "ValidationError": {
         "properties": {
