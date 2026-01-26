@@ -25,11 +25,10 @@ WHERE {
 
 VALUES ?link_type { "linked_url" "imported_url" }. # filter on attachment types
     
-OPTIONAL {  ?parent rdf:type zot:item;
-          rdfs:label ?parent_label;
-          zot:date ?date;
-          zot:key ?parent_key;
-          (zot:creators/zot:hasCreator) ?person_1742_8.}
+OPTIONAL { ?parent rdfs:label ?parent_label }
+OPTIONAL { ?parent zot:date ?date }
+OPTIONAL { ?parent zot:key ?parent_key }
+OPTIONAL { ?parent (zot:creators/zot:hasCreator) ?person_1742_8. }
 
 OPTIONAL {  ?person_1742_8 rdf:type zot:actor;
                            rdfs:label ?text_1724_9.  }
@@ -41,12 +40,12 @@ OPTIONAL {  ?library rdf:type zot:library;
                      zot:id ?library_label.}
 
 FILTER( # filter on attachment name
-    CONTAINS(?file_label, "manifest") #||
+    CONTAINS(?file_label, "PDF") #||
 #    CONTAINS(?file_label, "Books")
   )
 
 FILTER( # filter on attachment URL
-    CONTAINS(STR(?url), "e-rara") 
+    CONTAINS(STR(?url), "archive") 
   )
   
   OPTIONAL {
@@ -56,4 +55,4 @@ FILTER( # filter on attachment URL
   }
 }
 GROUP BY ?file
-LIMIT 1
+# LIMIT 1

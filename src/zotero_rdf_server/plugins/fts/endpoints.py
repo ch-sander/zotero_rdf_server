@@ -305,7 +305,7 @@ def ingest_route(
         if graph or (graph is None and query is None):  # take one or multple graphs if no query given in API
             from zotero_rdf_server.store import get_graph
             checked_graph, all_graphs = get_graph(graph)
-            if not checked_graph:
+            if graph and not checked_graph:
                 raise HTTPException(status_code=400, detail=f"Invalid graph IRI. Use one of these or None: {all_graphs}")
             from zotero_rdf_server.models import ZoteroLibrary
             from zotero_rdf_server.config import ZOTERO_LIBRARIES_CONFIGS
@@ -331,7 +331,7 @@ def ingest_route(
                             )
                         
                         config_path_x = config_path or os_cfg.get("config_path")
-                        query_x = query or cfg.get("query")
+                        query_x = query or ncfg.get("query")
 
                         if not query_x:
                             raise HTTPException(
@@ -340,7 +340,6 @@ def ingest_route(
                             )
                         
                         ocr_x = ocr if ocr is not None else cfg.get("ocr", False)
-
                         
                         iter_pages_kwargs = ocr_kwargs if ocr_kwargs is not None else dict(kraken_cfg.get("ocr_kwargs") or {})
                         page_to_text_kwargs = model_kwargs if model_kwargs is not None else dict(kraken_cfg.get("model_kwargs") or {})
@@ -351,11 +350,18 @@ def ingest_route(
                         try:
                             sparql_query=load_text_like(query_x,label="Ingest Pipeline SPARQL Query")
                             logger.debug(f"{sparql_query}")
-                            items = [
-                                {v: sol[v].value for v in sol}
-                                for sol in store.query(sparql_query, use_default_graph_as_union=False, default_graph=[NamedNode(lib.base_url), NamedNode(lib.knowledge_base_graph)])
-                            ]
-                            logger.debug(f"{len(items)} items found")       
+                            bindings = store.query(
+                                sparql_query,
+                                use_default_graph_as_union=False,
+                                default_graph=[NamedNode(lib.base_url), NamedNode(lib.knowledge_base_graph)])
+                            var_names = [v.value for v in bindings.variables]
+                            logger.info(f"{var_names}")
+                            for sol in bindings:
+                                items.append({
+                                    name: (sol[name].value if sol[name] is not None else None)
+                                    for name in var_names
+                                })                            
+                            logger.debug(f"{len(items)} results")       
                         except Exception as e:
                             logger.error(f"Query failed: {e}")
                             items = []
@@ -370,7 +376,7 @@ def ingest_route(
                                                 config_path=config_path_x))
                     
                 elif graph and graph != lib.base_url:
-                    logger.debug(f"{graph} skipped")
+                    logger.debug(f"{lib.base_url} skipped")
                 else:
                     logger.warning(f"{graph} not yet supported but defined via config")
 
@@ -394,7 +400,7 @@ def ingest_route(
                         name: (sol[name].value if sol[name] is not None else None)
                         for name in var_names
                     })
-                logger.debug(f"{items}")
+                logger.debug(f"{items} results")
             except Exception as e:
                 logger.error(f"Query failed: {e}")
                 raise HTTPException(
