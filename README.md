@@ -59,6 +59,7 @@ This app provides a web API for working with RDF data, based on your Zotero libr
 - 🧩 Parse semantic notes written in enhanced HTML as Zotero notes
 - 🔐 API config supports multiple libraries with sync settings
 - 🧪 Query and inspect your store via OpenAPI (see `/docs`)
+- 📝 Process attachments with OCR ([Kraken](https://kraken.re/main/index.html)) and ingest to [Open Search](https://opensearch.org/)
 - ⚙️ Generate static RDF exports via [GitHub Actions](.github/workflows/rdf_export.yml) — see [local_z2rdf.py](local/local_z2rdf.py) for how it works
 
 Built with [FastAPI](https://fastapi.tiangolo.com/) and [Oxigraph](https://oxigraph.org/)
@@ -107,11 +108,11 @@ The Taxonomy helper (with its own mapping, relying on the *Parse Notes* plugin) 
 
 ### Full Text Search
 
-The FTS plugin reads URLs from store (e.g. attachments of items, linking to PDF files or IIIF manifest), processes these files with Kraken to retrieve OCR text, and ingests this text in a Open Search index (API and Dashbaord started as Docker containers).
+The FTS plugin reads URLs from store (e.g. attachments of items, linking to PDF files or IIIF manifest), processes these files with [Kraken](https://kraken.re/main/index.html) to retrieve OCR text, and ingests this text in a [Open Search](https://opensearch.org/) index (API and Dashbaord started as Docker containers).
 
 #### Kraken OCR
 
-Kraken can be used via custom models and typical parameters, as seen in API parameters.
+Kraken can be used via custom models and typical parameters, as seen in API parameters. Rudementary caching is possible. All processing is streamed, no need to store files locally.
 
 #### Open Search indexing
 
