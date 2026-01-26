@@ -94,25 +94,38 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 return parser.parse(str(text), dayfirst=dayfirst, default=datetime(1, 1, 1))
             except (ValueError, TypeError):
                 return text
+        
+        def normalize_split_list(
+            value: str | list,
+            pattern: str = None # r"\s*;\s*",
+        ) -> list:
+            if value is None:
+                return []
             
-        def make_entity(object_value,my_types, specific_threshold=fuzzy_threshold):
-            # Normalize and split values            
-
-            if isinstance(object_value, list):
-                seq = object_value
-            else:
-                seq = [object_value]
-
+            seq = value if isinstance(value, list) else [value]
+            if not pattern:
+                return seq
             items = []
-            for s in seq:
-                if isinstance(s, str):
-                    s = s.strip()
-                    if s:
-                        items.extend(p for p in re.split(r"\s*;\s*", s) if p)
+            try:            
+                pattern = re.compile(pattern)
+                for s in seq:
+                    if isinstance(s, str):
+                        s = s.strip()
+                        if s:
+                            items.extend(p for p in pattern.split(s) if p)
+            except Exception as e:
+                logger.error(f"Normalizing split of {seq} failed: {e}")
+                return seq
+            return items
+  
+        
+        def make_entity(object_value,my_types, specific_threshold=fuzzy_threshold):
 
-            for item in items:
-                pool_store = quads_by_type(store,my_types,ENTITY_GRAPH_URI)
-
+            items = normalize_split_list(object_value, field_map.get("re_split"))
+            nodes = []
+            pool_store = quads_by_type(store,my_types,ENTITY_GRAPH_URI)
+            for item in items:                
+                node = None
                 node, score, matched_label = fuzzy_match_label(
                     pool_store,
                     item,
@@ -133,8 +146,9 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 alts = {(q.object.value).lower() for q in store.quads_for_pattern(node, NamedNode(SKOS_ALT), None, graph_name=ENTITY_GRAPH_URI)}
                 if item.lower() not in alts:
                     store.add(Quad(node, NamedNode(SKOS_ALT), Literal(item), graph_name=ENTITY_GRAPH_URI))
+                nodes.append(node)
 
-            return node
+            return nodes # TODO how multiple nodes possible ?
         
         try:
             if not object:
@@ -246,12 +260,31 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     for role_property in role_properties:
                         store.add(Quad(role_node, safeNamedNode(role_property), creator_node, graph_name=GRAPH_URI))
                     return role_node
+                
+                ### RELATIONS ###
 
-                elif predicate_str == "relations" and "dc:relation" in object: # relation
-                    related_item = object.pop("dc:relation")
-                    related_items = related_item if isinstance(related_item, list) else [related_item]
+                elif predicate_str == "relations" and ("dc:relation" in object or "owl:sameAs" in object):
+                    related_item = object.pop("dc:relation", None)
+                    same_item = object.pop("owl:sameAs", None)
+
+                    related_items = related_item if isinstance(related_item, list) else ([related_item] if related_item is not None else [])
+                    same_items = same_item if isinstance(same_item, list) else ([same_item] if same_item is not None else [])
+
+                    rel_predicates = make_iri(field_map.get("relation_properties") or [predicate_str, PURL_RELATED],
+                                            pref=ns_prefix, enforce_list=True)
+                    same_predicates = make_iri(field_map.get("same_properties") or [OWL_SAME_AS],
+                                            pref=ns_prefix, enforce_list=True)
+
+                    for si in same_items:
+                        if isinstance(si, str) and si.strip():
+                            for p in same_predicates:
+                                store.add(Quad(subject, safeNamedNode(p), safeNamedNode(si), graph_name=GRAPH_URI))
+
                     for ri in related_items:
-                        store.add(Quad(subject, NamedNode("http://purl.org/dc/elements/1.1/relation"), safeNamedNode(ri), graph_name=GRAPH_URI))
+                        if isinstance(ri, str) and ri.strip():
+                            for p in rel_predicates:
+                                store.add(Quad(subject, safeNamedNode(p), safeNamedNode(ri), graph_name=GRAPH_URI))
+
                     if object:
                         logger.warning(f"Dropping from relations: {object}")
                     return None
@@ -278,14 +311,10 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 
             # ENTITY #
             elif isinstance(object, str) and (field_map.get('fuzzy') or field_map.get('types')):
-                if field_map.get("named_node"): # TODO handle as URL datatype?
-                    logger.debug(f"Named node for {predicate_str}: {object}")
-                    return safeNamedNode(object,enforce=True)
-                else:
-                    logger.debug(f"UUID Entity for {predicate_str}: {object}")
-                    ent_types = make_iri(field_map.get("types", [predicate_str]), ns_prefix, True)
-                    
-                    return make_entity(object, ent_types,fuzzy_threshold_specific)                
+                logger.debug(f"UUID Entity for {predicate_str}: {object}")
+                ent_types = make_iri(field_map.get("types", [predicate_str]), ns_prefix, True)
+                
+                return make_entity(object, ent_types,fuzzy_threshold_specific)                
 
             elif isinstance(object, (str, int, datetime, float)):
 
@@ -304,65 +333,84 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     if dt.startswith(XSD_NS):
                         return NamedNode(dt)
                     return safeNamedNode(dt)
-                literal_dt = field_map.get("datatype") 
-                val = str(object)                
-
-                logger.debug(f"{predicate_str}: {type(object)} {val[:100] + ('...' if len(val) > 100 else '')}")           
+                
+                re_split = normalize_split_list(object, field_map.get("re_split"))
+                
+                vals = [object]
+                if re_split:
+                    vals = re_split
+                
+                literal_dt = field_map.get("datatype")                 
+                objects = []
+                          
+                logger.debug("%s: %s %.100r", predicate_str, type(object), object)
 
                 # ZOTERO Links #
-                if predicate_str == "collections": # collections
-                    return safeNamedNode(f"{base_uri}/collections/{object}")
-                elif predicate_str in ["parentItem"]: # parent items
+                if predicate_str in ["parentItem"]: # parent items
                     return safeNamedNode(f"{base_uri}/items/{object}")
-                elif predicate_str in ["parentCollection"]: # parent collections
+                elif predicate_str in ["collections", "parentCollection"]: # parent collections
                     return safeNamedNode(f"{base_uri}/collections/{object}")
                 
-                # TITLE and LANGUAGE #
-                elif language and is_datatype(predicate_str, field_map, "title", ["title", "bookTitle"]):
-                    return process_language_and_title(title=object,language_field="en",mapping=lang_map)
-                elif language and is_datatype(predicate_str, field_map, "language", ["language"]):
-                    return process_language_and_title(title=None, language_field="en",mapping=lang_map)
+                for val in vals:
+                    val = str(val).strip()
 
-                # URL #
-                elif is_datatype(predicate_str, field_map, "url", ["url", "dc:relation", "doi", "owl:sameAs", "href"]) and (val.startswith("http") or val.startswith("www.")): # url                    
-                    return safeNamedNode(val.strip(), enforce=True)
-                
-                # DOI #
-                elif is_datatype(predicate_str, field_map, "doi", ["doi"]) and not val.startswith("http") and len(val) > 5:
-                    return safeNamedNode(f"https://doi.org/{val}".strip())
-                
-                # INT #
-                elif is_datatype(
-                    predicate_str,
-                    field_map,
-                    "int",
-                    ["numPages", "numberOfVolumes", "volume", "series number"],
-                ) and val.isdigit():
-                    return Literal(val,datatype=NamedNode(f"{XSD_NS}int"))
-                
-                # DATE #
-                elif is_datatype(predicate_str, field_map, "date", ["date"]):
-                    date_val = parse_date(val)
-                    match = re.search(r"\b(1[5-9]\d{2}|20\d{2}|2100)\b", val)
-                    if re.fullmatch(r"\d{4}", val):
-                        return Literal(val, datatype=NamedNode(f"{XSD_NS}gYear"))
-                    elif match:
-                        return Literal(match.group(1), datatype=NamedNode(f"{XSD_NS}gYear"))
-                    elif isinstance(date_val, datetime):                        
-                        return Literal(str(date_val.date().isoformat()), datatype=NamedNode(f"{XSD_NS}dateTime"))
-                    else:
-                        return Literal(val)
+                    # TITLE and LANGUAGE #
+                    if language and is_datatype(predicate_str, field_map, "title", ["title", "bookTitle"]):
+                        o = process_language_and_title(title=val,language_field=data.get("language", "en"),mapping=lang_map)
+                        objects.append(o)
+                    elif language and is_datatype(predicate_str, field_map, "language", ["language"]):
+                        o = process_language_and_title(title=None, language_field=val,mapping=lang_map)
+                        objects.append(o)
+
+                    # URL #
+                    elif is_datatype(predicate_str, field_map, "url", ["url", "dc:relation", "doi", "owl:sameAs", "href"]) and (val.startswith("http") or val.startswith("www.")): # url                    
+                        o = safeNamedNode(val, enforce=True) 
+                        objects.append(o)
                     
-                elif is_datatype(predicate_str, field_map, "datetime", ["dateModified", "accessDate", "dateAdded"]): # dateTime
-                    return Literal(val,datatype=NamedNode(f"{XSD_NS}dateTime"))
+                    # DOI #
+                    elif is_datatype(predicate_str, field_map, "doi", ["doi"]) and not val.startswith("http") and len(val) > 5:
+                        o = safeNamedNode(f"https://doi.org/{val}".strip())
+                        objects.append(o)
+                    
+                    # INT #
+                    elif is_datatype(
+                        predicate_str,
+                        field_map,
+                        "int",
+                        ["numPages", "numberOfVolumes", "volume", "series number"],
+                    ) and val.isdigit():
+                        o = Literal(val,datatype=NamedNode(f"{XSD_NS}int"))
+                        objects.append(o)
+                    
+                    # DATE #
+                    elif is_datatype(predicate_str, field_map, "date", ["date"]):
+                        date_val = parse_date(val)
+                        match = re.search(r"\b(1[5-9]\d{2}|20\d{2}|2100)\b", val)
+                        if re.fullmatch(r"\d{4}", val):
+                            o = Literal(val, datatype=NamedNode(f"{XSD_NS}gYear"))                             
+                        elif match:
+                            o = Literal(match.group(1), datatype=NamedNode(f"{XSD_NS}gYear"))                             
+                        elif isinstance(date_val, datetime):
+                            o =      Literal(str(date_val.date().isoformat()), datatype=NamedNode(f"{XSD_NS}dateTime"))                         
+                        else:
+                            o = Literal(val)
+                        objects.append(o)
+                        
+                    elif is_datatype(predicate_str, field_map, "datetime", ["dateModified", "accessDate", "dateAdded"]): # dateTime
+                        o = Literal(val,datatype=NamedNode(f"{XSD_NS}dateTime"))
+                        objects.append(o)
+                    
+                    elif (field_map.get("datatyping", "str") == "str") and literal_dt:
+                        o = Literal(val, datatype=resolve_literal_datatype(literal_dt))
+                        objects.append(o)
+                    
+                    # LITERAL #
+                    else:
+                        o = safeLiteral(val)
+                        objects.append(o)
                 
-                elif (field_map.get("datatyping", "str") == "str") and literal_dt:
-                    return Literal(val, datatype=resolve_literal_datatype(literal_dt))
-                
-                # LITERAL #
-                else:
-                    return safeLiteral(val)
-                
+                return objects
+            
             else:
                 logger.error(f"Error: pass dict or str but got {type(object)}: {object}")
 
@@ -390,15 +438,17 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             for item in values:
                 obj = zotero_property_map(field, item, map) or None
                 if obj:
-                    for pred in predicates:                    
-                        predicate = safeNamedNode(pred)
-                        if isinstance(obj, (BlankNode, NamedNode, Literal)):
-                            store.add(Quad(subject, predicate, obj, graph_name=GRAPH_URI))
-                            if isinstance(item, dict) and isinstance(obj, (BlankNode)):                  
-                                # Recurse if unexpected dict that return BlankNode
-                                add_rdf_from_dict(store, obj, item, ns_prefix, base_uri, map, knowledge_base_graph)
-                        else:
-                            logger.warning(f"Received unexpected item in mapping for {pred}: {obj}")
+                    obj = obj if isinstance(obj, list) else [obj]
+                    for o in obj:
+                        for pred in predicates:                    
+                            predicate = safeNamedNode(pred)
+                            if isinstance(o, (BlankNode, NamedNode, Literal)):
+                                store.add(Quad(subject, predicate, o, graph_name=GRAPH_URI))
+                                if isinstance(item, dict) and isinstance(o, (BlankNode)):                  
+                                    # Recurse if unexpected dict that return BlankNode
+                                    add_rdf_from_dict(store, o, item, ns_prefix, base_uri, map, knowledge_base_graph)
+                            else:
+                                logger.warning(f"Received unexpected item in mapping for {pred}: {o}")
         except Exception as e:
             logger.error(f"Invalid data for: [{field}, {value}]: {e}")
             continue        
