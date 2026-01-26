@@ -28,3 +28,61 @@ services:
       - ${STORE_DIRECTORY:-./app/data}:/data
     command: ["serve-read-only", "--location", "/data", "--bind", "0.0.0.0:7879", "--union-default-graph", "--cors"]
     restart: unless-stopped
+
+  opensearch:
+    image: "opensearchproject/opensearch:${OPENSEARCH_VERSION:-2.14.0}"
+    container_name: ${OPENSEARCH_CONTAINER:-opensearch}
+    environment:
+      - discovery.type=single-node
+      - cluster.name=${OPENSEARCH_CLUSTER_NAME:-opensearch}
+      - node.name=${OPENSEARCH_NODE_NAME:-opensearch-1}
+      - bootstrap.memory_lock=true
+      - OPENSEARCH_JAVA_OPTS=-Xms${OPENSEARCH_HEAP:-1g} -Xmx${OPENSEARCH_HEAP:-1g}
+
+      - plugins.security.disabled=${OPENSEARCH_SECURITY_DISABLED:-true}
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD:-adminadmin}
+
+      # CORS Dev (optional)
+      - http.cors.enabled=${OPENSEARCH_CORS_ENABLED:-true}
+      - http.cors.allow-origin=${OPENSEARCH_CORS_ALLOW_ORIGIN:-"*"}
+      - http.cors.allow-headers=${OPENSEARCH_CORS_ALLOW_HEADERS:-"*"}
+      - http.cors.allow-credentials=${OPENSEARCH_CORS_ALLOW_CREDENTIALS:-true}
+
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+
+    ports:
+      - "${OPENSEARCH_HTTP_PORT:-9200}:9200"
+      - "${OPENSEARCH_TRANSPORT_PORT:-9600}:9600"
+
+    volumes:
+      - "${OPENSEARCH_DATA_DIR:-opensearch-data}:/usr/share/opensearch/data"
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200 >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+    restart: unless-stopped
+
+  opensearch-dashboards:
+    image: "opensearchproject/opensearch-dashboards:${OPENSEARCH_DASHBOARDS_VERSION:-2.14.0}"
+    container_name: ${OPENSEARCH_DASHBOARDS_CONTAINER:-opensearch-dashboards}
+    ports:
+      - "${OPENSEARCH_DASHBOARDS_PORT:-5601}:5601"
+    environment:
+      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=${OPENSEARCH_SECURITY_DISABLED:-true}
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  opensearch-data:

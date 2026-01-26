@@ -6,12 +6,12 @@ SELECT ?file
        (SAMPLE(?date) AS ?date)
        (SAMPLE(?parent) AS ?parent)
        (SAMPLE(?parent_label) AS ?parent_label)
-       (SAMPLE(?url) AS ?_url)
+       (SAMPLE(?url) AS ?_url) # _url variable is required
        (GROUP_CONCAT(DISTINCT ?text_1724_9; SEPARATOR = "; ") AS ?parent_creators)
        (SAMPLE(?library) AS ?library)
        (SAMPLE(?library_label) AS ?library_label)
        (GROUP_CONCAT(DISTINCT ?text_1724_13; SEPARATOR = "; ") AS ?parent_tags)
-       (SAMPLE(CONCAT(STR(?library_label), ":", STR(?_id))) AS ?_id)
+       (SAMPLE(CONCAT(STR(?library_label), ":", STR(?_id))) AS ?_id) # _id variable is required
        (SAMPLE(?parent_key) AS ?parent_key)
        #(SAMPLE(?content) AS ?content)
        (SAMPLE(?file_label) AS ?file_label)
@@ -23,7 +23,7 @@ WHERE {
         rdfs:label ?file_label;
         zot:parentItem ?parent.
 
-VALUES ?link_type { "linked_url" "imported_url" }.
+VALUES ?link_type { "linked_url" "imported_url" }. # filter on attachment types
     
 OPTIONAL {  ?parent rdf:type zot:item;
           rdfs:label ?parent_label;
@@ -40,11 +40,12 @@ OPTIONAL {  ?file zot:url ?url;
 OPTIONAL {  ?library rdf:type zot:library;
                      zot:id ?library_label.}
 
-  FILTER(
+FILTER( # filter on attachment name
     CONTAINS(?file_label, "manifest") #||
 #    CONTAINS(?file_label, "Books")
   )
-  FILTER(
+
+FILTER( # filter on attachment URL
     CONTAINS(STR(?url), "e-rara") 
   )
   

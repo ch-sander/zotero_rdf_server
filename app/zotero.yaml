@@ -28,6 +28,41 @@ defaults:
       auto: true # hook parser into loading process if true
       mapping: "/app/plugins/parser/mapping.json" # load file or build dict here
       metadata: "/app/plugins/parser/meta.json" # load file or build dict here
+    fts: # Full Text Search Plugin. Loads text from URL, performs OCR, ingests to Open Search index (see docker compose configuration)
+      logging: # not deployed, yet
+        ingest_into_graph: "" # whether the logging store shall be stored in the main store in a named graph by this IRI
+      query: "/app/plugins/fts/fts.sparql" # SPARQL query to retrieve URLs for OCR/ingesting
+      ocr: true
+      open-search:
+        targets: ["zotero-ocr"] # indices to target        
+        config_path: "/app/plugins/fts/config.yml"
+      kraken:          
+        model_kwargs:
+          domain: print
+          model_name:
+          segmenter:
+          binarize:
+          config_path: "/app/plugins/fts/config.yml"
+          # save_images: "/app/plugins/fts/data" # creates folder per processed file
+          # save_text: "/app/plugins/fts/data" # creates folder per processed file
+        ocr_kwargs:
+          file_formats: ["pdf", "iiif"]
+          iiif_max_width: 2000
+          iiif_format: "jpg"
+          pdf_dpi: 200
+          pdf_text_policy:
+            enabled: true
+            min_chars: 80
+            min_alpha_ratio: 0.6
+          timeout: 30
+        file_kwargs:
+          img_out: "kraken/images"
+          txt_out: "kraken/texts"
+          img_ext: "jpg"
+          txt_ext: "txt"
+          skip_existing_text: "active"
+          skip_existing_image: "active"
+          on_error: "log"
   map: # skip this dict if no specs needed. Will ignore empty lists as constraints
     # white: [title,date] # a white list (will only include these and those in rdf_mapping)
     # black: [title,date] # a black list (will ingore these)
@@ -43,24 +78,69 @@ defaults:
         # value: "" # setting this will overwrite Zotero input data (dict or str)
       series:
         fuzzy: 80
-      rights:
-        named_node: true # will use value as IRI for a named node (hence, no fuzzy or type needed, no node matching or creation)
+        re_split: "\\s*;\\s*" # split string in field on ;.
+      place:
+        fuzzy: 80
+        re_split: "\\s*;\\s*"
       creators:
+        # resource: # Node or Literal
         fuzzy: 90
         types: ["actor"] # adds defined Zotero namespace if not a complete IRI        
         role_types: ["creatorRole"]
-        role_node: "uuid4" # or "uuid4"
-        property: "hasCreator"
+        properties: ["hasCreator"]
       tags:
         fuzzy: 100
         types: ["tag","http://www.w3.org/2004/02/skos/core#Concept"]
+        tag_properties: ["tag", "http://purl.org/dc/terms/subject", "http://www.w3.org/2004/02/skos/core#prefLabel"]
+        relations:
+        relation_properties: ["relations", "http://purl.org/dc/elements/1.1/relation"]
+        same_properties: ["http://www.w3.org/2002/07/owl#sameAs"]
+      url:
+        datatyping: url # datatyping runs a smart converter and types accordingly
+        properties: ["url", "http://www.w3.org/2002/07/owl#sameAs"]
+      doi:
+        datatyping: doi
+        properties: ["doi", "http://www.w3.org/2002/07/owl#sameAs"]
+      numPages:
+        datatyping: int
+      date:
+        datatyping: date
+      dateModified:
+        datatyping: datetime
+      title: # language tagged from language map
+        datatyping: title
+        # properties: ["title", "http://www.w3.org/2000/01/rdf-schema#label"]
+      language: # language tag from language map
+        datatyping: language
+      extra:
+        datatype: xsd:string # no converter, just typed
+        re_split: "\\s*;\\s*"
+      "href":
+        datatyping: url
     additional:
-      - property: "http://www.w3.org/2004/02/skos/core#prefLabel"
-        value: "_tag" # Start with _ to set the value of the respecitve key (i.e. metadata field name) in the Zotero data, otherwise sets constant value as object. If not starting with "http" will use defaul vocab from context.
+      - property: "http://www.w3.org/2000/01/rdf-schema#label"
+        value: "_name" # Start with _ to set the value of the respecitve key (i.e. metadata field name) in the Zotero data, otherwise sets constant value as object. If not starting with "http" will use defaul vocab from context.
         named_node: false
-      - property: "http://www.w3.org/2002/07/owl#sameAs"
-        value: "_url"
-        named_node: true
+        add_to: ["item", "collection", "library"] # consider only for libraries, items, and/or collections. If argument missing, will not restrict
+        # prefix: "https://doi.org/" # add this before the actual value
+      - property: "http://www.w3.org/2000/01/rdf-schema#comment"
+        value: "This resource was created by Zotero RDF Server (https://github.com/ch-sander/zotero_rdf_server)"
+        named_node: false
+      - load: # uses pyoxigraph.load() signature to dynamically load any RDF content. https://pyoxigraph.readthedocs.io/en/stable/store.html#pyoxigraph.Store.load {{node}} replaces item IRI and "_"-prefixed text will be replaced by respective Zotero key in Zotero item data
+          - add_to: ["item","collection"]
+            format: TURTLE
+            # base_iri: "_baseUri"
+            # to_graph: "https://www.zotero.org/export" # Library graph per default
+            lenient: true
+            input: |
+              @prefix purl: <http://purl.org/dc/terms/> .
+              <{{node}}> purl:identifier "_key" .
+          - add_to: ["collection"]
+            format: TURTLE
+            lenient: true
+            input: |
+              @prefix schema: <https://schema.org/> .
+              <{{node}}> schema:name "_name" .
   # api_query_params: # these parameters are directly transformed to GET parameters as outlined for Zotero API (v3)
     # itemType: "book"  # optional, freely configurable
     # tag: "important"  # optional, freely configurable

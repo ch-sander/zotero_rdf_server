@@ -173,7 +173,7 @@ open-search:
   index_templates:
   
     ocr_pages_template_v1:
-      index_patterns: ["ocr-pages-*"]
+      index_patterns: ["zotero-ocr*"]
       priority: 200
       composed_of:
         - ct_ocr_pages_v1
@@ -185,14 +185,13 @@ open-search:
             number_of_replicas: 1
             default_pipeline: "ocr_meta_pipeline_v1"
 
-  indices:
-
-    # Optional bootstrap index. Recommended if you want to write to an alias.
-    ocr-pages-000001:
-      aliases:
-        ocr-pages-write:
-          is_write_index: true
-        ocr-pages-read: {}
+  # indices:
+  #   # Optional bootstrap index. Recommended if you want to write to an alias.
+  #   zotero-ocr-000001:
+  #     aliases:
+  #       zotero-ocr-write:
+  #         is_write_index: true
+  #       zotero-ocr-read: {}
 
   plan:
     - put_component_templates:
@@ -200,5 +199,5 @@ open-search:
     - put_index_templates:
         - ocr_pages_template_v1
     - put_ingest_pipelines: [ocr_meta_pipeline_v1]
-    - create_indices:
-        - ocr-pages-000001
+    # - create_indices:
+    #     - zotero-ocr-000001
