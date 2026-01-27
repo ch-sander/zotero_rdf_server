@@ -59,7 +59,7 @@ This app provides a web API for working with RDF data, based on your Zotero libr
 - 🧩 Parse semantic notes written in enhanced HTML as Zotero notes
 - 🔐 API config supports multiple libraries with sync settings
 - 🧪 Query and inspect your store via OpenAPI (see `/docs`)
-- 📝 Process attachments with OCR ([Kraken](https://kraken.re/main/index.html)) and ingest to [Open Search](https://opensearch.org/)
+- 📝 Process attachments with OCR ([Kraken](https://kraken.re/main/index.html)) and ingest into [Open Search](https://opensearch.org/)
 - ⚙️ Generate static RDF exports via [GitHub Actions](.github/workflows/rdf_export.yml) — see [local_z2rdf.py](local/local_z2rdf.py) for how it works
 
 Built with [FastAPI](https://fastapi.tiangolo.com/) and [Oxigraph](https://oxigraph.org/)
@@ -91,7 +91,7 @@ Fuzzy matching can't handle multilingual or semantically complex cases (e.g. “
 
 ## Plugins
 
-Zotero RDF Server comes with plugins to advance its functionality. Most config is found in `/app/pligins/`. Respective API endpoints are behind `plugin` route.
+Zotero RDF Server comes with plugins to advance its functionality. Most config specifications iare found in respective files in subfolders of `/app/plugins/`. Respective API endpoints are behind a dedicated `plugin` route.
 
 <details>
 <summary>These plugins are currently included</summary>
@@ -102,21 +102,21 @@ As a plugin, you can parse your HTML Zotero notes with the [Semantic-HTML](https
 
 ### Zotero Notes as Frontend editor
 
-Stored RDF can be serialized in TTL/TriG and saved per resource as Zotero note in dedicated collection. Helps to make manual corrections. The collection can be serialized back into the store from Zotero notes.
+Stored data can be serialized in a RDF format and saved per resource as Zotero note in a dedicated collection. Helps to make manual corrections and review all data. The Zotero collection notes can be serialized back into the store.
 
-The Taxonomy helper (with its own mapping, relying on the *Parse Notes* plugin) creates a hierarchical formatted list (via headers). Editing this list as Zotero note helps to add structure to your taxonomies (e.g. concepts in your knowledge base)
+The Taxonomy helper of this plugin (with its own mapping, itself relying on the *Parse Notes* plugin) creates a hierarchical formatted list (via headers). Editing this list as a Zotero note helps to add structure to your taxonomies (e.g. concepts in your knowledge base)
 
 ### Full Text Search
 
-The FTS plugin reads URLs from store (e.g. attachments of items, linking to PDF files or IIIF manifest), processes these files with [Kraken](https://kraken.re/main/index.html) to retrieve OCR text, and ingests this text in a [Open Search](https://opensearch.org/) index (API and Dashbaord started as Docker containers).
+The FTS plugin reads URLs from the store via a SPARQL query (e.g. attachments of items, linking to PDF files or IIIF manifests), processes these files with [Kraken](https://kraken.re/main/index.html) to retrieve OCR text, and ingests this text into a [Open Search](https://opensearch.org/) index (API and Dashbaord started as Docker containers).
 
 #### Kraken OCR
 
-Kraken can be used via custom models and typical parameters, as seen in API parameters. Rudementary caching is possible. All processing is streamed, no need to store files locally.
+Kraken can be used with custom models and typical parameters, as seen in API parameters and config files. Rudementary caching is possible. All processing is streamed, no need to store files locally.
 
 #### Open Search indexing
 
-Target indices will ingest full text from OCR (or text passed as variable) and stores a metadata dictionnary from the initial SPARQL query. Further hints in the template SPARQL query file.
+Target indices will ingest full text from OCR (or text passed as variable from query) and stores a metadata dictionnary from the initial SPARQL query. Further hints in the template SPARQL query file.
 
 </details>
 
