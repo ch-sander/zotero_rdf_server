@@ -16,7 +16,7 @@ kraken:
     segmentation: "BLLA"   # "BLLA" or name from models (e.g., "MySegModel")
 
   default_models:
-    print: "McCATMuS" # "CATMuS-Print-Large"
+    print: "LatinIncunabulaEarlyPrints" # "CATMuS-Print-Large"
     handwriting: "McCATMuS"
     medieval: "CATMuS-Medieval"
 
@@ -55,6 +55,12 @@ kraken:
       url: "https://zenodo.org/records/13788177/files/McCATMuS_nfd_nofix_V1.mlmodel?download=1"
       checksum_algo: "md5"
       checksum: "e531463f631303c700750784b4f9ed63"
+
+    LatinIncunabulaEarlyPrints:
+      file: "reichenau_lat_cat_099218.mlmodel"
+      url: "https://zenodo.org/records/11113737/files/reichenau_lat_cat_099218.mlmodel?download=1"
+      checksum_algo: "md5"
+      checksum: "7ddd0d407472ffaaf699d1f6a8d877a5"
 
     # --- (optional) BLLA as a download, if you do NOT want the package fallback ---
     # BLLA:
