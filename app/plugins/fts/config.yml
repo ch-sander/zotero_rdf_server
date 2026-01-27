@@ -114,6 +114,16 @@ open-search:
                   - "j=>i"
                   - "ae=>e"
                   - "e=>ae"
+              ocr_dehyphenate_linebreak:
+                type: pattern_replace
+                pattern: "(?<=\\p{L})-\\s*\\n\\s*(?=\\p{L})"
+                replacement: ""
+
+              ocr_newlines_to_space:
+                type: pattern_replace
+                pattern: "\\s*\\n\\s*"
+                replacement: " "
+
             filter:
               latin_stop_minimal:
                 type: stop
@@ -121,12 +131,12 @@ open-search:
             analyzer:
               latin_ocr_index:
                 type: custom
-                char_filter: ["ocr_common_map"]
+                char_filter: ["ocr_common_map", "ocr_dehyphenate_linebreak", "ocr_newlines_to_space"]
                 tokenizer: standard
                 filter: ["lowercase", "asciifolding"]
               latin_ocr_search:
                 type: custom
-                char_filter: ["ocr_common_map", "ocr_search_extra_map"]
+                char_filter: ["ocr_common_map", "ocr_dehyphenate_linebreak", "ocr_newlines_to_space", "ocr_search_extra_map"]
                 tokenizer: standard
                 filter: ["lowercase", "asciifolding", "latin_stop_minimal"]
 
