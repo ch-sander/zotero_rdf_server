@@ -13,7 +13,5 @@ app/exports
 explorer/index-dev.html
 *.log
 /app/opensearch-data
-/src/models
-/src/zotero_rdf_server/plugins/fts/models
 *.mlmodel
 /src/zotero_rdf_server/plugins/fts/medieval-ocr-pipeline/utils
