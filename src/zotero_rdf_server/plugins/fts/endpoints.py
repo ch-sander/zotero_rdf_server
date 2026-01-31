@@ -255,12 +255,12 @@ class OpenSearchDocRequest(BaseModel):
 def ingest_opensearch(req: OpenSearchDocRequest = Body(...)):
     from .db import index_stream
 
-    run_id = index_stream(
+    run = index_stream(
         doc_id=req.doc_id,
         targets=req.targets,
         doc=req.doc,
     )
-    return {"status": "ok", "run_id": run_id}
+    return run #{"status": "ok", "run_id": run_id}
 
 JsonObj = Dict[str, Any]
 JsonBody = Union[JsonObj, List[JsonObj]]
@@ -283,7 +283,7 @@ def ingest_route(
     file_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for File Output", examples=[{'img_out':'kraken/images','txt_out':'kraken/texts','save_text':'active','save_image':'active'}]),
 ):
     from .pipeline import ingest_pipeline
-    run_ids: List[str] = []
+    run_ids = []
 
     if input is None:
         try:
@@ -452,7 +452,7 @@ def ingest_route(
                                         config_path=config_path))
     return {
         "status": "ok",
-        "run_ids": run_ids,
+        "run_ids": list(run_ids), # not tested, but copied to freeze it
         "ocr_mode": ocr,
         "targets": targets,
         "runs": len(run_ids),

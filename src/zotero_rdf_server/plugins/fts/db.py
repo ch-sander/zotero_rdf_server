@@ -10,6 +10,7 @@ from opensearchpy import OpenSearch
 from opensearchpy.helpers import streaming_bulk
 from functools import lru_cache
 from pathlib import Path
+from collections import Counter
 
 logger=plugin_logger()
 
@@ -239,6 +240,14 @@ def ingest_streaming_bulk(
     now = datetime.now(timezone.utc).isoformat()
     run_id = run_id or uuid.uuid4().hex
 
+    digest = {
+        "run_id": run_id,
+        "total": 0,
+        "ok": 0,
+        "failed": 0,
+        "status_counts": Counter(),
+        "errors": [],
+    }
     # from rdflogger import LogEvent, log_event_via_trig_template
     # event = LogEvent(
     #     run_id=run_id,
@@ -265,7 +274,7 @@ def ingest_streaming_bulk(
             bulk_kwargs["index"] = index
 
         for ok, item in streaming_bulk(client, actions, **bulk_kwargs):
-            
+            digest["total"] += 1
             op_key = next(iter(item.keys()))
             result = item[op_key]
             status = result.get("status")
@@ -276,6 +285,14 @@ def ingest_streaming_bulk(
             # doc_id, page = (_id.split(":", 1) + ["-1"])[:2] # TODO
             # page_no = int(page) if page.isdigit() else -1
             logger.debug(f"OS Ingesting {_id} with status {status}: {err if err else 'no errors'}")
+            if status is not None:
+                digest["status_counts"][str(status)] += 1
+            if ok:
+                digest["ok"] += 1
+            else:
+                digest["failed"] += 1
+                if len(digest["errors"]) < 50:
+                    digest["errors"].append({"_id": _id, "status": status, "error": err})
 
             # TODO logger in RDF
             # log_event_via_trig_template(
@@ -283,7 +300,7 @@ def ingest_streaming_bulk(
             #     template_path="log_events.trig",
             #     event=event
             # )
-        return run_id
+        return run_id # digest
     except Exception as e:
         logger.exception(f"ingest_streaming_bulk failed: {e}")
         return str(e)
@@ -345,7 +362,7 @@ def index_stream(
         )
 
     # IMPORTANT: index=None so per-action _index is respected
-    run_id = ingest_streaming_bulk(
+    run = ingest_streaming_bulk(
         client,
         actions=actions,
         index=None,
@@ -358,4 +375,4 @@ def index_stream(
         except Exception:
             pass
 
-    return run_id
+    return run

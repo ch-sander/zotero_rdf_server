@@ -53,7 +53,7 @@ def ingest_pipeline(
 
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc).isoformat()
-    run_ids: List[str] = []
+    runs: List[str] = []
 
     for obj in items:
         payload = dict(obj)
@@ -72,7 +72,7 @@ def ingest_pipeline(
                 logger.error("ocr=true requires '_url' in each item")
                 continue
             
-            run_ids.append(
+            runs.append(
                 index_stream(
                     url=url,
                     doc_id=doc_id,
@@ -93,7 +93,7 @@ def ingest_pipeline(
             if text != "":
                 d["text"] = text
 
-            run_ids.append(
+            runs.append(
                 index_stream(
                     targets=targets,
                     doc_id=doc_id,
@@ -101,5 +101,5 @@ def ingest_pipeline(
                     config_path=config_path
                 )
             )
-    logger.debug(f"Ingest Pipeline finsihed with {len(run_ids)} runs!")
-    return run_ids
+    logger.debug(f"Ingest Pipeline finsihed with {len(runs)} runs!")
+    return runs
