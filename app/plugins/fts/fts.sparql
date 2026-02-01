@@ -39,15 +39,21 @@ OPTIONAL {  ?file zot:url ?url;
 OPTIONAL {  ?library rdf:type zot:library;
                      zot:id ?library_label.}
 
-FILTER( # filter on attachment name
-    CONTAINS(?file_label, "PDF") #||
-#    CONTAINS(?file_label, "Books")
-  )
+# FILTER( # filter on attachment name
+#     CONTAINS(?file_label, "PDF") #||
+# #    CONTAINS(?file_label, "Books")
+#   )
 
-FILTER( # filter on attachment URL
-    CONTAINS(STR(?url), "archive") 
-  )
-  
+# FILTER( # filter on attachment URL
+#     CONTAINS(STR(?url), "archive") 
+#   )
+
+  ?file zot:tags ?t_ingest, ?t_pdf .
+
+  ?t_ingest a zot:tag ; zot:tag "*ingest" .
+  ?t_pdf    a zot:tag ; zot:tag "*pdf" .
+
+
   OPTIONAL {
     ?parent zot:tags ?tag_1502_13.
     ?tag_1502_13 rdf:type zot:tag;
