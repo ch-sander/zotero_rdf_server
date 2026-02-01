@@ -101,7 +101,6 @@ def load_segmentation_model(*, config_path: str, segmenter: Optional[str]):
     seg_path = resolve_kraken_model_path(config_path=config_path, model_name=seg_name)
     return vgsl.TorchVGSLModel.load_model(seg_path)
 
-
 def _get_model_spec(kcfg: dict[str, Any], model_name: str) -> KrakenModelSpec:
     models = kcfg.get("models") or {}
     spec = models.get(model_name)
@@ -399,105 +398,6 @@ def page_to_text(
         binarize=binarize,
     )
 
-def iter_text_pages_deprecated(
-    url: str,
-    *,
-    doc_id: str,
-    iter_kwargs: Dict[str, Any],
-    page_to_text_kwargs: Dict[str, Any],
-    text_image_file_kwargs: Optional[Dict[str, Any]] = None,
-) -> Iterator[Tuple[int, str]]:
-    logger.debug(f"iter_text_pages received: {[iter_kwargs,page_to_text_kwargs,text_image_file_kwargs]}")
-    cfg = text_image_file_kwargs or {}
-
-    try:
-        from zotero_rdf_server.config import EXPORT_DIRECTORY
-        EXPORT_DIRECTORY = Path(EXPORT_DIRECTORY)
-    except Exception:
-        EXPORT_DIRECTORY = Path().resolve()
-
-    img_out: Optional[str] = cfg.get("img_out", "images")
-    txt_out: Optional[str] = cfg.get("txt_out", "texts")
-    img_ext: str = cfg.get("img_ext", "jpg")
-    txt_ext: str = cfg.get("txt_ext", "txt")
-
-    save_text: str = cfg.get("save_text", "skip") # "skip" | "overwrite" | "active"
-    save_image: str = cfg.get("save_image", "skip") # "skip" | "overwrite" | "active"
-    on_error: str = cfg.get("on_error", "log") # "raise" | "skip" | "empty" | "raise"
-
-    if save_text not in {"skip", "overwrite", "active"}:
-        raise ValueError(f"save_text must be 'active', 'skip' or 'overwrite', got {save_text!r}")
-    if save_image not in {"skip", "overwrite", "active"}:
-        raise ValueError(f"save_text must be 'active', 'skip' or 'overwrite', got {save_image!r}")
-    if on_error not in {"raise", "skip", "empty", "log"}:
-        raise ValueError(f"on_error must be 'log', 'skip' or 'empty', got {on_error!r}")
-
-    _doc_id = safe_doc_id(doc_id or url)
-
-    def _resolve_out(p: Optional[str]) -> Optional[Path]:
-        if not p:
-            return None
-        pp = Path(p)
-        if pp.is_absolute():
-            logger.error(f"Absolute paths are not allowed: {pp}")
-            return (EXPORT_DIRECTORY / _doc_id).resolve()
-        result_path = (EXPORT_DIRECTORY / pp / _doc_id).resolve()
-        logger.info(f"Export path set: {result_path}")
-        return result_path
-
-    img_dir = _resolve_out(img_out)
-    txt_dir = _resolve_out(txt_out)
-
-    def _save_pil(im, path: Path) -> None:
-        logger.debug(f"Stored file: {path}")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        im.save(path)
-
-    def _save_text(txt: str, path: Path) -> None:
-        logger.debug(f"Stored file: {path}")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(txt, encoding="utf-8")
-
-    def _maybe_save_image(page_no: int, im) -> None:
-        if img_dir is None or im is None or not hasattr(im, "save"):
-            return
-        path = img_dir / f"{page_no:04d}.{img_ext}"
-        if save_image != "overwrite" and path.exists():
-            return
-        _save_pil(im, path)
-
-    def _maybe_save_text(page_no: int, txt: str) -> None:
-        if txt_dir is None:
-            return
-        path = txt_dir / f"{page_no:04d}.{txt_ext}"
-        if save_text != "overwrite" and path.exists():
-            return
-        _save_text(txt, path)
-
-    for item in iter_pages(url, **iter_kwargs):
-        page_no = getattr(item, "sequence", None) or getattr(item, "index", None)
-        if page_no is None:
-            raise AttributeError("PageItem has neither .sequence nor .index")
-
-        if item.kind == "image" and save_image != "skip":
-            _maybe_save_image(page_no, item.data)
-
-        try:
-            txt = page_to_text(item, **page_to_text_kwargs)
-        except Exception as e:
-            if on_error == "log":
-                logger.error(f"iter_text_pages error: {e}")
-            if on_error == "skip":
-                raise
-            if on_error == "skip":
-                continue
-            txt = ""  # on_error == "empty"
-
-        if save_text != "skip":
-            _maybe_save_text(page_no, txt)
-
-        yield page_no, txt
-
 def iter_text_pages(
     url: str,
     *,
@@ -505,11 +405,26 @@ def iter_text_pages(
     iter_kwargs: Dict[str, Any],
     page_to_text_kwargs: Dict[str, Any],
     text_image_file_kwargs: Optional[Dict[str, Any]] = None,
+    transformer: bool = False
 ) -> Iterator[Tuple[int, str]]:
     logger.debug(
         f"iter_text_pages received: {[iter_kwargs, page_to_text_kwargs, text_image_file_kwargs]}"
     )
     cfg = text_image_file_kwargs or {}
+
+    if transformer:
+        try:
+            logger.info("### Using Tranformer from medieval_ocr_pipeline ###")
+            here = Path(__file__).resolve().parent
+            requirements = here / "medieval_ocr_pipeline" / "requirements.txt"
+            ensure_import("transformers", requirements=requirements)
+            ensure_import("torch", requirements=requirements)
+            from .medieval_ocr_pipeline.complete_ocr_pipeline import process_complete_image, setup_models  
+            MODELS = setup_models()
+            # src\zotero_rdf_server\plugins\fts\medieval_ocr_pipeline\complete_ocr_pipeline.py
+        except Exception as e:
+            logger.critical(f"Tranformer plugin import failed: {e}")
+            transformer = False
 
     try:
         from zotero_rdf_server.config import EXPORT_DIRECTORY
@@ -626,7 +541,7 @@ def iter_text_pages(
     
     cached_page_set = _cached_pages()
 
-    logger.info(f"Found {len(set(cached_page_set['text']))} text files and {len(set(cached_page_set['image']))} image files in {txt_dir}")
+    logger.info(f"Found {len(set(cached_page_set['text']))} text files and {len(set(cached_page_set['image']))} image files")
 
     # If text file found and not overwrite, use as result and skip download + OCR
     if (
@@ -654,7 +569,12 @@ def iter_text_pages(
                     with Image.open(img_path) as im:
                         pil = im.copy()
                     item = PageItem(page_no, "image", pil, source=f"cache-image:{img_path}")
-                    txt = page_to_text(item, **page_to_text_kwargs)  # OCR nur lokal
+                    if transformer:
+                        logger.debug("### Using Tranformer from medieval_ocr_pipeline ###")                        
+                        res = process_complete_image(item.data, verbose=False, cleanup_temp=True, models=MODELS)
+                        txt = "" if res is None else res[0]
+                    else:                        
+                        txt = page_to_text(item, **page_to_text_kwargs)  # OCR local
                 except Exception as e:
                     logger.error(f"Failed to load cached image for page {page_no} from {img_path}: {e}")
 
@@ -721,7 +641,12 @@ def iter_text_pages(
 
         # OCR / page_to_text
         try:
-            txt = page_to_text(item, **page_to_text_kwargs)
+            if transformer and item.kind == "image":
+                logger.debug("### Using Tranformer from medieval_ocr_pipeline ###")
+                res = process_complete_image(item.data, verbose=False, cleanup_temp=True, models=MODELS)
+                txt = "" if res is None else res[0]
+            else:
+                txt = page_to_text(item, **page_to_text_kwargs)
         except Exception as e:
             logger.error(f"iter_text_pages error on page {page_no}: {e}")
             if on_error == "raise":

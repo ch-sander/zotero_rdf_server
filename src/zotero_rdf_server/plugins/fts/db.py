@@ -11,6 +11,7 @@ from opensearchpy.helpers import streaming_bulk
 from functools import lru_cache
 from pathlib import Path
 from collections import Counter
+import logging
 
 logger=plugin_logger()
 
@@ -240,6 +241,9 @@ def ingest_streaming_bulk(
     now = datetime.now(timezone.utc).isoformat()
     run_id = run_id or uuid.uuid4().hex
 
+    logging.getLogger("opensearchpy").setLevel(logging.ERROR)
+    logging.getLogger("urllib3").setLevel(logging.ERROR)
+
     digest = {
         "run_id": run_id,
         "total": 0,
@@ -282,6 +286,8 @@ def ingest_streaming_bulk(
             logger.debug(f"ingest_streaming_bulk result: {result}")
 
             _id = result.get("_id", "")
+            digest["doc_id"] = _id
+            digest["bulk_kwargs"] = bulk_kwargs
             # doc_id, page = (_id.split(":", 1) + ["-1"])[:2] # TODO
             # page_no = int(page) if page.isdigit() else -1
             logger.debug(f"OS Ingesting {_id} with status {status}: {err if err else 'no errors'}")
@@ -300,7 +306,7 @@ def ingest_streaming_bulk(
             #     template_path="log_events.trig",
             #     event=event
             # )
-        return run_id # digest
+        return digest # run_id
     except Exception as e:
         logger.exception(f"ingest_streaming_bulk failed: {e}")
         return str(e)
@@ -362,12 +368,16 @@ def index_stream(
         )
 
     # IMPORTANT: index=None so per-action _index is respected
-    run = ingest_streaming_bulk(
-        client,
-        actions=actions,
-        index=None,
-        bulk_cfg=oscfg.get("bulk", {}),
-    )
+    try:
+        run = ingest_streaming_bulk(
+            client,
+            actions=actions,
+            index=None,
+            bulk_cfg=oscfg.get("bulk", {}),
+        )
+    except Exception as e:
+        logger.error(f"Ingest Error: {e}")
+        run = e
 
     for t in targets_list:
         try:

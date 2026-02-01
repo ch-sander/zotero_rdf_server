@@ -269,7 +269,9 @@ JsonBody = Union[JsonObj, List[JsonObj]]
 def ingest_route(
     input: Optional[JsonBody] = Body(default=None, examples=[None]),
     targets: str | list = Query(default=None, description="Index or alias"),
-    ocr: bool = Query(None, description="If true, run OCR pages ingest via pages_fn"), 
+    ocr: bool = Query(default=True, description="If true, run OCR pages ingest via pages_fn"),
+    transformer: bool = Query(None, description="If true, run transformer pipeline (doi:10.3390/electronics14153083)"),
+    ingest: bool = Query(default=True, description="If true, ingest into Open Search"),
     query: Optional[str] = Query(default=None, description="SPARQL SELECT query or path to file with query code (used when body is null)"),
     graph: str | None = Query(default=None, description="Named graph IRI containing the attachments or documents (optional)"),
     config_path: Optional[str] = Query(
@@ -339,8 +341,11 @@ def ingest_route(
                                 detail="With no input, you must provide 'query' parameter",
                             )
                         
-                        ocr_x = ocr if ocr is not None else cfg.get("ocr", False)
-                        
+                        ocr_x = ocr if ocr is not None else cfg.get("ocr", True)
+                        transformer_x = transformer if transformer is not None else cfg.get("transformer", False)
+                        ingest_x = ingest if ingest is not None else cfg.get("ingest", True)
+
+
                         iter_pages_kwargs = ocr_kwargs if ocr_kwargs is not None else dict(kraken_cfg.get("ocr_kwargs") or {})
                         page_to_text_kwargs = model_kwargs if model_kwargs is not None else dict(kraken_cfg.get("model_kwargs") or {})
                         text_image_file_kwargs = file_kwargs if file_kwargs is not None else dict(kraken_cfg.get("file_kwargs") or {})
@@ -368,9 +373,11 @@ def ingest_route(
                         del store
 
                         
-                        run_ids.append(ingest_pipeline(items=items,
+                        run_ids.extend(ingest_pipeline(items=items,
                                                 targets=targets_x, 
                                                 ocr=ocr_x,
+                                                transformer=transformer_x,
+                                                ingest=ingest_x,
                                                 iter_pages_kwargs=iter_pages_kwargs,
                                                 page_to_text_kwargs=page_to_text_kwargs, text_image_file_kwargs=text_image_file_kwargs,
                                                 config_path=config_path_x))
@@ -411,9 +418,11 @@ def ingest_route(
             del store
             ocr = True if ocr is True else False
 
-            run_ids.append(ingest_pipeline(items=items,
+            run_ids.extend(ingest_pipeline(items=items,
                                             targets=targets, 
                                             ocr=ocr,
+                                            transformer=transformer,
+                                            ingest=ingest,
                                             iter_pages_kwargs=ocr_kwargs,
                                             page_to_text_kwargs=model_kwargs,
                                             text_image_file_kwargs=file_kwargs,
@@ -443,17 +452,18 @@ def ingest_route(
         else:
             raise HTTPException(status_code=400, detail="Body must be a JSON object, a list of JSON objects, or null")
         ocr = True if ocr is True else False
-        run_ids.append(ingest_pipeline( items=items,
+        run_ids.extend(ingest_pipeline( items=items,
                                         targets=targets, 
                                         ocr=ocr,
+                                        transformer=transformer,
+                                        ingest=ingest,
                                         iter_pages_kwargs=ocr_kwargs,
                                         page_to_text_kwargs=model_kwargs,
                                         text_image_file_kwargs=file_kwargs,
                                         config_path=config_path))
     return {
         "status": "ok",
-        "run_ids": list(run_ids), # not tested, but copied to freeze it
-        "ocr_mode": ocr,
+        "run_ids": run_ids,
         "targets": targets,
         "runs": len(run_ids),
     }

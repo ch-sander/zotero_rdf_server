@@ -41,7 +41,7 @@ def ensure_import(module, attr=None, requirements=requirements):
         if requirements is None:
             raise
 
-        print("%s not found. Installing dependencies...", module)
+        plugin_logger().warning(f"{module} not found. Installing dependencies...")
         subprocess.check_call([
             sys.executable,
             "-m", "pip",
