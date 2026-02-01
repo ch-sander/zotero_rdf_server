@@ -14,4 +14,5 @@ explorer/index-dev.html
 *.log
 /app/opensearch-data
 *.mlmodel
-/src/zotero_rdf_server/plugins/fts/medieval-ocr-pipeline/utils
+/src/zotero_rdf_server/plugins/fts/medieval_ocr_pipeline/utils
+/src/temp_segmentation
