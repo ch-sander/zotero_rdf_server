@@ -74,6 +74,9 @@ open-search:
     hosts:
       - host: opensearch # see in docker-compose.yml
         port: 9200
+    retry_on_timeout: false
+    timeout: 5
+    max_retries: 2
   meta:
     owner: "zotero-rdf-server"
     environment: "dev"
@@ -118,13 +121,15 @@ open-search:
                   - "œ=>oe"
                   - "v=>u"
                   - "j=>i"
-                  - "ae=>e"
-                  - "e=>ae"
+                  - "ae=>e"                  
               ocr_dehyphenate_linebreak:
                 type: pattern_replace
                 pattern: "(?<=\\p{L})-\\s*\\n\\s*(?=\\p{L})"
                 replacement: ""
-
+              ocr_dehyphenate_linebreak_not:
+                type: pattern_replace
+                pattern: "(?<=\\p{L})¬\\s*\\n\\s*(?=\\p{L})"
+                replacement: ""
               ocr_newlines_to_space:
                 type: pattern_replace
                 pattern: "\\s*\\n\\s*"
@@ -137,7 +142,7 @@ open-search:
             analyzer:
               latin_ocr_index:
                 type: custom
-                char_filter: ["ocr_common_map", "ocr_dehyphenate_linebreak", "ocr_newlines_to_space"]
+                char_filter: ["ocr_common_map", "ocr_dehyphenate_linebreak", "ocr_newlines_to_space", "ocr_dehyphenate_linebreak_not"]
                 tokenizer: standard
                 filter: ["lowercase", "asciifolding"]
               latin_ocr_search:
