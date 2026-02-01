@@ -32,7 +32,7 @@ import json
 import argparse
 import logging
 import shutil
-from typing import List, Dict, Tuple, Optional, Any
+from typing import List, Dict, Tuple, Optional, Any, Union
 from pathlib import Path
 
 import torch
@@ -105,9 +105,61 @@ def setup_models(device: str = DEVICE_AUTO) -> Tuple[Any, Any, Any, Any, str]:
         raise RuntimeError(f"Model initialization failed: {e}")
 
 
+def _normalize_image_input(image_input: Union[str, Image.Image]) -> Tuple[Image.Image, Optional[str], str]:
+    """
+    Returns: (PIL image, image_path_or_None, base_name)
+    """
+    if isinstance(image_input, Image.Image):
+        img = image_input.convert("RGB")
+        return img, None, "image"
+    else:
+        image_path = image_input
+        if not os.path.exists(image_path):
+            raise FileNotFoundError(f"Input image not found: {image_path}")
+        img = Image.open(image_path).convert("RGB")
+        base_name = os.path.splitext(os.path.basename(image_path))[0]
+        return img, image_path, base_name
+
+def _line_to_dict(line) -> Dict:
+    """
+    Kraken lines are container objects (e.g. BaselineLine/BBoxLine).
+    """
+    d = {}    
+    if hasattr(line, "boundary"):
+        d["boundary"] = [list(map(int, pt)) for pt in line.boundary] if line.boundary else None
+    else:
+        d["boundary"] = None
+
+    # baseline polyline (list of [x,y] points)
+    if hasattr(line, "baseline"):
+        d["baseline"] = [list(map(int, pt)) for pt in line.baseline] if line.baseline else None
+    else:
+        d["baseline"] = None
+
+    # bbox
+    if hasattr(line, "bbox") and line.bbox is not None:        
+        d["bbox"] = tuple(map(int, line.bbox))
+    else:
+        d["bbox"] = None
+
+    return d
+
+
+def load_default_blla_model():
+    from kraken.lib import vgsl
+    from importlib import resources
+    default_seg_model = resources.files("kraken").joinpath("blla.mlmodel")
+    return vgsl.TorchVGSLModel.load_model(default_seg_model)
+
+SEG_MODEL = load_default_blla_model()
+
 def segment_image_with_kraken(
-    image_path: str, 
-    output_dir: str = "temp_segmentation"
+    image_input: Union[str, Image.Image], 
+    output_dir: str = "temp_segmentation",
+    base_name: Optional[str] = None,
+    text_direction: str = "horizontal-lr",
+    seg_model=SEG_MODEL,             # optional: trained segmentation model / path loaded elsewhere
+    device: str = "cpu",
 ) -> Tuple[Optional[Dict], List[Dict]]:
     """
     Segment a manuscript image into individual text lines using Kraken.
@@ -133,88 +185,95 @@ def segment_image_with_kraken(
         - 'line_number': Sequential line number (0-based)
         - 'coords': Original bounding box coordinates
     """
-    logger.info(f"Segmenting image: {image_path}")
-    
-    # Validate input image
-    if not os.path.exists(image_path):
-        logger.error(f"Image file not found: {image_path}")
-        return None, []
-    
-    # Create output directory
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Generate segmentation file path
-    base_name = os.path.splitext(os.path.basename(image_path))[0]
-    segmentation_path = os.path.join(output_dir, f"{base_name}_segmentation.json")
-    
-    # Run Kraken segmentation if not already done
-    if not os.path.exists(segmentation_path):
-        logger.info("Running Kraken line segmentation...")
-        try:
-            # Execute Kraken with baseline detection
-            subprocess.run([
-                "kraken", "-i", image_path, segmentation_path, "segment", "-bl"
-            ], check=True, capture_output=True, text=True)
-            logger.info("✓ Kraken segmentation completed")
-            
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Kraken segmentation failed: {e}")
-            return None, []
-        except FileNotFoundError:
-            logger.error("Kraken not found. Please install: pip install kraken")
-            return None, []
+    logger.info("Segmenting image with Kraken (python API)")
+
+    # Normalize input
+    if isinstance(image_input, Image.Image):
+        image = image_input.convert("RGB")
+        if base_name is None:
+            base_name = "image"
     else:
-        logger.info("Using existing segmentation file")
-    
-    # Load segmentation results
-    try:
-        with open(segmentation_path, "r", encoding="utf-8") as f:
-            segmentation_data = json.load(f)
+        image_path = image_input
+        if not os.path.exists(image_path):
+            logger.error(f"Image file not found: {image_path}")
+            return None, []
+        image = Image.open(image_path).convert("RGB")
+        if base_name is None:
+            base_name = os.path.splitext(os.path.basename(image_path))[0]
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    try:        
+        from kraken import blla
+
+        seg = blla.segment(
+            image,
+            text_direction=text_direction,
+            model=seg_model,
+            device=device,
+        )
+
+        # Build a JSON-ish dict similar to your previous structure
+        seg_lines = []
+        for line in getattr(seg, "lines", []) or []:
+            seg_lines.append(_line_to_dict(line))
+
+        segmentation_data = {
+            "text_direction": getattr(seg, "text_direction", text_direction),
+            "type": getattr(seg, "type", "baseline"),
+            "lines": seg_lines,
+        }
+
+        # (optional) persist segmentation for debugging
+        segmentation_path = os.path.join(output_dir, f"{base_name}_segmentation.json")
+        with open(segmentation_path, "w", encoding="utf-8") as f:
+            json.dump(segmentation_data, f, ensure_ascii=False)
+
     except Exception as e:
-        logger.error(f"Failed to load segmentation data: {e}")
+        logger.error(f"Kraken segmentation failed: {e}")
         return None, []
-    
-    # Extract individual line images
+
+    # Extract cropped line images using polygon boundary
     line_images = []
     try:
-        image = Image.open(image_path).convert("RGB")
         logger.info(f"Processing {len(segmentation_data.get('lines', []))} detected lines")
-        
+
         for i, line in enumerate(segmentation_data.get("lines", [])):
-            # Extract bounding box coordinates
-            coords = line["boundary"]
-            x_coords = [pt[0] for pt in coords]
-            y_coords = [pt[1] for pt in coords]
-            
-            # Calculate crop boundaries
-            left = int(min(x_coords))
-            right = int(max(x_coords))
-            top = int(min(y_coords))
-            bottom = int(max(y_coords))
-            
-            # Crop line from original image
+            boundary = line.get("boundary")
+            bbox = line.get("bbox")
+
+            if boundary:
+                x_coords = [pt[0] for pt in boundary]
+                y_coords = [pt[1] for pt in boundary]
+                left = int(min(x_coords))
+                right = int(max(x_coords))
+                top = int(min(y_coords))
+                bottom = int(max(y_coords))
+            elif bbox:
+                left, top, right, bottom = map(int, bbox)
+            else:
+                # nothing to crop
+                continue
+
             cropped_line = image.crop((left, top, right, bottom))
-            
-            # Save cropped line image
+
             line_filename = f"{base_name}_{i:02d}.png"
             line_path = os.path.join(output_dir, line_filename)
             cropped_line.save(line_path)
-            
-            # Store line information
+
             line_info = {
-                'image': cropped_line,
-                'path': line_path,
-                'line_number': i,
-                'coords': coords,
-                'bbox': (left, top, right, bottom)
+                "image": cropped_line,
+                "path": line_path,
+                "line_number": i,
+                "bbox": (left, top, right, bottom),
+                "boundary": boundary,
+                "baseline": line.get("baseline"),
             }
             line_images.append(line_info)
-            
-            logger.debug(f"Extracted line {i}: {line_filename}")
-        
+
         logger.info(f"✓ Successfully extracted {len(line_images)} lines")
         return segmentation_data, line_images
-        
+
     except Exception as e:
         logger.error(f"Failed to extract line images: {e}")
         return None, []
@@ -335,53 +394,67 @@ def correct_ocr_text(
 
 
 def process_complete_image(
-    image_path: str, 
+    image_input: Union[str, Image.Image],
     output_file: Optional[str] = None, 
     cleanup_temp: bool = True,
-    verbose: bool = True
+    verbose: bool = True, 
+    models=None
 ) -> Optional[Tuple[str, List[Dict]]]:
     """
-    Process a complete manuscript image through the entire OCR correction pipeline.
-    
-    This is the main pipeline function that orchestrates:
+    Process a manuscript page image through the full OCR correction pipeline.
+
+    Orchestrates:
     1. Model initialization
     2. Line segmentation with Kraken
-    3. OCR processing with TrOCR
+    3. OCR with TrOCR
     4. Error correction with ByT5
-    5. Results compilation and output
-    
+    5. Results compilation/output
+
     Args:
-        image_path (str): Path to input manuscript image
-        output_file (Optional[str]): Path for saving results
-        cleanup_temp (bool): Whether to remove temporary files
-        verbose (bool): Whether to print detailed progress
-        
+        image_input (Union[str, PIL.Image.Image]):
+            Either a filesystem path to an image, or a preloaded PIL Image object.
+        output_file (Optional[str]):
+            Path for saving results (optional).
+        cleanup_temp (bool):
+            Whether to remove temporary segmentation/line-image files.
+        verbose (bool):
+            Whether to print detailed progress.
+
     Returns:
-        Optional[Tuple[str, List[Dict]]]: 
-            - Final corrected text
-            - List of per-line processing results
-            Returns None if processing fails
-            
+        Optional[Tuple[str, List[Dict]]]:
+            (final corrected text, per-line results). Returns None on failure.
+
+    Notes:
+        If a PIL image is passed, there may be no source path available; any logging/output
+        that relies on the original filename will fall back to a generated base name.
+
     Each result dictionary contains:
         - 'line_number': Line position (1-based)
         - 'ocr_text': Raw OCR output
         - 'corrected_text': Error-corrected text
-        - 'image_path': Path to line image
-        - 'bbox': Bounding box coordinates
-    """
-    logger.info(f"Starting complete OCR pipeline for: {image_path}")
+        - 'image_path': Path to the cropped line image (if written to disk)
+        - 'bbox': Bounding box coordinates (axis-aligned)
+        - 'boundary': Polygon of the line region (list of [x, y] points)
+        - 'baseline': Baseline polyline of the text (list of [x, y] points)
+    """   
     
     # Validate input
-    if not os.path.exists(image_path):
-        logger.error(f"Input image not found: {image_path}")
-        return None
+    # if not os.path.exists(image_path):
+    #     logger.error(f"Input image not found: {image_path}")
+    #     return None
     
     try:
+        image, image_path, base_name = _normalize_image_input(image_input)
+        logger.info(f"Starting complete OCR pipeline for: {image_path}")
         # Initialize models
-        processor, ocr_model, tokenizer, correction_model, device = setup_models()
+
+        if models is None:
+            processor, ocr_model, tokenizer, correction_model, device = setup_models()
+        else:
+            processor, ocr_model, tokenizer, correction_model, device = models
         
         # Perform line segmentation
-        segmentation_data, line_images = segment_image_with_kraken(image_path)
+        segmentation_data, line_images = segment_image_with_kraken(image, base_name=base_name)
         
         if not line_images:
             logger.warning("No text lines detected in image")
@@ -392,26 +465,26 @@ def process_complete_image(
         final_text_lines = []
         
         if verbose:
-            print(f"\nProcessing {len(line_images)} lines...")
-            print("=" * 60)
+            logger.info(f"Processing {len(line_images)} lines...")
+            logger.info("=" * 60)
         
         for line_info in line_images:
             line_num = line_info['line_number']
             line_image = line_info['image']
             
             if verbose:
-                print(f"\nProcessing line {line_num + 1}/{len(line_images)}")
+                logger.info(f"Processing line {line_num + 1}/{len(line_images)}")
             
             # Perform initial OCR
             ocr_text = perform_ocr_on_line(line_image, processor, ocr_model, device)
             if verbose:
-                print(f"OCR Output: {ocr_text}")
+                logger.info(f"OCR Output: {ocr_text}")
             
             # Apply error correction
             corrected_text = correct_ocr_text(ocr_text, tokenizer, correction_model, device)
             if verbose:
-                print(f"Corrected:  {corrected_text}")
-                print("-" * 40)
+                logger.info(f"Corrected:  {corrected_text}")
+                logger.info("-" * 40)
             
             # Store processing results
             result = {
@@ -419,7 +492,9 @@ def process_complete_image(
                 'ocr_text': ocr_text,
                 'corrected_text': corrected_text,
                 'image_path': line_info['path'],
-                'bbox': line_info.get('bbox', None)
+                'bbox': line_info.get('bbox', None),
+                'boundary': line_info.get('boundary', None),
+                'baseline': line_info.get('baseline', None),
             }
             all_results.append(result)
             final_text_lines.append(corrected_text)
@@ -428,15 +503,11 @@ def process_complete_image(
         final_text = '\n'.join(final_text_lines)
         
         if verbose:
-            print("\n" + "=" * 60)
-            print("FINAL CORRECTED TEXT:")
-            print("=" * 60)
-            print(final_text)
-            print("=" * 60)
+            logger.info("FINAL CORRECTED TEXT:\n%s", final_text)
         
         # Save results if output file specified
         if output_file:
-            save_results(image_path, final_text, all_results, output_file)
+            save_results(image_path or base_name, final_text, all_results, output_file)
         
         # Cleanup temporary files
         if cleanup_temp:
@@ -592,13 +663,13 @@ Examples:
     
     if result is not None:
         final_text, results = result
-        print(f"\n✓ Processing completed successfully!")
-        print(f"  - Processed {len(results)} lines")
-        print(f"  - Total characters: {len(final_text)}")
-        print(f"  - Average line length: {len(final_text) / len(results):.1f} chars")
+        logger.info(f"✓ Processing completed successfully!")
+        logger.info(f"  - Processed {len(results)} lines")
+        logger.info(f"  - Total characters: {len(final_text)}")
+        logger.info(f"  - Average line length: {len(final_text) / len(results):.1f} chars")
         return 0
     else:
-        print("✗ Processing failed")
+        logger.info("✗ Processing failed")
         return 1
 
 
