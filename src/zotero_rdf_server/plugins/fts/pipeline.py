@@ -31,17 +31,18 @@ def ingest_pipeline(
 ):
     from .db import index_stream
     pages_fn = None
+    items = list(items or [])
+    targets = targets or []
     iter_pages_kwargs = dict(iter_pages_kwargs or {})
     page_to_text_kwargs = dict(page_to_text_kwargs or {})
     logger.debug(f"Ingest Pipeline started with {len(items)} items...")
     page_to_text_kwargs['config_path'] = config_path if (not page_to_text_kwargs.get('config_path') and config_path) else page_to_text_kwargs.get('config_path')
+
     if not ocr and not ingest:
         return([{"error":"nothing to do here: no ocr, no ingest!"}])
     
     if ocr:
-        from .ocr import iter_text_pages, PdfTextPolicy
-        
-
+        from .ocr import iter_text_pages, PdfTextPolicy       
 
         ptp = iter_pages_kwargs.get("pdf_text_policy")
         if isinstance(ptp, dict):
@@ -60,17 +61,67 @@ def ingest_pipeline(
                     stats["pages_emitted"] += 1
                     yield page
             return pages_fn
-    
+        
+        if not ingest:
+            results: List[Dict[str, Any]] = []
+            for obj in items:
+                payload = dict(obj)
+                doc_id = payload.pop("_id", None)
+                input_ = payload.pop("_input", None) or payload.pop("_url", None)
+                meta = _meta_flat_strings(payload)
+
+                if not input_:
+                    results.append({
+                        "doc_id": doc_id,
+                        "ocr": True,
+                        "ingest": False,
+                        "error": "ocr=true requires '_input' in each item",
+                    })
+                    continue
+
+                pages = []
+                try:
+
+                    for page_no, text in make_pages_fn(doc_id or "", stats)(input_):
+                        pages.append({
+                            "page": int(page_no),
+                            "text": text,
+                        })
+                except Exception as e:
+                    results.append({
+                        "doc_id": doc_id,
+                        "input": input_,
+                        "meta": meta,
+                        "ocr": True,
+                        "ingest": False,
+                        "error": str(e),
+                    })
+                    continue
+
+                results.append({
+                    "doc_id": doc_id,
+                    "input": input_,
+                    "meta": meta,
+                    "ocr": True,
+                    "transformer": bool(transformer),
+                    "ocr_pages": len(pages),
+                    "ingest": False,
+                    "targets": targets,
+                    "pages": pages,
+                })
+
+            return results  
+          
+    runs: List[str] = []
     if ingest:
         from datetime import datetime, timezone
-        now = datetime.now(timezone.utc).isoformat()
-        runs: List[str] = []
+        now = datetime.now(timezone.utc).isoformat()        
 
         for obj in items:
             payload = dict(obj)
             logger.debug(f"Ingest Pipeline payload: {payload}")
             doc_id = payload.pop("_id", None)
-            url = payload.pop("_url", None)
+            input = payload.pop("_input", None)
             # iri = payload.pop("_iri", None)
             text = payload.pop("_text", "")
             sequence = payload.pop("_idx", 1)
@@ -79,12 +130,12 @@ def ingest_pipeline(
 
             logger.debug(f"Ingest Pipeline index_stream with OCR: {ocr}")
             if ocr:
-                if not url:
+                if not input:
                     logger.error("ocr=true requires '_url' in each item")
                     continue
                 
                 digest = index_stream(
-                        url=url,
+                        input=input,
                         doc_id=doc_id,
                         url_to_text_pages_fn=make_pages_fn(doc_id, stats),
                         targets=targets,
@@ -98,8 +149,8 @@ def ingest_pipeline(
                 runs.append(digest)
             else:
                 d: Dict[str, Any] = {"ingest_ts": now, "meta": meta}
-                if url is not None:
-                    d["url"] = url
+                if input is not None:
+                    d["input"] = input
                 if doc_id is not None:
                     d["doc_id"] = doc_id
                 if sequence is not None:
@@ -121,3 +172,4 @@ def ingest_pipeline(
 
         logger.debug(f"Ingest Pipeline finsihed with {len(runs)} runs!")
         return runs
+    return runs

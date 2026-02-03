@@ -7,7 +7,7 @@ import requests
 from PIL import Image
 from functools import lru_cache
 from pathlib import Path
-from .helpers import ensure_import, _hash_file,  resolve_config_path, _download, plugin_logger, detect_url_kind
+from .helpers import ensure_import, _hash_file,  resolve_config_path, _download, plugin_logger, detect_url_kind, detect_file_kind, resolve_source
 
 from .helpers import plugin_logger, safe_doc_id
 logger=plugin_logger()
@@ -238,7 +238,7 @@ def _get_pdf_libs():
     return PdfReader, pdfium
 
 def iter_pages(
-    url: str,
+    input: str,
     *,
     iiif_max_width: Optional[int] = 2000,
     iiif_format: str = "jpg",
@@ -248,17 +248,25 @@ def iter_pages(
     file_formats: list | None = None
 ) -> Iterator[PageItem]:
 
-    kind = detect_url_kind(url, timeout=timeout)
+    src_kind, src_path = resolve_source(input)
+
+    if src_kind == "file":
+        kind = detect_file_kind(src_path)
+    else:
+        kind = detect_url_kind(input, timeout=timeout)
 
     if file_formats and not kind in file_formats:
-        logger.warning(f"File {url} skipped as not in {file_formats}")
+        logger.warning(f"File {input} skipped as not in {file_formats}")
         return
 
     if kind in ("json", "iiif"):
-        manifest = requests.get(url, timeout=timeout).json()
+        if src_kind == "file":
+            manifest = json.loads(src_path.read_text(encoding="utf-8"))
+        else:
+            manifest = requests.get(input, timeout=timeout).json()
         img_urls = iiif_manifest_to_image_urls(manifest, max_width=iiif_max_width, fmt=iiif_format)
         if not img_urls:
-            logger.warning(f"IIIF manifest {url} has no image canvases")
+            logger.warning(f"IIIF manifest {input} has no image canvases")
             return
         for i, img_url in enumerate(img_urls, start=1):
             logger.debug(f"iter_pages yielding page={i}")
@@ -266,7 +274,10 @@ def iter_pages(
         return
 
     if kind == "pdf":
-        pdf_path = stream_download_to_tempfile(url, suffix=".pdf")
+        if src_kind == "file":
+            pdf_path = str(src_path)
+        else:
+            pdf_path = stream_download_to_tempfile(input, suffix=".pdf")
         try:
             # from pypdf import PdfReader
             # import pypdfium2 as pdfium
@@ -278,14 +289,14 @@ def iter_pages(
             for i, page in enumerate(reader.pages, start=1):
                 txt = page.extract_text() or ""
                 if is_usable_pdf_text(txt, pdf_text_policy):
-                    logger.info(f"Using PDF text {url}")
-                    yield PageItem(i, "text", txt, source=f"pdf-text:{url}#page={i}")
+                    logger.info(f"Using PDF text {input}")
+                    yield PageItem(i, "text", txt, source=f"pdf-text:{input}#page={i}")
                 else:
                     pil = doc[i-1].render(scale=pdf_dpi/72).to_pil()
                     logger.debug(f"iter_pages yielding page={i}")
-                    yield PageItem(i, "image", pil, source=f"pdf-image:{url}#page={i}")
+                    yield PageItem(i, "image", pil, source=f"pdf-image:{input}#page={i}")
         except Exception as e:
-            logger.error(f"Error reading PDF {url}: {e}")
+            logger.error(f"Error reading PDF {input}: {e}")
 
         finally:
             try:
@@ -296,15 +307,18 @@ def iter_pages(
     
     if kind in ("text", "html", "xml"): # TODO XML parsing
         try:
-            r = requests.get(url, timeout=timeout)
-            r.raise_for_status()
-            if not r.encoding:
-                r.encoding = "utf-8"
-            raw = r.text
+            if src_kind == "file":
+                raw = src_path.read_text(encoding="utf-8")
+            else:
+                r = requests.get(input, timeout=timeout)
+                r.raise_for_status()
+                if not r.encoding:
+                    r.encoding = "utf-8"
+                raw = r.text
             logger.debug(f"iter_pages yielding page={1}")
-            yield PageItem(1, "text", raw, source=f"{kind}:{url}")
+            yield PageItem(1, "text", raw, source=f"{kind}:{input}")
         except Exception as e:
-            logger.error(f"Reading {kind.upper()} {url}: {e}")
+            logger.error(f"Reading {kind.upper()} {input}: {e}")
         return
     raise ValueError("Unknown URL type.")
 
@@ -399,7 +413,7 @@ def page_to_text(
     )
 
 def iter_text_pages(
-    url: str,
+    input: str,
     *,
     doc_id: str = None,
     iter_kwargs: Dict[str, Any],
@@ -449,7 +463,7 @@ def iter_text_pages(
     if on_error not in {"raise", "skip", "empty", "log"}:
         raise ValueError(f"on_error must be 'raise', 'skip', 'empty' or 'log', got {on_error!r}")
 
-    _doc_id = safe_doc_id(doc_id or url)
+    _doc_id = safe_doc_id(doc_id or input)
 
     def _resolve_out(p: Optional[str]) -> Optional[Path]:
         if not p:
@@ -588,7 +602,7 @@ def iter_text_pages(
                 yield page_no, txt
             return
     
-    for item in iter_pages(url, **iter_kwargs):
+    for item in iter_pages(input=input, **iter_kwargs):
         page_no = getattr(item, "sequence", None) or getattr(item, "index", None)
         if page_no is None:
             raise AttributeError("PageItem has neither .sequence nor .index")

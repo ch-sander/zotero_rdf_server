@@ -10,6 +10,42 @@ from .logging_config import logger
 # from .config import *
 import subprocess, importlib, sys
 
+CT_TO_EXT = {
+    "application/ld+json": "jsonld",
+    "application/json": "json",
+    "application/n-triples": "nt",
+    "application/n-quads": "nq",
+    "text/turtle": "ttl",
+    "application/rdf+xml": "rdf",
+    "application/xml": "rdf",
+}
+URL_SCHEMES = {"http", "https"}
+
+def is_url(s: str) -> bool:
+    try:
+        u = urlparse(s)
+        return u.scheme in URL_SCHEMES and bool(u.netloc)
+    except Exception:
+        return False
+
+def guess_ext_from_headers(headers: dict, fallback_url: str) -> str:
+    cd = headers.get("Content-Disposition") or headers.get("content-disposition")
+    if cd:
+        m = re.search(r'filename\*?=(?:UTF-8\'\')?"?([^";]+)"?', cd)
+        if m:
+            name = m.group(1)
+            ext = Path(name).suffix.lstrip(".").lower()
+            if ext:
+                return ext
+
+    ct = headers.get("Content-Type") or headers.get("content-type") or ""
+    ct = ct.split(";")[0].strip().lower()
+    if ct in CT_TO_EXT:
+        return CT_TO_EXT[ct]
+
+    ext = Path(urlparse(fallback_url).path).suffix.lstrip(".").lower()
+    return ext
+
 def iri_to_filename(iri: str) -> str:
     parsed = urlparse(iri)
     parts = [parsed.netloc] + parsed.path.strip("/").split("/")

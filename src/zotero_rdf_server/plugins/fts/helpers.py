@@ -2,7 +2,7 @@ from __future__ import annotations
 import json
 import re
 from typing import Literal, Optional
-
+from urllib.parse import urlparse
 import requests
 import subprocess, importlib, sys, os
 from typing import Optional
@@ -116,26 +116,45 @@ def _download(url: str, dest: Path) -> None:
 
     raise RuntimeError(f"Download failed for all variants of {url!r}") from last_exc
 
-
-
-
 Kind = Literal["pdf", "iiif", "xml", "html", "text", "json"]
 
+def detect_file_kind(path: Path) -> Optional[Kind]:
+    ext = path.suffix.lower()
+    return {
+        ".json": "json",
+        ".pdf": "pdf",
+        ".txt": "text",
+        ".html": "html",
+        ".htm": "html",
+        ".xml": "xml",
+    }.get(ext, None)
+
+def is_url(s: str) -> bool:
+    try:
+        u = urlparse(s)
+        return u.scheme in ("http", "https")
+    except Exception:
+        return False
+    
+def resolve_source(src: str) -> tuple[str, Path | None]:
+    if is_url(src):
+        return "url", None
+    p = Path(src)
+    if p.exists():
+        return "file", p.resolve()
+    raise FileNotFoundError(f"Source not found: {src}")
 
 def _norm_ctype(ctype: str) -> str:
     return (ctype or "").split(";")[0].strip().lower()
 
-
 def _looks_like_pdf(prefix: bytes) -> bool:
     return prefix.startswith(b"%PDF-")
-
 
 def _strip_bom_and_ws(b: bytes) -> bytes:
     # UTF-8 BOM + leading whitespace/newlines
     if b.startswith(b"\xef\xbb\xbf"):
         b = b[3:]
     return b.lstrip()
-
 
 def _sniff_markup(prefix: bytes) -> Optional[Kind]:
     p = _strip_bom_and_ws(prefix)
@@ -152,7 +171,6 @@ def _sniff_markup(prefix: bytes) -> Optional[Kind]:
             return "html"
         return "xml"
     return None
-
 
 def _sniff_text_vs_json(prefix: bytes) -> Optional[Kind]:
     p = _strip_bom_and_ws(prefix)

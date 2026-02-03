@@ -119,7 +119,7 @@ def refresh_store(force_reload:bool = False):
                             logger.error(f"Error loading RDF from API for {lib.library_id}: {e}")
                     elif lib.load_mode == "manual_import":
                         try:
-                            import_rdf_from_disk(lib, store)
+                            import_rdf(lib, store)
                         except Exception as e:
                             logger.error(f"Error loading from file import for {lib.name}: {e}")
                     elif lib.load_mode == "json":

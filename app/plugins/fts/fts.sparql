@@ -6,7 +6,7 @@ SELECT ?file
        (SAMPLE(?date) AS ?date)
        (SAMPLE(?parent) AS ?parent)
        (SAMPLE(?parent_label) AS ?parent_label)
-       (SAMPLE(?url) AS ?_url) # _url variable is required
+       (SAMPLE(?url) AS ?_input) # _input variable is required
        (GROUP_CONCAT(DISTINCT ?text_1724_9; SEPARATOR = "; ") AS ?parent_creators)
        (SAMPLE(?library) AS ?library)
        (SAMPLE(?library_label) AS ?library_label)

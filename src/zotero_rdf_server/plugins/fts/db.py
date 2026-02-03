@@ -173,7 +173,7 @@ def apply_ingest_tuning(client: OpenSearch, *, index: str, refresh_interval: str
 def page_docs(
     *,
     targets: Iterable[str],
-    url: str,
+    input: str,
     doc_id: str | None,
     pages: Iterator[Tuple[int, str]],
     meta: dict
@@ -186,7 +186,7 @@ def page_docs(
                 "_op_type": "index",
                 "_index": index_name,
                 "_source":  {
-                    "url": url,
+                    "input": input,
                     "doc_id": doc_id,
                     "page": sequence,
                     "text": text,
@@ -318,7 +318,7 @@ def index_stream(
     *,
     config_path: str | None = None,
     # bisher:
-    url: str | None = None,
+    input: str | None = None,
     doc_id: str | None = None,
     url_to_text_pages_fn: PagesFn | None = None,
     targets: str | Iterable[str],
@@ -352,16 +352,16 @@ def index_stream(
         )
     else:
         # Pages mode
-        if url is None:
-            raise ValueError("url is required when doc is None")
+        if input is None:
+            raise ValueError("input is required when doc is None")
         if url_to_text_pages_fn is None:
             raise ValueError("url_to_text_pages_fn is required when doc is None")
 
-        pages_iter = url_to_text_pages_fn(url, **(ocr_kwargs or {}))
+        pages_iter = url_to_text_pages_fn(input, **(ocr_kwargs or {}))
 
         actions = page_docs(
             targets=targets_list,
-            url=url,
+            input=input,
             doc_id=doc_id,
             pages=pages_iter,
             meta=meta or {},

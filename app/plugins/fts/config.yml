@@ -154,7 +154,7 @@ open-search:
         mappings:
           dynamic: false
           properties:
-            url: { type: keyword }
+            input: { type: keyword }
             doc_id: { type: keyword }
             page: { type: integer }
             ingest_ts: { type: date }

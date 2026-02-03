@@ -1,18 +1,114 @@
 from uuid import uuid5, NAMESPACE_URL, uuid4
-import json, re
+import json, re, requests, tempfile
 from datetime import datetime
 from dateutil import parser
 from pathlib import Path
+from requests.exceptions import RequestException
+from typing import Iterable, Optional
 
 from .store import Store, Quad, NamedNode, Literal, RdfFormat, BlankNode
 from .logging_config import logger
 from .config import *
 from .models import ZoteroLibrary
 from .utils import *
+from dataclasses import dataclass
 
 DEFAULT_ENTITIES = ["place","publisher","series"]
 
-def import_rdf_from_disk(lib: ZoteroLibrary, store: Store):
+@dataclass
+class SourceFile:
+    path: Path
+    name: str
+    cleanup: Optional[callable] = None
+
+def _iter_sources(lib) -> Iterable[SourceFile]:
+
+    if lib.load_from and is_url(str(lib.load_from)):
+        url = str(lib.load_from)
+        logger.info(f"Downloading RDF source from URL: {url}")
+
+        tmpdir = tempfile.TemporaryDirectory(prefix="rdf_import_")
+        tmpdir_path = Path(tmpdir.name)
+
+        try:
+            # stream
+            resp = requests.get(url, stream=True, timeout=(5, 60), allow_redirects=True)
+            resp.raise_for_status()
+        except RequestException as e:
+            logger.warning(f"Failed to download {url}: {e}")
+            tmpdir.cleanup()
+            return
+
+        ext = guess_ext_from_headers(resp.headers, url)
+        if not ext:
+            ext = "ttl"
+
+        filename = f"downloaded.{ext}"
+        target = tmpdir_path / filename
+
+        try:
+            with open(target, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        f.write(chunk)
+        except Exception as e:
+            logger.warning(f"Failed to write downloaded content to disk ({target}): {e}")
+            tmpdir.cleanup()
+            return
+
+        yield SourceFile(path=target, name=target.name, cleanup=tmpdir.cleanup)
+        return
+
+    # Default: local
+    subdir = Path(lib.load_from) if lib.load_from else Path(IMPORT_DIRECTORY) / lib.name
+    subdir = subdir.resolve()
+    if not subdir.is_dir():
+        logger.warning(f"Directory not found for manual import: {subdir}")
+        return
+
+    for filepath in subdir.iterdir():
+        if filepath.is_file():
+            yield SourceFile(path=filepath, name=filepath.name, cleanup=None)
+    
+def import_rdf(lib: ZoteroLibrary, store: Store):
+    logger.info(f"Importing RDF for '{lib.name}' into {lib.base_url}")
+
+    for src in _iter_sources(lib):
+        try:
+            logger.info(f"Found: {src.name}")
+            ext = src.path.suffix.lstrip(".").lower()
+
+            if ext == "json":  # Zotero Export JSON
+                logger.warning(
+                    f"{src.name} will be parsed as Zotero Export JSON. "
+                    f"For JSON-LD, use .jsonld extension instead!"
+                )
+                build_graph_for_library(lib, store, json_path=src.path)
+                continue
+
+            fmt = RdfFormat.from_extension(ext)
+            if fmt is None:
+                logger.info(f"Skipping unsupported file: {src.name}")
+                continue
+
+            before = len(store)
+            store.bulk_load(
+                path=src.path,
+                format=fmt,
+                base_iri=f"{lib.base_url}/items/",
+                to_graph=NamedNode(lib.base_url),
+            )
+            after = len(store)
+            logger.info(f"Imported {after - before} triples from {src.name}")
+
+        finally:
+            if src.cleanup:
+                try:
+                    src.cleanup()
+                except Exception:
+                    pass
+
+def import_rdf_from_disk(lib: ZoteroLibrary, store: Store): # TODO deprecate
     subdir = Path(lib.load_from) if lib.load_from else Path(IMPORT_DIRECTORY) / lib.name
     subdir = subdir.resolve()
     if not subdir.is_dir():
@@ -44,8 +140,6 @@ def import_rdf_from_disk(lib: ZoteroLibrary, store: Store):
         )
         after = len(store)
         logger.info(f"Imported {after - before} triples from {filepath.name}")
-
-
 
 def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, ns_prefix: str, base_uri: str, map: dict, knowledge_base_graph: str = None, language: str = None):
     GRAPH_URI = safeNamedNode(base_uri)

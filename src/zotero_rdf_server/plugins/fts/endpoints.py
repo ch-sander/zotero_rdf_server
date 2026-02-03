@@ -24,7 +24,7 @@ class OcrPage(BaseModel):
 
 
 class OcrResponse(BaseModel):
-    url: str = Field(..., description="Input URL (PDF or IIIF)")
+    input: str = Field(..., description="Input URL/path (PDF or IIIF)")
     domain: Optional[str] = Field(None, description="Effective domain override (if provided)")
     model_name: Optional[str] = Field(None, description="Effective recognition model override (if provided)")
     segmenter: Optional[str] = Field(None, description="Effective segmenter override (if provided)")
@@ -59,7 +59,7 @@ class OcrResponse(BaseModel):
     }
 )
 def ocr_url(
-    url: str = Query(..., description="PDF or IIIF URL"),
+    input: str = Query(..., description="PDF or IIIF URL or file path"),
 
     # Output mode
     # stream: bool = Query(
@@ -164,8 +164,8 @@ def ocr_url(
 
     def iter_page_results() -> Iterator[dict]:
         for page_no, text in iter_text_pages(
-            url,
-            # doc_id=url          
+            input=input,
+            # doc_id=input          
             iter_kwargs=dict(
                 iiif_max_width=iiif_max_width,
                 pdf_dpi=pdf_dpi,
@@ -195,7 +195,7 @@ def ocr_url(
             tmp.close()
 
             meta = {
-                "url": url,
+                "input": input,
                 "domain": domain,
                 "model_name": model_name,
                 "segmenter": segmenter,
@@ -225,7 +225,7 @@ def ocr_url(
         # default: single JSON document
         pages: List[OcrPage] = [OcrPage(**obj) for obj in iter_page_results()]
         return OcrResponse(
-            url=url,
+            input=input,
             domain=domain,
             model_name=model_name,
             segmenter=segmenter,
