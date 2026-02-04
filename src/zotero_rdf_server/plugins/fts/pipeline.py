@@ -23,6 +23,7 @@ def ingest_pipeline(
     targets:str|list=[],
     ocr:bool=False,
     transformer:bool=False,
+    vector: bool = True,
     ingest:bool=True,
     iter_pages_kwargs:dict={},
     page_to_text_kwargs:dict={},
@@ -41,6 +42,10 @@ def ingest_pipeline(
     if not ocr and not ingest:
         return([{"error":"nothing to do here: no ocr, no ingest!"}])
     
+    if vector:
+        from .vector import embed, clean_ocr
+        logger.info("####### Loading Sentence Transformer Model for Vectors #######")
+
     if ocr:
         from .ocr import iter_text_pages, PdfTextPolicy       
 
@@ -74,6 +79,7 @@ def ingest_pipeline(
                     results.append({
                         "doc_id": doc_id,
                         "ocr": True,
+                        "vector": vector,
                         "ingest": False,
                         "error": "ocr=true requires '_input' in each item",
                     })
@@ -83,16 +89,24 @@ def ingest_pipeline(
                 try:
 
                     for page_no, text in make_pages_fn(doc_id or "", stats)(input_):
-                        pages.append({
+                        item = {
                             "page": int(page_no),
                             "text": text,
-                        })
+                        }
+                        if vector:
+                            vector_doc = embed(clean_ocr(text))
+                            logger.debug(vector_doc)
+                            item["vector"] = vector_doc
+
+                        pages.append(item)
+
                 except Exception as e:
                     results.append({
                         "doc_id": doc_id,
                         "input": input_,
                         "meta": meta,
                         "ocr": True,
+                        "vector": vector,
                         "ingest": False,
                         "error": str(e),
                     })
@@ -103,6 +117,7 @@ def ingest_pipeline(
                     "input": input_,
                     "meta": meta,
                     "ocr": True,
+                    "vector": vector,
                     "transformer": bool(transformer),
                     "ocr_pages": len(pages),
                     "ingest": False,
@@ -140,7 +155,8 @@ def ingest_pipeline(
                         url_to_text_pages_fn=make_pages_fn(doc_id, stats),
                         targets=targets,
                         meta=meta,
-                        config_path=config_path
+                        config_path=config_path,
+                        vector=vector
                     )         
                 digest["ocr"] = True
                 digest["transformer"] = bool(transformer)       
@@ -157,6 +173,9 @@ def ingest_pipeline(
                     d["page"] = sequence
                 if text != "":
                     d["text"] = text
+                if vector:
+                    vector_doc = embed(clean_ocr(text))
+                    d["vector"] = vector_doc
 
                 digest = index_stream(
                         targets=targets,
