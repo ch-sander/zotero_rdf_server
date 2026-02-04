@@ -48,11 +48,14 @@ OPTIONAL {  ?library rdf:type zot:library;
 #     CONTAINS(STR(?url), "archive") 
 #   )
 
-  ?file zot:tags ?t_ingest, ?t_pdf .
+  ?file zot:tags ?t . # ?t_ingest, ?t_pdf .
 
-  ?t_ingest a zot:tag ; zot:tag "*ingest" .
-  ?t_pdf    a zot:tag ; zot:tag "*pdf" .
+#  ?t_ingest a zot:tag ; zot:tag "*ingest" .
+#  ?t_pdf    a zot:tag ; zot:tag "*pdf" .
+  ?t a zot:tag ;
+     zot:tag ?tagVal .
 
+  VALUES ?tagVal { "*pdf" "*iiif" }.
 
   OPTIONAL {
     ?parent zot:tags ?tag_1502_13.
