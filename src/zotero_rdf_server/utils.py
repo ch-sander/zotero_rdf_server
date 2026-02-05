@@ -336,18 +336,25 @@ def load_text_like(
             raise
         return _fallback("unexpected error")
 
-from .config import SKOS_ALT, RDF_TYPE, LANG_MAP, PROV_TIMESTAMP, XSD_NS # TODO unsafe
+from .config import SKOS_ALT, RDF_TYPE, LANG_MAP, PROV_TIMESTAMP, XSD_NS, MAP_LABEL, MAP_TARGET, MAP_REGEX
 
-def ensure_alt_label(store: Store, node: NamedNode, lit_value: str, alt_label_prop: NamedNode = NamedNode(SKOS_ALT), graph: NamedNode = DefaultGraph()):
-    
-    
-    existing_labels = {
+        
+def ensure_mapping_literal(
+    store: Store,
+    subject: NamedNode,
+    lit_value: str,
+    prop: NamedNode = NamedNode(MAP_LABEL),
+    graph: NamedNode = DefaultGraph()
+):
+    existing = {
         q.object.value.lower()
-        for q in store.quads_for_pattern(node, alt_label_prop, None, graph)
+        for q in store.quads_for_pattern(subject, prop, None, graph)
+        if q.object and isinstance(q.object, Literal)
     }
-    if lit_value.lower() not in existing_labels:
-        store.add(Quad(node, alt_label_prop, Literal(lit_value), graph))
-        logger.debug(f"[ALT] Added altLabel '{lit_value}' to {node}")
+    if lit_value.lower() not in existing:
+        store.add(Quad(subject, prop, Literal(lit_value), graph))
+        logger.debug(f"[MAP] Added {prop.value} '{lit_value}' to {subject}")
+
 
 def quads_by_type(store:Store,type_nodes:list, graph:NamedNode):
     result_store = Store()
@@ -361,29 +368,41 @@ def quads_by_type(store:Store,type_nodes:list, graph:NamedNode):
             result_store.bulk_extend(store.quads_for_pattern(quad.subject, None, None, graph))
     return result_store
 
-def fuzzy_match_label(pool_store:Store, label:str, threshold=90, graph_name:NamedNode = None, predicates:list = [SKOS_ALT], regex:bool=False, max_matches:int = 1):
-
+def fuzzy_match_label(
+    pool_store: Store,
+    label: str,
+    threshold=90,
+    graph_name: NamedNode = None,
+    predicates: list = [MAP_LABEL],
+    regex: bool = False,
+    max_matches: int = 1
+):
     logger.debug(
         f"Fuzzy matching '{label}' against existing pool of {len(pool_store)} quads "
-        f"(threshold: {threshold}, max_matches={max_matches})"
+        f"(threshold: {threshold}, max_matches={max_matches}, graph: {graph_name})"
     )
 
-    label_map = {}  # label:str -> list of subjects
+    label_map = {}  # lbl -> list of entry-subjects
 
     for pred in predicates:
-        for label_quad in pool_store.quads_for_pattern(
-                None,
-                safeNamedNode(pred),
-                None,
-                graph_name=graph_name
-            ):
-            lbl = str(label_quad.object.value)
-            label_map.setdefault(lbl, []).append(label_quad.subject)
+        for q in pool_store.quads_for_pattern(
+            None, safeNamedNode(pred), None, graph_name=graph_name
+        ):
+            lbl = str(q.object.value)
+            label_map.setdefault(lbl, []).append(q.subject)  # subject = entry
 
-    def lower_processor(label:str):
-        return label.lower()
-    
-    # Fuzzy Matching
+    def lower_processor(x: str):
+        return x.lower()
+
+    # helper: entry -> target entity
+    def entry_to_target(entry: NamedNode):
+        for tq in pool_store.quads_for_pattern(
+            entry, safeNamedNode(MAP_TARGET), None, graph_name=graph_name
+        ):
+            return tq.object
+        return None
+
+    # --- Fuzzy Matching ---
     if label_map:
         if max_matches > 1:
             results = process.extract(
@@ -396,14 +415,14 @@ def fuzzy_match_label(pool_store:Store, label:str, threshold=90, graph_name:Name
             )
             matches = []
             for best_match_label, score, _ in results:
-                for subj in label_map[best_match_label]:
-                    matches.append((subj, score, best_match_label))
-
+                for entry in label_map[best_match_label]:
+                    target = entry_to_target(entry)
+                    if target:
+                        matches.append((target, score, best_match_label))
             if matches:
-                logger.debug(
-                    f"Fuzzy matches for '{label}': {[(m[1], m[2]) for m in matches]}"
-                )
+                logger.debug(f"Fuzzy matches for '{label}': {[(m[1], m[2]) for m in matches]}")
                 return matches
+
         else:
             result = process.extractOne(
                 label,
@@ -414,53 +433,37 @@ def fuzzy_match_label(pool_store:Store, label:str, threshold=90, graph_name:Name
             )
             if result:
                 best_match_label, score, _ = result
-                subjects = label_map[best_match_label]
-                best_subject = subjects[0]
-                logger.debug(
-                    f"Best fuzzy match for '{label}' → '{best_match_label}' (score={score})"
-                )
-                if score == 100 and threshold <= 100:
-                    return best_subject, 100, best_match_label
-                return best_subject, score, best_match_label
+                entry = label_map[best_match_label][0]
+                target = entry_to_target(entry)
+                if target:
+                    logger.debug(
+                        f"Best fuzzy match for '{label}' → '{best_match_label}' (score={score}): {target}"
+                    )
+                    if score == 100 and threshold <= 100:
+                        return target, 100, best_match_label
+                    return target, score, best_match_label
 
-
-    # Regex matching
+    # --- Regex matching über map:pattern ---
     if regex and any(c in label for c in ".^$*+?{}[]\\|()"):
         regex_matches = []
-        for pattern_quad in pool_store:
-            pattern_str = pattern_quad.object.value
-            subject = pattern_quad.subject
+        for pq in pool_store.quads_for_pattern(None, safeNamedNode(MAP_REGEX), None, graph_name=graph_name):
+            pattern_str = pq.object.value
+            entry = pq.subject
             try:
                 if pattern_str and re.search(pattern_str, label, re.IGNORECASE):
-                    logger.debug(f"Regex '{pattern_str}' matched '{label}'")
-                    regex_matches.append((subject, 100, pattern_str))
+                    target = entry_to_target(entry)
+                    if target:
+                        logger.debug(f"Regex '{pattern_str}' matched '{label}'")
+                        regex_matches.append((target, 100, pattern_str))
             except re.error as e:
-                logger.warning(
-                    f"Invalid regex pattern '{pattern_str}' on {subject}: {e}"
-                )
+                logger.warning(f"Invalid regex pattern '{pattern_str}' on {entry}: {e}")
+
         if regex_matches:
             return regex_matches[:max_matches] if max_matches > 1 else regex_matches[0]
-        
-    # if regex and any(c in label for c in ".^$*+?{}[]\\|()"):
-    #     for pattern_quad in pool_store:
-    #         pattern_str = pattern_quad.object.value
-    #         try:
-    #             if pattern_str and re.search(pattern_str, label, re.IGNORECASE):
-    #                 regex_match = subject
-    #                 logger.debug(f"Regex '{pattern_str}' matched '{label}'")
-    #                 return regex_match, 100, pattern_str
-    #         except re.error as e:
-    #             logger.warning(f"Invalid regex pattern '{pattern_str}' on {subject}: {e}")
-   
-    # if best_score >= threshold: # TODO return dict for all matches above threshold in descending order to match source on multiple KB items
-    #     logger.debug(f"Best match: {best_match} with label '{best_label}' (score: {best_score})")
-    #     return best_match, best_score, best_label
-    # else:
-    #     logger.debug("No fuzzy match found above threshold.")
-    #     return None, 0, None
 
     logger.debug("No fuzzy match found above threshold.")
     return [] if max_matches > 1 else (None, 0, None)
+
 
 def process_language_and_title(
     title: str | None,

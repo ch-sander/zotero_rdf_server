@@ -16,6 +16,14 @@ PROV_TIMESTAMP = "http://www.w3.org/ns/prov#generatedAtTime"
 OWL_SAME_AS = "http://www.w3.org/2002/07/owl#sameAs"
 PURL_RELATED = "http://purl.org/dc/elements/1.1/relation"
 
+MAPPING_BASE = "https://zotero-rdf-server/mapping/"
+MAP_ENTRY_TYPE = f"{MAPPING_BASE}Entry"
+MAP_TARGET     = f"{MAPPING_BASE}target"     # Entry -> Entity IRI
+MAP_LABEL      = f"{MAPPING_BASE}label"      # Entry -> Literal (Variante)
+MAP_REGEX      = f"{MAPPING_BASE}pattern"    # Entry -> Literal (Regex Pattern) optional
+MAP_TYPE_HINT  = f"{MAPPING_BASE}typeHint"   # Entry -> Literal or IRI
+MAP_UPDATED_AT = f"{MAPPING_BASE}updatedAt"  # optional
+
 
 # Additional Constants
 FUZZY = 90
@@ -45,13 +53,12 @@ except Exception as e:
 def load_config(source):
     from .utils import load_dict_like
     from dotenv import load_dotenv
+    from string import Template
     config =  load_dict_like(source, f"Loading initial config")
     logger.debug(json.dumps(config,indent=4))
     if config.get("inject_env"):
         try:
-            logger.error(f"Trying to inject .env into {source}")
-            from dotenv import load_dotenv
-            from string import Template
+            logger.warning(f"Trying to inject .env into {source}")            
             load_dotenv()
             logger.debug(os.environ)
             config_str = json.dumps(config)
@@ -160,4 +167,4 @@ ZOT_BASE_URL = ZOTERO_CONFIGS.get("base_url", "https://www.zotero.org/")
 ZOT_SCHEMA = ZOTERO_CONFIGS.get("schema") # "https://api.zotero.org/schema"
 REGEX_PATTERN = f"{ZOT_NS}regex"
 
-PREFIXES = {"zot":ZOT_NS, "rdfs":"http://www.w3.org/2000/01/rdf-schema#", "owl":"http://www.w3.org/2002/07/owl#", "rdf":"http://www.w3.org/1999/02/22-rdf-syntax-ns#", "xsd":XSD_NS, "skos":"http://www.w3.org/2004/02/skos/core#", "prov":"http://www.w3.org/ns/prov#", "dc":"http://purl.org/dc/elements/1.1/", "schema":"https://schema.org/", "dct":"http://purl.org/dc/terms/"}
+PREFIXES = {"zot":ZOT_NS, "rdfs":"http://www.w3.org/2000/01/rdf-schema#", "owl":"http://www.w3.org/2002/07/owl#", "rdf":"http://www.w3.org/1999/02/22-rdf-syntax-ns#", "xsd":XSD_NS, "skos":"http://www.w3.org/2004/02/skos/core#", "prov":"http://www.w3.org/ns/prov#", "dc":"http://purl.org/dc/elements/1.1/", "schema":"https://schema.org/", "dct":"http://purl.org/dc/terms/", "zmap": MAPPING_BASE}

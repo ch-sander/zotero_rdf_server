@@ -123,7 +123,7 @@ def refresh_store(force_reload:bool = False):
                         except Exception as e:
                             logger.error(f"Error loading from file import for {lib.name}: {e}")
                     elif lib.load_mode == "json":
-                        if lib.library_type != "knowledge base":
+                        if lib.library_type not in ["knowledge base","mapping"]:
                             try:
                                 build_graph_for_library(lib, store)
                             except Exception as e:

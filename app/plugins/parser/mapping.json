@@ -117,10 +117,10 @@
             "comment":"The source dataset usually contains the entities, e.g. from Zotero notes, that are to be mapped to persistent entities in knowledge base (set in knowledgeBaseGraph), which is the target dataset.",
             "FUZZY": [
             {                
-                "comment": "compares each Literal from domainProperty to each from targetProperty with a fuzzy score threshold 0-100 (set here or taken from global config. If matched a link will be created from source to target using mapProperty, the matched Literal will be added to target using altLabel, and if allowCreate is true, a new resource in target will be created, having all target property-object pairs. The JSON-LD dictionary in ADD will be added to each created resource in the target dataset.",
-                "threshold": 90,
+                "comment": "compares each Literal from domainProperty to each from targetProperty with a fuzzy score threshold 0-100 (set here or taken from global config). If matched a link will be created from source to target using mapProperty, the matched Literal will be added to target using altLabel, and if allowCreate is true, a new resource in target will be created, having all target property-object pairs. The JSON-LD dictionary in ADD will be added to each created resource in the target dataset.",
+                "threshold": 80,
                 "domainProperty": "https://semantic-html.org/vocab#text",
-                "targetProperty": "http://www.w3.org/2004/02/skos/core#altLabel"
+                "targetProperty": "https://zotero-rdf-server/mapping/entity_label"
             }
             ],
             "POOL": [
@@ -149,8 +149,9 @@
             ],
             "allowCreate": true,
             "mapProperty": "http://www.w3.org/2002/07/owl#sameAs",
-            "altLabel": "http://www.w3.org/2004/02/skos/core#altLabel",
+            "mapLabel": "https://zotero-rdf-server/mapping/label",
             "knowledgeBaseGraph": "https://scigma.de/entities",
+            "mappingBaseGraph": "https://scigma.de/mappings",
             "ADD": {
             "http://www.w3.org/2000/01/rdf-schema#comment": {
                 "@value": "Auto-generated entity from semantic note",
@@ -167,7 +168,7 @@
             {
                 "threshold": 90,
                 "domainProperty": "https://semantic-html.org/vocab#text",
-                "targetProperty": "http://www.w3.org/2004/02/skos/core#altLabel"
+                "targetProperty": "http://www.w3.org/2004/02/skos/core#hiddenLabel"
             }
             ],
             "POOL": [
@@ -193,8 +194,9 @@
             ],
             "allowCreate": true,
             "mapProperty": "http://www.w3.org/2002/07/owl#sameAs",
-            "altLabel": "http://www.w3.org/2004/02/skos/core#altLabel",
+            "mapLabel": "https://zotero-rdf-server/mapping/label",
             "knowledgeBaseGraph": "https://scigma.de/entities",
+            "mappingBaseGraph": "https://scigma.de/mappings",
             "ADD": {
             "http://www.w3.org/2000/01/rdf-schema#comment": {
                 "@value": "Auto-generated concept from semantic note",

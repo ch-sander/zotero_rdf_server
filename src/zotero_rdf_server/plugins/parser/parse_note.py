@@ -58,6 +58,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
     parser_cfgs = lib.plugin.get("notes_parser") or []
     GRAPH_URI = safeNamedNode(lib.base_url) # Source graph of notes
     KB_GRAPH = safeNamedNode(lib.knowledge_base_graph) # graph to link SEMANTIC_HTML_GRAPH entites to
+    MAP_GRAPH = safeNamedNode(lib.mapping_base_graph)
     count = 0
     parser_cfgs = [parser_cfgs] if isinstance(parser_cfgs,dict) else parser_cfgs
     if len(parser_cfgs)>1:
@@ -103,6 +104,35 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
 
             def _subjects(store, graph=None):
                 return {q.subject for q in store.quads_for_pattern(None, None, None, graph)}
+            
+            MAP_ENTRY_TYPE_NODE = safeNamedNode(MAP_ENTRY_TYPE)
+            MAP_TARGET_NODE = safeNamedNode(MAP_TARGET)
+
+            def find_entry_for_target_in(store_, target: NamedNode, graph_: NamedNode):
+                for q in store_.quads_for_pattern(None, MAP_TARGET_NODE, target, graph_):
+                    return q.subject
+                return None
+
+            def ensure_entry_in(result_store_, target: NamedNode, graph_: NamedNode, type_hints=None):
+                # prefer existing entry (first in result_store_, then in global store)
+                entry = find_entry_for_target_in(result_store_, target, graph_) # or find_entry_for_target_in(store, target, graph_)
+                if entry:
+                    if type_hints:
+                        for th in type_hints:
+                            result_store_.add(Quad(entry, safeNamedNode(MAP_TYPE_HINT), safeNamedNode(th), graph_))
+                    return entry
+
+                entry_suffix = uuid5(ENTITY_UUID, str(target))
+                entry = safeNamedNode(f"{MAPPING_BASE}{entry_suffix}")
+
+                result_store_.add(Quad(entry, NamedNode(RDF_TYPE), MAP_ENTRY_TYPE_NODE, graph_))
+                result_store_.add(Quad(entry, MAP_TARGET_NODE, target, graph_))
+                if type_hints:
+                    for th in type_hints:
+                        result_store_.add(Quad(entry, safeNamedNode(MAP_TYPE_HINT), safeNamedNode(th), graph_))
+                add_timestamp(store=result_store_, node=entry, graph=graph_)
+                return entry
+
 
             if knowledge_base is None:
                 return result_store
@@ -112,8 +142,10 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                 same_rules = rule.get("SAME", [])
                 map_prop = safeNamedNode(rule.get("mapProperty", OWL_SAME_AS))
                 KB_graph = rule.get("knowledgeBaseGraph", None)
+                mapping_graph = rule.get("mappingBaseGraph", None)
                 entity_graph_uri = safeNamedNode(KB_graph) if KB_graph else KB_GRAPH
-                alt_label_prop = safeNamedNode(rule.get("altLabel", SKOS_ALT))
+                mapping_graph_uri = safeNamedNode(mapping_graph) if mapping_graph else MAP_GRAPH
+                map_label_prop = safeNamedNode(rule.get("mapLabel", MAP_LABEL))
                 add_jsonld = rule.get("ADD")
                 allow_create = rule.get("allowCreate", False)
                 # AND
@@ -180,10 +212,6 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                     filter_source_subjects = _subjects(source_store, None)
                     filter_target_subjects = _subjects(target_store, entity_graph_uri)
 
-                # for s in filter_source_subjects:
-                #     filter_source_store.bulk_extend(source_store.quads_for_pattern(s, None, None, None))
-                # for s in filter_target_subjects:
-                #     filter_target_store.bulk_extend(target_store.quads_for_pattern(s, None, None, entity_graph_uri))
                     
                 logger.info(f"LEN filtered source store: {len(filter_source_store)}. Found graphs in filtered source store: {list(filter_source_store.named_graphs())}")
 
@@ -217,7 +245,9 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                                 ))
                                 logger.debug(f"[SAME] Matched {lit_value} by identity: {domain_node} → {tq.subject}")
                                 value_matched = True
-                                ensure_alt_label(result_store, tq.subject, lit_value, alt_label_prop, entity_graph_uri)
+
+                                entry = ensure_entry_in(result_store, tq.subject, mapping_graph_uri)
+                                ensure_mapping_literal(result_store, entry, lit_value, map_label_prop, mapping_graph_uri)                                
 
                                 break
                             if value_matched:
@@ -247,23 +277,28 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
 
                             try:
                                 
-                                matched_node, score, label = fuzzy_match_label(
-                                    filter_target_store,
+                                pool_map = Store()
+                                for t in filter_target_subjects:
+                                    entry = find_entry_for_target_in(store, t, mapping_graph_uri)
+                                    if entry:
+                                        pool_map.bulk_extend(store.quads_for_pattern(entry, None, None, mapping_graph_uri))                                
+                                
+                                matched_node, score, matched_label = fuzzy_match_label(
+                                    pool_map,
                                     lit_value,
                                     threshold=fuzzy_threshold,
-                                    predicates=[target_prop],
+                                    graph_name=mapping_graph_uri,
+                                    predicates=[map_label_prop],
                                     regex=regex
-                                )
+                                )                                                                   
 
                                 if matched_node:
-                                    result_store.add(Quad(
-                                        domain_node,
-                                        map_prop,
-                                        matched_node,
-                                        dp.graph_name
-                                    ))
-                                    logger.debug(f"[FUZZY] Matched {lit_value} to {label} ({score}%)")
-                                    ensure_alt_label(result_store, matched_node, lit_value, alt_label_prop, entity_graph_uri)
+                                    result_store.add(Quad(domain_node, map_prop, matched_node, dp.graph_name))
+                                    logger.debug(f"[FUZZY] Matched {lit_value} to {matched_label} ({score}%)")
+
+                                    entry = ensure_entry_in(result_store, matched_node, type_hints=None, graph_=mapping_graph_uri)
+                                    ensure_mapping_literal(result_store, entry, lit_value, map_label_prop, mapping_graph_uri)
+
 
                                 elif allow_create:
                                     ENTITY_UUID = uuid5(NAMESPACE_URL, str(entity_graph_uri.value))
@@ -287,8 +322,10 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                                         result_store.add(Quad(new_node, NamedNode(RDFS_LABEL), Literal(lit_value), entity_graph_uri))
                                     
                                     result_store.add(Quad(domain_node, map_prop, new_node, dp.graph_name))
-                                    result_store.add(Quad(new_node, alt_label_prop, Literal(lit_value), entity_graph_uri))
                                     
+                                    entry = ensure_entry_in(result_store, new_node, type_hints=None, graph_=mapping_graph_uri)
+                                    ensure_mapping_literal(result_store, entry, lit_value, map_label_prop, mapping_graph_uri)
+
                                     if add_jsonld:
                                         try:
                                             jsonld_copy = add_jsonld
@@ -334,7 +371,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
 
         if query_str and "SELECT" in query_str.upper(): 
             if "$GRAPH" in query_str: query_str = query_str.replace("$GRAPH",GRAPH_URI.value)
-            logger.debug(f"using query pattern: {query_str}")
+            logger.info(f"using query pattern:\n{query_str}")
             bindings = store.query(query_str, use_default_graph_as_union=True)
             results = list(bindings)
             logger.info("Number of rows: %s", len(results))
@@ -350,12 +387,13 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                 # )
                 # note_quads.append(quad)
         else:
-            logger.debug(f"using predicate pattern: {note_predicate}")
+            logger.info(f"using predicate pattern: {note_predicate}")
             # note_quads = list(store.quads_for_pattern(None, note_predicate, None, GRAPH_URI))
             quads = store.quads_for_pattern(None, note_predicate, None, GRAPH_URI)
             note_items = [(q.subject, q.object) for q in quads]
 
-        
+        logger.info("Number of notes: %s", len(note_items))
+
         if delete:
             logger.warning("Deleting quads!")
 
@@ -383,7 +421,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                     logger.warning(f"Did not delete graph, as identical to library graph!")
             except Exception as e:
                 logger.error(f"Error when deleting triples: {e}")
-        logger.info("Number of notes: %s", len(note_items))
+        
         parser_store = Store()
 
         for s, o in note_items:

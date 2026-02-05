@@ -21,7 +21,8 @@ class ZoteroLibrary:
         self.base_api_url = f"{ZOT_API_URL}{self.library_type}/{self.library_id}".strip("#/")
         self.base_url = str(config.get("base_uri", f"{ZOT_BASE_URL}{self.library_type}/{self.library_id}")).strip("/#")
         self.knowledge_base_graph = str(config.get("knowledge_base_graph", self.base_url)).strip("/#")
-        
+        self.mapping_base_graph = str(config.get("mapping_base_graph", self.knowledge_base_graph)).strip("/#")
+
         self.load_from = safe_path(str(config.get("load_from",IMPORT_DIRECTORY / self.name)).replace("$",str(self.library_id)))
 
         self.save_to = config.get("save_to")
@@ -58,13 +59,13 @@ class ZoteroLibrary:
             if not any([str(self.base_url).startswith("http"),str(self.base_api_url).startswith("http"),str(self.knowledge_base_graph).startswith("http")]):
                 passing = False
                 logger.warning(f"{self.name}: Some library config variable is expected to be a IRI/URI but is not!")
-            if not str(self.library_id).isdigit() and not self.library_type == "knowledge base":
+            if not str(self.library_id).isdigit() and not self.library_type in ["knowledge base", "mapping"]:
                 passing = False
                 logger.error(f"{self.name}: Invalid library ID --> {type(self.library_id)}!")
             if not self.load_mode in ["json", "rdf", "manual_import"]:
                 passing = False
                 logger.warning(f"{self.name}: Invalid load_mode {self.load_mode}!")
-            if not self.library_type in ["groups", "user", "knowledge base"]:            
+            if not self.library_type in ["groups", "user", "knowledge base", "mapping"]:            
                 passing = False
                 logger.error(f"{self.name}: Invalid library_type {self.library_type}!")
             if not self.rdf_export_format in ["rdf_zotero", "rdf_bibliontology"] and self.load_mode == "rdf":
