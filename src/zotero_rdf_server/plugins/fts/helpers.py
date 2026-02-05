@@ -33,22 +33,33 @@ def plugin_logger(new:bool=True):
         return logger_z
 
 def ensure_import(module, attr=None, requirements=requirements):
-    # from zotero_rdf_server.utils import ensure_import
+    modname = re.split(r"(?:==|!=|<=|>=|<|>|~=)", module, 1)[0]
 
     try:
-        mod = importlib.import_module(module)
-    except ImportError:
-        if requirements is None:
-            raise
+        mod = importlib.import_module(modname)
 
-        plugin_logger().warning(f"{module} not found. Installing dependencies...")
-        subprocess.check_call([
-            sys.executable,
-            "-m", "pip",
-            "install",
-            "-r", str(requirements),
-        ])
-        mod = importlib.import_module(module)
+    except ImportError:
+        try:
+            plugin_logger().warning(
+                f"{modname} not found. Installing dependencies ({module})..."
+            )
+
+            if requirements:
+                subprocess.check_call([
+                    sys.executable, "-m", "pip",
+                    "install", "-r", str(requirements),
+                ])
+            else:
+                subprocess.check_call([
+                    sys.executable, "-m", "pip",
+                    "install", module,   # ← hier bleibt der Specifier!
+                ])
+
+            mod = importlib.import_module(modname)
+
+        except Exception as e:
+            plugin_logger().error(e, exc_info=True)
+            raise
 
     return getattr(mod, attr) if attr else mod
 
@@ -313,3 +324,8 @@ def safe_doc_id(doc_id: str) -> str:
     s = doc_id.strip()
     s = re.sub(r"[^\w.\-]+", "_", s, flags=re.UNICODE)
     return s[:200] or "doc"
+
+def clean_ocr(text: str) -> str:
+    text = text.replace("\x0c", " ")
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()

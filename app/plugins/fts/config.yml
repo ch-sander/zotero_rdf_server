@@ -154,14 +154,22 @@ open-search:
         mappings:
           dynamic: false
           properties:
-            input: { type: keyword }
+            source: { type: keyword }
             doc_id: { type: keyword }
             page: { type: integer }
             ingest_ts: { type: date }
             text:
               type: text
+              term_vector: "yes"
               analyzer: latin_ocr_index
               search_analyzer: latin_ocr_search
+            vector:
+              type: knn_vector
+              dimension: 1024
+              method:
+                name: hnsw
+                space_type: cosinesimil
+                engine: nmslib
             meta:
               type: object
               dynamic: true
@@ -202,6 +210,7 @@ open-search:
         # Optional but useful defaults
         settings:
           index:
+            knn: true
             number_of_shards: 1
             number_of_replicas: 1
             default_pipeline: "ocr_meta_pipeline_v1"

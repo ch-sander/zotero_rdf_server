@@ -268,8 +268,9 @@ JsonBody = Union[JsonObj, List[JsonObj]]
 @router.post("/pipeline")
 def ingest_route(
     input: Optional[JsonBody] = Body(default=None, examples=[None]),
-    targets: str | list = Query(default=None, description="Index or alias"),
+    targets: str | list = Query(default=None, description="Index or alias"),    
     ocr: bool = Query(default=True, description="If true, run OCR pages ingest via pages_fn"),
+    vector: bool = Query(default=True, description="If true, vectorizes text with sentence transformer (1024 dimensions)"),
     transformer: bool = Query(None, description="If true, run transformer pipeline (doi:10.3390/electronics14153083)"),
     ingest: bool = Query(default=True, description="If true, ingest into Open Search"),
     query: Optional[str] = Query(default=None, description="SPARQL SELECT query or path to file with query code (used when body is null)"),
@@ -344,7 +345,7 @@ def ingest_route(
                         ocr_x = ocr if ocr is not None else cfg.get("ocr", True)
                         transformer_x = transformer if transformer is not None else cfg.get("transformer", False)
                         ingest_x = ingest if ingest is not None else cfg.get("ingest", True)
-
+                        vector_x = vector if vector is not None else cfg.get("vector", True)
 
                         iter_pages_kwargs = ocr_kwargs if ocr_kwargs is not None else dict(kraken_cfg.get("ocr_kwargs") or {})
                         page_to_text_kwargs = model_kwargs if model_kwargs is not None else dict(kraken_cfg.get("model_kwargs") or {})
@@ -377,6 +378,7 @@ def ingest_route(
                                                 targets=targets_x, 
                                                 ocr=ocr_x,
                                                 transformer=transformer_x,
+                                                vector=vector_x,
                                                 ingest=ingest_x,
                                                 iter_pages_kwargs=iter_pages_kwargs,
                                                 page_to_text_kwargs=page_to_text_kwargs, text_image_file_kwargs=text_image_file_kwargs,
@@ -422,6 +424,7 @@ def ingest_route(
                                             targets=targets, 
                                             ocr=ocr,
                                             transformer=transformer,
+                                            vector=vector,
                                             ingest=ingest,
                                             iter_pages_kwargs=ocr_kwargs,
                                             page_to_text_kwargs=model_kwargs,
@@ -456,6 +459,7 @@ def ingest_route(
                                         targets=targets, 
                                         ocr=ocr,
                                         transformer=transformer,
+                                        vector=vector,
                                         ingest=ingest,
                                         iter_pages_kwargs=ocr_kwargs,
                                         page_to_text_kwargs=model_kwargs,

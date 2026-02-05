@@ -176,23 +176,33 @@ def page_docs(
     input: str,
     doc_id: str | None,
     pages: Iterator[Tuple[int, str]],
-    meta: dict
+    meta: dict, 
+    vector: bool = False
 ) -> Iterator[Dict[str, Any]]:
     now = datetime.now(timezone.utc).isoformat()
-
+    embed = None
+    if vector:
+        from .vector import embed, clean_ocr
     for sequence, text in pages:
-        for index_name in targets:
-            action =  {
+        vector_doc = None
+        if vector:
+            vector_doc = embed(clean_ocr(text))
+        for index_name in targets:            
+            source = {
+                "source": input,
+                "doc_id": doc_id,
+                "page": sequence,
+                "text": text,
+                "ingest_ts": now,
+                "meta": meta,
+            }
+            if vector:
+                source["vector"] = vector_doc
+
+            action = {
                 "_op_type": "index",
                 "_index": index_name,
-                "_source":  {
-                    "input": input,
-                    "doc_id": doc_id,
-                    "page": sequence,
-                    "text": text,
-                    "ingest_ts": now,
-                    "meta": meta
-                },
+                "_source": source,
             }
             if doc_id is not None:
                 action["_id"] = f"{doc_id}:{sequence}"
@@ -251,6 +261,7 @@ def ingest_streaming_bulk(
         "failed": 0,
         "status_counts": Counter(),
         "errors": [],
+        "doc_ids": []
     }
     # from rdflogger import LogEvent, log_event_via_trig_template
     # event = LogEvent(
@@ -276,7 +287,7 @@ def ingest_streaming_bulk(
         # IMPORTANT: only pass a fixed index if you really want a single target
         if index is not None:
             bulk_kwargs["index"] = index
-
+        ids = []
         for ok, item in streaming_bulk(client, actions, **bulk_kwargs):
             digest["total"] += 1
             op_key = next(iter(item.keys()))
@@ -284,9 +295,10 @@ def ingest_streaming_bulk(
             status = result.get("status")
             err = result.get("error")
             logger.debug(f"ingest_streaming_bulk result: {result}")
-
+            
             _id = result.get("_id", "")
-            digest["doc_id"] = _id
+            ids.append(_id)
+            digest["doc_ids"] = ids
             digest["bulk_kwargs"] = bulk_kwargs
             # doc_id, page = (_id.split(":", 1) + ["-1"])[:2] # TODO
             # page_no = int(page) if page.isdigit() else -1
@@ -325,6 +337,7 @@ def index_stream(
     ocr_kwargs: dict | None = None,
     meta: dict | None = None,
     doc: Any | None = None,
+    vector: bool = False
 ) -> str:
     logger.debug(f"OS index_stream started...")
     cfg_path = resolve_config_path(config_path)
@@ -365,6 +378,7 @@ def index_stream(
             doc_id=doc_id,
             pages=pages_iter,
             meta=meta or {},
+            vector=vector
         )
 
     # IMPORTANT: index=None so per-action _index is respected
