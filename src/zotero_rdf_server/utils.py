@@ -379,7 +379,7 @@ def fuzzy_match_label(
 ):
     logger.debug(
         f"Fuzzy matching '{label}' against existing pool of {len(pool_store)} quads "
-        f"(threshold: {threshold}, max_matches={max_matches})"
+        f"(threshold: {threshold}, max_matches={max_matches}, graph: {graph_name})"
     )
 
     label_map = {}  # lbl -> list of entry-subjects
@@ -437,7 +437,7 @@ def fuzzy_match_label(
                 target = entry_to_target(entry)
                 if target:
                     logger.debug(
-                        f"Best fuzzy match for '{label}' → '{best_match_label}' (score={score})"
+                        f"Best fuzzy match for '{label}' → '{best_match_label}' (score={score}): {target}"
                     )
                     if score == 100 and threshold <= 100:
                         return target, 100, best_match_label

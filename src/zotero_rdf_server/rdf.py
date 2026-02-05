@@ -374,6 +374,10 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     creator_node = nodes[0]
                     entry = entries[0]
 
+                    ln, fn = object.get("lastName"), object.get("firstName")
+                    if ln or fn:
+                        ensure_mapping_literal(store, entry, f"{fn} {ln}".strip(), safeNamedNode(MAP_LABEL), MAP_GRAPH_URI)
+
                     for role_property in role_properties:
                         store.add(Quad(role_node, safeNamedNode(role_property), creator_node, graph_name=GRAPH_URI))
 
