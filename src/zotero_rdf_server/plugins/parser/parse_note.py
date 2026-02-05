@@ -217,7 +217,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                                 ))
                                 logger.debug(f"[SAME] Matched {lit_value} by identity: {domain_node} → {tq.subject}")
                                 value_matched = True
-                                ensure_alt_label(result_store, tq.subject, lit_value, alt_label_prop, entity_graph_uri)
+                                ensure_mapping_literal(result_store, tq.subject, lit_value, alt_label_prop, entity_graph_uri)
 
                                 break
                             if value_matched:
@@ -263,7 +263,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                                         dp.graph_name
                                     ))
                                     logger.debug(f"[FUZZY] Matched {lit_value} to {label} ({score}%)")
-                                    ensure_alt_label(result_store, matched_node, lit_value, alt_label_prop, entity_graph_uri)
+                                    ensure_mapping_literal(result_store, matched_node, lit_value, alt_label_prop, entity_graph_uri)
 
                                 elif allow_create:
                                     ENTITY_UUID = uuid5(NAMESPACE_URL, str(entity_graph_uri.value))

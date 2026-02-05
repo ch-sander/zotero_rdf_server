@@ -141,14 +141,16 @@ def import_rdf_from_disk(lib: ZoteroLibrary, store: Store): # TODO deprecate
         after = len(store)
         logger.info(f"Imported {after - before} triples from {filepath.name}")
 
-def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, ns_prefix: str, base_uri: str, map: dict, knowledge_base_graph: str = None, language: str = None):
+def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, ns_prefix: str, base_uri: str, map: dict, knowledge_base_graph: str = None, mapping_base_graph: str = None,language: str = None):
     GRAPH_URI = safeNamedNode(base_uri)
     
     if not knowledge_base_graph:
         knowledge_base_graph = base_uri
-
+    if not mapping_base_graph:
+        mapping_base_graph = knowledge_base_graph
     ENTITY_GRAPH_URI = safeNamedNode(knowledge_base_graph)
     ENTITY_UUID = uuid5(NAMESPACE_URL, knowledge_base_graph)
+    MAP_GRAPH_URI = safeNamedNode(mapping_base_graph)
 
     white = map.get("white") or []
     black = map.get("black") or []
@@ -213,37 +215,82 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             return items
   
         
-        def make_entity(object_value,my_types, specific_threshold=fuzzy_threshold):
-
+        def make_entity(object_value, my_types, specific_threshold=fuzzy_threshold):
             items = normalize_split_list(object_value, field_map.get("re_split"))
             nodes = []
-            pool_store = quads_by_type(store,my_types,ENTITY_GRAPH_URI)
-            for item in items:                
+
+            pool_store = quads_by_type(store, [MAP_ENTRY_TYPE], MAP_GRAPH_URI)
+
+            def find_entry_for_target(target: NamedNode):
+                for q in store.quads_for_pattern(None, safeNamedNode(MAP_TARGET), target, graph_name=MAP_GRAPH_URI):
+                    return q.subject
+                return None
+
+            def ensure_entry(target: NamedNode, type_hints=None):
+                entry = find_entry_for_target(target)
+                if entry:
+                    if type_hints:
+                        for th in type_hints:
+                            store.add(Quad(entry, safeNamedNode(MAP_TYPE_HINT), safeNamedNode(th), graph_name=MAP_GRAPH_URI))
+                    return entry
+
+                entry_suffix = uuid5(ENTITY_UUID, str(target))
+                entry = safeNamedNode(f"{MAPPING_BASE}{entry_suffix}")
+
+                store.add(Quad(entry, NamedNode(RDF_TYPE), safeNamedNode(MAP_ENTRY_TYPE), graph_name=MAP_GRAPH_URI))
+                store.add(Quad(entry, safeNamedNode(MAP_TARGET), target, graph_name=MAP_GRAPH_URI))
+
+                if type_hints:
+                    for th in type_hints:
+                        store.add(Quad(entry, safeNamedNode(MAP_TYPE_HINT), safeNamedNode(th), graph_name=MAP_GRAPH_URI))
+
+                add_timestamp(store=store, node=entry, graph=MAP_GRAPH_URI)
+                return entry
+
+
+            for item in items:
                 node = None
+
                 node, score, matched_label = fuzzy_match_label(
                     pool_store,
                     item,
-                    threshold=specific_threshold
+                    threshold=specific_threshold,
+                    graph_name=MAP_GRAPH_URI,
+                    predicates=[MAP_LABEL],
+                    regex=False
                 )
 
-                if not node:
+                if not node: # Create entity in ENTITY_GRAPH_URI (not in MAP_GRAPH_URI)
                     iri_suffix = uuid5(ENTITY_UUID, item) if specific_threshold <= 100 else uuid4()
                     node = safeNamedNode(f"{knowledge_base_graph}/{iri_suffix}")
-                    apply_rdf_types(store=store,node=node,data={},type_fields=my_types, default_type=predicate_str, base_ns=ENTITY_GRAPH_URI.value,prefix_ns=ns_prefix)
+
+                    apply_rdf_types(
+                        store=store,
+                        node=node,
+                        data={},
+                        type_fields=my_types,
+                        default_type=predicate_str,
+                        base_ns=ENTITY_GRAPH_URI.value,
+                        prefix_ns=ns_prefix
+                    )
 
                     store.add(Quad(node, NamedNode(RDFS_LABEL), Literal(item), graph_name=ENTITY_GRAPH_URI))
                     add_timestamp(store=store, node=node, graph=ENTITY_GRAPH_URI)
                     logger.debug(f"Created new {my_types[0]}: {item}")
+
+                    entry = ensure_entry(node, type_hints=my_types)
+                    ensure_mapping_literal(store, entry, item, safeNamedNode(MAP_LABEL), MAP_GRAPH_URI)
+
                 else:
                     logger.debug(f"{my_types[0].capitalize()} '{item}' matched as '{matched_label}' (score {score})")
 
-                alts = {(q.object.value).lower() for q in store.quads_for_pattern(node, NamedNode(SKOS_ALT), None, graph_name=ENTITY_GRAPH_URI)}
-                if item.lower() not in alts:
-                    store.add(Quad(node, NamedNode(SKOS_ALT), Literal(item), graph_name=ENTITY_GRAPH_URI))
+                    entry = ensure_entry(node, type_hints=my_types)
+                    ensure_mapping_literal(store, entry, item, safeNamedNode(MAP_LABEL), MAP_GRAPH_URI)
+
                 nodes.append(node)
 
-            return nodes # TODO how multiple nodes possible ?
-        
+            return nodes
+
         try:
             if not object:
                 return None
@@ -357,10 +404,10 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 
                 ### RELATIONS ###
 
-                elif predicate_str == "relations" and ("dc:relation" in object or "owl:sameAs" in object):
+                elif predicate_str == "relations" and ("dc:relation" in object or "owl:sameAs" in object or "dc:replaces" in object):
                     related_item = object.pop("dc:relation", None)
                     same_item = object.pop("owl:sameAs", None)
-
+                    # TODO dc:replaces
                     related_items = related_item if isinstance(related_item, list) else ([related_item] if related_item is not None else [])
                     same_items = same_item if isinstance(same_item, list) else ([same_item] if same_item is not None else [])
 
@@ -540,7 +587,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                                 store.add(Quad(subject, predicate, o, graph_name=GRAPH_URI))
                                 if isinstance(item, dict) and isinstance(o, (BlankNode)):                  
                                     # Recurse if unexpected dict that return BlankNode
-                                    add_rdf_from_dict(store, o, item, ns_prefix, base_uri, map, knowledge_base_graph)
+                                    add_rdf_from_dict(store, o, item, ns_prefix, base_uri, map, knowledge_base_graph, mapping_base_graph=mapping_base_graph)
                             else:
                                 logger.warning(f"Received unexpected item in mapping for {pred}: {o}")
         except Exception as e:
@@ -578,40 +625,6 @@ def apply_rdf_types(store: Store, node: NamedNode, data: dict, type_fields: list
                 logger.error(f"Invalid rdf:type at {node} for value '{type_str}': {e}")
                 continue
 
-def apply_additional_properties_deprecated(store: Store, node: NamedNode, data: dict, specs: list[dict], base_ns: str, prefix_ns: str = ZOT_NS):
-    GRAPH_URI = NamedNode(base_ns)
-    for spec in specs:
-        try:
-            property_str = spec.get("property")
-            value_spec = spec.get("value")
-            prefix = spec.get("prefix")
-            named_node = spec.get("named_node", False)
-
-            if not property_str or not value_spec:
-                continue
-
-            predicate = safeNamedNode(make_iri(property_str, prefix_ns))
-
-            if value_spec.startswith("_"):
-                raw_value = data.get(value_spec.lstrip("_"))
-                if not raw_value:
-                    continue
-            else:
-                raw_value = value_spec.strip()
-
-            if prefix: raw_value = make_iri(value_spec, prefix)
-
-            if named_node:                
-                obj = safeNamedNode(raw_value,enforce=True)
-                store.add(Quad(node, predicate, obj, graph_name=GRAPH_URI))
-                logger.debug(f"Added named node {obj.value}")
-            else:    
-                obj = Literal(str(raw_value))
-                store.add(Quad(node, predicate, obj, graph_name=GRAPH_URI))
-
-        except Exception as e:
-            logger.error(f"Invalid data at {node} for {raw_value}")
-            continue
 
 _PLACEHOLDER_NODE_RE = re.compile(r"\{\{\s*node\s*\}\}|\{\s*node\s*\}")
 _DATA_TOKEN_RE = re.compile(r"(?<!\w)_(?P<key>[A-Za-z0-9]+)(?!\w)")
@@ -845,7 +858,8 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
             ZOT_NS,
             lib.base_url,
             map,
-            lib.knowledge_base_graph
+            lib.knowledge_base_graph,
+            mapping_base_graph=lib.mapping_base_graph
         )
         apply_additional_properties(
             store,
@@ -872,7 +886,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
             collection_additional = map.get("additional") or []
             apply_additional_properties(store, node_uri, col_data, collection_additional, lib.base_url, ZOT_NS,"collection")
 
-            add_rdf_from_dict(store, node_uri, col_data, ZOT_NS, lib.base_url, map, lib.knowledge_base_graph)
+            add_rdf_from_dict(store, node_uri, col_data, ZOT_NS, lib.base_url, map, lib.knowledge_base_graph, mapping_base_graph=lib.mapping_base_graph)
             add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
         logger.info(f"--> Loaded {len(collections)} collections for {lib.name} to store")
     else:
@@ -945,7 +959,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
                     item_additional = map.get("additional") or []
                     apply_additional_properties(store, node_uri, item_data, item_additional, lib.base_url, ZOT_NS,"item")
 
-                    add_rdf_from_dict(store, node_uri, item_data, ZOT_NS, lib.base_url, map, lib.knowledge_base_graph,language)
+                    add_rdf_from_dict(store, node_uri, item_data, ZOT_NS, lib.base_url, map, lib.knowledge_base_graph,mapping_base_graph=lib.mapping_base_graph,language=language)
                     add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
         
                 except Exception as e:

@@ -117,7 +117,7 @@
             "comment":"The source dataset usually contains the entities, e.g. from Zotero notes, that are to be mapped to persistent entities in knowledge base (set in knowledgeBaseGraph), which is the target dataset.",
             "FUZZY": [
             {                
-                "comment": "compares each Literal from domainProperty to each from targetProperty with a fuzzy score threshold 0-100 (set here or taken from global config. If matched a link will be created from source to target using mapProperty, the matched Literal will be added to target using altLabel, and if allowCreate is true, a new resource in target will be created, having all target property-object pairs. The JSON-LD dictionary in ADD will be added to each created resource in the target dataset.",
+                "comment": "compares each Literal from domainProperty to each from targetProperty with a fuzzy score threshold 0-100 (set here or taken from global config). If matched a link will be created from source to target using mapProperty, the matched Literal will be added to target using altLabel, and if allowCreate is true, a new resource in target will be created, having all target property-object pairs. The JSON-LD dictionary in ADD will be added to each created resource in the target dataset.",
                 "threshold": 90,
                 "domainProperty": "https://semantic-html.org/vocab#text",
                 "targetProperty": "http://www.w3.org/2004/02/skos/core#altLabel"
