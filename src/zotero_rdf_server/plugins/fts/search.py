@@ -1,0 +1,330 @@
+
+from typing import Any, Dict, List, Optional
+
+# --- OpenSearch client --------------------------------------------------------
+
+from .db import make_client, resolve_config_path, get_os_config
+from .helpers import plugin_logger
+logger=plugin_logger()
+
+cfg_path = resolve_config_path()
+logger.debug(f"Loading config from {cfg_path}")
+oscfg = get_os_config(cfg_path)
+logger.debug(f"{oscfg}")
+client = make_client(oscfg)
+logger.info(f"Client config loaded from {cfg_path}")
+
+
+# --- Helpers -----------------------------------------------------------------
+
+def parse_csv(raw: str) -> List[str]:
+    """Parse comma-separated terms, trimming whitespace and dropping empties."""
+    terms = [t.strip() for t in raw.split(",") if t.strip()]
+    if not terms:
+        raise ValueError("No terms provided.")
+    return terms
+
+def maybe_guard_prefix(term: str, min_len: int = 3) -> bool:
+    """Return True if the term is long enough to use prefix matching."""
+    return len(term) >= min_len
+
+def effective_fuzzy_edits(term: str, requested_edits: int) -> int:
+    """
+    Guard fuzzy expansions on short terms (common OCR scenario).
+    - Very short tokens explode combinatorially with fuzziness 2.
+    """
+    if requested_edits <= 0:
+        return 0
+    if len(term) < 5:
+        return min(requested_edits, 1)
+    return min(requested_edits, 2)
+
+def get_doc_vector(index: str, os_id: str, vector_field: str = "vector") -> List[float]:
+    """Fetch a document and return its vector from _source."""
+    doc = client.get(index=index, id=os_id)
+    src = doc.get("_source", {})
+    vec = src.get(vector_field)
+    if vec is None:
+        raise KeyError(f"Document has no '{vector_field}' in _source.")
+    return vec
+
+def build_terms_should_queries(
+    terms: List[str],
+    field: str = "text",
+    exact: bool = True,
+    truncated: bool = True,
+    fuzzy: bool = True,
+    phrase_slop: int = 2,
+    prefix_max_expansions: int = 50,
+    fuzzy_max_expansions: int = 50,
+    fuzzy_prefix_length: int = 1,
+    fuzzy_edits: int = 2,
+    min_prefix_len: int = 3,
+) -> List[Dict[str, Any]]:
+    """
+    Build a list of should-clauses for:
+    - "exact"  => match_phrase (analyzed phrase match)
+    - "truncated" => match_phrase_prefix (last token treated as prefix)
+    - "fuzzy"  => match with fuzziness (OCR-robust)
+    Any single clause matching is enough when minimum_should_match=1.
+    """
+    should: List[Dict[str, Any]] = []
+
+    for t in terms:
+        if exact:
+            should.append({"match_phrase": {field: {"query": t, "slop": phrase_slop}}})
+
+        if truncated and maybe_guard_prefix(t, min_len=min_prefix_len):
+            should.append({"match_phrase_prefix": {field: {"query": t, "max_expansions": prefix_max_expansions}}})
+
+        if fuzzy:
+            edits = effective_fuzzy_edits(t, fuzzy_edits)
+            if edits > 0:
+                should.append(
+                    {
+                        "match": {
+                            field: {
+                                "query": t,
+                                "fuzziness": edits,
+                                "prefix_length": fuzzy_prefix_length,
+                                "max_expansions": fuzzy_max_expansions,
+                            }
+                        }
+                    }
+                )
+
+    return should
+
+def intervals_term_rule(
+    term: str,
+    allow_match: bool,
+    allow_prefix: bool,
+    allow_fuzzy: bool,
+    fuzzy_edits: int = 1,
+    min_prefix_len: int = 3,
+) -> Dict[str, Any]:
+    """
+    Build a single intervals rule for one term as an any_of across allowed modes.
+    intervals supports: match, prefix, fuzzy (and wildcard).
+    """
+    rules: List[Dict[str, Any]] = []
+
+    if allow_match:
+        rules.append({"match": {"query": term}})
+
+    if allow_prefix and maybe_guard_prefix(term, min_len=min_prefix_len):
+        rules.append({"prefix": {"prefix": term}})
+
+    if allow_fuzzy:
+        edits = effective_fuzzy_edits(term, fuzzy_edits)
+        if edits > 0:
+            rules.append({"fuzzy": {"term": term, "fuzziness": edits}})
+
+    if not rules:
+        # Caller ensured at least one mode; this can happen if term is too short for prefix and fuzziness=0.
+        # Fall back to match to avoid empty intervals.
+        rules.append({"match": {"query": term}})
+
+    if len(rules) == 1:
+        return rules[0]
+
+    return {"any_of": {"intervals": rules}}
+
+def build_proximity_intervals_query(
+    list_a: List[str],
+    list_b: List[str],
+    field: str = "text",
+    proximity: int = 5,
+    ordered: bool = False,
+    allow_match: bool = True,
+    allow_prefix: bool = True,
+    allow_fuzzy: bool = True,
+    fuzzy_edits: int = 1,
+) -> Dict[str, Any]:
+    """
+    Build an intervals query matching any pair (ai, bj) within `proximity` token gaps.
+    Cross product A x B; overall match succeeds if at least one pair matches.
+    """
+    pair_intervals: List[Dict[str, Any]] = []
+
+    for a in list_a:
+        a_rule = intervals_term_rule(a, allow_match, allow_prefix, allow_fuzzy, fuzzy_edits=fuzzy_edits)
+        for b in list_b:
+            b_rule = intervals_term_rule(b, allow_match, allow_prefix, allow_fuzzy, fuzzy_edits=fuzzy_edits)
+            pair_intervals.append(
+                {
+                    "all_of": {
+                        "intervals": [a_rule, b_rule],
+                        "max_gaps": proximity,
+                        "ordered": ordered,
+                    }
+                }
+            )
+
+    return {
+        "query": {
+            "intervals": {
+                field: {
+                    "any_of": {
+                        "intervals": pair_intervals
+                    }
+                }
+            }
+        }
+    }
+
+import csv, io, datetime, json
+
+def flatten_meta_fields(row: Dict[str, Any], meta_key: str = "meta", prefix: str = "meta_") -> Dict[str, Any]:
+    """
+    Flatten row['meta'] dict into top-level keys like meta_<path>.
+    Example: meta = {"a": {"b": 1}, "x": "y"} -> meta_a_b=1, meta_x="y"
+    Keeps original 'meta' field (optional); you can drop it if you prefer.
+    """
+    meta = row.get(meta_key)
+    if not isinstance(meta, dict):
+        return row
+
+    def walk(d: Dict[str, Any], path: List[str], out: Dict[str, Any]) -> None:
+        for k, v in d.items():
+            new_path = path + [str(k)]
+            if isinstance(v, dict):
+                walk(v, new_path, out)
+            else:
+                out[prefix + "_".join(new_path)] = v
+
+    out = dict(row)
+    walk(meta, [], out)
+    return out
+
+def normalize_hits(resp: Dict[str, Any], flatten_meta: bool = True, keep_meta: bool = False) -> Dict[str, Any]:
+    """Normalize OpenSearch response to a stable wrapper structure; optionally flatten 'meta'."""
+    hits = resp.get("hits", {}).get("hits", [])
+
+    rows: List[Dict[str, Any]] = []
+    for h in hits:
+        row = {"_id": h.get("_id"), "_score": h.get("_score")}
+        src = h.get("_source") or {}
+        row.update(src)
+
+        if flatten_meta:
+            row = flatten_meta_fields(row)
+            if not keep_meta:
+                row.pop("meta", None)
+
+        rows.append(row)
+
+    return {
+        "total": resp.get("hits", {}).get("total"),
+        "hits": rows,
+    }
+
+def flatten_value(v: Any) -> str:
+    """Convert nested values to a stable string representation for CSV/Markdown."""
+    if v is None:
+        return ""
+    if isinstance(v, (str, int, float, bool)):
+        return str(v)
+    return str(v)
+
+def collect_columns(rows: List[Dict[str, Any]], preferred: Optional[List[str]] = None) -> List[str]:
+    keys = set()
+    for r in rows:
+        keys.update(r.keys())
+
+    preferred = preferred or []
+    cols = [c for c in preferred if c in keys]
+    rest = sorted(k for k in keys if k not in cols)
+    return cols + rest
+
+def render_csv(rows: List[Dict[str, Any]], columns: List[str]) -> str:
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(columns)
+    for r in rows:
+        w.writerow([flatten_value(r.get(c)) for c in columns])
+    return buf.getvalue()
+
+def render_markdown_table(rows: List[Dict[str, Any]], columns: List[str], max_rows: int = 50) -> str:
+    rows = rows[:max_rows]
+    header = "| " + " | ".join(columns) + " |"
+    sep = "| " + " | ".join(["---"] * len(columns)) + " |"
+    lines = [header, sep]
+    for r in rows:
+        line = "| " + " | ".join(flatten_value(r.get(c)).replace("\n", " ") for c in columns) + " |"
+        lines.append(line)
+    return "\n".join(lines)
+
+def render_markdown(
+    rows: List[Dict[str, Any]],
+    columns: List[str],
+    *,
+    max_rows: int = 50,
+    title: str = "Search Results",
+) -> str:
+    """
+    Render results as a printable 'sheet' style Markdown:
+    one document per section, key-value layout.
+    """
+    lines: List[str] = []
+    rows = rows[:max_rows]
+
+    lines.append(f"# {title}")
+    lines.append("")
+    lines.append(f"Total documents shown: **{len(rows)}**")
+    lines.append("")
+
+    for idx, row in enumerate(rows, start=1):
+        lines.append("---")
+        lines.append(f"## Document {idx}")
+        lines.append("")
+
+        for col in columns:
+            if col not in row:
+                continue
+            value = flatten_value(row.get(col))
+            if value == "":
+                continue
+
+            # Key-value layout; block style for better printing
+            lines.append(f"**{col}**")
+            lines.append("")
+            lines.append(f"{value}")
+            lines.append("")
+
+    return "\n".join(lines)
+
+def render_markdown_query_header(debug_query: Dict[str, Any]) -> str:
+    """Render the OpenSearch query as a markdown code block."""
+    ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    pretty = json.dumps(debug_query, indent=2, ensure_ascii=False)
+
+    return (
+        "# Search\n\n"
+        f"**Generated:** {ts}\n\n"
+        "**Query:**\n\n"
+        "```json\n"
+        f"{pretty}\n"
+        "```\n\n"
+    )
+
+
+def apply_source_includes(body: Dict[str, Any], columns: Optional[str]) -> None:
+    """Mutate body to include _source filtering based on columns."""
+    if not columns:
+        return
+
+    requested = [c.strip() for c in columns.split(",") if c.strip()]
+    # _id/_score are not in _source
+    includes = [c for c in requested if c not in ("_id", "_score")]
+
+    # meta_* columns are derived from meta.* (flatten step)
+    if any(c.startswith("meta_") for c in requested) and "meta.*" not in includes:
+        includes.append("meta.*")
+
+    body["_source"] = {"includes": includes}
+
+def os_search(index: str, body: Dict[str, Any], columns: Optional[str]) -> Dict[str, Any]:
+    """Central OpenSearch search that applies _source includes if columns is set."""    
+    apply_source_includes(body, columns)
+    return client.search(index=index, body=body)
