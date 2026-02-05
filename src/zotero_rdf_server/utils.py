@@ -336,7 +336,7 @@ def load_text_like(
             raise
         return _fallback("unexpected error")
 
-from .config import SKOS_ALT, RDF_TYPE, LANG_MAP, PROV_TIMESTAMP, XSD_NS, MAP_LABEL, MAP_TARGET, MAP_REGEX
+from .config import RDF_TYPE, LANG_MAP, PROV_TIMESTAMP, XSD_NS, MAP_LABEL, MAP_TARGET, MAP_REGEX
 
         
 def ensure_mapping_literal(

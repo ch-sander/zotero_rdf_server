@@ -8,7 +8,6 @@ import sys
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 XSD_NS = "http://www.w3.org/2001/XMLSchema#"
-SKOS_ALT = "http://www.w3.org/2004/02/skos/core#altLabel"
 SKOS_PREF = "http://www.w3.org/2004/02/skos/core#prefLabel"
 SKOS_BROADER = "http://www.w3.org/2004/02/skos/core#broader"
 SKOS_CONCEPT = "http://www.w3.org/2004/02/skos/core#Concept"

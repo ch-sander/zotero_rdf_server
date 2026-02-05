@@ -382,59 +382,6 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         store.add(Quad(role_node, safeNamedNode(role_property), creator_node, graph_name=GRAPH_URI))
 
                     return role_node
-
-                elif predicate_str == "creators_old":                    
-                    if "name" in object:
-                        label = object["name"]
-                    else:
-                        label = f"{object.get('lastName', '')}, {object.get('firstName', '')}"
-                    
-                    type_nodes = make_iri(field_map.get("types",["actor"]),ns_prefix, enforce_list = True)
-                    role_types  = make_iri(field_map.get("role_types",["creatorRole"]),ns_prefix, enforce_list = True)
-                    role_properties = make_iri(field_map.get("role_properties","hasCreator"),ns_prefix, True)
-                    # role_node_type = field_map.get("role_node") or "BlankNode"
-                    fuzzy_threshold_specific = field_map.get("fuzzy") or fuzzy_threshold
-
-                    role_node = safeNamedNode(f"{base_uri}/{uuid4()}") #BlankNode() if str(role_node_type).lower() == "blanknode" else safeNamedNode(f"{base_uri}/{uuid4()}")
-
-                    apply_rdf_types(store, role_node, {}, role_types, "creatorRole", base_uri, ns_prefix)
-
-                    pool_store = quads_by_type(store,type_nodes,ENTITY_GRAPH_URI)
-
-                    creator_node, score, matched_label = fuzzy_match_label(
-                        pool_store,
-                        label,
-                        threshold=fuzzy_threshold_specific
-                    )
-
-                    if not creator_node:
-                        creator_uuid = uuid5(ENTITY_UUID, label) if fuzzy_threshold <= 100 else uuid4()
-                        creator_node = safeNamedNode(f"{knowledge_base_graph}/{creator_uuid}")                       
-                       
-                        store.add(Quad(creator_node, NamedNode(RDFS_LABEL), Literal(str(label)), graph_name=ENTITY_GRAPH_URI))
-
-                        add_timestamp(store=store, node=creator_node, graph=ENTITY_GRAPH_URI)
-
-                        apply_rdf_types(store, creator_node, {}, type_nodes, "actor", knowledge_base_graph, ns_prefix)
-
-                        logger.debug(f"Creator added: {label}")
-                        for key, val in object.items():
-                            if key != "creatorType" and val:
-                                pred = safeNamedNode(f"{ns_prefix}{key}")
-                                store.add(Quad(creator_node, pred, Literal(str(val)), graph_name=ENTITY_GRAPH_URI))       
-                            elif key == "creatorType" and val:
-                                store.add(Quad(role_node, NamedNode(RDFS_LABEL), Literal(str(val)), graph_name=GRAPH_URI))
-                                store.add(Quad(role_node, safeNamedNode(f"{ns_prefix}{key}"), safeNamedNode(f"{ns_prefix}{val}"), graph_name=GRAPH_URI))
-                                store.add(Quad(role_node, NamedNode(RDF_TYPE), safeNamedNode(f"{ns_prefix}{val}"), graph_name=GRAPH_URI))
-                    else:
-                        logger.debug(f"Creator already exists: {label} as {matched_label} ({score})")
-
-                    alts = {(q.object.value).lower() for q in store.quads_for_pattern(creator_node, NamedNode(SKOS_ALT), None, graph_name=ENTITY_GRAPH_URI)}
-                    if label.lower() not in alts:
-                        store.add(Quad(creator_node, NamedNode(SKOS_ALT), Literal(label), graph_name=ENTITY_GRAPH_URI))                    
-                    for role_property in role_properties:
-                        store.add(Quad(role_node, safeNamedNode(role_property), creator_node, graph_name=GRAPH_URI))
-                    return role_node
                 
                 ### RELATIONS ###
 
