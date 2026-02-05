@@ -1,6 +1,6 @@
 from __future__ import annotations
 from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Body
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import StreamingResponse, FileResponse, Response, JSONResponse, PlainTextResponse
 from typing import Literal, Any, Dict, Iterator, List, Optional, Union
 from pathlib import Path
 import json
@@ -471,3 +471,326 @@ def ingest_route(
         "targets": targets,
         "runs": len(run_ids),
     }
+
+def _default_filename(prefix: str, ext: str) -> str:
+    import datetime
+    ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return f"{prefix}-{ts}.{ext}"
+
+import io
+
+def format_search_response(
+    *,
+    resp: Dict[str, Any],
+    debug_query: Dict[str, Any],
+    output_format: str = "json",
+    columns: Optional[str] = None,
+    include_debug: bool = False,
+    filename: Optional[str] = None,
+    flatten_meta: bool = True,
+    keep_meta: bool = False,
+):
+    """
+    Return search results as JSON or as downloadable CSV/Markdown file.
+    """
+    from .search import (
+        normalize_hits,
+        collect_columns,
+        render_csv,
+        render_markdown,
+        render_markdown_query_header,
+    )
+
+    normalized = normalize_hits(resp, flatten_meta=flatten_meta, keep_meta=keep_meta)
+    rows = normalized["hits"]
+
+    preferred_cols = None
+    if columns:
+        preferred_cols = [c.strip() for c in columns.split(",") if c.strip()]
+
+    cols = collect_columns(
+        rows,
+        preferred=preferred_cols or ["_id", "_score", "doc_id", "source", "page", "ingest_ts"],
+    )
+
+    # --- JSON (inline, not a file) -------------------------------------------
+    if output_format == "json":
+        payload: Dict[str, Any] = {"total": normalized["total"], "hits": rows}
+        if include_debug:
+            payload["debug_query"] = debug_query
+        return JSONResponse(payload)
+
+    # --- CSV download --------------------------------------------------------
+    if output_format == "csv":
+        content = render_csv(rows, cols)
+        stream = io.BytesIO(content.encode("utf-8"))
+
+        return StreamingResponse(
+            stream,
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="{filename or _default_filename("search", "csv")}"'
+                )
+            },
+        )
+
+    # --- Markdown download ---------------------------------------------------
+    if output_format in ("md", "markdown"):
+        header = render_markdown_query_header(debug_query)
+        body = render_markdown(rows, cols)
+        content = header + body
+
+        stream = io.BytesIO(content.encode("utf-8"))
+        return StreamingResponse(
+            stream,
+            media_type="text/markdown; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename or _default_filename("search", "md")}"'
+            },
+        )
+
+    raise HTTPException(status_code=400, detail="Invalid format. Use: json, csv, md.")
+
+
+@router.get(
+    "/search/terms",
+    summary="Search comma-separated terms (OR) with phrase/prefix/fuzzy modes",
+    description=(
+        "Search for any of the comma-separated expressions in the given field. "
+        "Supports analyzed phrase match (match_phrase), phrase prefix (match_phrase_prefix), and fuzzy match."
+    ),
+    tags=["search"]
+)
+def search_terms(
+    index: str = Query(..., description="OpenSearch index name"),
+    q: str = Query(..., description="Comma-separated expressions, e.g. 'foo, bar, baz'"),
+    field: str = Query("text", description="Text field to search"),
+    exact: bool = Query(True, description="Enable analyzed phrase match"),
+    truncated: bool = Query(True, description="Enable phrase-prefix match"),
+    fuzzy: bool = Query(True, description="Enable fuzzy match"),
+    size: int = Query(10, ge=1, le=1000),
+
+    format: str = Query("json", description="Output format: json|csv|md", pattern="^(json|csv|md|markdown)$"),
+    columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
+    debug: bool = Query(False, description="Include debug_query (JSON only)"),
+):
+    from .search import parse_csv, build_terms_should_queries, os_search
+
+    try:
+        terms = parse_csv(q)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not (exact or truncated or fuzzy):
+        raise HTTPException(status_code=400, detail="Enable at least one mode: exact/truncated/fuzzy.")
+
+    should = build_terms_should_queries(
+        terms=terms,
+        field=field,
+        exact=exact,
+        truncated=truncated,
+        fuzzy=fuzzy,
+    )
+
+    body: Dict[str, Any] = {
+        "size": size,
+        "query": {"bool": {"should": should, "minimum_should_match": 1}},
+    }
+
+    try:
+        resp = os_search(index=index, body=body, columns=columns)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
+
+    return format_search_response(
+        resp=resp,
+        debug_query=body,
+        output_format=format,
+        columns=columns,
+        include_debug=debug,
+    )
+
+
+@router.get(
+    "/search/proximity",
+    summary="Proximity search between two CSV lists (A x B) using intervals",
+    description=(
+        "Search for any pair (ai, bj) where ai is near bj within a token gap window. "
+        "Supports match/prefix/fuzzy via intervals."
+    ),
+    tags=["search"]
+)
+def search_proximity(
+    index: str = Query(..., description="OpenSearch index name"),
+    a: str = Query(..., description="CSV list A"),
+    b: str = Query(..., description="CSV list B"),
+    field: str = Query("text", description="Text field to search"),
+    proximity: int = Query(5, ge=0, le=50, description="Max token gaps between A and B"),
+    ordered: bool = Query(False, description="If true, enforce A then B order"),
+    allow_match: bool = Query(True),
+    allow_prefix: bool = Query(True),
+    allow_fuzzy: bool = Query(True),
+    fuzzy_edits: int = Query(1, ge=0, le=2),
+    size: int = Query(10, ge=1, le=1000),
+
+    format: str = Query("json", description="Output format: json|csv|md", pattern="^(json|csv|md|markdown)$"),
+    columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
+    debug: bool = Query(False, description="Include debug_query (JSON only)"),
+):
+    from .search import parse_csv, build_proximity_intervals_query, os_search
+
+    try:
+        list_a = parse_csv(a)
+        list_b = parse_csv(b)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not (allow_match or allow_prefix or allow_fuzzy):
+        raise HTTPException(status_code=400, detail="Enable at least one mode: match/prefix/fuzzy.")
+
+    body = build_proximity_intervals_query(
+        list_a=list_a,
+        list_b=list_b,
+        field=field,
+        proximity=proximity,
+        ordered=ordered,
+        allow_match=allow_match,
+        allow_prefix=allow_prefix,
+        allow_fuzzy=allow_fuzzy,
+        fuzzy_edits=fuzzy_edits,
+    )
+    body["size"] = size
+
+    try:
+        resp = os_search(index=index, body=body, columns=columns)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
+
+    return format_search_response(
+        resp=resp,
+        debug_query=body,
+        output_format=format,
+        columns=columns,
+        include_debug=debug,
+    )
+
+@router.get(
+    "/search/knn/by-id",
+    summary="Vector k-NN similarity search by reference document _id",
+    description="Fetches the vector from a reference document and runs a k-NN search to find similar documents.",
+    tags=["search"]
+)
+def knn_by_id(
+    index: str = Query(..., description="OpenSearch index name"),
+    os_id: str = Query(..., description="Reference document OpenSearch _id"),
+    vector_field: str = Query("vector", description="knn_vector field name"),
+    k: int = Query(50, ge=1, le=10000),
+    size: int = Query(20, ge=1, le=1000),
+    ef_search: Optional[int] = Query(None, ge=1),
+    exclude_self: bool = Query(True),
+
+    format: str = Query("json", description="Output format: json|csv|md", pattern="^(json|csv|md|markdown)$"),
+    columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
+    debug: bool = Query(False, description="Include debug_query (JSON only)"),
+):
+    from .search import get_doc_vector, os_search
+
+    try:
+        query_vec = get_doc_vector(index=index, os_id=os_id, vector_field=vector_field)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Could not fetch vector for doc {os_id}: {e}")
+
+    knn_clause: Dict[str, Any] = {"field": vector_field, "query_vector": query_vec, "k": k}
+    if ef_search is not None:
+        knn_clause["ef_search"] = ef_search
+
+    if exclude_self:
+        body: Dict[str, Any] = {
+            "size": size,
+            "query": {
+                "bool": {
+                    "must": [{"knn": knn_clause}],
+                    "must_not": [{"ids": {"values": [os_id]}}],
+                }
+            },
+        }
+    else:
+        body = {"size": size, "query": {"knn": knn_clause}}
+
+    try:
+        resp = os_search(index=index, body=body, columns=columns)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
+
+    return format_search_response(
+        resp=resp,
+        debug_query=body,
+        output_format=format,
+        columns=columns,
+        include_debug=debug,
+    )
+
+@router.get(
+    "/search/mlt/by-id",
+    summary="Token similarity search by reference document _id (More Like This)",
+    description="Runs a More Like This query using a reference document to find token-similar documents.",
+    tags=["search"]
+)
+def mlt_by_id(
+    index: str = Query(..., description="OpenSearch index name"),
+    os_id: str = Query(..., description="Reference document OpenSearch _id"),
+    fields: str = Query("text", description="CSV list of fields, typically 'text'"),
+    min_term_freq: int = Query(1, ge=0),
+    min_doc_freq: int = Query(1, ge=0),
+    max_query_terms: int = Query(25, ge=1, le=100),
+    minimum_should_match: str = Query("30%", description="e.g. '30%' or '2'"),
+    size: int = Query(20, ge=1, le=1000),
+    exclude_self: bool = Query(True),
+
+    format: str = Query("json", description="Output format: json|csv|md", pattern="^(json|csv|md|markdown)$"),
+    columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
+    debug: bool = Query(False, description="Include debug_query (JSON only)"),
+):
+    from .search import os_search
+
+    field_list = [f.strip() for f in fields.split(",") if f.strip()]
+    if not field_list:
+        raise HTTPException(status_code=400, detail="No fields provided.")
+
+    mlt_query: Dict[str, Any] = {
+        "more_like_this": {
+            "fields": field_list,
+            "like": [{"_index": index, "_id": os_id}],
+            "min_term_freq": min_term_freq,
+            "min_doc_freq": min_doc_freq,
+            "max_query_terms": max_query_terms,
+            "minimum_should_match": minimum_should_match,
+        }
+    }
+
+    if exclude_self:
+        body: Dict[str, Any] = {
+            "size": size,
+            "query": {
+                "bool": {
+                    "must": [mlt_query],
+                    "must_not": [{"ids": {"values": [os_id]}}],
+                }
+            },
+        }
+    else:
+        body = {"size": size, "query": mlt_query}
+
+    try:
+        resp = os_search(index=index, body=body, columns=columns)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
+
+    return format_search_response(
+        resp=resp,
+        debug_query=body,
+        output_format=format,
+        columns=columns,
+        include_debug=debug,
+    )

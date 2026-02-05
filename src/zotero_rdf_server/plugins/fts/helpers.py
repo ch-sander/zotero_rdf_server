@@ -69,8 +69,11 @@ def resolve_config_path(config_path: Optional[str] = None) -> Path:
 
     env = os.getenv("FTS_CONFIG")
     if env:
+        plugin_logger().info(f"Loading config from ENV: {env}")
         return Path(env).expanduser().resolve()
-    return Path(__file__).resolve().parent / "config.yml"
+    fallback = Path(__file__).resolve().parent / "config.yml"
+    plugin_logger().info(f"Loading config from fallback: {str(fallback)}")
+    return fallback
 
 def _hash_file(path: Path, algo: str) -> str:
     h = hashlib.new(algo)
