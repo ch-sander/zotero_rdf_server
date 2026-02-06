@@ -47,7 +47,7 @@ def include_plugins(app: FastAPI, plugins_pkg: str = "zotero_rdf_server.plugins"
 
 
 
-@router.get("/export", summary="Create export", description=f"Exports the store or a named graph to {EXPORT_DIRECTORY}", tags=["data"])
+@router.get("/export", summary="Create export", description=f"Exports the store or a named graph to {EXPORT_DIRECTORY}", tags=["Data"])
 async def export_graph(
     format: str = Query("trig"),
     graph: str | None = Query(default=None, description="Named graph IRI (optional)")
@@ -85,7 +85,7 @@ async def export_graph(
     return {"success":f"Export to: {path}"}
     # return FileResponse(path, filename=os.path.basename(path))
 
-@router.get("/backup", summary="Create backup", description=f"Creates a complete backup of the store to {BACKUP_DIRECTORY}", tags=["data"])
+@router.get("/backup", summary="Create backup", description=f"Creates a complete backup of the store to {BACKUP_DIRECTORY}", tags=["Data"])
 async def backup_store():
     from .store import store
     backup_root = Path(BACKUP_DIRECTORY).resolve()
@@ -112,7 +112,7 @@ async def backup_store():
 
     return {"status": "success", "backup store":{"path": backup_path,"named_graphs":graphs, "len":len(store)}}
 
-@router.get("/reload", summary="Reload app", description="Will trigger a reload, even if not set in config.", tags=["data"])
+@router.get("/reload", summary="Reload app", description="Will trigger a reload, even if not set in config.", tags=["Data"])
 async def reload_store(logging_level: LogLevel = Query(default=log_level, description="Sets log level")):
     if logging_level:
         current_level = logger.level
@@ -131,14 +131,14 @@ async def reload_store(logging_level: LogLevel = Query(default=log_level, descri
     graphs = [str(g) for g in store.named_graphs()]
     return {"status": "success", "store":{"named_graphs":graphs, "len":len(store)}}
 
-@router.get("/optimize", summary="Optimize Store", description="Will optimize the oxigraph store", tags=["data"])
+@router.get("/optimize", summary="Optimize Store", description="Will optimize the oxigraph store", tags=["Data"])
 async def optimize_store():
     from .store import store
     store.optimize()
     return {"success":"Store optimized"}
 
 
-@router.get("/libs", summary="List of all libraries", description="Returns all available libraries with configuration.", tags=["config"])
+@router.get("/libs", summary="List of all libraries", description="Returns all available libraries with configuration.", tags=["Admin"])
 async def get_libs():
     result = [ZoteroLibrary(cfg) for cfg in ZOTERO_LIBRARIES_CONFIGS]
     return {"success": result}
@@ -149,9 +149,157 @@ async def list_graphs():
     graphs = [str(g) for g in store.named_graphs()]
     return {"status": "success", "store":{"named_graphs":graphs, "len":len(store)}}
 
+@router.get(
+    "/purge",
+    summary="Purge orphan entities from a named entity graph",
+    description=(
+        "Finds orphan entities in the configured libraries and optionally deletes them.\n\n"
+        "An entity is considered an orphan if it is not a mapping target. If `not_mapped_only=false`, "
+        "the entity must additionally not be referenced as an object in the selected graphs.\n\n"
+        "By default this endpoint runs in dry-run mode (`delete=false`)."
+    ),
+    tags=["RDF"],
+)
+async def purge(
+    graph_iri: str | None = Query(
+        default=None,
+        description=(
+            "Optional filter: run only for a specific library identifier (e.g., the library base URL). "
+            "If omitted, runs for all configured libraries."
+        ),
+    ),
+    delete: bool = Query(
+        default=False,
+        description="If true, deletes subject facts for the detected orphans in the entity graph.",
+    ),
+    not_mapped_only: bool = Query(
+        default=True,
+        description=(
+            "If true, returns all entities that are not mapping targets. "
+            "If false, returns only those that are not mapping targets AND not referenced as objects."
+        ),
+    ),
+    keep_if_sameas_subject: bool = Query(
+        default=False,
+        description="If true, keeps entities that have an outgoing owl:sameAs triple in the entity graph.",
+    ),
+) -> list:
+    from .store import store
+
+    checked_graph, all_graphs = get_graph(graph_iri)
+    if graph_iri is not None and not checked_graph:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid graph IRI. Use one of these or None: {all_graphs}",
+        )
+
+    results: list = []
+
+    for lib_cfg in ZOTERO_LIBRARIES_CONFIGS:
+        lib = ZoteroLibrary(lib_cfg)
+
+        if graph_iri is not None and graph_iri != lib.base_url:
+            logger.debug("Skipping %s (filtered by graph_iri=%s)", lib.base_url, graph_iri)
+            continue
+
+        logger.info("Purging for %s (delete=%s)...", lib.base_url, delete)
+
+        entity_graph = safeNamedNode(lib.knowledge_base_graph)
+        map_graph = safeNamedNode(lib.mapping_base_graph)
+
+        # Graphs to scan for object references
+        graphs_to_check = [
+            safeNamedNode(lib.knowledge_base_graph),
+            safeNamedNode(lib.base_url),
+        ]
+
+        results.append(
+            purge_orphan_entities(
+                store,
+                entity_graph=entity_graph,
+                map_graph=map_graph,
+                graphs_to_check_for_objects=graphs_to_check,
+                delete=delete,
+                not_mapped_only=not_mapped_only,
+                keep_if_sameas_subject=keep_if_sameas_subject,
+            )
+        )
+
+    return results
 
 
-@router.get("/csv", summary="Export CSV", description="Exports a named graph or the entire store as CSV or loads a CSV as RDF into the store", tags=["RDF"])
+@router.post(
+    "/merge",
+    summary="Merge two entities in the knowledge base graph and retarget mapping entries",
+    description=(
+        "Moves facts from `old` to `new` in the knowledge base graph, replaces all occurrences of `old` "
+        "as an object across the store, retargets mapping entries in the mapping graph, and migrates "
+        "facts in the mapping graph.\n\n"
+        "If `only_redirect=true`, the old subject facts are kept and a `new owl:sameAs old` triple is added "
+        "to the knowledge base graph. Otherwise, subject facts of `old` in the knowledge base graph are deleted.\n\n"
+        "By default this endpoint runs in dry-run mode (`execute=false`)."
+    ),
+    tags=["RDF", "Semantics"],
+)
+async def merge(
+    old_iri: str = Query(..., description="IRI of the entity to be merged (old / source)."),
+    new_iri: str = Query(..., description="IRI of the target entity (new / destination)."),
+    kb_graph_iri: str = Query(..., description="Named graph IRI of the knowledge base graph."),
+    map_graph_iri: str = Query(..., description="Named graph IRI of the mapping graph."),
+    only_redirect: bool = Query(
+        default=False,
+        description="If true, keep old KB subject facts and add a redirect triple (new owl:sameAs old).",
+    ),
+    dedup_mapping: bool = Query(
+        default=False,
+        description="If true, deduplicate and merge all mappings targeting new_iri",
+    )    ,
+) -> dict:
+    from .store import store
+
+    old = safeNamedNode(old_iri)
+    new = safeNamedNode(new_iri)
+
+    if old == new:
+        raise HTTPException(status_code=400, detail="old_iri and new_iri must be different.")
+
+    checked_graph_map, _ = get_graph(map_graph_iri)
+    checked_graph_kb, _ = get_graph(kb_graph_iri)
+    if not checked_graph_map or not checked_graph_kb:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Knowledge base or mapping graph not found or empty",
+        )
+    
+    def has_subject_in_graph(store: Store, subj: NamedNode, graph: NamedNode) -> bool:
+        return any(True for _ in store.quads_for_pattern(subj, None, None, graph_name=graph))
+
+    if not has_subject_in_graph(store, old, checked_graph_kb) or not has_subject_in_graph(store, new, checked_graph_kb):
+        raise HTTPException(
+            status_code=400,
+            detail="Knowledge base does not contain facts about old/new IRI",
+        )
+    
+    merge_entities(
+        store,
+        old,
+        new,
+        only_redirect=only_redirect,
+        map_graph=checked_graph_map,
+        KB_graph=checked_graph_kb,
+        dedup_mapping=dedup_mapping
+    )
+
+    return {
+        "only_redirect": only_redirect,
+        "dedup_mapping": dedup_mapping,
+        "old": str(old),
+        "new": str(new),
+        "kb_graph": str(checked_graph_kb),
+        "map_graph": str(checked_graph_map)
+    }
+
+@router.get("/csv", summary="Export CSV", description="Exports a named graph or the entire store as CSV or loads a CSV as RDF into the store", tags=["RDF","Data"])
 async def get_csv(
     graph: str | None = Query(default=None, description="Named graph IRI (optional)"),
     load_csv: str | Path | None = Query(default=None, description="Load a CSV file into the store"),
@@ -237,13 +385,9 @@ async def get_csv(
     graphs = [str(g) for g in store.named_graphs()]
     return {"status": "success", "store":{"named_graphs":graphs, "len":len(store)}}
 
-### PLUGINS ###
-
-
-
 ###LOGS###
 
-@router.get("/logs", response_class=HTMLResponse)
+@router.get("/logs", response_class=HTMLResponse, tags=["Admin"])
 def logs_page():
     try:
         import html
@@ -312,7 +456,7 @@ def logs_page():
     return HTMLResponse(content=html_page)
 
 
-@router.post("/logs/clear")
+@router.post("/logs/clear", tags=["Admin"])
 def clear_log_file():
     try:
         with open("app.log", "w") as f:

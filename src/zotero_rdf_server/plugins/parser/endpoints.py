@@ -10,9 +10,9 @@ from zotero_rdf_server.config import *
 from zotero_rdf_server.models import ZoteroLibrary
 from zotero_rdf_server.utils import *
 
-router = APIRouter(tags=["Semantic Note Parsing"])
+router = APIRouter(tags=["Semantics"])
 
-@router.get("/parse_notes", summary="Parse notes", description="Triggers the parsing of all Zotero notes with semantic-html plugin", tags=["RDF", "Plugins"])
+@router.get("/parse_notes", summary="Parse notes", description="Triggers the parsing of all Zotero notes with semantic-html plugin", tags=["RDF"])
 async def parse_notes(
     delete: bool = Query(default=False, description="Delete all existing triples related to parsed note"),
     graph: str | None = Query(default=None, description="Named graph IRI containing the items/notes (optional)"),

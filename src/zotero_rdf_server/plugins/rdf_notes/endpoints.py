@@ -16,7 +16,7 @@ router = APIRouter(tags=["Notes RDF Interface"])
     "/znotes2rdf",
     summary="Zotero Notes to RDF",
     description="Writes all RDF blocks in Zotero Notes HTML into RDF, either Store or file.",
-    tags=["RDF", "Plugins"]
+    tags=["RDF"]
 )
 async def znotes2rdf(
     graph: str | None = Query(default=None, description="Named graph IRI (optional) to write RDF resources to. Will use this named graph to detect Zotero library sync configuration to read from collection if no config parameters are given to the endpoint."),
@@ -120,7 +120,7 @@ async def znotes2rdf(
         logger.exception("Error during Zotero Notes to RDF export")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/rdf2znotes", summary="RDF to Zotero Notes", description="Creates Zotero Notes with RDF dump block from Store or RDF dataset", tags=["RDF", "Plugins"])
+@router.get("/rdf2znotes", summary="RDF to Zotero Notes", description="Creates Zotero Notes with RDF dump block from Store or RDF dataset", tags=["RDF"])
 async def rdf2znotes(
     clear_collection: bool = Query(default=False, description="Delete all existing notes in collection"),
     graph: str | None = Query(default=None, description="Named graph IRI (optional) to read RDF resources from. Will use this named graph to detect Zotero library sync configuration to write to collection if no config parameters are given to the endpoint."),
@@ -199,7 +199,7 @@ async def rdf2znotes(
         raise HTTPException(status_code=500, detail=str(e))
     
 
-@router.get("/taxonomy", summary="Parses taxonomy between Knowledge Base and Zotero", description="Creates a structured HTML from RDF taxonomies, and parses structured HTML back as RDF", tags=["RDF", "Plugins"])
+@router.get("/taxonomy", summary="Parses taxonomy between Knowledge Base and Zotero", description="Creates a structured HTML from RDF taxonomies, and parses structured HTML back as RDF", tags=["RDF", "Semantics"])
 async def taxonomy(
     graph: str | None = Query(default=None, description="Named graph IRI (optional) to read RDF resources from. Will use this named graph to detect Zotero library sync configuration to write to collection if no config parameters are given to the endpoint."),
     task: TypeLiteral["writeNote", "writeStore"] = Query(default="writeNote", description="Either 'writeNote' to write from Store into HTML/note target or 'writeStore' to read from HTML/note to target Store"),

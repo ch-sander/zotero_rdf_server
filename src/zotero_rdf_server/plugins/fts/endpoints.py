@@ -465,12 +465,20 @@ def ingest_route(
                                         page_to_text_kwargs=model_kwargs,
                                         text_image_file_kwargs=file_kwargs,
                                         config_path=config_path))
-    return {
+    
+    result = {
         "status": "ok",
         "run_ids": run_ids,
         "targets": targets,
         "runs": len(run_ids),
-    }
+    }    
+    from zotero_rdf_server.config import EXPORT_DIRECTORY
+    export_dir = Path(EXPORT_DIRECTORY)
+    export_dir.mkdir(parents=True, exist_ok=True)
+    with open(export_dir / "result.json", "w", encoding="utf-8") as f:
+        json.dump(result, f, ensure_ascii=False, indent=2)
+
+    return result
 
 def _default_filename(prefix: str, ext: str) -> str:
     import datetime
@@ -560,7 +568,7 @@ def format_search_response(
         "Search for any of the comma-separated expressions in the given field. "
         "Supports analyzed phrase match (match_phrase), phrase prefix (match_phrase_prefix), and fuzzy match."
     ),
-    tags=["search"]
+    tags=["Search"]
 )
 def search_terms(
     index: str = Query(..., description="OpenSearch index name"),
@@ -619,7 +627,7 @@ def search_terms(
         "Search for any pair (ai, bj) where ai is near bj within a token gap window. "
         "Supports match/prefix/fuzzy via intervals."
     ),
-    tags=["search"]
+    tags=["Search"]
 )
 def search_proximity(
     index: str = Query(..., description="OpenSearch index name"),
@@ -679,7 +687,7 @@ def search_proximity(
     "/search/knn/by-id",
     summary="Vector k-NN similarity search by reference document _id",
     description="Fetches the vector from a reference document and runs a k-NN search to find similar documents.",
-    tags=["search"]
+    tags=["Search"]
 )
 def knn_by_id(
     index: str = Query(..., description="OpenSearch index name"),
@@ -735,7 +743,7 @@ def knn_by_id(
     "/search/mlt/by-id",
     summary="Token similarity search by reference document _id (More Like This)",
     description="Runs a More Like This query using a reference document to find token-similar documents.",
-    tags=["search"]
+    tags=["Search"]
 )
 def mlt_by_id(
     index: str = Query(..., description="OpenSearch index name"),
