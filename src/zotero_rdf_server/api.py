@@ -113,7 +113,7 @@ async def backup_store():
     return {"status": "success", "backup store":{"path": backup_path,"named_graphs":graphs, "len":len(store)}}
 
 @router.get("/reload", summary="Reload app", description="Will trigger a reload, even if not set in config.", tags=["Data"])
-async def reload_store(logging_level: LogLevel = Query(default=log_level, description="Sets log level")):
+async def reload_store(logging_level: LogLevel = Query(default=log_level, description="Sets log level"), remove_store: bool = Query(default=True, description="Clears data directory before loading")):
     if logging_level:
         current_level = logger.level
         new_level = getattr(logging, logging_level.upper(), None)
@@ -122,11 +122,11 @@ async def reload_store(logging_level: LogLevel = Query(default=log_level, descri
         
         logger.setLevel(new_level)
         try:
-            refresh_store(True)
+            refresh_store(True, remove_store=remove_store)
         finally:
             logger.setLevel(current_level)
     else:
-        refresh_store(True)
+        refresh_store(True, remove_store=remove_store)
     from .store import store
     graphs = [str(g) for g in store.named_graphs()]
     return {"status": "success", "store":{"named_graphs":graphs, "len":len(store)}}
@@ -148,6 +148,53 @@ async def list_graphs():
     from .store import store
     graphs = [str(g) for g in store.named_graphs()]
     return {"status": "success", "store":{"named_graphs":graphs, "len":len(store)}}
+
+
+@router.delete(
+    "/delete_mapping_targets",
+    summary="Delete all mapping target triples from a mapping graph",
+    description=(
+        "Deletes all triples of the form `?entry zmap:target ?entity` from the given mapping graph.\n\n"
+        "By default this endpoint runs in dry-run mode (`execute=false`)."
+    ),
+    tags=["RDF"],
+)
+async def delete_mapping_targets(
+    map_graph_iri: str = Query(..., description="Named graph IRI of the mapping graph."),
+    execute: bool = Query(
+        default=False,
+        description="If true, performs the deletion. If false, only returns how many triples would be removed.",
+    ),
+) -> dict:
+    from .store import store
+
+    map_graph, all_graphs = get_graph(map_graph_iri)
+    if map_graph_iri is not None and not map_graph:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid graph IRI. Use one of these or None: {all_graphs}",
+        )
+    target_quads = list(store.quads_for_pattern(None, MAP_TARGET_NODE, None, graph_name=map_graph))
+    count = len(target_quads)
+
+    if not execute:
+        return {
+            "execute": False,
+            "map_graph": str(map_graph),
+            "would_remove": count,
+            "predicate": str(MAP_TARGET_NODE),
+        }
+
+    for q in target_quads:
+        store.remove(q)
+
+    return {
+        "execute": True,
+        "map_graph": str(map_graph),
+        "removed": count,
+        "predicate": str(MAP_TARGET_NODE),
+    }
+
 
 @router.get(
     "/purge",
