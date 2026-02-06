@@ -60,16 +60,22 @@ def _iter_sources(lib) -> Iterable[SourceFile]:
         return
 
     # Default: local
-    subdir = Path(lib.load_from) if lib.load_from else Path(IMPORT_DIRECTORY) / lib.name
-    subdir = subdir.resolve()
-    if not subdir.is_dir():
-        logger.warning(f"Directory not found for manual import: {subdir}")
+    subpath = Path(lib.load_from) if lib.load_from else Path(IMPORT_DIRECTORY) / lib.name
+    subpath = subpath.resolve()
+
+    if subpath.is_file():
+        yield SourceFile(path=subpath, name=subpath.name, cleanup=None)
         return
 
-    for filepath in subdir.iterdir():
-        if filepath.is_file():
-            yield SourceFile(path=filepath, name=filepath.name, cleanup=None)
-    
+    if subpath.is_dir():
+        for filepath in subpath.iterdir():
+            if filepath.is_file():
+                yield SourceFile(path=filepath, name=filepath.name, cleanup=None)
+        return
+
+    logger.warning(f"Path not found for manual import: {subpath}")
+    return
+
 def import_rdf(lib: ZoteroLibrary, store: Store):
     logger.info(f"Importing RDF for '{lib.name}' into {lib.base_url}")
 
@@ -232,7 +238,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 )
 
                 if not node:
-                    iri_suffix = uuid5(ENTITY_UUID, item) if specific_threshold <= 100 else uuid4()
+                    iri_suffix = uuid5(ENTITY_UUID, item) if specific_threshold >= 100 else uuid4()
                     node = safeNamedNode(f"{knowledge_base_graph}/{iri_suffix}")
 
                     apply_rdf_types(
