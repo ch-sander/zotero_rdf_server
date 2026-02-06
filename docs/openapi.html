@@ -114,6 +114,18 @@
               "default": "INFO"
             },
             "description": "Sets log level"
+          },
+          {
+            "name": "remove_store",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Clears data directory before loading",
+              "default": true,
+              "title": "Remove Store"
+            },
+            "description": "Clears data directory before loading"
           }
         ],
         "responses": {
@@ -192,6 +204,65 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/delete_mapping_targets": {
+      "delete": {
+        "tags": [
+          "RDF"
+        ],
+        "summary": "Delete all mapping target triples from a mapping graph",
+        "description": "Deletes all triples of the form `?entry zmap:target ?entity` from the given mapping graph.\n\nBy default this endpoint runs in dry-run mode (`execute=false`).",
+        "operationId": "delete_mapping_targets_delete_mapping_targets_delete",
+        "parameters": [
+          {
+            "name": "map_graph_iri",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Named graph IRI of the mapping graph.",
+              "title": "Map Graph Iri"
+            },
+            "description": "Named graph IRI of the mapping graph."
+          },
+          {
+            "name": "execute",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, performs the deletion. If false, only returns how many triples would be removed.",
+              "default": false,
+              "title": "Execute"
+            },
+            "description": "If true, performs the deletion. If false, only returns how many triples would be removed."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Delete Mapping Targets Delete Mapping Targets Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
