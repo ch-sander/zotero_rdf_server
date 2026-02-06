@@ -8,7 +8,7 @@
     "/export": {
       "get": {
         "tags": [
-          "data"
+          "Data"
         ],
         "summary": "Create export",
         "description": "Exports the store or a named graph to /home/runner/work/zotero_rdf_server/zotero_rdf_server/local/exports",
@@ -68,7 +68,7 @@
     "/backup": {
       "get": {
         "tags": [
-          "data"
+          "Data"
         ],
         "summary": "Create backup",
         "description": "Creates a complete backup of the store to /home/runner/work/zotero_rdf_server/zotero_rdf_server/local/backup",
@@ -88,7 +88,7 @@
     "/reload": {
       "get": {
         "tags": [
-          "data"
+          "Data"
         ],
         "summary": "Reload app",
         "description": "Will trigger a reload, even if not set in config.",
@@ -131,7 +131,7 @@
     "/optimize": {
       "get": {
         "tags": [
-          "data"
+          "Data"
         ],
         "summary": "Optimize Store",
         "description": "Will optimize the oxigraph store",
@@ -151,7 +151,7 @@
     "/libs": {
       "get": {
         "tags": [
-          "config"
+          "Admin"
         ],
         "summary": "List of all libraries",
         "description": "Returns all available libraries with configuration.",
@@ -188,10 +188,206 @@
         }
       }
     },
-    "/csv": {
+    "/purge": {
       "get": {
         "tags": [
           "RDF"
+        ],
+        "summary": "Purge orphan entities from a named entity graph",
+        "description": "Finds orphan entities in the configured libraries and optionally deletes them.\n\nAn entity is considered an orphan if it is not a mapping target. If `not_mapped_only=false`, the entity must additionally not be referenced as an object in the selected graphs.\n\nBy default this endpoint runs in dry-run mode (`delete=false`).",
+        "operationId": "purge_purge_get",
+        "parameters": [
+          {
+            "name": "graph_iri",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional filter: run only for a specific library identifier (e.g., the library base URL). If omitted, runs for all configured libraries.",
+              "title": "Graph Iri"
+            },
+            "description": "Optional filter: run only for a specific library identifier (e.g., the library base URL). If omitted, runs for all configured libraries."
+          },
+          {
+            "name": "delete",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, deletes subject facts for the detected orphans in the entity graph.",
+              "default": false,
+              "title": "Delete"
+            },
+            "description": "If true, deletes subject facts for the detected orphans in the entity graph."
+          },
+          {
+            "name": "not_mapped_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, returns all entities that are not mapping targets. If false, returns only those that are not mapping targets AND not referenced as objects.",
+              "default": true,
+              "title": "Not Mapped Only"
+            },
+            "description": "If true, returns all entities that are not mapping targets. If false, returns only those that are not mapping targets AND not referenced as objects."
+          },
+          {
+            "name": "keep_if_sameas_subject",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, keeps entities that have an outgoing owl:sameAs triple in the entity graph.",
+              "default": false,
+              "title": "Keep If Sameas Subject"
+            },
+            "description": "If true, keeps entities that have an outgoing owl:sameAs triple in the entity graph."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {},
+                  "title": "Response Purge Purge Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/merge": {
+      "post": {
+        "tags": [
+          "RDF",
+          "Semantics"
+        ],
+        "summary": "Merge two entities in the knowledge base graph and retarget mapping entries",
+        "description": "Moves facts from `old` to `new` in the knowledge base graph, replaces all occurrences of `old` as an object across the store, retargets mapping entries in the mapping graph, and migrates facts in the mapping graph.\n\nIf `only_redirect=true`, the old subject facts are kept and a `new owl:sameAs old` triple is added to the knowledge base graph. Otherwise, subject facts of `old` in the knowledge base graph are deleted.\n\nBy default this endpoint runs in dry-run mode (`execute=false`).",
+        "operationId": "merge_merge_post",
+        "parameters": [
+          {
+            "name": "old_iri",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "IRI of the entity to be merged (old / source).",
+              "title": "Old Iri"
+            },
+            "description": "IRI of the entity to be merged (old / source)."
+          },
+          {
+            "name": "new_iri",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "IRI of the target entity (new / destination).",
+              "title": "New Iri"
+            },
+            "description": "IRI of the target entity (new / destination)."
+          },
+          {
+            "name": "kb_graph_iri",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Named graph IRI of the knowledge base graph.",
+              "title": "Kb Graph Iri"
+            },
+            "description": "Named graph IRI of the knowledge base graph."
+          },
+          {
+            "name": "map_graph_iri",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Named graph IRI of the mapping graph.",
+              "title": "Map Graph Iri"
+            },
+            "description": "Named graph IRI of the mapping graph."
+          },
+          {
+            "name": "only_redirect",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, keep old KB subject facts and add a redirect triple (new owl:sameAs old).",
+              "default": false,
+              "title": "Only Redirect"
+            },
+            "description": "If true, keep old KB subject facts and add a redirect triple (new owl:sameAs old)."
+          },
+          {
+            "name": "dedup_mapping",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, deduplicate and merge all mappings targeting new_iri",
+              "default": false,
+              "title": "Dedup Mapping"
+            },
+            "description": "If true, deduplicate and merge all mappings targeting new_iri"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Merge Merge Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/csv": {
+      "get": {
+        "tags": [
+          "RDF",
+          "Data"
         ],
         "summary": "Export CSV",
         "description": "Exports a named graph or the entire store as CSV or loads a CSV as RDF into the store",
@@ -281,6 +477,9 @@
     },
     "/logs": {
       "get": {
+        "tags": [
+          "Admin"
+        ],
         "summary": "Logs Page",
         "operationId": "logs_page_logs_get",
         "responses": {
@@ -299,6 +498,9 @@
     },
     "/logs/clear": {
       "post": {
+        "tags": [
+          "Admin"
+        ],
         "summary": "Clear Log File",
         "operationId": "clear_log_file_logs_clear_post",
         "responses": {
@@ -324,15 +526,15 @@
         "operationId": "ocr_url_plugin_fts_ocr_get",
         "parameters": [
           {
-            "name": "url",
+            "name": "input",
             "in": "query",
             "required": true,
             "schema": {
               "type": "string",
-              "description": "PDF or IIIF URL",
-              "title": "Url"
+              "description": "PDF or IIIF URL or file path",
+              "title": "Input"
             },
-            "description": "PDF or IIIF URL"
+            "description": "PDF or IIIF URL or file path"
           },
           {
             "name": "output",
@@ -704,9 +906,45 @@
             "schema": {
               "type": "boolean",
               "description": "If true, run OCR pages ingest via pages_fn",
+              "default": true,
               "title": "Ocr"
             },
             "description": "If true, run OCR pages ingest via pages_fn"
+          },
+          {
+            "name": "vector",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, vectorizes text with sentence transformer (1024 dimensions)",
+              "default": true,
+              "title": "Vector"
+            },
+            "description": "If true, vectorizes text with sentence transformer (1024 dimensions)"
+          },
+          {
+            "name": "transformer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, run transformer pipeline (doi:10.3390/electronics14153083)",
+              "title": "Transformer"
+            },
+            "description": "If true, run transformer pipeline (doi:10.3390/electronics14153083)"
+          },
+          {
+            "name": "ingest",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, ingest into Open Search",
+              "default": true,
+              "title": "Ingest"
+            },
+            "description": "If true, ingest into Open Search"
           },
           {
             "name": "query",
@@ -812,13 +1050,714 @@
         }
       }
     },
+    "/plugin/fts/search/terms": {
+      "get": {
+        "tags": [
+          "Plugin",
+          "FTS",
+          "Search"
+        ],
+        "summary": "Search comma-separated terms (OR) with phrase/prefix/fuzzy modes",
+        "description": "Search for any of the comma-separated expressions in the given field. Supports analyzed phrase match (match_phrase), phrase prefix (match_phrase_prefix), and fuzzy match.",
+        "operationId": "search_terms_plugin_fts_search_terms_get",
+        "parameters": [
+          {
+            "name": "index",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "OpenSearch index name",
+              "title": "Index"
+            },
+            "description": "OpenSearch index name"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated expressions, e.g. 'foo, bar, baz'",
+              "title": "Q"
+            },
+            "description": "Comma-separated expressions, e.g. 'foo, bar, baz'"
+          },
+          {
+            "name": "field",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Text field to search",
+              "default": "text",
+              "title": "Field"
+            },
+            "description": "Text field to search"
+          },
+          {
+            "name": "exact",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Enable analyzed phrase match",
+              "default": true,
+              "title": "Exact"
+            },
+            "description": "Enable analyzed phrase match"
+          },
+          {
+            "name": "truncated",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Enable phrase-prefix match",
+              "default": true,
+              "title": "Truncated"
+            },
+            "description": "Enable phrase-prefix match"
+          },
+          {
+            "name": "fuzzy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Enable fuzzy match",
+              "default": true,
+              "title": "Fuzzy"
+            },
+            "description": "Enable fuzzy match"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 10,
+              "title": "Size"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(json|csv|md|markdown)$",
+              "description": "Output format: json|csv|md",
+              "default": "json",
+              "title": "Format"
+            },
+            "description": "Output format: json|csv|md"
+          },
+          {
+            "name": "columns",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional CSV list of columns to include",
+              "title": "Columns"
+            },
+            "description": "Optional CSV list of columns to include"
+          },
+          {
+            "name": "debug",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include debug_query (JSON only)",
+              "default": false,
+              "title": "Debug"
+            },
+            "description": "Include debug_query (JSON only)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugin/fts/search/proximity": {
+      "get": {
+        "tags": [
+          "Plugin",
+          "FTS",
+          "Search"
+        ],
+        "summary": "Proximity search between two CSV lists (A x B) using intervals",
+        "description": "Search for any pair (ai, bj) where ai is near bj within a token gap window. Supports match/prefix/fuzzy via intervals.",
+        "operationId": "search_proximity_plugin_fts_search_proximity_get",
+        "parameters": [
+          {
+            "name": "index",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "OpenSearch index name",
+              "title": "Index"
+            },
+            "description": "OpenSearch index name"
+          },
+          {
+            "name": "a",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "CSV list A",
+              "title": "A"
+            },
+            "description": "CSV list A"
+          },
+          {
+            "name": "b",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "CSV list B",
+              "title": "B"
+            },
+            "description": "CSV list B"
+          },
+          {
+            "name": "field",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Text field to search",
+              "default": "text",
+              "title": "Field"
+            },
+            "description": "Text field to search"
+          },
+          {
+            "name": "proximity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 0,
+              "description": "Max token gaps between A and B",
+              "default": 5,
+              "title": "Proximity"
+            },
+            "description": "Max token gaps between A and B"
+          },
+          {
+            "name": "ordered",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, enforce A then B order",
+              "default": false,
+              "title": "Ordered"
+            },
+            "description": "If true, enforce A then B order"
+          },
+          {
+            "name": "allow_match",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Allow Match"
+            }
+          },
+          {
+            "name": "allow_prefix",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Allow Prefix"
+            }
+          },
+          {
+            "name": "allow_fuzzy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Allow Fuzzy"
+            }
+          },
+          {
+            "name": "fuzzy_edits",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 2,
+              "minimum": 0,
+              "default": 1,
+              "title": "Fuzzy Edits"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 10,
+              "title": "Size"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(json|csv|md|markdown)$",
+              "description": "Output format: json|csv|md",
+              "default": "json",
+              "title": "Format"
+            },
+            "description": "Output format: json|csv|md"
+          },
+          {
+            "name": "columns",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional CSV list of columns to include",
+              "title": "Columns"
+            },
+            "description": "Optional CSV list of columns to include"
+          },
+          {
+            "name": "debug",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include debug_query (JSON only)",
+              "default": false,
+              "title": "Debug"
+            },
+            "description": "Include debug_query (JSON only)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugin/fts/search/knn/by-id": {
+      "get": {
+        "tags": [
+          "Plugin",
+          "FTS",
+          "Search"
+        ],
+        "summary": "Vector k-NN similarity search by reference document _id",
+        "description": "Fetches the vector from a reference document and runs a k-NN search to find similar documents.",
+        "operationId": "knn_by_id_plugin_fts_search_knn_by_id_get",
+        "parameters": [
+          {
+            "name": "index",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "OpenSearch index name",
+              "title": "Index"
+            },
+            "description": "OpenSearch index name"
+          },
+          {
+            "name": "os_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Reference document OpenSearch _id",
+              "title": "Os Id"
+            },
+            "description": "Reference document OpenSearch _id"
+          },
+          {
+            "name": "vector_field",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "knn_vector field name",
+              "default": "vector",
+              "title": "Vector Field"
+            },
+            "description": "knn_vector field name"
+          },
+          {
+            "name": "k",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10000,
+              "minimum": 1,
+              "default": 50,
+              "title": "K"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 20,
+              "title": "Size"
+            }
+          },
+          {
+            "name": "ef_search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ef Search"
+            }
+          },
+          {
+            "name": "exclude_self",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Exclude Self"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(json|csv|md|markdown)$",
+              "description": "Output format: json|csv|md",
+              "default": "json",
+              "title": "Format"
+            },
+            "description": "Output format: json|csv|md"
+          },
+          {
+            "name": "columns",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional CSV list of columns to include",
+              "title": "Columns"
+            },
+            "description": "Optional CSV list of columns to include"
+          },
+          {
+            "name": "debug",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include debug_query (JSON only)",
+              "default": false,
+              "title": "Debug"
+            },
+            "description": "Include debug_query (JSON only)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugin/fts/search/mlt/by-id": {
+      "get": {
+        "tags": [
+          "Plugin",
+          "FTS",
+          "Search"
+        ],
+        "summary": "Token similarity search by reference document _id (More Like This)",
+        "description": "Runs a More Like This query using a reference document to find token-similar documents.",
+        "operationId": "mlt_by_id_plugin_fts_search_mlt_by_id_get",
+        "parameters": [
+          {
+            "name": "index",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "OpenSearch index name",
+              "title": "Index"
+            },
+            "description": "OpenSearch index name"
+          },
+          {
+            "name": "os_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Reference document OpenSearch _id",
+              "title": "Os Id"
+            },
+            "description": "Reference document OpenSearch _id"
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "CSV list of fields, typically 'text'",
+              "default": "text",
+              "title": "Fields"
+            },
+            "description": "CSV list of fields, typically 'text'"
+          },
+          {
+            "name": "min_term_freq",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 1,
+              "title": "Min Term Freq"
+            }
+          },
+          {
+            "name": "min_doc_freq",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 1,
+              "title": "Min Doc Freq"
+            }
+          },
+          {
+            "name": "max_query_terms",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Max Query Terms"
+            }
+          },
+          {
+            "name": "minimum_should_match",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "e.g. '30%' or '2'",
+              "default": "30%",
+              "title": "Minimum Should Match"
+            },
+            "description": "e.g. '30%' or '2'"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 20,
+              "title": "Size"
+            }
+          },
+          {
+            "name": "exclude_self",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Exclude Self"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(json|csv|md|markdown)$",
+              "description": "Output format: json|csv|md",
+              "default": "json",
+              "title": "Format"
+            },
+            "description": "Output format: json|csv|md"
+          },
+          {
+            "name": "columns",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional CSV list of columns to include",
+              "title": "Columns"
+            },
+            "description": "Optional CSV list of columns to include"
+          },
+          {
+            "name": "debug",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include debug_query (JSON only)",
+              "default": false,
+              "title": "Debug"
+            },
+            "description": "Include debug_query (JSON only)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/plugin/parser/parse_notes": {
       "get": {
         "tags": [
           "Plugin",
-          "Semantic Note Parsing",
-          "RDF",
-          "Plugins"
+          "Semantics",
+          "RDF"
         ],
         "summary": "Parse notes",
         "description": "Triggers the parsing of all Zotero notes with semantic-html plugin",
@@ -938,8 +1877,7 @@
         "tags": [
           "Plugin",
           "Notes RDF Interface",
-          "RDF",
-          "Plugins"
+          "RDF"
         ],
         "summary": "Zotero Notes to RDF",
         "description": "Writes all RDF blocks in Zotero Notes HTML into RDF, either Store or file.",
@@ -1117,8 +2055,7 @@
         "tags": [
           "Plugin",
           "Notes RDF Interface",
-          "RDF",
-          "Plugins"
+          "RDF"
         ],
         "summary": "RDF to Zotero Notes",
         "description": "Creates Zotero Notes with RDF dump block from Store or RDF dataset",
@@ -1314,7 +2251,7 @@
           "Plugin",
           "Notes RDF Interface",
           "RDF",
-          "Plugins"
+          "Semantics"
         ],
         "summary": "Parses taxonomy between Knowledge Base and Zotero",
         "description": "Creates a structured HTML from RDF taxonomies, and parses structured HTML back as RDF",
@@ -1617,10 +2554,10 @@
       },
       "OcrResponse": {
         "properties": {
-          "url": {
+          "input": {
             "type": "string",
-            "title": "Url",
-            "description": "Input URL (PDF or IIIF)"
+            "title": "Input",
+            "description": "Input URL/path (PDF or IIIF)"
           },
           "domain": {
             "anyOf": [
@@ -1699,7 +2636,7 @@
         },
         "type": "object",
         "required": [
-          "url",
+          "input",
           "binarize",
           "iiif_max_width",
           "pdf_dpi",
@@ -1785,6 +2722,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",
