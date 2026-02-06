@@ -98,8 +98,10 @@ class ZoteroLibrary:
             allowed_methods=["GET"]
         )
         adapter = HTTPAdapter(max_retries=retries)
-        filter_collection = self.api_query_params.pop("collection", None)
-        if endpoint == "items" and filter_collection and isinstance(filter_collection, str):
+        params = dict(self.api_query_params)  # self.api_query_params.copy()
+        filter_collection = params.pop("collection", None)
+
+        if endpoint == "items" and isinstance(filter_collection, str) and filter_collection:
             endpoint = f"collections/{filter_collection}/items"
 
         with requests.Session() as session:
