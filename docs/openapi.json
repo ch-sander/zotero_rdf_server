@@ -383,6 +383,205 @@
         }
       }
     },
+    "/kb-map-sync": {
+      "post": {
+        "tags": [
+          "RDF"
+        ],
+        "summary": "Synchronize knowledge base entities and mapping entries",
+        "description": "Synchronizes entities in the knowledge base graph with mapping entries in the mapping graph.\n\n- direction=auto chooses a direction based on whether mapping/entities exist.\n- execute=false performs only validation and direction resolution (dry run).\n- execute=true performs the actual synchronization and returns counters.",
+        "operationId": "kb_map_sync_kb_map_sync_post",
+        "parameters": [
+          {
+            "name": "entity_graph_iri",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Named graph IRI of the knowledge base (entities).",
+              "title": "Entity Graph Iri"
+            },
+            "description": "Named graph IRI of the knowledge base (entities)."
+          },
+          {
+            "name": "map_graph_iri",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Named graph IRI of the mapping graph (zmap entries).",
+              "title": "Map Graph Iri"
+            },
+            "description": "Named graph IRI of the mapping graph (zmap entries)."
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "auto",
+                "mapping_to_kb",
+                "kb_to_mapping",
+                "both"
+              ],
+              "type": "string",
+              "description": "Synchronization direction.",
+              "default": "auto",
+              "title": "Direction"
+            },
+            "description": "Synchronization direction."
+          },
+          {
+            "name": "seed_mapping_labels",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, seed mapping entry labels from entity rdfs:label.",
+              "default": true,
+              "title": "Seed Mapping Labels"
+            },
+            "description": "If true, seed mapping entry labels from entity rdfs:label."
+          },
+          {
+            "name": "create_missing_entities",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, create missing entities for mapping targets.",
+              "default": true,
+              "title": "Create Missing Entities"
+            },
+            "description": "If true, create missing entities for mapping targets."
+          },
+          {
+            "name": "default_entity_types",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Fallback RDF types (IRIs) to assign when creating missing entities.",
+              "title": "Default Entity Types"
+            },
+            "description": "Fallback RDF types (IRIs) to assign when creating missing entities."
+          },
+          {
+            "name": "execute",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, performs the synchronization. If false, returns only checks and resolved direction.",
+              "default": false,
+              "title": "Execute"
+            },
+            "description": "If true, performs the synchronization. If false, returns only checks and resolved direction."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Kb Map Sync Kb Map Sync Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/remove_graph": {
+      "delete": {
+        "tags": [
+          "RDF"
+        ],
+        "summary": "Remove or clear a graph from the RDF store",
+        "description": "Removes a named graph from the store. If the default graph is specified, it will be cleared but not removed.\n\nBy default this endpoint performs a dry run (`execute=false`).",
+        "operationId": "delete_graph_remove_graph_delete",
+        "parameters": [
+          {
+            "name": "graph_iri",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Named graph IRI to remove. If omitted or set to 'default', the default graph will be cleared.",
+              "title": "Graph Iri"
+            },
+            "description": "Named graph IRI to remove. If omitted or set to 'default', the default graph will be cleared."
+          },
+          {
+            "name": "execute",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, performs the deletion. If false, only checks existence.",
+              "default": false,
+              "title": "Execute"
+            },
+            "description": "If true, performs the deletion. If false, only checks existence."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Delete Graph Remove Graph Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/csv": {
       "get": {
         "tags": [
