@@ -104,35 +104,6 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
 
             def _subjects(store, graph=None):
                 return {q.subject for q in store.quads_for_pattern(None, None, None, graph)}
-            
-            MAP_ENTRY_TYPE_NODE = safeNamedNode(MAP_ENTRY_TYPE)
-            MAP_TARGET_NODE = safeNamedNode(MAP_TARGET)
-
-            def find_entry_for_target_in(store_, target: NamedNode, graph_: NamedNode):
-                for q in store_.quads_for_pattern(None, MAP_TARGET_NODE, target, graph_):
-                    return q.subject
-                return None
-
-            def ensure_entry_in(result_store_, target: NamedNode, graph_: NamedNode, type_hints=None):
-                # prefer existing entry (first in result_store_, then in global store)
-                entry = find_entry_for_target_in(result_store_, target, graph_) # or find_entry_for_target_in(store, target, graph_)
-                if entry:
-                    if type_hints:
-                        for th in type_hints:
-                            result_store_.add(Quad(entry, safeNamedNode(MAP_TYPE_HINT), safeNamedNode(th), graph_))
-                    return entry
-
-                entry_suffix = uuid5(ENTITY_UUID, str(target))
-                entry = safeNamedNode(f"{MAPPING_BASE}{entry_suffix}")
-
-                result_store_.add(Quad(entry, NamedNode(RDF_TYPE), MAP_ENTRY_TYPE_NODE, graph_))
-                result_store_.add(Quad(entry, MAP_TARGET_NODE, target, graph_))
-                if type_hints:
-                    for th in type_hints:
-                        result_store_.add(Quad(entry, safeNamedNode(MAP_TYPE_HINT), safeNamedNode(th), graph_))
-                add_timestamp(store=result_store_, node=entry, graph=graph_)
-                return entry
-
 
             if knowledge_base is None:
                 return result_store
@@ -246,7 +217,8 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                                 logger.debug(f"[SAME] Matched {lit_value} by identity: {domain_node} → {tq.subject}")
                                 value_matched = True
 
-                                entry = ensure_entry_in(result_store, tq.subject, mapping_graph_uri)
+                                # entry = ensure_entry_in(result_store, tq.subject, mapping_graph_uri)
+                                entry = ensure_entry(result_store, tq.subject, map_graph=mapping_graph_uri)
                                 ensure_mapping_literal(result_store, entry, lit_value, map_label_prop, mapping_graph_uri)                                
 
                                 break
@@ -279,9 +251,10 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                                 
                                 pool_map = Store()
                                 for t in filter_target_subjects:
-                                    entry = find_entry_for_target_in(store, t, mapping_graph_uri)
-                                    if entry:
-                                        pool_map.bulk_extend(store.quads_for_pattern(entry, None, None, mapping_graph_uri))                                
+                                    entries = find_entries_for_target(store, t, mapping_graph_uri)
+                                    for entry in entries:                                        
+                                        quads = list(store.quads_for_pattern(entry, None, None, graph_name=mapping_graph_uri))
+                                        pool_map.bulk_extend(quads)                            
                                 
                                 matched_node, score, matched_label = fuzzy_match_label(
                                     pool_map,
@@ -296,7 +269,8 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                                     result_store.add(Quad(domain_node, map_prop, matched_node, dp.graph_name))
                                     logger.debug(f"[FUZZY] Matched {lit_value} to {matched_label} ({score}%)")
 
-                                    entry = ensure_entry_in(result_store, matched_node, type_hints=None, graph_=mapping_graph_uri)
+                                    # entry = ensure_entry_in(result_store, matched_node, type_hints=None, graph_=mapping_graph_uri)
+                                    entry = ensure_entry(result_store, matched_node, map_graph=mapping_graph_uri)
                                     ensure_mapping_literal(result_store, entry, lit_value, map_label_prop, mapping_graph_uri)
 
 
@@ -323,7 +297,8 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                                     
                                     result_store.add(Quad(domain_node, map_prop, new_node, dp.graph_name))
                                     
-                                    entry = ensure_entry_in(result_store, new_node, type_hints=None, graph_=mapping_graph_uri)
+                                    # entry = ensure_entry_in(result_store, new_node, type_hints=None, graph_=mapping_graph_uri)
+                                    entry = ensure_entry(result_store, new_node, map_graph=mapping_graph_uri)
                                     ensure_mapping_literal(result_store, entry, lit_value, map_label_prop, mapping_graph_uri)
 
                                     if add_jsonld:

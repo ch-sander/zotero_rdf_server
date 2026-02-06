@@ -9,6 +9,10 @@ from pathlib import Path
 from .logging_config import logger
 # from .config import *
 import subprocess, importlib, sys
+from uuid import uuid4
+
+from .config import MAP_TYPE_HINT, MAP_ENTRY_TYPE, RDF_TYPE, LANG_MAP, PROV_TIMESTAMP, XSD_NS, MAP_LABEL, MAP_TARGET, MAP_REGEX, RDFS_LABEL
+
 
 CT_TO_EXT = {
     "application/ld+json": "jsonld",
@@ -336,7 +340,6 @@ def load_text_like(
             raise
         return _fallback("unexpected error")
 
-from .config import RDF_TYPE, LANG_MAP, PROV_TIMESTAMP, XSD_NS, MAP_LABEL, MAP_TARGET, MAP_REGEX
 
         
 def ensure_mapping_literal(
@@ -479,8 +482,8 @@ def process_language_and_title(
     fallback = mapping.get("default", "und")
     return Literal(title, language=fallback) if title else Literal(language_field)
 
-def add_timestamp(store: Store, node: NamedNode, graph: NamedNode):
-    store.add(Quad(node, NamedNode(PROV_TIMESTAMP), Literal(datetime.now(timezone.utc).isoformat(),datatype=NamedNode(f"{XSD_NS}dateTime")), graph_name=graph))
+def add_timestamp(store: Store, node: NamedNode, graph: NamedNode, predicate:NamedNode=NamedNode(PROV_TIMESTAMP)):
+    store.add(Quad(node, predicate, Literal(datetime.now(timezone.utc).isoformat(),datatype=NamedNode(f"{XSD_NS}dateTime")), graph_name=graph))
 
 def library_href(library_meta: dict):
     return (
@@ -533,3 +536,184 @@ def require_symbol(module_name: str, symbol: str, *, hint:str = None):
             msg += f" ({hint})"
         logger.error(msg)
         raise AttributeError(msg) from e
+
+
+MAP_TARGET_NODE = safeNamedNode(MAP_TARGET)
+MAP_ENTRY_TYPE_NODE = safeNamedNode(MAP_ENTRY_TYPE)
+MAP_TYPE_HINT_NODE = safeNamedNode(MAP_TYPE_HINT)
+MAP_LABEL_NODE = safeNamedNode(MAP_LABEL)
+RDF_TYPE_NODE = NamedNode(RDF_TYPE)
+RDFS_LABEL_NODE = NamedNode(RDFS_LABEL)
+
+
+def find_entries_for_target(
+    store: Store,
+    target: NamedNode,
+    map_graph: NamedNode
+) -> set[NamedNode]:
+
+    entries: set[NamedNode] = set()
+
+    for q in store.quads_for_pattern(
+        None,
+        MAP_TARGET_NODE,
+        target,
+        graph_name=map_graph
+    ):
+        if isinstance(q.subject, NamedNode):
+            entries.add(q.subject)
+
+    return entries
+
+def ensure_entry(
+    store: Store,
+    target: NamedNode,
+    map_graph: NamedNode,
+    type_hints: list[str] | None = None,
+) -> NamedNode:
+
+    entries = find_entries_for_target(store, target, map_graph)
+
+    if entries:
+        keeper = next(iter(entries))
+
+        # optional: merge duplicates into keeper
+        for e in list(entries):
+            if e == keeper:
+                continue
+            migrate_facts(store, e, keeper, map_graph)
+            delete_subject_facts(store, e, map_graph)
+
+        if type_hints:
+            for th in type_hints:
+                store.add(Quad(keeper, MAP_TYPE_HINT_NODE, safeNamedNode(th), map_graph))
+        return keeper
+
+    # create new entry
+    entry = safeNamedNode(f"{str(map_graph.value).strip('/')}/{uuid4()}")
+
+    store.add(Quad(entry, NamedNode(RDF_TYPE), safeNamedNode(MAP_ENTRY_TYPE), map_graph))
+    store.add(Quad(entry, MAP_TARGET_NODE, target, map_graph))
+
+    if type_hints:
+        for th in type_hints:
+            store.add(Quad(entry, MAP_TYPE_HINT_NODE, safeNamedNode(th), map_graph))
+
+    add_timestamp(store=store, node=entry, graph=map_graph)
+    return entry
+
+def iter_entities(store: Store, entity_graph: NamedNode):
+    seen = set()
+    for q in store.quads_for_pattern(None, None, None, graph_name=entity_graph):
+        if isinstance(q.subject, NamedNode) and q.subject not in seen:
+            seen.add(q.subject)
+            yield q.subject
+
+def is_mapping_target(store: Store, node: NamedNode, map_graph: NamedNode) -> bool:
+    for _ in store.quads_for_pattern(None, MAP_TARGET_NODE, node, graph_name=map_graph):
+        return True
+    return False
+
+def is_object_somewhere(
+    store: Store,
+    node: NamedNode,
+    graphs: list[NamedNode] | None = None,
+    ignore_predicates: set[NamedNode] | None = None,
+) -> bool:
+
+    ignore_predicates = ignore_predicates or set()
+
+    if graphs is None:
+        for q in store.quads_for_pattern(None, None, node, graph_name=None):
+            if q.predicate not in ignore_predicates:
+                return True
+        return False
+
+    for g in graphs:
+        for q in store.quads_for_pattern(None, None, node, graph_name=g):
+            if q.predicate not in ignore_predicates:
+                return True
+    return False
+
+def delete_subject_facts(store: Store, node: NamedNode, graph: NamedNode):
+    for q in store.quads_for_pattern(node, None, None, graph_name=graph):
+        store.remove(q)
+
+def replace_object_everywhere(store: Store, old: NamedNode, new: NamedNode, graph: NamedNode | None = None):
+    for q in list(store.quads_for_pattern(None, None, old, graph_name=graph)):
+        store.remove(q)
+        store.add(Quad(q.subject, q.predicate, new, q.graph_name))
+
+def migrate_facts(store: Store, old: NamedNode, new: NamedNode, graph: NamedNode, ignore_predicates: set[NamedNode] | None = None):
+    ignore_predicates = ignore_predicates or {NamedNode(PROV_TIMESTAMP), NamedNode(RDFS_LABEL)}
+    for q in list(store.quads_for_pattern(old, None, None, graph_name=graph)):
+        if q.predicate not in ignore_predicates:
+            store.add(Quad(new, q.predicate, q.object, graph))
+
+def retarget_mapping_entries(
+    store: Store,
+    old: NamedNode,
+    new: NamedNode,
+    map_graph: NamedNode,
+    *,
+    dedup: bool = False,
+    ignore_predicates_in_merge: set[NamedNode] | None = None,
+):
+    # 1) retarget all old -> new
+    to_retarget = list(store.quads_for_pattern(None, MAP_TARGET_NODE, old, graph_name=map_graph))
+    for q in to_retarget:
+        store.remove(q)
+        store.add(Quad(q.subject, q.predicate, new, map_graph))
+
+    if not dedup:
+        return
+
+    # 2) dedup entries for new
+    entries = list(find_entries_for_target(store, new, map_graph))  # set -> list
+    if len(entries) <= 1:
+        return
+
+    keeper = entries[0]
+    ignore = ignore_predicates_in_merge
+
+    for e in entries:
+        if e == keeper:
+            continue
+        migrate_facts(store, e, keeper, map_graph, ignore_predicates=ignore,delete_old=dedup)
+        delete_subject_facts(store, e, map_graph)
+
+def first_literal(store: Store, subj: NamedNode, pred: NamedNode, graph: NamedNode) -> str | None:
+    for q in store.quads_for_pattern(subj, pred, None, graph_name=graph):
+        if isinstance(q.object, Literal) and q.object.value is not None:
+            return str(q.object.value)
+    return None
+
+def has_any_facts(store: Store, node: NamedNode, graph: NamedNode) -> bool:
+    for _ in store.quads_for_pattern(node, None, None, graph_name=graph):
+        return True
+    return False
+
+def iter_mapping_entries(store: Store, map_graph: NamedNode):
+    for q in store.quads_for_pattern(None, RDF_TYPE_NODE, MAP_ENTRY_TYPE_NODE, graph_name=map_graph):
+        if isinstance(q.subject, NamedNode):
+            yield q.subject
+
+def get_target_of_entry(store: Store, entry: NamedNode, map_graph: NamedNode) -> NamedNode | None:
+    for q in store.quads_for_pattern(entry, MAP_TARGET_NODE, None, graph_name=map_graph):
+        if isinstance(q.object, NamedNode):
+            return q.object
+    return None
+
+def get_type_hints_of_entry(store: Store, entry: NamedNode, map_graph: NamedNode) -> list[str]:
+    out = []
+    for q in store.quads_for_pattern(entry, MAP_TYPE_HINT_NODE, None, graph_name=map_graph):
+        if isinstance(q.object, NamedNode):
+            out.append(q.object.value)
+    return out
+
+def get_rdf_types_of_entity(store: Store, node: NamedNode, entity_graph: NamedNode) -> list[str]:
+    out = []
+    for q in store.quads_for_pattern(node, RDF_TYPE_NODE, None, graph_name=entity_graph):
+        if isinstance(q.object, NamedNode):
+            out.append(q.object.value)
+    return out

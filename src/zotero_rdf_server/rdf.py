@@ -221,32 +221,6 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
 
             pool_store = quads_by_type(store, [MAP_ENTRY_TYPE], MAP_GRAPH_URI)
 
-            def find_entry_for_target(target: NamedNode):
-                for q in store.quads_for_pattern(None, safeNamedNode(MAP_TARGET), target, graph_name=MAP_GRAPH_URI):
-                    return q.subject
-                return None
-
-            def ensure_entry(target: NamedNode, type_hints=None):
-                entry = find_entry_for_target(target)
-                if entry:
-                    if type_hints:
-                        for th in type_hints:
-                            store.add(Quad(entry, safeNamedNode(MAP_TYPE_HINT), safeNamedNode(th), graph_name=MAP_GRAPH_URI))
-                    return entry
-
-                entry_suffix = uuid5(ENTITY_UUID, str(target))
-                entry = safeNamedNode(f"{MAPPING_BASE}{entry_suffix}")
-
-                store.add(Quad(entry, NamedNode(RDF_TYPE), safeNamedNode(MAP_ENTRY_TYPE), graph_name=MAP_GRAPH_URI))
-                store.add(Quad(entry, safeNamedNode(MAP_TARGET), target, graph_name=MAP_GRAPH_URI))
-
-                if type_hints:
-                    for th in type_hints:
-                        store.add(Quad(entry, safeNamedNode(MAP_TYPE_HINT), safeNamedNode(th), graph_name=MAP_GRAPH_URI))
-
-                add_timestamp(store=store, node=entry, graph=MAP_GRAPH_URI)
-                return entry
-
             for item in items:
                 node, score, matched_label = fuzzy_match_label(
                     pool_store,
@@ -281,7 +255,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 else:
                     logger.debug(f"{my_types[0].capitalize()} '{item}' matched as '{matched_label}' (score {score})")
 
-                entry = ensure_entry(node, type_hints=my_types)
+                entry = ensure_entry(store, node, map_graph=MAP_GRAPH_URI, type_hints=my_types)
                 ensure_mapping_literal(store, entry, item, safeNamedNode(MAP_LABEL), MAP_GRAPH_URI)
 
                 nodes.append(node)
@@ -953,3 +927,179 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
             return all_items
     else:
         logger.warning("No items!") if not json_path_collections else None
+
+def purge_orphan_entities(
+    store: Store,
+    *,
+    not_mapped_only: bool = True,
+    entity_graph: NamedNode,
+    map_graph: NamedNode,
+    graphs_to_check_for_objects: list[NamedNode] | None = None,
+    delete: bool = False,
+    keep_if_sameas_subject: bool = False,
+    ignore_object_predicates: set[NamedNode] | None = None,
+):
+    ignore_object_predicates = ignore_object_predicates or set()
+
+    orphans: list[NamedNode] = []
+    candidates = list(iter_entities(store, entity_graph))
+
+    for node in candidates:
+        if keep_if_sameas_subject:
+            if any(
+                True
+                for _ in store.quads_for_pattern(
+                    node, NamedNode(OWL_SAME_AS), None, graph_name=entity_graph
+                )
+            ):
+                continue
+
+        mapped = is_mapping_target(store, node, map_graph)
+
+        if mapped:
+            continue
+
+        if not_mapped_only:
+            orphans.append(node)
+            continue
+
+        referenced = is_object_somewhere(
+            store,
+            node,
+            graphs=graphs_to_check_for_objects,
+            ignore_predicates=ignore_object_predicates,
+        )
+        if not referenced:
+            orphans.append(node)
+
+    if delete:
+        for node in orphans:
+            delete_subject_facts(store, node, entity_graph)
+
+    return {
+        "entity_graph": str(entity_graph),
+        "map_graph": str(map_graph),
+        "not_mapped_only": not_mapped_only,
+        "candidates": len(candidates),
+        "orphans": [str(n) for n in orphans],
+        "deleted": len(orphans) if delete else 0,
+    }
+
+
+def merge_entities(
+    store: Store,
+    old: NamedNode,
+    new: NamedNode,
+    *,
+    only_redirect: bool = False,
+    map_graph: NamedNode,
+    KB_graph: NamedNode,
+    dedup_mapping: bool = False,
+):
+    if old == new:
+        return
+    if map_graph is None or KB_graph is None:
+        raise ValueError("map_graph and KB_graph are required")
+    
+    # Copy KB facts
+    migrate_facts(store, old, new, KB_graph)
+
+    # Replace object occurrences globally (all graphs)
+    replace_object_everywhere(store, old, new, graph=None)
+
+    # Retarget mapping entries old->new, optionally merge duplicate entries
+    retarget_mapping_entries(store, old, new, map_graph, dedup=dedup_mapping)
+
+    if only_redirect:
+        store.add(Quad(new, NamedNode(OWL_SAME_AS), old, KB_graph))
+    else:
+        delete_subject_facts(store, old, KB_graph)
+
+
+def sync_kb_mapping(
+    store: Store,
+    *,
+    entity_graph: NamedNode,
+    map_graph: NamedNode,
+    direction: str = "auto",     # "auto" | "mapping_to_kb" | "kb_to_mapping" | "both"
+    seed_mapping_labels: bool = True,
+    create_missing_entities: bool = True,
+    default_entity_types: list[str] | None = None,
+):
+
+    has_mapping = any(True for _ in iter_mapping_entries(store, map_graph))
+    has_entities = any(True for _ in iter_entities(store, entity_graph))
+
+    if direction == "auto":
+        if has_mapping and not has_entities:
+            direction = "mapping_to_kb"
+        elif has_entities and not has_mapping:
+            direction = "kb_to_mapping"
+        else:
+            direction = "both"
+
+    created_entities = 0
+    created_entries = 0
+    seeded_labels = 0
+
+    # --- A) Mapping -> KB ---
+    if direction in ("mapping_to_kb", "both"):
+        for entry in iter_mapping_entries(store, map_graph):
+            target = get_target_of_entry(store, entry, map_graph)
+            if not target:
+                logger.warning(f"[SYNC] mapping entry without target: {entry}")
+                continue
+
+            if has_any_facts(store, target, entity_graph):
+                continue
+
+            if not create_missing_entities:
+                logger.warning(f"[SYNC] missing entity for target {target}, creation disabled")
+                continue
+
+            lbl = first_literal(store, entry, MAP_LABEL_NODE, map_graph) or str(target)
+
+            type_fields = get_type_hints_of_entry(store, entry, map_graph) or (default_entity_types or [])
+
+            apply_rdf_types(
+                store=store,
+                node=target,
+                data={},
+                type_fields=type_fields,
+                default_type="unidentified",
+                base_ns=entity_graph.value,
+            )
+            store.add(Quad(target, RDFS_LABEL_NODE, Literal(lbl), graph_name=entity_graph))
+            add_timestamp(store=store, node=target, graph=entity_graph)
+
+            created_entities += 1
+            logger.info(f"[SYNC] created missing entity {target} (label='{lbl}') from mapping")
+
+    # --- B) KB -> Mapping ---
+    if direction in ("kb_to_mapping", "both"):
+        for ent in iter_entities(store, entity_graph):
+            type_hints = get_rdf_types_of_entity(store, ent, entity_graph)
+            entry_before = find_entries_for_target(store, ent, map_graph)
+            entry = ensure_entry(store, ent, map_graph, type_hints=type_hints)
+            entry_after = find_entries_for_target(store, ent, map_graph)
+
+            if not entry_before and entry_after:
+                created_entries += 1
+
+            if seed_mapping_labels:
+                lbl = first_literal(store, ent, RDFS_LABEL_NODE, entity_graph)
+                if lbl:
+                    before = len(list(store.quads_for_pattern(entry, MAP_LABEL_NODE, None, graph_name=map_graph)))
+                    ensure_mapping_literal(store, entry, lbl, graph=map_graph)
+                    after = len(list(store.quads_for_pattern(entry, MAP_LABEL_NODE, None, graph_name=map_graph)))
+                    if after > before:
+                        seeded_labels += 1
+
+    return {
+        "direction": direction,
+        "had_mapping": has_mapping,
+        "had_entities": has_entities,
+        "created_entities": created_entities,
+        "created_entries": created_entries,
+        "seeded_labels": seeded_labels,
+    }

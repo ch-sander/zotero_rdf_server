@@ -299,6 +299,171 @@ async def merge(
         "map_graph": str(checked_graph_map)
     }
 
+from typing import Any, Literal as TypingLiteral
+
+@router.post(
+    "/kb-map-sync",
+    summary="Synchronize knowledge base entities and mapping entries",
+    description=(
+        "Synchronizes entities in the knowledge base graph with mapping entries in the mapping graph.\n\n"
+        "- direction=auto chooses a direction based on whether mapping/entities exist.\n"
+        "- execute=false performs only validation and direction resolution (dry run).\n"
+        "- execute=true performs the actual synchronization and returns counters."
+    ),
+    tags=["RDF"],
+)
+async def kb_map_sync(
+    entity_graph_iri: str = Query(..., description="Named graph IRI of the knowledge base (entities)."),
+    map_graph_iri: str = Query(..., description="Named graph IRI of the mapping graph (zmap entries)."),
+    direction: TypingLiteral["auto", "mapping_to_kb", "kb_to_mapping", "both"] = Query(
+        default="auto",
+        description="Synchronization direction.",
+    ),
+    seed_mapping_labels: bool = Query(
+        default=True,
+        description="If true, seed mapping entry labels from entity rdfs:label.",
+    ),
+    create_missing_entities: bool = Query(
+        default=True,
+        description="If true, create missing entities for mapping targets.",
+    ),
+    default_entity_types: list[str] | None = Query(
+        default=None,
+        description="Fallback RDF types (IRIs) to assign when creating missing entities.",
+    ),
+    execute: bool = Query(
+        default=False,
+        description="If true, performs the synchronization. If false, returns only checks and resolved direction.",
+    ),
+) -> dict[str, Any]:
+    from .store import store
+
+    entity_graph, _ = get_graph(entity_graph_iri)
+    map_graph, _ = get_graph(map_graph_iri)
+
+
+
+    if not entity_graph and not map_graph:
+        raise HTTPException(
+            status_code=400,
+            detail="Both entity_graph and map_graph are missing in the store.",
+        )
+    
+    if not entity_graph:
+        entity_graph=safeNamedNode(entity_graph_iri)
+    if not map_graph:
+        map_graph=safeNamedNode(map_graph_iri)
+
+    # Resolve direction in the same way as sync_kb_mapping does (dry-run)
+    has_mapping = any(True for _ in iter_mapping_entries(store, map_graph)) if map_graph else False
+    has_entities = any(True for _ in iter_entities(store, entity_graph)) if map_graph else False
+
+    resolved_direction = direction
+    if direction == "auto":
+        if has_mapping and not has_entities:
+            resolved_direction = "mapping_to_kb"
+        elif has_entities and not has_mapping:
+            resolved_direction = "kb_to_mapping"
+        else:
+            resolved_direction = "both"
+
+    if not execute:
+        return {
+            "execute": False,
+            "entity_graph": str(entity_graph),
+            "map_graph": str(map_graph),
+            "checks": {
+                "has_entities": has_entities,
+                "has_mapping": has_mapping,
+            },
+            "direction": resolved_direction,
+        }
+
+    # Execute synchronization (mutating)
+    result = sync_kb_mapping(
+        store,
+        entity_graph=entity_graph,
+        map_graph=map_graph,
+        direction=resolved_direction,
+        seed_mapping_labels=seed_mapping_labels,
+        create_missing_entities=create_missing_entities,
+        default_entity_types=default_entity_types,
+    )
+
+    # JSON safe return
+    return {
+        "execute": True,
+        "entity_graph": str(entity_graph),
+        "map_graph": str(map_graph),
+        **result,
+    }
+
+@router.delete(
+    "/remove_graph",
+    summary="Remove or clear a graph from the RDF store",
+    description=(
+        "Removes a named graph from the store. "
+        "If the default graph is specified, it will be cleared but not removed.\n\n"
+        "By default this endpoint performs a dry run (`execute=false`)."
+    ),
+    tags=["RDF"],
+)
+async def delete_graph(
+    graph_iri: str | None = Query(
+        default=None,
+        description=(
+            "Named graph IRI to remove. "
+            "If omitted or set to 'default', the default graph will be cleared."
+        ),
+    ),
+    execute: bool = Query(
+        default=False,
+        description="If true, performs the deletion. If false, only checks existence.",
+    ),
+) -> dict[str, Any]:
+    from .store import store
+
+    # Resolve graph object
+    if graph_iri is None or graph_iri.lower() == "default":
+        checked_graph = DefaultGraph()
+        graph_label = "default"
+    else:
+        checked_graph, all_graphs = get_graph(graph_iri)
+        graph_label = graph_iri
+
+    checked_graph, all_graphs = get_graph(graph_iri)
+    if graph_iri is not None and not checked_graph:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid graph IRI. Use one of these or None: {all_graphs}",
+        )
+    
+    is_named = not isinstance(checked_graph, DefaultGraph)
+
+
+    if not execute:
+        return {
+            "execute": False,
+            "graph": graph_label,
+            "is_named_graph": is_named,
+            "action": "remove" if is_named else "clear",
+        }
+
+    try:
+        store.remove_graph(checked_graph)
+    except OSError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error removing graph: {str(e)}",
+        )
+
+    return {
+        "execute": True,
+        "graph": graph_label,
+        "action": "removed" if is_named else "cleared",
+    }
+
+
 @router.get("/csv", summary="Export CSV", description="Exports a named graph or the entire store as CSV or loads a CSV as RDF into the store", tags=["RDF","Data"])
 async def get_csv(
     graph: str | None = Query(default=None, description="Named graph IRI (optional)"),
