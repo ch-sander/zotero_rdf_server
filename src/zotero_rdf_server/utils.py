@@ -422,6 +422,8 @@ def fuzzy_match_label(
                     target = entry_to_target(entry)
                     if target:
                         matches.append((target, score, best_match_label))
+                    else:
+                        logger.warning(f"Found mapping for {label}, but no target in {str(entry)}")
             if matches:
                 logger.debug(f"Fuzzy matches for '{label}': {[(m[1], m[2]) for m in matches]}")
                 return matches
@@ -445,7 +447,8 @@ def fuzzy_match_label(
                     if score == 100 and threshold <= 100:
                         return target, 100, best_match_label
                     return target, score, best_match_label
-
+                else:
+                    logger.warning(f"Found mapping for {label}, but no target" in {str(entry)})
     # --- Regex matching über map:pattern ---
     if regex and any(c in label for c in ".^$*+?{}[]\\|()"):
         regex_matches = []
@@ -458,6 +461,8 @@ def fuzzy_match_label(
                     if target:
                         logger.debug(f"Regex '{pattern_str}' matched '{label}'")
                         regex_matches.append((target, 100, pattern_str))
+                    else:
+                        logger.warning(f"Found mapping for {label}, but no target in {str(entry)}")
             except re.error as e:
                 logger.warning(f"Invalid regex pattern '{pattern_str}' on {entry}: {e}")
 
