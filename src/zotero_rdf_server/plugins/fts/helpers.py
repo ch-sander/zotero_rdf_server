@@ -12,7 +12,7 @@ import hashlib
 here = Path(__file__).resolve().parent
 requirements = here / "requirements.txt"
 
-def plugin_logger(new:bool=True):
+def plugin_logger(new:bool=False):
     if new:
         import logging
         logger = logging.getLogger("fts_plugin")
@@ -52,7 +52,7 @@ def ensure_import(module, attr=None, requirements=requirements):
             else:
                 subprocess.check_call([
                     sys.executable, "-m", "pip",
-                    "install", module,   # ← hier bleibt der Specifier!
+                    "install", module,
                 ])
 
             mod = importlib.import_module(modname)
