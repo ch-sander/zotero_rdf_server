@@ -57,7 +57,7 @@ def ensure_store(store):
         logger.warning(f"Optimize failed: {e}")
 
 
-def refresh_store(force_reload:bool = False):
+def refresh_store(force_reload:bool = False, remove_store:bool=True):
     global store
     if REFRESH == False and not force_reload:
         try:
@@ -76,7 +76,7 @@ def refresh_store(force_reload:bool = False):
                 if STORE_MODE == "memory":
                     store = Store()                    
                 else:
-                    if STORE_DIRECTORY.exists():
+                    if STORE_DIRECTORY.exists() and remove_store:
                         clear_directory(STORE_DIRECTORY)
                     else:
                         STORE_DIRECTORY.mkdir(parents=True,exist_ok=True)
