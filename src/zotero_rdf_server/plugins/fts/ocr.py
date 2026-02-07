@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, fields
 from typing import Iterator, Optional, Dict, Any, List, Literal, Union, Tuple, Mapping
-import io, json, os, tempfile
+import io, json, os, tempfile, time
 import requests
 from PIL import Image
 from functools import lru_cache
 from pathlib import Path
 from .helpers import ensure_import, _hash_file,  resolve_config_path, _download, plugin_logger, detect_url_kind, detect_file_kind, resolve_source
+from io import BytesIO
 
 from .helpers import plugin_logger, safe_doc_id
 logger=plugin_logger()
@@ -211,7 +212,7 @@ def iiif_manifest_to_image_urls(manifest: Dict[str, Any], max_width: Optional[in
 
     return urls
 
-def fetch_pil_image(url: str, timeout: int = 60) -> Image.Image:
+def fetch_pil_image_old(url: str, timeout: int = 60) -> Image.Image:
     try:
         r = requests.get(url, stream=True, timeout=timeout)
         r.raise_for_status()
@@ -221,7 +222,26 @@ def fetch_pil_image(url: str, timeout: int = 60) -> Image.Image:
     except Exception as e:
         logger.error(f"Fetching image {url}: {e}")
 
-def stream_download_to_tempfile(url: str, suffix: str, timeout: int = 120) -> str:
+def fetch_pil_image(url: str, *, timeout: int = 30, retries: int = 3, backoff: float = 1.5):
+    last_exc = None
+    for attempt in range(retries + 1):
+        try:
+            r = requests.get(url, timeout=timeout)
+            r.raise_for_status()
+            return Image.open(BytesIO(r.content))
+        except Exception as e:
+            last_exc = e
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            if status in (502, 503, 504) and attempt < retries:
+                sleep_s = backoff ** attempt
+                time.sleep(sleep_s)
+                continue
+            logger.error(f"fetch_pil_image failed for {url}: {e}")
+            return None
+    logger.error(f"fetch_pil_image failed for {url}: {last_exc}")
+    return None
+
+def stream_download_to_tempfile_old(url: str, suffix: str, timeout: int = 120) -> str:
     logger.info(f"Downloading {url}")
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         with requests.get(url, stream=True, timeout=timeout) as r:
@@ -230,6 +250,57 @@ def stream_download_to_tempfile(url: str, suffix: str, timeout: int = 120) -> st
                 if chunk:
                     tmp.write(chunk)
         return tmp.name
+
+def stream_download_to_tempfile(
+    url: str,
+    suffix: str,
+    timeout: int = 120,
+    retries: int = 3,
+    backoff: float = 1.5,
+    chunk_size: int = 1024 * 1024,
+) -> str:
+    logger.info(f"Downloading {url}")
+
+    last_exc = None
+    for attempt in range(retries + 1):
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                tmp_path = tmp.name
+
+            with requests.get(url, stream=True, timeout=timeout) as r:
+                r.raise_for_status()
+                with open(tmp_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=chunk_size):
+                        if chunk:
+                            f.write(chunk)
+
+            return tmp_path
+
+        except Exception as e:
+            last_exc = e
+
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+
+            status = getattr(getattr(e, "response", None), "status_code", None)
+
+            transient_status = status in (429, 502, 503, 504)
+            transient_exc = isinstance(e, (requests.Timeout, requests.ConnectionError))
+
+            if (transient_status or transient_exc) and attempt < retries:
+                sleep_s = backoff ** attempt
+                logger.warning(f"Download failed ({e}); retrying in {sleep_s:.1f}s: {url}")
+                time.sleep(sleep_s)
+                continue
+
+            logger.error(f"Download failed permanently: {url}: {e}")
+            raise
+
+    raise last_exc
 
 @lru_cache(maxsize=1)
 def _get_pdf_libs():
@@ -270,15 +341,25 @@ def iter_pages(
             return
         for i, img_url in enumerate(img_urls, start=1):
             logger.debug(f"iter_pages yielding page={i}")
-            yield PageItem(i, "image", fetch_pil_image(img_url), source=f"iiif:{img_url}")
+            img = fetch_pil_image(img_url)
+
+            if img is None:
+                logger.error(f"Skipping page {i}: could not fetch image {img_url}")
+                continue
+            yield PageItem(i, "image", img, source=f"iiif:{img_url}")
         return
 
     if kind == "pdf":
-        if src_kind == "file":
-            pdf_path = str(src_path)
-        else:
-            pdf_path = stream_download_to_tempfile(input, suffix=".pdf")
+        pdf_path = None
         try:
+            if src_kind == "file":
+                pdf_path = str(src_path)
+            else:
+                try:
+                    pdf_path = stream_download_to_tempfile(input, suffix=".pdf")
+                except Exception as e:
+                    logger.error(f"Error downloading PDF {input}: {e}")
+                    return
             # from pypdf import PdfReader
             # import pypdfium2 as pdfium
             PdfReader, pdfium = _get_pdf_libs()
@@ -299,11 +380,11 @@ def iter_pages(
             logger.error(f"Error reading PDF {input}: {e}")
 
         finally:
-            try:
-                os.remove(pdf_path)
-            except OSError:
-                pass
-        return
+            if pdf_path and src_kind != "file":
+                try:
+                    os.remove(pdf_path)
+                except OSError:
+                    pass
     
     if kind in ("text", "html", "xml"): # TODO XML parsing
         try:
@@ -361,9 +442,19 @@ def kraken_image_to_text(
                 return ""
             
         ensure_import("kraken")
-        from kraken import binarization, blla, rpred #, pageseg
-        from kraken.lib import models
+        try:
+            from kraken import binarization, blla, rpred #, pageseg
+            from kraken.lib import models
+            import warnings
 
+            warnings.filterwarnings(
+                "ignore",
+                message="Using legacy polygon extractor",
+                module="kraken.rpred",
+            )
+        except Exception:
+            logger.exception("Kraken import failed")
+            return ""
         
 
         cfg_path = resolve_config_path(config_path)
@@ -388,8 +479,9 @@ def kraken_image_to_text(
         logger.debug(ocr_page)
 
         return ocr_page
-    except Exception as e:
-        logger.error(f"Kraken OCR failed: {e}")
+    except Exception:
+        logger.exception("Kraken OCR failed")
+        return ""
 
 def page_to_text(
     item: PageItem,
@@ -401,8 +493,11 @@ def page_to_text(
     binarize: bool = True,
 ) -> str:
     if item.kind == "text":
-        return item.data  # type: ignore[return-value]
+        return item.data or "" # type: ignore[return-value]
     logger.debug(f"processing image {item.index} of {item.source}")
+    if item.data is None:
+        logger.error(f"page_to_text got None image: page={item.index} source={item.source}")
+        return ""
     return kraken_image_to_text(
         item.data,
         config_path=config_path,
@@ -415,12 +510,14 @@ def page_to_text(
 def iter_text_pages(
     input: str,
     *,
-    doc_id: str = None,
+    doc_id: str | None = None,
     iter_kwargs: Dict[str, Any],
     page_to_text_kwargs: Dict[str, Any],
     text_image_file_kwargs: Optional[Dict[str, Any]] = None,
     transformer: bool = False
 ) -> Iterator[Tuple[int, str]]:
+    iter_kwargs = dict(iter_kwargs or {})
+    page_to_text_kwargs = dict(page_to_text_kwargs or {})
     logger.debug(
         f"iter_text_pages received: {[iter_kwargs, page_to_text_kwargs, text_image_file_kwargs]}"
     )
@@ -432,12 +529,18 @@ def iter_text_pages(
             here = Path(__file__).resolve().parent
             requirements = here / "medieval_ocr_pipeline" / "requirements.txt"
             ensure_import("transformers", requirements=requirements)
+            try:
+                from transformers import logging as hf_logging
+                hf_logging.set_verbosity_error()
+            except Exception:
+                logger.warning("Could not deactivate transformer logging")
             ensure_import("torch", requirements=requirements)
             from .medieval_ocr_pipeline.complete_ocr_pipeline import process_complete_image, setup_models  
             MODELS = setup_models()
             # src\zotero_rdf_server\plugins\fts\medieval_ocr_pipeline\complete_ocr_pipeline.py
         except Exception as e:
-            logger.critical(f"Tranformer plugin import failed: {e}")
+            logger.exception("Transformer plugin import failed")
+
             transformer = False
 
     try:
@@ -553,6 +656,11 @@ def iter_text_pages(
 
         return _it()
     
+    def _log_and_yield(page_no: int, txt: str):
+        preview = " ".join((txt or "").split())[:100]
+        logger.info(f"OCR result doc={_doc_id} page={page_no}: {preview}...")
+        return page_no, txt
+    
     cached_page_set = _cached_pages()
 
     logger.info(f"Found {len(set(cached_page_set['text']))} text files and {len(set(cached_page_set['image']))} image files")
@@ -572,7 +680,7 @@ def iter_text_pages(
     if save_image == "active" and img_dir is not None and img_dir.exists():
         cached_imgs = list(_iter_cached_image_pages(img_dir, img_ext))
         if cached_imgs:
-            logger.warning(f"Using {len(set(cached_page_set['image']))} text files in {txt_dir}; no remote download")
+            logger.warning(f"Using {len(set(cached_page_set['image']))} text files in {img_dir}; no remote download")
             for page_no, img_path in cached_imgs:
                 tp = _text_path(page_no)
                 if save_text == "active" and save_text != "overwrite" and tp and tp.exists():
@@ -596,10 +704,11 @@ def iter_text_pages(
                         raise
                     if on_error == "skip":
                         continue
+                    txt = "" # DEBUG
 
                 if save_text in {"active", "overwrite"}:
                     _maybe_store_text(page_no, txt)
-                yield page_no, txt
+                yield _log_and_yield(page_no, txt)
             return
     
     for item in iter_pages(input=input, **iter_kwargs):
@@ -636,7 +745,7 @@ def iter_text_pages(
                 if on_error == "skip":
                     continue
                 txt = ""
-            yield page_no, txt
+            yield _log_and_yield(page_no, txt)
             continue
 
         # Save image (active/overwrite)
@@ -681,4 +790,4 @@ def iter_text_pages(
                     if on_error == "skip":
                         continue
 
-        yield page_no, txt
+        yield _log_and_yield(page_no, txt)

@@ -43,7 +43,8 @@ def ingest_pipeline(
         return([{"error":"nothing to do here: no ocr, no ingest!"}])
     
     if vector:
-        from .vector import embed, clean_ocr
+        from .vector import embed
+        from helpers import clean_ocr
         logger.info("####### Loading Sentence Transformer Model for Vectors #######")
 
     if ocr:
@@ -52,7 +53,6 @@ def ingest_pipeline(
         ptp = iter_pages_kwargs.get("pdf_text_policy")
         if isinstance(ptp, dict):
             iter_pages_kwargs["pdf_text_policy"] = PdfTextPolicy.from_json(ptp)
-        stats = {"pages_emitted": 0}
         def make_pages_fn(doc_id: str, stats: dict):
             def pages_fn(u: str):
                 for page in iter_text_pages(
@@ -70,6 +70,7 @@ def ingest_pipeline(
         if not ingest:
             results: List[Dict[str, Any]] = []
             for obj in items:
+                stats = {"pages_emitted": 0}
                 payload = dict(obj)
                 doc_id = payload.pop("_id", None)
                 input_ = payload.pop("_input", None) or payload.pop("_url", None)
@@ -133,6 +134,7 @@ def ingest_pipeline(
         now = datetime.now(timezone.utc).isoformat()        
 
         for obj in items:
+            stats = {"pages_emitted": 0}
             payload = dict(obj)
             logger.debug(f"Ingest Pipeline payload: {payload}")
             doc_id = payload.pop("_id", None)
@@ -152,7 +154,7 @@ def ingest_pipeline(
                 digest = index_stream(
                         input=input,
                         doc_id=doc_id,
-                        url_to_text_pages_fn=make_pages_fn(doc_id, stats),
+                        url_to_text_pages_fn=make_pages_fn(doc_id or "", stats),
                         targets=targets,
                         meta=meta,
                         config_path=config_path,

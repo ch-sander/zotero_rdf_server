@@ -182,7 +182,9 @@ def page_docs(
     now = datetime.now(timezone.utc).isoformat()
     embed = None
     if vector:
-        from .vector import embed, clean_ocr
+        from .vector import embed
+        from helpers import clean_ocr
+
     for sequence, text in pages:
         vector_doc = None
         if vector:
@@ -247,7 +249,7 @@ def ingest_streaming_bulk(
     index: str | None,
     bulk_cfg: dict,
     run_id: str | None = None
-) -> str:
+) -> dict:
     now = datetime.now(timezone.utc).isoformat()
     run_id = run_id or uuid.uuid4().hex
 
@@ -321,7 +323,7 @@ def ingest_streaming_bulk(
         return digest # run_id
     except Exception as e:
         logger.exception(f"ingest_streaming_bulk failed: {e}")
-        return str(e)
+        return {'run_id': run_id,'error':str(e)}
 
 
 PagesFn = Callable[[str], Iterator[Tuple[int, str]]]
@@ -338,7 +340,7 @@ def index_stream(
     meta: dict | None = None,
     doc: Any | None = None,
     vector: bool = False
-) -> str:
+) -> dict:
     logger.debug(f"OS index_stream started...")
     cfg_path = resolve_config_path(config_path)
     oscfg = get_os_config(cfg_path)
@@ -391,12 +393,12 @@ def index_stream(
         )
     except Exception as e:
         logger.error(f"Ingest Error: {e}")
-        run = e
+        run = {'error':e}
 
     for t in targets_list:
         try:
             client.indices.refresh(index=t)
         except Exception:
             pass
-
+    logger.info(f"OS index_stream for run {run.get("run_id",run.get('error', "no id/error"))} completed for {doc_id}...")
     return run
