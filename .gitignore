@@ -18,3 +18,4 @@ explorer/index-dev.html
 /src/temp_segmentation
 *.db-wal
 app/.sync_d71c4c954ce7.db
+/snapshots
