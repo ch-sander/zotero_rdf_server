@@ -180,12 +180,13 @@ def load_dict_like(
     required: bool = False
 ) -> dict:
     def _fallback(reason: str) -> dict:
+        logger.info(f"got raw to load: {raw}")
         if required:
             raise
         if default is not None:
             logger.warning(f"{label}: {reason}; using fallback default")
             return deepcopy(dict(default))
-        logger.warning(f"{label}: {reason}; using empty mapping")
+        logger.warning(f"{label}: {reason}; using empty mapping")        
         return {}
 
     try:
