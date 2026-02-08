@@ -183,7 +183,7 @@ def page_docs(
     embed = None
     if vector:
         from .vector import embed
-        from helpers import clean_ocr
+        from .helpers import clean_ocr
 
     for sequence, text in pages:
         vector_doc = None
@@ -296,11 +296,11 @@ def ingest_streaming_bulk(
             result = item[op_key]
             status = result.get("status")
             err = result.get("error")
-            logger.debug(f"ingest_streaming_bulk result: {result}")
+            # logger.debug(f"ingest_streaming_bulk result: {result}")
             
             _id = result.get("_id", "")
             ids.append(_id)
-            digest["doc_ids"] = ids
+            
             digest["bulk_kwargs"] = bulk_kwargs
             # doc_id, page = (_id.split(":", 1) + ["-1"])[:2] # TODO
             # page_no = int(page) if page.isdigit() else -1
@@ -311,6 +311,10 @@ def ingest_streaming_bulk(
                 digest["ok"] += 1
             else:
                 digest["failed"] += 1
+                logger.warning(
+                    "OS bulk item failed run=%s id=%s status=%s error=%r",
+                    run_id, _id, status, err
+                )
                 if len(digest["errors"]) < 50:
                     digest["errors"].append({"_id": _id, "status": status, "error": err})
 
@@ -320,6 +324,7 @@ def ingest_streaming_bulk(
             #     template_path="log_events.trig",
             #     event=event
             # )
+        digest["doc_ids"] = ids
         return digest # run_id
     except Exception as e:
         logger.exception(f"ingest_streaming_bulk failed: {e}")
@@ -393,12 +398,19 @@ def index_stream(
         )
     except Exception as e:
         logger.error(f"Ingest Error: {e}")
-        run = {'error':e}
+        run = {"run_id": None, "error": f"ingest failed: {str(e)}"}
 
     for t in targets_list:
         try:
             client.indices.refresh(index=t)
         except Exception:
             pass
-    logger.info(f"OS index_stream for run {run.get("run_id",run.get('error', "no id/error"))} completed for {doc_id}...")
+    
+    run_id = run.get("run_id") or run.get("error") or "no id/error"
+
+    logger.info(
+        "OS index_stream for run %s completed for %s...",
+        run_id,
+        doc_id,
+    )
     return run

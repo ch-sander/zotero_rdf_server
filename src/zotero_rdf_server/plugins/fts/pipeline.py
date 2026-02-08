@@ -44,7 +44,7 @@ def ingest_pipeline(
     
     if vector:
         from .vector import embed
-        from helpers import clean_ocr
+        from .helpers import clean_ocr
         logger.info("####### Loading Sentence Transformer Model for Vectors #######")
 
     if ocr:
@@ -55,16 +55,20 @@ def ingest_pipeline(
             iter_pages_kwargs["pdf_text_policy"] = PdfTextPolicy.from_json(ptp)
         def make_pages_fn(doc_id: str, stats: dict):
             def pages_fn(u: str):
-                for page in iter_text_pages(
-                    u,
-                    doc_id=doc_id,
-                    iter_kwargs=iter_pages_kwargs,
-                    page_to_text_kwargs=page_to_text_kwargs,
-                    text_image_file_kwargs=text_image_file_kwargs,
-                    transformer=transformer
-                ):
-                    stats["pages_emitted"] += 1
-                    yield page
+                try:
+                    for page in iter_text_pages(
+                        u,
+                        doc_id=doc_id,
+                        iter_kwargs=iter_pages_kwargs,
+                        page_to_text_kwargs=page_to_text_kwargs,
+                        text_image_file_kwargs=text_image_file_kwargs,
+                        transformer=transformer
+                    ):
+                        stats["pages_emitted"] += 1
+                        yield page
+                except Exception:
+                    logger.exception("pages_fn failed for doc_id=%s input=%r", doc_id, u)
+                    raise
             return pages_fn
         
         if not ingest:

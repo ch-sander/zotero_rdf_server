@@ -361,7 +361,7 @@ def ingest_route(
                                 use_default_graph_as_union=False,
                                 default_graph=[NamedNode(lib.base_url), NamedNode(lib.knowledge_base_graph)])
                             var_names = [v.value for v in bindings.variables]
-                            logger.info(f"{var_names}")
+                            logger.info(f"SPARQL returned columns: {var_names}")
                             for sol in bindings:
                                 items.append({
                                     name: (sol[name].value if sol[name] is not None else None)
