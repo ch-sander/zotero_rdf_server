@@ -84,8 +84,8 @@ open-search:
     opensearch_min_version: "2.0.0"
 
   bulk:
-    chunk_size: 1
-    # max_chunk_bytes=5 * 1024 * 1024,
+    chunk_size: 100
+    max_chunk_bytes: 5242880
     max_retries: 3
     initial_backoff: 1
     max_backof: 32
