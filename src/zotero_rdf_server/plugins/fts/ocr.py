@@ -46,7 +46,7 @@ def get_kraken_cfg(config_path: Path) -> dict[str, Any]:
     # path = Path(config_path).expanduser().resolve()
     # with path.open("r", encoding="utf-8") as f:
     #     cfg = yaml.safe_load(f) or {}
-    cfg = load_dict_like(config_path, "Kraken Config")
+    cfg = load_dict_like(config_path,label= "Kraken Config")
     return cfg.get("kraken") or cfg
 
 def resolve_domain(*, config_path: Path, domain: Optional[str]) -> str:

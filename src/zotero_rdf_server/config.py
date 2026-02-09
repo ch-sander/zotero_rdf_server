@@ -53,7 +53,7 @@ def load_config(source):
     from .utils import load_dict_like
     from dotenv import load_dotenv
     from string import Template
-    config =  load_dict_like(source, f"Loading initial config")
+    config =  load_dict_like(source, label="Loading initial config")
     logger.debug(json.dumps(config,indent=4))
     if config.get("inject_env"):
         try:

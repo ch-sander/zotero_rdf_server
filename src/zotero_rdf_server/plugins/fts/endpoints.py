@@ -286,7 +286,15 @@ def ingest_route(
     file_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for File Output", examples=[{'img_out':'kraken/images','txt_out':'kraken/texts','save_text':'active','save_image':'active'}]),
 ):
     from .pipeline import ingest_pipeline
+    import csv
     run_ids = []
+
+    try:
+        from zotero_rdf_server.config import EXPORT_DIRECTORY
+        export_dir = Path(EXPORT_DIRECTORY) / "fts"
+    except Exception:
+        export_dir = Path()  / "fts"
+    export_dir.mkdir(parents=True, exist_ok=True)
 
     if input is None:
         try:
@@ -321,6 +329,8 @@ def ingest_route(
                     cfg = [cfg] if isinstance(cfg,dict) else cfg
                     if len(cfg)>1:
                         logger.warning(f"Running {len(cfg)} FTS configuration for library {lib.base_url}")
+                    # if not cfg:
+                    #     raise HTTPException(status_code=400, detail=f"No FTS config for library {lib.base_url}")
                     for ncfg in cfg: # allow multiple runs per library
 
                         os_cfg = open_search_kwargs if open_search_kwargs is not None else (ncfg.get("open-search") or {})
@@ -342,10 +352,10 @@ def ingest_route(
                                 detail="With no input, you must provide 'query' parameter",
                             )
                         
-                        ocr_x = ocr if ocr is not None else cfg.get("ocr", True)
-                        transformer_x = transformer if transformer is not None else cfg.get("transformer", False)
-                        ingest_x = ingest if ingest is not None else cfg.get("ingest", True)
-                        vector_x = vector if vector is not None else cfg.get("vector", True)
+                        ocr_x = ocr if ocr is not None else ncfg.get("ocr", True)
+                        transformer_x = transformer if transformer is not None else ncfg.get("transformer", False)
+                        ingest_x = ingest if ingest is not None else ncfg.get("ingest", True)
+                        vector_x = vector if vector is not None else ncfg.get("vector", True)
 
                         iter_pages_kwargs = ocr_kwargs if ocr_kwargs is not None else dict(kraken_cfg.get("ocr_kwargs") or {})
                         page_to_text_kwargs = model_kwargs if model_kwargs is not None else dict(kraken_cfg.get("model_kwargs") or {})
@@ -367,7 +377,15 @@ def ingest_route(
                                     name: (sol[name].value if sol[name] is not None else None)
                                     for name in var_names
                                 })                            
-                            logger.debug(f"{len(items)} results")       
+                            logger.info(f"{len(items)} results")  
+
+                            # Save as CSV
+                            filename = _default_filename("query_results", "csv")
+                            with open(export_dir / filename, "w", newline="", encoding="utf-8") as f:
+                                writer = csv.DictWriter(f, fieldnames=var_names)
+                                writer.writeheader()
+                                writer.writerows(items) 
+
                         except Exception as e:
                             logger.error(f"Query failed: {e}")
                             items = []
@@ -472,10 +490,9 @@ def ingest_route(
         "targets": targets,
         "runs": len(run_ids),
     }    
-    from zotero_rdf_server.config import EXPORT_DIRECTORY
-    export_dir = Path(EXPORT_DIRECTORY)
-    export_dir.mkdir(parents=True, exist_ok=True)
-    with open(export_dir / "result.json", "w", encoding="utf-8") as f:
+
+    _runs_filename = _default_filename("runs_result", "json")
+    with open(export_dir / _runs_filename, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
 
     return result
@@ -583,7 +600,7 @@ def search_terms(
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     debug: bool = Query(False, description="Include debug_query (JSON only)"),
 ):
-    from .search import parse_csv, build_terms_should_queries, os_search
+    from .search import parse_csv, build_terms_should_queries, os_search, apply_paging
 
     try:
         terms = parse_csv(q)
@@ -600,11 +617,11 @@ def search_terms(
         truncated=truncated,
         fuzzy=fuzzy,
     )
-
     body: Dict[str, Any] = {
-        "size": size,
         "query": {"bool": {"should": should, "minimum_should_match": 1}},
     }
+
+    apply_paging(body, size=size)
 
     try:
         resp = os_search(index=index, body=body, columns=columns)
@@ -641,12 +658,11 @@ def search_proximity(
     allow_fuzzy: bool = Query(True),
     fuzzy_edits: int = Query(1, ge=0, le=2),
     size: int = Query(10, ge=1, le=1000),
-
     format: str = Query("json", description="Output format: json|csv|md", pattern="^(json|csv|md|markdown)$"),
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     debug: bool = Query(False, description="Include debug_query (JSON only)"),
 ):
-    from .search import parse_csv, build_proximity_intervals_query, os_search
+    from .search import parse_csv, build_proximity_intervals_query, os_search, apply_paging
 
     try:
         list_a = parse_csv(a)
@@ -668,7 +684,8 @@ def search_proximity(
         allow_fuzzy=allow_fuzzy,
         fuzzy_edits=fuzzy_edits,
     )
-    body["size"] = size
+
+    apply_paging(body, size=size)
 
     try:
         resp = os_search(index=index, body=body, columns=columns)
@@ -702,7 +719,7 @@ def knn_by_id(
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     debug: bool = Query(False, description="Include debug_query (JSON only)"),
 ):
-    from .search import get_doc_vector, os_search
+    from .search import get_doc_vector, os_search, apply_paging
 
     try:
         query_vec = get_doc_vector(index=index, os_id=os_id, vector_field=vector_field)
@@ -714,17 +731,18 @@ def knn_by_id(
         knn_clause["ef_search"] = ef_search
 
     if exclude_self:
-        body: Dict[str, Any] = {
-            "size": size,
-            "query": {
-                "bool": {
-                    "must": [{"knn": knn_clause}],
-                    "must_not": [{"ids": {"values": [os_id]}}],
-                }
-            },
+        query: Dict[str, Any] = {
+            "bool": {
+                "must": [{"knn": knn_clause}],
+                "must_not": [{"ids": {"values": [os_id]}}],
+            }
         }
     else:
-        body = {"size": size, "query": {"knn": knn_clause}}
+        query = {"knn": knn_clause}
+
+    body: Dict[str, Any] = {"query": query}
+
+    apply_paging(body, size=size)
 
     try:
         resp = os_search(index=index, body=body, columns=columns)
@@ -760,7 +778,7 @@ def mlt_by_id(
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     debug: bool = Query(False, description="Include debug_query (JSON only)"),
 ):
-    from .search import os_search
+    from .search import os_search, apply_paging
 
     field_list = [f.strip() for f in fields.split(",") if f.strip()]
     if not field_list:
@@ -778,17 +796,18 @@ def mlt_by_id(
     }
 
     if exclude_self:
-        body: Dict[str, Any] = {
-            "size": size,
-            "query": {
-                "bool": {
-                    "must": [mlt_query],
-                    "must_not": [{"ids": {"values": [os_id]}}],
-                }
-            },
+        query: Dict[str, Any] = {
+            "bool": {
+                "must": [mlt_query],
+                "must_not": [{"ids": {"values": [os_id]}}],
+            }
         }
     else:
-        body = {"size": size, "query": mlt_query}
+        query = {"query": mlt_query}
+
+
+    body: Dict[str, Any] = {"query": query}
+    apply_paging(body, size=size)
 
     try:
         resp = os_search(index=index, body=body, columns=columns)

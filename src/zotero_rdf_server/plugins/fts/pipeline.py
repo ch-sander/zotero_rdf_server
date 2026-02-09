@@ -129,6 +129,7 @@ def ingest_pipeline(
                     "targets": targets,
                     "pages": pages,
                 })
+            logger.info(f"OCR Pipeline finsihed with {len(results)} results!")
 
             return results  
           
@@ -195,6 +196,6 @@ def ingest_pipeline(
                 digest["ingest"] = True
                 runs.append(digest)
 
-        logger.debug(f"Ingest Pipeline finsihed with {len(runs)} runs!")
+        logger.info(f"Ingest Pipeline finsihed with {len(runs)} runs!")
         return runs
     return runs
