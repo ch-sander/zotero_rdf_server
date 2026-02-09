@@ -1,4 +1,3 @@
-
 from typing import Any, Dict, List, Optional
 
 # --- OpenSearch client --------------------------------------------------------
@@ -16,6 +15,35 @@ logger.info(f"Client config loaded from {cfg_path}")
 
 
 # --- Helpers -----------------------------------------------------------------
+
+DEFAULT_SIZE = 10
+MAX_SIZE = 200  # hard safety limit
+
+def apply_paging(
+    body: Dict[str, Any],
+    *,
+    size: Optional[int] = None,
+    offset: int = 0,
+    max_size: int = MAX_SIZE,
+) -> Dict[str, Any]:
+    """
+    Apply pagination controls to an OpenSearch search body.
+    - size: number of hits to return
+    - offset: starting hit (from)
+    - max_size: hard cap to protect the cluster
+    """
+    if size is None:
+        size = DEFAULT_SIZE
+
+    # Hard cap
+    size = min(int(size), int(max_size))
+    offset = max(int(offset), 0)
+
+    body["size"] = size
+    if offset:
+        body["from"] = offset
+
+    return body
 
 def parse_csv(raw: str) -> List[str]:
     """Parse comma-separated terms, trimming whitespace and dropping empties."""
@@ -142,15 +170,47 @@ def build_proximity_intervals_query(
     fuzzy_edits: int = 1,
 ) -> Dict[str, Any]:
     """
-    Build an intervals query matching any pair (ai, bj) within `proximity` token gaps.
-    Cross product A x B; overall match succeeds if at least one pair matches.
+    Build a query that:
+    - if proximity == -1: requires both terms to occur somewhere in the document
+    - if proximity >= 0: requires both terms to occur within `proximity` token gaps
     """
+    # --- Case 1: proximity == 0 → simple AND in the same document ------------
+    if proximity == -1:
+        should_pairs: List[Dict[str, Any]] = []
+
+        for a in list_a:
+            a_rule = intervals_term_rule(a, allow_match, allow_prefix, allow_fuzzy, fuzzy_edits=fuzzy_edits)
+            for b in list_b:
+                b_rule = intervals_term_rule(b, allow_match, allow_prefix, allow_fuzzy, fuzzy_edits=fuzzy_edits)
+
+                should_pairs.append(
+                    {
+                        "bool": {
+                            "must": [
+                                {"intervals": {field: a_rule}},
+                                {"intervals": {field: b_rule}},
+                            ]
+                        }
+                    }
+                )
+
+        return {
+            "query": {
+                "bool": {
+                    "should": should_pairs,
+                    "minimum_should_match": 1,
+                }
+            }
+        }
+
+    # --- Case 2: proximity >= 0 → true proximity via intervals -----------------
     pair_intervals: List[Dict[str, Any]] = []
 
     for a in list_a:
         a_rule = intervals_term_rule(a, allow_match, allow_prefix, allow_fuzzy, fuzzy_edits=fuzzy_edits)
         for b in list_b:
             b_rule = intervals_term_rule(b, allow_match, allow_prefix, allow_fuzzy, fuzzy_edits=fuzzy_edits)
+
             pair_intervals.append(
                 {
                     "all_of": {
