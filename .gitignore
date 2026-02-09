@@ -19,3 +19,4 @@ explorer/index-dev.html
 *.db-wal
 app/.sync_d71c4c954ce7.db
 /snapshots
+/app/opensearch/opensearch-data
