@@ -305,7 +305,7 @@ def ingest_route(
         try:
             if json_mode:
                 filename = _default_filename("query_results", "json")
-                with open(export_dir / _runs_filename, "w", encoding="utf-8") as f:
+                with open(export_dir / filename, "w", encoding="utf-8") as f:
                     json.dump(items, f, ensure_ascii=False, indent=2)
                 logger.info(f"Saved query to {filename}")
             if csv_mode:
