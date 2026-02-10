@@ -33,6 +33,7 @@ def ingest_pipeline(
     from .db import index_stream
     pages_fn = None
     items = list(items or [])
+    total = len(items)
     targets = targets or []
     iter_pages_kwargs = dict(iter_pages_kwargs or {})
     page_to_text_kwargs = dict(page_to_text_kwargs or {})
@@ -73,7 +74,8 @@ def ingest_pipeline(
         
         if not ingest:
             results: List[Dict[str, Any]] = []
-            for obj in items:
+            for i, obj in enumerate(items, start=1):
+                logger.info(f"[{i}/{total}] Loading {obj.get('_id')}")                
                 stats = {"pages_emitted": 0}
                 payload = dict(obj)
                 doc_id = payload.pop("_id", None)
@@ -138,7 +140,8 @@ def ingest_pipeline(
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc).isoformat()        
 
-        for obj in items:
+        for i, obj in enumerate(items, start=1):
+            logger.info(f"[{i}/{total}] Loading {obj.get('_id')}") 
             stats = {"pages_emitted": 0}
             payload = dict(obj)
             logger.debug(f"Ingest Pipeline payload: {payload}")
