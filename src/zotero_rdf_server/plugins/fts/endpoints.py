@@ -262,6 +262,11 @@ def ingest_opensearch(req: OpenSearchDocRequest = Body(...)):
     )
     return run #{"status": "ok", "run_id": run_id}
 
+def _default_filename(prefix: str, ext: str) -> str:
+    import datetime
+    ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return f"{prefix}-{ts}.{ext}"
+
 JsonObj = Dict[str, Any]
 JsonBody = Union[JsonObj, List[JsonObj]]
 
@@ -295,6 +300,25 @@ def ingest_route(
     except Exception:
         export_dir = Path()  / "fts"
     export_dir.mkdir(parents=True, exist_ok=True)
+
+    def save_query_to_file(items, var_names=None, json_mode=True, csv_mode=True):
+        try:
+            if json_mode:
+                filename = _default_filename("query_results", "json")
+                with open(export_dir / _runs_filename, "w", encoding="utf-8") as f:
+                    json.dump(items, f, ensure_ascii=False, indent=2)
+                logger.info(f"Saved query to {filename}")
+            if csv_mode:
+                if var_names is None:
+                    var_names = sorted({k for row in items for k in row.keys()})
+                filename = _default_filename("query_results", "csv")
+                with open(export_dir / filename, "w", newline="", encoding="utf-8") as f:
+                    writer = csv.DictWriter(f, fieldnames=var_names)
+                    writer.writeheader()
+                    writer.writerows(items)
+                logger.info(f"Saved query to {filename}")
+        except Exception as e:
+            logger.exception(f"Failed to save query")
 
     if input is None:
         try:
@@ -380,11 +404,7 @@ def ingest_route(
                             logger.info(f"{len(items)} results")  
 
                             # Save as CSV
-                            filename = _default_filename("query_results", "csv")
-                            with open(export_dir / filename, "w", newline="", encoding="utf-8") as f:
-                                writer = csv.DictWriter(f, fieldnames=var_names)
-                                writer.writeheader()
-                                writer.writerows(items) 
+                            save_query_to_file(items=items,var_names=var_names)
 
                         except Exception as e:
                             logger.error(f"Query failed: {e}")
@@ -428,6 +448,7 @@ def ingest_route(
                         for name in var_names
                     })
                 logger.debug(f"{items} results")
+                save_query_to_file(items=items,var_names=var_names)
             except Exception as e:
                 logger.error(f"Query failed: {e}")
                 raise HTTPException(
@@ -473,6 +494,8 @@ def ingest_route(
         else:
             raise HTTPException(status_code=400, detail="Body must be a JSON object, a list of JSON objects, or null")
         ocr = True if ocr is True else False
+        save_query_to_file(items=items,var_names=var_names, json_mode=False)
+
         run_ids.extend(ingest_pipeline( items=items,
                                         targets=targets, 
                                         ocr=ocr,
@@ -497,10 +520,7 @@ def ingest_route(
 
     return result
 
-def _default_filename(prefix: str, ext: str) -> str:
-    import datetime
-    ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S")
-    return f"{prefix}-{ts}.{ext}"
+
 
 import io
 
