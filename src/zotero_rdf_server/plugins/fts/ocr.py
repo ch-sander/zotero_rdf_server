@@ -89,6 +89,10 @@ def resolve_segmentation_name(
     active = kcfg.get("active") or {}
     return active.get("segmentation") or "BLLA"
 
+_KRAKEN_NET: dict[tuple[str, str], object] = {}
+_KRAKEN_SEG: dict[tuple[str, str], object] = {}
+
+
 def load_segmentation_model(*, config_path: str, segmenter: Optional[str]):
     from kraken.lib import vgsl
     from importlib import resources
@@ -212,16 +216,6 @@ def iiif_manifest_to_image_urls(manifest: Dict[str, Any], max_width: Optional[in
 
     return urls
 
-def fetch_pil_image_old(url: str, timeout: int = 60) -> Image.Image:
-    try:
-        r = requests.get(url, stream=True, timeout=timeout)
-        r.raise_for_status()
-        im = Image.open(io.BytesIO(r.content))
-        im.load()
-        return im
-    except Exception as e:
-        logger.error(f"Fetching image {url}: {e}")
-
 def fetch_pil_image(url: str, *, timeout: int = 30, retries: int = 3, backoff: float = 1.5):
     last_exc = None
     for attempt in range(retries + 1):
@@ -240,16 +234,6 @@ def fetch_pil_image(url: str, *, timeout: int = 30, retries: int = 3, backoff: f
             return None
     logger.error(f"fetch_pil_image failed for {url}: {last_exc}")
     return None
-
-def stream_download_to_tempfile_old(url: str, suffix: str, timeout: int = 120) -> str:
-    logger.info(f"Downloading {url}")
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        with requests.get(url, stream=True, timeout=timeout) as r:
-            r.raise_for_status()
-            for chunk in r.iter_content(chunk_size=1024 * 1024):
-                if chunk:
-                    tmp.write(chunk)
-        return tmp.name
 
 def stream_download_to_tempfile(
     url: str,
@@ -307,6 +291,17 @@ def _get_pdf_libs():
     PdfReader = ensure_import("pypdf", attr="PdfReader")
     pdfium = ensure_import("pypdfium2")
     return PdfReader, pdfium
+
+import math
+
+def downscale_if_needed(im: Image.Image, max_pixels: int= 10_000_000) -> Image.Image:
+    w, h = im.size
+    px = w * h
+    if px <= max_pixels:
+        return im
+    factor = math.sqrt(max_pixels / px)
+    new_size = (max(1, int(w * factor)), max(1, int(h * factor)))
+    return im.resize(new_size)
 
 def iter_pages(
     input: str,
@@ -374,6 +369,7 @@ def iter_pages(
                     yield PageItem(i, "text", txt, source=f"pdf-text:{input}#page={i}")
                 else:
                     pil = doc[i-1].render(scale=pdf_dpi/72).to_pil()
+                    # pil = downscale_if_needed(pil)
                     logger.debug(f"iter_pages yielding page={i}")
                     yield PageItem(i, "image", pil, source=f"pdf-image:{input}#page={i}")
         except Exception as e:
@@ -464,14 +460,25 @@ def kraken_image_to_text(
             domain=dom,
             model_name=model_name,
         )
+        seg_name = resolve_segmentation_name(config_path=cfg_path, segmenter=segmenter)
+        seg_key = (str(cfg_path), str(seg_name))
+        seg_model = _KRAKEN_SEG.get(seg_key)
+        if seg_model is None:
+            seg_model = load_segmentation_model(config_path=cfg_path, segmenter=segmenter)
+            _KRAKEN_SEG[seg_key] = seg_model
 
-        seg_model = load_segmentation_model(config_path=cfg_path, segmenter=segmenter)
+        # seg_model = load_segmentation_model(config_path=cfg_path, segmenter=segmenter)
         logger.debug(f"Kraken page recognition with {recog_name}...")
         work = binarization.nlbin(im) if binarize else im
         bounds = blla.segment(work, model=seg_model)
         # seg = pageseg.segment(work)
         model_path = str(resolve_kraken_model_path(config_path=cfg_path, model_name=recog_name))
-        net = models.load_any(model_path)
+        net_key = (str(cfg_path), model_path)
+        net = _KRAKEN_NET.get(net_key)
+        if net is None:
+            net = models.load_any(model_path)
+            _KRAKEN_NET[net_key] = net
+        # net = models.load_any(model_path)
 
         preds = rpred.rpred(network=net, im=work, bounds=bounds)
         ocr_page = "\n".join(p.prediction for p in preds)
