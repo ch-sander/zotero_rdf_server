@@ -20,3 +20,4 @@ explorer/index-dev.html
 app/.sync_d71c4c954ce7.db
 /snapshots
 /app/opensearch/opensearch-data
+*.db-shm
