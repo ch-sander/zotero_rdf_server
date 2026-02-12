@@ -526,6 +526,8 @@ def ingest_route(
 
     return result
 
+### SEARCHES ###
+
 def format_search_response(
     *,
     resp: Dict[str, Any],
@@ -599,7 +601,6 @@ def format_search_response(
 
     raise HTTPException(status_code=400, detail="Invalid format. Use: json, csv, md.")
 
-
 @router.get(
     "/search/terms",
     summary="Search comma-separated terms (OR) with phrase/prefix/fuzzy modes",
@@ -657,7 +658,6 @@ def search_terms(
         columns=columns,
         include_debug=debug,
     )
-
 
 @router.get(
     "/search/proximity",
