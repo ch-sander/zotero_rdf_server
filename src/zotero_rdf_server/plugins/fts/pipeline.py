@@ -1,4 +1,4 @@
-from typing import Literal as TypeLiteral, Any, Dict, Iterator, List, Optional, Union
+from typing import Literal as TypeLiteral, Any, Dict, Iterator, List, Optional, Callable
 import json
 from .helpers import plugin_logger
 logger=plugin_logger()
@@ -14,29 +14,46 @@ def _meta_flat_strings(d: Dict[str, Any]) -> Dict[str, str]:
             out[k] = json.dumps(v, ensure_ascii=False)
     return out
 
+ProgressFn = Callable[..., bool]
 
 def ingest_pipeline(        
-    items:list=[],
-    targets:str|list=[],
+    items=None,
+    targets=None,
     ocr:bool=False,
     transformer:bool=False,
     vector: bool = True,
     ingest:bool=True,
-    iter_pages_kwargs:dict={},
-    page_to_text_kwargs:dict={},
-    text_image_file_kwargs:dict={},
-    config_path:str=None
+    iter_pages_kwargs=None,
+    page_to_text_kwargs=None,
+    text_image_file_kwargs=None,
+    config_path:str=None,
+    progress: Optional[ProgressFn] = None,
+    job_id: Optional[str] = None
 ):
     from .db import index_stream
-    pages_fn = None
+
     items = list(items or [])
     total = len(items)
     targets = targets or []
     iter_pages_kwargs = dict(iter_pages_kwargs or {})
     page_to_text_kwargs = dict(page_to_text_kwargs or {})
+    text_image_file_kwargs = dict(text_image_file_kwargs or {})
     logger.debug(f"Ingest Pipeline started with {len(items)} items...")
     page_to_text_kwargs['config_path'] = config_path if (not page_to_text_kwargs.get('config_path') and config_path) else page_to_text_kwargs.get('config_path')
-
+    
+    def _tick(**info) -> None:
+        """Call progress hook; raise on cancel."""
+        if progress is None:
+            return
+        try:
+            ok = progress(job_id=job_id, **info)
+        except Exception:
+            # never let monitoring kill the pipeline
+            logger.exception("progress callback failed")
+            return
+        if ok is False:
+            raise RuntimeError("Job canceled")
+        
     if not ocr and not ingest:
         return([{"error":"nothing to do here: no ocr, no ingest!"}])
     
@@ -63,6 +80,21 @@ def ingest_pipeline(
                         transformer=transformer
                     ):
                         stats["pages_emitted"] += 1
+
+                        # page number for progress
+                        page_no = None
+                        try:
+                            page_no = int(page[0])  # expected (page_no, text)
+                        except Exception:
+                            pass
+
+                        _tick(
+                            phase="ocr_pages",
+                            doc_id=doc_id,
+                            page=page_no,
+                            pages_emitted=stats["pages_emitted"],
+                        )
+
                         yield page
                 except Exception:
                     logger.exception("pages_fn failed for doc_id=%s input=%r", doc_id, u)
@@ -78,6 +110,7 @@ def ingest_pipeline(
                 doc_id = payload.pop("_id", None)
                 input_ = payload.pop("_input", None) or payload.pop("_url", None)
                 meta = _meta_flat_strings(payload)
+                _tick(phase="item_start", mode="ocr_only", item_index=i, total=total, doc_id=doc_id)
 
                 if not input_:
                     results.append({
@@ -127,11 +160,12 @@ def ingest_pipeline(
                     "targets": targets,
                     # "pages": pages, # Too big for result
                 })
+                _tick(phase="item_done", mode="ocr_only", item_index=i, total=total, doc_id=doc_id, pages_emitted=stats["pages_emitted"])
             logger.info(f"OCR Pipeline finsihed with {len(results)} results!")
 
             return results  
           
-    runs: List[dict] = []
+    runs: List[Dict[str, Any]] = []
     if ingest:
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc).isoformat()        
@@ -148,6 +182,7 @@ def ingest_pipeline(
             sequence = payload.pop("_idx", 1)
 
             meta = _meta_flat_strings(payload)
+            _tick(phase="item_start", mode="ingest", item_index=i, total=total, doc_id=doc_id)
 
             logger.debug(f"Ingest Pipeline index_stream with OCR: {ocr}")
             if ocr:
@@ -169,6 +204,7 @@ def ingest_pipeline(
                 digest["ocr_pages"] = stats["pages_emitted"]
                 digest["ingest"] = True
                 runs.append(digest)
+                _tick(phase="item_done", mode="ingest", item_index=i, total=total, doc_id=doc_id, pages_emitted=stats["pages_emitted"])
             else:
                 d: Dict[str, Any] = {"ingest_ts": now, "meta": meta}
                 if input is not None:
@@ -194,6 +230,7 @@ def ingest_pipeline(
                 digest["transformer"] = bool(transformer)
                 digest["ingest"] = True
                 runs.append(digest)
+                _tick(phase="item_done", mode="ingest", item_index=i, total=total, doc_id=doc_id)
 
         logger.info(f"Ingest Pipeline finsihed with {len(runs)} runs!")
         return runs
