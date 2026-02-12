@@ -1,10 +1,7 @@
-from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Body
-from fastapi.responses import StreamingResponse, FileResponse
 from typing import Literal as TypeLiteral, Any, Dict, Iterator, List, Optional, Union
 import json
 from .helpers import plugin_logger
 logger=plugin_logger()
-from .helpers import plugin_logger
 
 def _meta_flat_strings(d: Dict[str, Any]) -> Dict[str, str]:
     out: Dict[str, str] = {}
@@ -94,7 +91,6 @@ def ingest_pipeline(
 
                 pages = []
                 try:
-
                     for page_no, text in make_pages_fn(doc_id or "", stats)(input_):
                         item = {
                             "page": int(page_no),
@@ -129,13 +125,13 @@ def ingest_pipeline(
                     "ocr_pages": len(pages),
                     "ingest": False,
                     "targets": targets,
-                    "pages": pages,
+                    # "pages": pages, # Too big for result
                 })
             logger.info(f"OCR Pipeline finsihed with {len(results)} results!")
 
             return results  
           
-    runs: List[str] = []
+    runs: List[dict] = []
     if ingest:
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc).isoformat()        
