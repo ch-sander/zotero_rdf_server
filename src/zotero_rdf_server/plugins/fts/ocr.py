@@ -311,9 +311,11 @@ def iter_pages(
     pdf_dpi: int = 200,
     pdf_text_policy: PdfTextPolicy = PdfTextPolicy(),
     timeout: int = 30,
-    file_formats: list | None = None
+    file_formats: list | None = None,
+    start_page: int = 1
 ) -> Iterator[PageItem]:
-
+    if not start_page or int(start_page)<=0:
+        start_page == 1
     src_kind, src_path = resolve_source(input)
 
     if src_kind == "file":
@@ -334,7 +336,8 @@ def iter_pages(
         if not img_urls:
             logger.warning(f"IIIF manifest {input} has no image canvases")
             return
-        for i, img_url in enumerate(img_urls, start=1):
+        img_urls = img_urls[(start_page-1):] 
+        for i, img_url in enumerate(img_urls, start=start_page):
             logger.debug(f"iter_pages yielding page={i}")
             img = fetch_pil_image(img_url)
 
@@ -362,7 +365,7 @@ def iter_pages(
             reader = PdfReader(pdf_path)
             doc = pdfium.PdfDocument(pdf_path)
 
-            for i, page in enumerate(reader.pages, start=1):
+            for i, page in enumerate(reader.pages, start=start_page):
                 txt = page.extract_text() or ""
                 if is_usable_pdf_text(txt, pdf_text_policy):
                     logger.info(f"Using PDF text {input}")

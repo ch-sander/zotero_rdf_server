@@ -3,7 +3,7 @@ from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Bod
 from fastapi.responses import StreamingResponse, FileResponse, Response, JSONResponse, PlainTextResponse
 from typing import Literal, Any, Dict, Iterator, List, Optional, Union
 from pathlib import Path
-import json
+import json, io
 from pydantic import BaseModel, Field
 # from zotero_rdf_server.store import *
 # from zotero_rdf_server.rdf import *
@@ -11,7 +11,6 @@ from pydantic import BaseModel, Field
 # from zotero_rdf_server.config import *
 # from zotero_rdf_server.models import ZoteroLibrary
 # from zotero_rdf_server.utils import *
-from dataclasses import dataclass
 
 from .helpers import plugin_logger
 logger=plugin_logger()
@@ -36,6 +35,7 @@ class OcrResponse(BaseModel):
     pdf_text_min_alpha_ratio: float = Field(
         ..., description="Minimum alphabetic character ratio required to accept embedded PDF text"
     )
+    start_page:  int = Field(..., description="Start page for OCR")
     pages: List[OcrPage] = Field(..., description="Per-page OCR/text output")
 
 
@@ -112,6 +112,10 @@ def ocr_url(
         0.6, ge=0.0, le=1.0,
         description="Minimum alphabetic ratio to accept embedded PDF text.",
     ),
+    start_page: int = Query(
+        1, ge=1,
+        description="Page OCR starts on (for debugging mainly). Defaults to 1",
+    ),
     img_out: Optional[str] = Query(
         None,
         description="Relative directory (under EXPORT_DIRECTORY) to store page images.",
@@ -170,6 +174,7 @@ def ocr_url(
                 iiif_max_width=iiif_max_width,
                 pdf_dpi=pdf_dpi,
                 pdf_text_policy=pdf_text_policy,
+                start_page=start_page
             ),
             page_to_text_kwargs=dict(
                 config_path=config_path,
@@ -235,7 +240,8 @@ def ocr_url(
             pdf_text_enabled=pdf_text_enabled,
             pdf_text_min_chars=pdf_text_min_chars,
             pdf_text_min_alpha_ratio=pdf_text_min_alpha_ratio,
-            pages=pages,
+            start_page=start_page,
+            pages=pages,            
         )
 
     except ValueError as e:
@@ -519,10 +525,6 @@ def ingest_route(
         json.dump(result, f, ensure_ascii=False, indent=2)
 
     return result
-
-
-
-import io
 
 def format_search_response(
     *,

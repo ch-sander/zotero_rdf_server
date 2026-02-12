@@ -373,7 +373,7 @@ def apply_source_includes(body: Dict[str, Any], columns: Optional[str]) -> None:
     """Mutate body to include _source filtering based on columns."""
     if not columns:
         return
-
+    
     requested = [c.strip() for c in columns.split(",") if c.strip()]
     # _id/_score are not in _source
     includes = [c for c in requested if c not in ("_id", "_score")]
