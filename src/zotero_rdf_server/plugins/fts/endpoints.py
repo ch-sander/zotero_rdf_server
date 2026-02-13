@@ -276,16 +276,18 @@ def _default_filename(prefix: str, ext: str) -> str:
 JsonObj = Dict[str, Any]
 JsonBody = Union[JsonObj, List[JsonObj]]
 
-try:
-    from .endpoints_worker import router as fts_async_router
-except ImportError as e:
-    logger.warning(f"Worker endpoints not available: {e}")
-else:
-    router.include_router(
-        fts_async_router,
-        prefix="/tasks",
-        tags=["tasks"],
-    )
+import os
+if "worker" in os.getenv("COMPOSE_PROFILES", "").split(","):
+    try:
+        from .worker.endpoints_worker import router as fts_async_router
+    except ImportError as e:
+        logger.warning(f"Worker endpoints not available: {e}")
+    else:
+        router.include_router(
+            fts_async_router,
+            prefix="/tasks",
+            tags=["tasks"],
+        )
 
 @router.post("/pipeline")
 def ingest_route(
