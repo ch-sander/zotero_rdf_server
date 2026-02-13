@@ -538,6 +538,16 @@ def format_search_response(
     filename: Optional[str] = None,
     flatten_meta: bool = True,
     keep_meta: bool = False,
+    include_aggs: bool = True,                 # include aggregations when present
+    keep_highlight: bool = False,
+    make_snippet: bool = False,
+    highlight_field: Optional[str] = None,     # preferred highlight field for snippet selection
+    truncate_chars: int = 0,                   # fallback snippet truncation if no highlight
+    truncate_field: str = "text",              # fallback source field for truncation
+    md_highlight_pre: str = "**",              # markdown highlight pre tag
+    md_highlight_post: str = "**",             # markdown highlight post tag
+    markdown_title: str = "Search Results",    # allow custom title in markdown
+    markdown_max_rows: int = 150,               # cap markdown output
 ):
     """
     Return search results as JSON or as downloadable CSV/Markdown file.
@@ -550,21 +560,36 @@ def format_search_response(
         render_markdown_query_header,
     )
 
-    normalized = normalize_hits(resp, flatten_meta=flatten_meta, keep_meta=keep_meta)
-    rows = normalized["hits"]
+    normalized = normalize_hits(
+        resp,
+        flatten_meta=flatten_meta,
+        keep_meta=keep_meta,
+        keep_highlight=keep_highlight,
+        make_snippet=make_snippet,
+        highlight_field=highlight_field,
+        truncate_chars=truncate_chars,
+        truncate_field=truncate_field,
+    )
+
+    rows = normalized.get("hits", [])
+    aggs = normalized.get("aggregations") if include_aggs else None
 
     preferred_cols = None
     if columns:
         preferred_cols = [c.strip() for c in columns.split(",") if c.strip()]
 
+    # Include snippet in default preferred list; harmless if not present.
     cols = collect_columns(
         rows,
-        preferred=preferred_cols or ["_id", "_score", "doc_id", "source", "page", "ingest_ts"],
+        preferred=preferred_cols
+        or ["_id", "_score", "doc_id", "source", "page", "snippet", "ingest_ts"],
     )
 
     # --- JSON (inline, not a file) -------------------------------------------
     if output_format == "json":
-        payload: Dict[str, Any] = {"total": normalized["total"], "hits": rows}
+        payload: Dict[str, Any] = {"total": normalized.get("total"), "hits": rows}
+        if aggs is not None:
+            payload["aggregations"] = aggs
         if include_debug:
             payload["debug_query"] = debug_query
         return JSONResponse(payload)
@@ -587,8 +612,29 @@ def format_search_response(
     # --- Markdown download ---------------------------------------------------
     if output_format in ("md", "markdown"):
         header = render_markdown_query_header(debug_query)
-        body = render_markdown(rows, cols)
+
+        # Optional: include aggregations block
+        if aggs is not None:
+            pretty_aggs = json.dumps(aggs, indent=2, ensure_ascii=False)
+            header += (
+                "## Aggregations\n\n"
+                "```json\n"
+                f"{pretty_aggs}\n"
+                "```\n\n"
+            )
+
+        body = render_markdown(
+            rows,
+            cols,
+            max_rows=markdown_max_rows,
+            title=markdown_title,
+        )
+
         content = header + body
+
+        # Only convert <em> tags if caller enabled highlight/snippets
+        if keep_highlight or make_snippet:
+            content = content.replace("<em>", md_highlight_pre).replace("</em>", md_highlight_post)
 
         stream = io.BytesIO(content.encode("utf-8"))
         return StreamingResponse(
@@ -601,6 +647,7 @@ def format_search_response(
 
     raise HTTPException(status_code=400, detail="Invalid format. Use: json, csv, md.")
 
+
 @router.get(
     "/search/terms",
     summary="Search comma-separated terms (OR) with phrase/prefix/fuzzy modes",
@@ -611,40 +658,99 @@ def format_search_response(
     tags=["Search"]
 )
 def search_terms(
-    index: str = Query(..., description="OpenSearch index name"),
-    q: str = Query(..., description="Comma-separated expressions, e.g. 'foo, bar, baz'"),
-    field: str = Query("text", description="Text field to search"),
-    exact: bool = Query(True, description="Enable analyzed phrase match"),
-    truncated: bool = Query(True, description="Enable phrase-prefix match"),
-    fuzzy: bool = Query(True, description="Enable fuzzy match"),
-    size: int = Query(10, ge=1, le=1000),
+    index: str = Query(...),
+    q: str = Query(...),
+    field: str = Query("text"),
 
-    format: str = Query("json", description="Output format: json|csv|md", pattern="^(json|csv|md|markdown)$"),
-    columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
-    debug: bool = Query(False, description="Include debug_query (JSON only)"),
+    exact: bool = Query(True),
+    truncated: bool = Query(True),
+    fuzzy: bool = Query(True),
+    size: int = Query(10, ge=1, le=1000),
+    lucene: bool = Query(False, description="Interpret q as Lucene query_string"),
+    lucene_lenient: bool = Query(True, description="Lenient parsing for query_string"),
+    highlight: bool = Query(True, description="Include OpenSearch highlight snippets"),
+    highlight_field: Optional[str] = Query(None, description="Field to highlight (defaults to `field`)"),
+    fragment_size: int = Query(160, ge=20, le=500),
+    fragments: int = Query(2, ge=0, le=10),
+    pre_tag: str = Query("**", description="Markdown pre tag for highlight"),
+    post_tag: str = Query("**", description="Markdown post tag for highlight"),
+    truncate_chars: int = Query(0, ge=0, le=5000, description="If >0: truncate plain text when no highlight"),
+    agg_field: Optional[str] = Query(None, description="Keyword field to aggregate over, e.g. meta.author.keyword"),
+    agg_size: int = Query(10, ge=1, le=1000),
+    agg_type: str = Query("terms", pattern="^(terms|composite)$"),
+
+    format: str = Query("json", pattern="^(json|csv|md|markdown)$"),
+    columns: Optional[str] = Query(None),
+    debug: bool = Query(False),
 ):
     from .search import parse_csv, build_terms_should_queries, os_search, apply_paging
 
-    try:
-        terms = parse_csv(q)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    # --- Build query ---------------------------------------------------------
+    if lucene:
+        # TODO safer for end-user input would be simple_query_string
+        body: Dict[str, Any] = {
+            "query": {
+                "query_string": {
+                    "query": q,
+                    "default_field": field,
+                    "lenient": lucene_lenient,
+                }
+            }
+        }
+    else:
+        try:
+            terms = parse_csv(q)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
-    if not (exact or truncated or fuzzy):
-        raise HTTPException(status_code=400, detail="Enable at least one mode: exact/truncated/fuzzy.")
+        if not (exact or truncated or fuzzy):
+            raise HTTPException(status_code=400, detail="Enable at least one mode: exact/truncated/fuzzy.")
 
-    should = build_terms_should_queries(
-        terms=terms,
-        field=field,
-        exact=exact,
-        truncated=truncated,
-        fuzzy=fuzzy,
-    )
-    body: Dict[str, Any] = {
-        "query": {"bool": {"should": should, "minimum_should_match": 1}},
-    }
+        should = build_terms_should_queries(
+            terms=terms,
+            field=field,
+            exact=exact,
+            truncated=truncated,
+            fuzzy=fuzzy,
+        )
+        body = {"query": {"bool": {"should": should, "minimum_should_match": 1}}}
 
     apply_paging(body, size=size)
+
+    # --- Highlight -----------------------------------------------------------
+    if highlight:
+        hf = highlight_field or field
+        body["highlight"] = {
+            "pre_tags": ["<em>"],
+            "post_tags": ["</em>"],
+            "fields": {
+                hf: {
+                    "fragment_size": fragment_size,
+                    "number_of_fragments": fragments,
+                }
+            },
+            # Optional: avoids highlighting fields that didn't match
+            "require_field_match": True,
+        }
+
+    # --- Aggregation ---------------------------------------------------------
+    if agg_field:
+        if agg_type == "terms":
+            body["aggs"] = {
+                "by_field": {
+                    "terms": {"field": agg_field, "size": agg_size}
+                }
+            }
+        else:
+            # composite for paging buckets; pass "after" separately for paging
+            body["aggs"] = {
+                "by_field": {
+                    "composite": {
+                        "size": agg_size,
+                        "sources": [{"v": {"terms": {"field": agg_field}}}],
+                    }
+                }
+            }
 
     try:
         resp = os_search(index=index, body=body, columns=columns)
@@ -657,6 +763,9 @@ def search_terms(
         output_format=format,
         columns=columns,
         include_debug=debug,
+        md_pre_tag=pre_tag,
+        md_post_tag=post_tag,
+        truncate_chars=truncate_chars,
     )
 
 @router.get(

@@ -257,15 +257,55 @@ def flatten_meta_fields(row: Dict[str, Any], meta_key: str = "meta", prefix: str
     walk(meta, [], out)
     return out
 
-def normalize_hits(resp: Dict[str, Any], flatten_meta: bool = True, keep_meta: bool = False) -> Dict[str, Any]:
+def _first_highlight_fragment(h: Dict[str, Any], preferred_field: Optional[str] = None) -> Optional[str]:
+    hl = h.get("highlight") or {}
+    if not hl:
+        return None
+
+    if preferred_field and preferred_field in hl and hl[preferred_field]:
+        return hl[preferred_field][0]
+
+    for _, frags in hl.items():
+        if frags:
+            return frags[0]
+    return None
+
+def _truncate_text(s: str, n: int) -> str:
+    if n <= 0 or len(s) <= n:
+        return s
+    return s[: max(0, n - 1)] + "…"
+
+def normalize_hits(
+    resp: Dict[str, Any],
+    flatten_meta: bool = True,
+    keep_meta: bool = False,
+    *,
+    keep_highlight: bool = True,
+    make_snippet: bool = True,
+    highlight_field: Optional[str] = None,
+    truncate_chars: int = 0,
+    truncate_field: str = "text",   # fallback field name in _source
+) -> Dict[str, Any]:
     """Normalize OpenSearch response to a stable wrapper structure; optionally flatten 'meta'."""
     hits = resp.get("hits", {}).get("hits", [])
 
     rows: List[Dict[str, Any]] = []
     for h in hits:
-        row = {"_id": h.get("_id"), "_score": h.get("_score")}
+        row: Dict[str, Any] = {"_id": h.get("_id"), "_score": h.get("_score")}
         src = h.get("_source") or {}
         row.update(src)
+
+        if keep_highlight and "highlight" in h:
+            row["highlight"] = h.get("highlight") or {}
+
+        if make_snippet:
+            frag = _first_highlight_fragment(h, preferred_field=highlight_field)
+            if frag:
+                row["snippet"] = frag
+            elif truncate_chars > 0:
+                txt = row.get(truncate_field)
+                if isinstance(txt, str) and txt:
+                    row["snippet"] = _truncate_text(txt, truncate_chars)
 
         if flatten_meta:
             row = flatten_meta_fields(row)
@@ -277,7 +317,9 @@ def normalize_hits(resp: Dict[str, Any], flatten_meta: bool = True, keep_meta: b
     return {
         "total": resp.get("hits", {}).get("total"),
         "hits": rows,
+        "aggregations": resp.get("aggregations"),
     }
+
 
 def flatten_value(v: Any) -> str:
     """Convert nested values to a stable string representation for CSV/Markdown."""
@@ -305,7 +347,8 @@ def render_csv(rows: List[Dict[str, Any]], columns: List[str]) -> str:
         w.writerow([flatten_value(r.get(c)) for c in columns])
     return buf.getvalue()
 
-def render_markdown_table(rows: List[Dict[str, Any]], columns: List[str], max_rows: int = 50) -> str:
+# TODO currently not used
+def render_markdown_table(rows: List[Dict[str, Any]], columns: List[str], max_rows: int = 150) -> str:
     rows = rows[:max_rows]
     header = "| " + " | ".join(columns) + " |"
     sep = "| " + " | ".join(["---"] * len(columns)) + " |"
@@ -315,17 +358,33 @@ def render_markdown_table(rows: List[Dict[str, Any]], columns: List[str], max_ro
         lines.append(line)
     return "\n".join(lines)
 
+import re
+
+_EM_RE = re.compile(r"<em>(.*?)</em>", flags=re.DOTALL)
+
+def highlight_html_to_markdown(text: str, pre: str = "**", post: str = "**") -> str:
+    # Convert <em>...</em> fragments from OpenSearch highlight to Markdown emphasis
+    return _EM_RE.sub(lambda m: f"{pre}{m.group(1)}{post}", text)
+
+def normalize_md_block(text: str) -> str:
+    """
+    Keep your 'sheet style' printable blocks readable:
+    - replace CRLF/LF with spaces (or <br> if you prefer)
+    - avoid accidental markdown code fences etc (optional)
+    """
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = text.replace("\n", " ")
+    return text
+
 def render_markdown(
     rows: List[Dict[str, Any]],
     columns: List[str],
     *,
-    max_rows: int = 50,
+    max_rows: int = 150,
     title: str = "Search Results",
+    highlight_pre: str = "**",
+    highlight_post: str = "**",
 ) -> str:
-    """
-    Render results as a printable 'sheet' style Markdown:
-    one document per section, key-value layout.
-    """
     lines: List[str] = []
     rows = rows[:max_rows]
 
@@ -342,17 +401,22 @@ def render_markdown(
         for col in columns:
             if col not in row:
                 continue
+
             value = flatten_value(row.get(col))
             if value == "":
                 continue
 
-            # Key-value layout; block style for better printing
+            if isinstance(value, str):
+                value = highlight_html_to_markdown(value, pre=highlight_pre, post=highlight_post)
+                value = normalize_md_block(value)
+
             lines.append(f"**{col}**")
             lines.append("")
             lines.append(f"{value}")
             lines.append("")
 
     return "\n".join(lines)
+
 
 def render_markdown_query_header(debug_query: Dict[str, Any]) -> str:
     """Render the OpenSearch query as a markdown code block."""
@@ -367,7 +431,6 @@ def render_markdown_query_header(debug_query: Dict[str, Any]) -> str:
         f"{pretty}\n"
         "```\n\n"
     )
-
 
 def apply_source_includes(body: Dict[str, Any], columns: Optional[str]) -> None:
     """Mutate body to include _source filtering based on columns."""
