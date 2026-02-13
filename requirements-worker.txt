@@ -1,0 +1,4 @@
+taskiq==0.12.1
+taskiq-redis==1.2.2
+# taskiq-fastapi==0.4.0
+# redis==7.1.1
