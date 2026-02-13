@@ -3,9 +3,11 @@ import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from taskiq import TaskiqDepends, task
+# from taskiq import TaskiqDepends, task
 
-from .helpers import plugin_logger
+from .broker import broker
+
+from ..helpers import plugin_logger
 from .jobs_db import (
     get_job,
     set_state,
@@ -54,7 +56,7 @@ def _progress_fn(db: Path, job_id: str, worker_id: str):
         return not is_cancel_requested(db, job_id)
     return progress
 
-@task
+@broker.task
 def drive_job(job_id: str) -> None:
     db = _db_path()
     wid = _worker_id()
@@ -93,7 +95,7 @@ def drive_job(job_id: str) -> None:
 
         params = job.params
 
-        from .pipeline import ingest_pipeline
+        from ..pipeline import ingest_pipeline
 
         progress = _progress_fn(db, job_id, wid)
 
