@@ -276,9 +276,16 @@ def _default_filename(prefix: str, ext: str) -> str:
 JsonObj = Dict[str, Any]
 JsonBody = Union[JsonObj, List[JsonObj]]
 
-from .endpoints_worker import router as fts_async_router
-from zotero_rdf_server.main import app
-app.include_router(fts_async_router, prefix="/tasks", tags=["tasks"])
+try:
+    from .endpoints_worker import router as fts_async_router
+except ImportError as e:
+    logger.warning(f"Worker endpoints not available: {e}")
+else:
+    router.include_router(
+        fts_async_router,
+        prefix="/tasks",
+        tags=["tasks"],
+    )
 
 @router.post("/pipeline")
 def ingest_route(
