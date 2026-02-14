@@ -63,7 +63,7 @@ def ensure_import(module, attr=None, requirements=requirements):
 
     return getattr(mod, attr) if attr else mod
 
-def resolve_config_path(config_path: Optional[str] = None) -> Path:
+def resolve_config_path_old(config_path: Optional[str] = None) -> Path:
     if config_path:
         return Path(config_path).expanduser().resolve()
 
@@ -71,8 +71,35 @@ def resolve_config_path(config_path: Optional[str] = None) -> Path:
     if env:
         plugin_logger().info(f"Loading config from ENV: {env}")
         return Path(env).expanduser().resolve()
-    fallback = Path(__file__).resolve().parent / "config.yml"
+    fallback = Path(__file__).resolve().parent / "fts_config.yml"
     plugin_logger().info(f"Loading config from fallback: {str(fallback)}")
+    return fallback
+
+def resolve_config_path(config_path: Optional[str] = None) -> Path:
+    def is_url(s: str) -> bool:
+        u = urlparse(s)
+        return u.scheme in ("http", "https") and bool(u.netloc)
+
+    raw = config_path or os.getenv("FTS_CONFIG")
+
+    if raw:
+        if is_url(raw):
+            cache_dir = Path("./tmp/fts_config")
+            cache_dir.mkdir(parents=True, exist_ok=True)
+
+            fname = hashlib.sha256(raw.encode()).hexdigest()[:16] + ".yml"
+            target = cache_dir / fname
+
+            if not target.exists():
+                r = requests.get(raw, timeout=15)
+                r.raise_for_status()
+                target.write_text(r.text, encoding="utf-8")
+
+            return target.resolve()
+
+        return Path(raw).expanduser().resolve()
+
+    fallback = Path(__file__).resolve().parent / "config.yml"
     return fallback
 
 def _hash_file(path: Path, algo: str) -> str:
