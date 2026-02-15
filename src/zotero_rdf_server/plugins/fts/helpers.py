@@ -7,6 +7,8 @@ import subprocess, importlib, sys, os
 from typing import Optional
 from pathlib import Path
 import hashlib
+from functools import lru_cache
+
 
 here = Path(__file__).resolve().parent
 requirements = here / "requirements.txt"
@@ -62,6 +64,7 @@ def ensure_import(module, attr=None, requirements=requirements):
 
     return getattr(mod, attr) if attr else mod
 
+@lru_cache(maxsize=1)
 def resolve_config_path(config_path: Optional[str] = None) -> Path:
     def is_url(s: str) -> bool:
         u = urlparse(s)        
