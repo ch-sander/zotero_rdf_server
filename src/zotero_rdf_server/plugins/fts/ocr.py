@@ -1,7 +1,5 @@
-from __future__ import annotations
-
 from dataclasses import dataclass, fields
-from typing import Iterator, Optional, Dict, Any, List, Literal, Union, Tuple, Mapping
+from typing import Iterator, Optional, Dict, Any, List, Literal, Union, Tuple, Mapping, Iterable, Callable, Set
 import io, json, os, tempfile, time
 import requests
 from PIL import Image
@@ -12,7 +10,6 @@ from io import BytesIO
 
 from .helpers import plugin_logger, safe_doc_id
 logger=plugin_logger()
-
 
 @dataclass(frozen=True)
 class KrakenModelSpec:
@@ -174,64 +171,228 @@ def is_usable_pdf_text(text: str, policy: PdfTextPolicy) -> bool:
     alpha = sum(c.isalpha() for c in t)
     return (alpha / max(len(t), 1)) >= policy.min_alpha_ratio
 
-def iiif_manifest_to_image_urls(manifest: Dict[str, Any], max_width: Optional[int]=2000, fmt: str="jpg") -> List[str]:
-    def mk(service_id: str) -> str:
-        size = f"{max_width}," if max_width else "full"
-        return f"{service_id.rstrip('/')}/full/{size}/0/default.{fmt}"
 
+# -----------------------------
+# Small helpers
+# -----------------------------
+
+def _as_list(x: Any) -> List[Any]:
+    if x is None:
+        return []
+    return x if isinstance(x, list) else [x]
+
+def _get_id(o: Any) -> Optional[str]:
+    if isinstance(o, dict):
+        return o.get("id") or o.get("@id")
+    return None
+
+def _iter_services(node: Any) -> Iterable[Dict[str, Any]]:
+    """
+    Yield service dicts from a node that can be:
+    - dict with "service" being dict or list
+    - list of dicts
+    - directly a service dict
+    """
+    if node is None:
+        return
+    if isinstance(node, dict) and "service" in node:
+        for s in _as_list(node.get("service")):
+            if isinstance(s, dict):
+                yield s
+    elif isinstance(node, list):
+        for s in node:
+            if isinstance(s, dict):
+                yield s
+    elif isinstance(node, dict):
+        # sometimes the service dict is given directly
+        yield node
+
+def _service_profiles(service: Dict[str, Any]) -> List[str]:
+    prof = service.get("profile")
+    if isinstance(prof, str):
+        return [prof]
+    if isinstance(prof, list):
+        return [p for p in prof if isinstance(p, str)]
+    return []
+
+def _looks_like_image_service(service: Dict[str, Any]) -> bool:
+    """
+    Best-effort filter: prefer IIIF Image API services.
+    Many manifests omit 'profile' though, so we fall back to heuristics.
+    """
+    sid = (_get_id(service) or "").rstrip("/")
+    if not sid:
+        return False
+
+    # Strong signal: explicit Image API profile
+    for p in _service_profiles(service):
+        if "iiif.io/api/image" in p:
+            return True
+
+    # Sometimes type hints exist (v2: "ImageService2", v3: "ImageService3", etc.)
+    t = (service.get("type") or service.get("@type") or "")
+    if isinstance(t, str) and "imageservice" in t.lower():
+        return True
+
+    # Heuristic fallback: many image services include /iiif/ in base URL
+    if "/iiif" in sid.lower():
+        return True
+
+    # If no evidence, still allow — but prefer ones that look plausible
+    return True
+
+def _extract_image_service_ids(*candidates: Any) -> List[str]:
+    """
+    Extract plausible Image API service ids from various candidate nodes.
+    Keeps order, de-duplicates.
+    """
+    out: List[str] = []
+    seen: Set[str] = set()
+
+    def add(sid: Optional[str]) -> None:
+        if not sid:
+            return
+        sid = sid.rstrip("/")
+        if sid not in seen:
+            seen.add(sid)
+            out.append(sid)
+
+    for c in candidates:
+        for s in _iter_services(c):
+            if _looks_like_image_service(s):
+                add(_get_id(s))
+            # v3 may nest again (rare but exists)
+            for ss in _iter_services(s):
+                if _looks_like_image_service(ss):
+                    add(_get_id(ss))
+
+    return out
+
+# -----------------------------
+# Robust IIIF Image URL builder (stable resizing)
+# -----------------------------
+
+def mk_iiif_image_url(service_id: str, max_width: Optional[int] = 2000, fmt: str = "jpg", quality: str = "default") -> str:
+    sid = service_id.rstrip("/")
+    fmt = fmt.lstrip(".")
+    quality = quality or "default"
+    if max_width is None:
+        return f"{sid}/full/full/0/{quality}.{fmt}"
+    return f"{sid}/full/{int(max_width)},/0/{quality}.{fmt}"
+
+# -----------------------------
+# Manifest -> image URLs (v2 + v3)
+# -----------------------------
+
+def iiif_manifest_to_image_urls(
+    manifest: Dict[str, Any],
+    max_width: Optional[int] = 2000,
+    fmt: str = "jpg",
+    quality: str = "default",
+    include_direct_ids_as_fallback: bool = True,
+) -> List[str]:
     urls: List[str] = []
+    seen: Set[str] = set()
+
+    def add(u: Optional[str]) -> None:
+        if not u or u in seen:
+            return
+        seen.add(u)
+        urls.append(u)
 
     # v3
-    if "items" in manifest:
+    if isinstance(manifest.get("items"), list):
         for canvas in manifest.get("items", []):
+            if not isinstance(canvas, dict):
+                continue
             for anno_page in canvas.get("items", []):
+                if not isinstance(anno_page, dict):
+                    continue
                 for anno in anno_page.get("items", []):
-                    body = anno.get("body", {})
-                    service = body.get("service")
-                    sid = None
-                    if isinstance(service, list) and service:
-                        sid = service[0].get("id") or service[0].get("@id")
-                    elif isinstance(service, dict):
-                        sid = service.get("id") or service.get("@id")
-
-                    if sid:
-                        urls.append(mk(sid))
-                    elif isinstance(body, dict) and body.get("id"):
-                        urls.append(body["id"])
+                    if not isinstance(anno, dict):
+                        continue
+                    for body in _as_list(anno.get("body")):
+                        sids = _extract_image_service_ids(body)
+                        if sids:
+                            for sid in sids:
+                                add(mk_iiif_image_url(sid, max_width=max_width, fmt=fmt, quality=quality))
+                        elif include_direct_ids_as_fallback and isinstance(body, dict):
+                            add(body.get("id") or body.get("@id"))
         return urls
 
     # v2
     seqs = manifest.get("sequences", [])
-    if seqs:
-        canvases = seqs[0].get("canvases", [])
-        for canvas in canvases:
-            for img in canvas.get("images", []):
-                res = img.get("resource", {})
-                service = res.get("service", {})
-                sid = service.get("@id") or service.get("id")
-                if sid:
-                    urls.append(mk(sid))
-                elif res.get("@id"):
-                    urls.append(res["@id"])
+    if isinstance(seqs, list) and seqs:
+        seq0 = seqs[0] if isinstance(seqs[0], dict) else {}
+        for canvas in _as_list(seq0.get("canvases")):
+            if not isinstance(canvas, dict):
+                continue
+            for img in _as_list(canvas.get("images")):
+                if not isinstance(img, dict):
+                    continue
+                res = img.get("resource") or {}
+                if not isinstance(res, dict):
+                    res = {}
+                sids = _extract_image_service_ids(res)
+                if sids:
+                    for sid in sids:
+                        add(mk_iiif_image_url(sid, max_width=max_width, fmt=fmt, quality=quality))
+                elif include_direct_ids_as_fallback:
+                    add(res.get("@id") or res.get("id"))
 
     return urls
 
-def fetch_pil_image(url: str, *, timeout: int = 30, retries: int = 3, backoff: float = 1.5):
+from urllib.parse import urlparse
+_NO_UPSCALE_HOSTS: set[str] = set()
+
+def _force_full_url(iiif_url: str, fmt: str, quality: str) -> str:
+    if "/full/" not in iiif_url:
+        return iiif_url
+    base = iiif_url.split("/full/")[0].rstrip("/")
+    return f"{base}/full/full/0/{quality}.{fmt}"
+
+def fetch_pil_image(
+    url: str,
+    *,
+    timeout: int = 30,
+    retries: int = 3,
+    backoff: float = 1.5,
+    iiif_format: str = "jpg",
+    iiif_quality: str = "default",
+):
     last_exc = None
+    strict_tried = False
+    iiif_format = iiif_format.lstrip(".")
+    iiif_quality = iiif_quality or "default"
+
+    host = urlparse(url).netloc
+    if host in _NO_UPSCALE_HOSTS and "/full/" in url:
+        url = _force_full_url(url, fmt=iiif_format, quality=iiif_quality)
+
     for attempt in range(retries + 1):
         try:
             r = requests.get(url, timeout=timeout)
             r.raise_for_status()
             return Image.open(BytesIO(r.content))
+
         except Exception as e:
             last_exc = e
             status = getattr(getattr(e, "response", None), "status_code", None)
-            if status in (502, 503, 504) and attempt < retries:
-                sleep_s = backoff ** attempt
-                time.sleep(sleep_s)
+
+            if status == 403 and (not strict_tried) and "/full/" in url:
+                _NO_UPSCALE_HOSTS.add(host)                
+                url = _force_full_url(url, fmt=iiif_format, quality=iiif_quality)
+                strict_tried = True
+                logger.warning(f"{host} does not support scaling, using full images for this host")
                 continue
+
+            if status in (502, 503, 504) and attempt < retries:
+                time.sleep(backoff ** attempt)
+                continue
+
             logger.error(f"fetch_pil_image failed for {url}: {e}")
             return None
+
     logger.error(f"fetch_pil_image failed for {url}: {last_exc}")
     return None
 
@@ -322,28 +483,46 @@ def iter_pages(
         kind = detect_file_kind(src_path)
     else:
         kind = detect_url_kind(input, timeout=timeout)
-
+    
     if file_formats and not kind in file_formats:
         logger.warning(f"File {input} skipped as not in {file_formats}")
         return
+    else:
+        logger.info(f"Processing {str(kind).upper()} {src_kind} --> {input}")
 
     if kind in ("json", "iiif"):
         if src_kind == "file":
             manifest = json.loads(src_path.read_text(encoding="utf-8"))
         else:
             manifest = requests.get(input, timeout=timeout).json()
-        img_urls = iiif_manifest_to_image_urls(manifest, max_width=iiif_max_width, fmt=iiif_format)
+
+        img_urls = iiif_manifest_to_image_urls(
+            manifest,
+            max_width=iiif_max_width,
+            fmt=iiif_format,
+        )
+
         if not img_urls:
             logger.warning(f"IIIF manifest {input} has no image canvases")
             return
-        img_urls = img_urls[(start_page-1):] 
+
+        logger.info(f"Found {len(img_urls)} pages in IIIF, starting at {start_page}")
+        img_urls = img_urls[(start_page - 1):]
+
         for i, img_url in enumerate(img_urls, start=start_page):
             logger.debug(f"iter_pages yielding page={i}")
-            img = fetch_pil_image(img_url)
+
+            img = fetch_pil_image(
+                img_url,
+                timeout=timeout,
+                iiif_format=iiif_format,
+                iiif_quality="default",
+            )
 
             if img is None:
                 logger.error(f"Skipping page {i}: could not fetch image {img_url}")
                 continue
+
             yield PageItem(i, "image", img, source=f"iiif:{img_url}")
         return
 
@@ -364,7 +543,7 @@ def iter_pages(
 
             reader = PdfReader(pdf_path)
             doc = pdfium.PdfDocument(pdf_path)
-
+            logger.info(f"Found {len(reader.pages)} pages in PDF, starting at {start_page}")
             for i, page in enumerate(reader.pages, start=start_page):
                 txt = page.extract_text() or ""
                 if is_usable_pdf_text(txt, pdf_text_policy):
