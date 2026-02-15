@@ -315,7 +315,7 @@ def iter_pages(
     start_page: int = 1
 ) -> Iterator[PageItem]:
     if not start_page or int(start_page)<=0:
-        start_page == 1
+        start_page = 1
     src_kind, src_path = resolve_source(input)
 
     if src_kind == "file":
@@ -384,6 +384,7 @@ def iter_pages(
                     os.remove(pdf_path)
                 except OSError:
                     pass
+        return
     
     if kind in ("text", "html", "xml"): # TODO XML parsing
         try:
@@ -400,7 +401,9 @@ def iter_pages(
         except Exception as e:
             logger.error(f"Reading {kind.upper()} {input}: {e}")
         return
-    raise ValueError("Unknown URL type.")
+    
+    logger.error(f"Unknown URL type: {kind.upper()} {input}")
+    # raise ValueError("Unknown URL type.")
 
 
 import numpy as np
