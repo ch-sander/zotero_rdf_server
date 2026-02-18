@@ -180,7 +180,6 @@ def page_docs(
     vector: bool = False
 ) -> Iterator[Dict[str, Any]]:
     now = datetime.now(timezone.utc).isoformat()
-    embed = None
     if vector:
         from .vector import embed
         from .helpers import clean_ocr
