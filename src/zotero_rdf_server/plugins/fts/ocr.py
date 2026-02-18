@@ -1,22 +1,20 @@
-from dataclasses import dataclass, fields
-from typing import Iterator, Optional, Dict, Any, List, Literal, Union, Tuple, Mapping, Iterable, Callable, Set
-import io, json, os, tempfile, time
-import requests
+from dataclasses import dataclass, field
+from typing import Iterator, Optional, Dict, Any, List, Literal, Union, Tuple, Mapping, Iterable, Callable, Set, Sequence, Protocol
+import io, json, os, tempfile, time, re, math, requests
 from PIL import Image
 from functools import lru_cache
 from pathlib import Path
 from .helpers import ensure_import, _hash_file,  resolve_config_path, _download, plugin_logger, detect_url_kind, detect_file_kind, resolve_source
 from io import BytesIO
+from lxml import etree # TODO import
+from urllib.parse import urlparse
 
 from .helpers import plugin_logger, safe_doc_id
 logger=plugin_logger()
 
-@dataclass(frozen=True)
-class KrakenModelSpec:
-    file: str
-    url: Optional[str] = None
-    checksum_algo: Optional[str] = None   # "md5" or "sha256"
-    checksum: Optional[str] = None
+_KRAKEN_NET: dict[tuple[str, str], object] = {}
+_KRAKEN_SEG: dict[tuple[str, str], object] = {}
+_NO_UPSCALE_HOSTS: set[str] = set()
 
 @dataclass(frozen=True)
 class PdfTextPolicy:
@@ -34,7 +32,84 @@ class PdfTextPolicy:
             )
         except (TypeError, ValueError):
             return cls()
-    
+        
+@dataclass(frozen=True)
+class IiifOcrRule:
+    """
+    One allowed combination:
+      - key: where to look in the canvas JSON (e.g. "seeAlso", "rendering", "otherContent")
+      - profile: optional profile string to match (exact or substring match, see profile_match)
+      - xpath: XPath expression used on the fetched hOCR (parsed as XML/HTML)
+      - namespaces: optional namespace mapping for XPath (important for XHTML hOCR)
+    """
+    key: str = "seeAlso"
+    profile: Optional[str] = None
+    profile_match: str = "equals"  # "equals" | "contains"
+    xpath: str = r"//x:span[contains(concat(' ', normalize-space(@class), ' '), ' ocr_line ')]"
+    namespaces: Mapping[str, str] = field(default_factory=lambda: {"x": "http://www.w3.org/1999/xhtml"})
+
+    def matches_profile(self, p: Optional[str]) -> bool:
+        if self.profile is None:
+            return True
+        if not p:
+            return False
+        if self.profile_match == "contains":
+            return self.profile in p
+        return p == self.profile
+
+@dataclass(frozen=True)
+class IiifOcrPolicy:
+    enabled: bool = False
+    min_chars: int = 0
+    min_alpha_ratio: float = 0
+    # rules define valid (key/profile/xpath) combinations
+    rules: Sequence[IiifOcrRule] = field(default_factory=tuple)
+    timeout: int = 30
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> "IiifOcrPolicy":
+        try:
+            enabled = bool(data.get("enabled", False))
+            min_chars = int(data.get("min_chars", 0))
+            min_alpha_ratio = float(data.get("min_alpha_ratio", 0))
+            timeout = int(data.get("timeout", 30))
+
+            rules_in = data.get("rules", None)
+            rules: list[IiifOcrRule] = []
+            if enabled and rules_in is None:
+                rules = [IiifOcrRule()]
+            else:
+                for r in (rules_in or []):
+                    if not isinstance(r, Mapping):
+                        continue
+                    rules.append(
+                        IiifOcrRule(
+                            key=str(r.get("key", "seeAlso")),
+                            profile=(None if r.get("profile") in (None, "") else str(r.get("profile"))),
+                            profile_match=str(r.get("profile_match", "equals")),
+                            xpath=str(r.get("xpath") or IiifOcrRule().xpath),
+                            namespaces=dict(r.get("namespaces") or {"x": "http://www.w3.org/1999/xhtml"}),
+                        )
+                    )
+                if enabled and not rules:
+                    rules = [IiifOcrRule()]
+            return cls(
+                enabled=enabled,
+                min_chars=min_chars,
+                min_alpha_ratio=min_alpha_ratio,
+                rules=tuple(rules),
+                timeout=timeout,
+            )
+        except (TypeError, ValueError):
+            return cls()
+
+@dataclass(frozen=True)
+class KrakenModelSpec:
+    file: str
+    url: Optional[str] = None
+    checksum_algo: Optional[str] = None   # "md5" or "sha256"
+    checksum: Optional[str] = None
+   
 @lru_cache(maxsize=8)
 def get_kraken_cfg(config_path: Path) -> dict[str, Any]:
     # import yaml
@@ -85,10 +160,6 @@ def resolve_segmentation_name(
     kcfg = get_kraken_cfg(config_path)
     active = kcfg.get("active") or {}
     return active.get("segmentation") or "BLLA"
-
-_KRAKEN_NET: dict[tuple[str, str], object] = {}
-_KRAKEN_SEG: dict[tuple[str, str], object] = {}
-
 
 def load_segmentation_model(*, config_path: str, segmenter: Optional[str]):
     from kraken.lib import vgsl
@@ -159,18 +230,124 @@ class PageItem:
     source: str
     meta: Optional[dict] = None
 
-def is_usable_pdf_text(text: str, policy: PdfTextPolicy) -> bool:
-    if not policy.enabled:
+class _TextPolicyLike(Protocol):
+    enabled: bool
+    min_chars: int
+    min_alpha_ratio: float
+
+def is_usable_text(text: str, policy: _TextPolicyLike, *, log_label: str = "text") -> bool:
+    if not getattr(policy, "enabled", False):
         return False
     if not text:
         return False
-    logger.debug(f"Found PDF text")
-    t = text.strip()
-    if len(t) < policy.min_chars:
-        return False
-    alpha = sum(c.isalpha() for c in t)
-    return (alpha / max(len(t), 1)) >= policy.min_alpha_ratio
 
+    t = text.strip()
+    if len(t) < getattr(policy, "min_chars", 0):
+        return False
+
+    alpha = sum(c.isalpha() for c in t)
+    ratio = alpha / max(len(t), 1)
+    logger.debug(f"Found usable {log_label} (alpha_ratio={ratio:.3f}, len={len(t)})")
+    return ratio >= getattr(policy, "min_alpha_ratio", 0.0)
+
+def is_usable_pdf_text(text: str, policy: PdfTextPolicy) -> bool:
+    return is_usable_text(text, policy, log_label="PDF text")
+
+def is_usable_hocr_text(text: str, policy: IiifOcrPolicy) -> bool:
+    return is_usable_text(text, policy, log_label="hOCR text")
+
+def _iter_link_objs(canvas: dict, key: str):
+    obj = canvas.get(key)
+    if obj is None:
+        return
+    if isinstance(obj, list):
+        for x in obj:
+            if isinstance(x, dict):
+                yield x
+    elif isinstance(obj, dict):
+        yield obj
+
+def _rule_matches_profile(rule, profile: Optional[str]) -> bool:
+    if rule.profile is None:
+        return True
+    if not profile:
+        return False
+    if getattr(rule, "profile_match", "equals") == "contains":
+        return rule.profile in profile
+    return profile == rule.profile
+
+def find_hocr(canvas: dict, policy) -> Optional[tuple[str, Any, Optional[str]]]:
+    # returns (url, rule, profile)
+    if not policy or not getattr(policy, "enabled", False):
+        return None
+    for rule in getattr(policy, "rules", ()):
+        for obj in _iter_link_objs(canvas, rule.key):
+            url = obj.get("@id") or obj.get("id")
+            profile = obj.get("profile")
+            if url and _rule_matches_profile(rule, profile):
+                return str(url), rule, (None if profile is None else str(profile))
+    return None
+
+def hocr_bytes_to_text(hocr_bytes: bytes, rule) -> str:
+    namespaces = dict(getattr(rule, "namespaces", None) or {})
+    xpath = getattr(rule, "xpath", "")
+    dehyphenate = bool(getattr(rule, "dehyphenate", True))
+
+    parts = []
+    used_html_fallback = False
+
+    # 1) XML first (keeps namespaces)
+    try:
+        root = etree.fromstring(hocr_bytes, parser=etree.XMLParser(recover=True, encoding="utf-8"))
+        parts = root.xpath(xpath, namespaces=namespaces) if xpath else []
+    except Exception:
+        parts = []
+
+    # 2) HTML fallback (namespace-less): retry without prefixes
+    if not parts:
+        used_html_fallback = True
+        root = etree.fromstring(hocr_bytes, parser=etree.HTMLParser(recover=True, encoding="utf-8"))
+        xpath_no_ns = xpath.replace("x:", "") if xpath else ""
+        parts = root.xpath(xpath_no_ns) if xpath_no_ns else []
+
+    if not parts:
+        return ""
+
+    # If XPath returns nodes (e.g., ocr_line containers), preserve structure with newlines.
+    if not isinstance(parts[0], str):
+        lines: list[str] = []
+        for node in parts:
+            # node may be Element, AttributeResult, etc. -> itertext() handles Elements
+            txt = " ".join(t.strip() for t in node.itertext() if t and t.strip())
+            txt = re.sub(r"\s+", " ", txt).strip()
+            if txt:
+                lines.append(txt)
+
+        if not lines:
+            return ""
+
+        if dehyphenate:
+            merged: list[str] = []
+            for line in lines:
+                if merged and merged[-1].endswith("-"):
+                    merged[-1] = merged[-1][:-1] + line.lstrip()
+                else:
+                    merged.append(line)
+            return "\n".join(merged).strip()
+
+        return "\n".join(lines).strip()
+
+    # Otherwise it's a list of strings (often ocrx_word/text()) -> flatten with spaces.
+    out = []
+    for p in parts:
+        if isinstance(p, str):
+            s = re.sub(r"\s+", " ", p).strip()
+            if s:
+                out.append(s)
+
+    txt = " ".join(out)
+    txt = re.sub(r"\s+", " ", txt).strip()
+    return txt
 
 # -----------------------------
 # Small helpers
@@ -283,28 +460,28 @@ def mk_iiif_image_url(service_id: str, max_width: Optional[int] = 2000, fmt: str
 # -----------------------------
 # Manifest -> image URLs (v2 + v3)
 # -----------------------------
-
-def iiif_manifest_to_image_urls(
+def iiif_manifest_to_pages(
     manifest: Dict[str, Any],
     max_width: Optional[int] = 2000,
     fmt: str = "jpg",
     quality: str = "default",
     include_direct_ids_as_fallback: bool = True,
-) -> List[str]:
-    urls: List[str] = []
+) -> List[Tuple[str, Dict[str, Any]]]:
+    pages: List[Tuple[str, Dict[str, Any]]] = []
     seen: Set[str] = set()
 
-    def add(u: Optional[str]) -> None:
+    def add(u: Optional[str], canvas: Dict[str, Any]) -> None:
         if not u or u in seen:
             return
         seen.add(u)
-        urls.append(u)
+        pages.append((u, canvas))
 
     # v3
     if isinstance(manifest.get("items"), list):
         for canvas in manifest.get("items", []):
             if not isinstance(canvas, dict):
                 continue
+            # typical v3: canvas.items -> annotation pages -> items -> body
             for anno_page in canvas.get("items", []):
                 if not isinstance(anno_page, dict):
                     continue
@@ -315,10 +492,10 @@ def iiif_manifest_to_image_urls(
                         sids = _extract_image_service_ids(body)
                         if sids:
                             for sid in sids:
-                                add(mk_iiif_image_url(sid, max_width=max_width, fmt=fmt, quality=quality))
+                                add(mk_iiif_image_url(sid, max_width=max_width, fmt=fmt, quality=quality), canvas)
                         elif include_direct_ids_as_fallback and isinstance(body, dict):
-                            add(body.get("id") or body.get("@id"))
-        return urls
+                            add(body.get("id") or body.get("@id"), canvas)
+        return pages
 
     # v2
     seqs = manifest.get("sequences", [])
@@ -336,14 +513,28 @@ def iiif_manifest_to_image_urls(
                 sids = _extract_image_service_ids(res)
                 if sids:
                     for sid in sids:
-                        add(mk_iiif_image_url(sid, max_width=max_width, fmt=fmt, quality=quality))
+                        add(mk_iiif_image_url(sid, max_width=max_width, fmt=fmt, quality=quality), canvas)
                 elif include_direct_ids_as_fallback:
-                    add(res.get("@id") or res.get("id"))
+                    add(res.get("@id") or res.get("id"), canvas)
 
-    return urls
+    return pages
 
-from urllib.parse import urlparse
-_NO_UPSCALE_HOSTS: set[str] = set()
+def iiif_manifest_to_image_urls(
+    manifest: Dict[str, Any],
+    max_width: Optional[int] = 2000,
+    fmt: str = "jpg",
+    quality: str = "default",
+    include_direct_ids_as_fallback: bool = True,
+) -> List[str]:
+    return [
+        url for (url, _canvas) in iiif_manifest_to_pages(
+            manifest,
+            max_width=max_width,
+            fmt=fmt,
+            quality=quality,
+            include_direct_ids_as_fallback=include_direct_ids_as_fallback,
+        )
+    ]
 
 def _force_full_url(iiif_url: str, fmt: str, quality: str) -> str:
     if "/full/" not in iiif_url:
@@ -471,6 +662,7 @@ def iter_pages(
     iiif_format: str = "jpg",
     pdf_dpi: int = 200,
     pdf_text_policy: PdfTextPolicy = PdfTextPolicy(),
+    iiif_ocr_policy: IiifOcrPolicy = IiifOcrPolicy(),
     timeout: int = 30,
     file_formats: list | None = None,
     start_page: int = 1
@@ -483,7 +675,8 @@ def iter_pages(
         kind = detect_file_kind(src_path)
     else:
         kind = detect_url_kind(input, timeout=timeout)
-    
+
+
     if file_formats and not kind in file_formats:
         logger.warning(f"File {input} skipped as not in {file_formats}")
         return
@@ -496,35 +689,50 @@ def iter_pages(
         else:
             manifest = requests.get(input, timeout=timeout).json()
 
-        img_urls = iiif_manifest_to_image_urls(
+        pages = iiif_manifest_to_pages(
             manifest,
             max_width=iiif_max_width,
             fmt=iiif_format,
         )
 
-        if not img_urls:
-            logger.warning(f"IIIF manifest {input} has no image canvases")
+        if not pages:
+            logger.warning(f"IIIF manifest <{manifest}> has no image canvases")
             return
+        
+        start_page = 300
+        logger.info(f"Found {len(pages)} pages in IIIF, starting at {start_page}")
+        pages = pages[(start_page - 1):]
 
-        logger.info(f"Found {len(img_urls)} pages in IIIF, starting at {start_page}")
-        img_urls = img_urls[(start_page - 1):]
+        for i, (img_url, canvas) in enumerate(pages, start=start_page):
+            hit = find_hocr(canvas, iiif_ocr_policy)
+            if hit:                
+                hocr_url, rule, profile = hit
+                logger.debug(f"Found IIIF hOCR text in {hocr_url}")
+                try:
+                    r = requests.get(hocr_url, timeout=getattr(iiif_ocr_policy, "timeout", timeout))
+                    r.raise_for_status()
+                    txt = hocr_bytes_to_text(r.content, rule)
+                    logger.debug(f"Seeing IIIF hOCR text in {hocr_url}: {txt}")
+                    if is_usable_hocr_text(txt, iiif_ocr_policy):
+                        logger.info(f"Using IIIF hOCR text from {hocr_url}")
+                        yield PageItem(i, "text", txt, source=f"hocr:{hocr_url}", meta={
+                            "canvas": canvas.get("@id") or canvas.get("id"),
+                            "profile": profile,
+                            "key": rule.key,
+                            "xpath": rule.xpath,
+                        })
+                        continue
+                except Exception as e:
+                    logger.warning(f"hOCR fetch/parse failed for page {i} ({hocr_url}): {e}")
 
-        for i, img_url in enumerate(img_urls, start=start_page):
-            logger.debug(f"iter_pages yielding page={i}")
-
-            img = fetch_pil_image(
-                img_url,
-                timeout=timeout,
-                iiif_format=iiif_format,
-                iiif_quality="default",
-            )
-
+            img = fetch_pil_image(img_url, timeout=timeout, iiif_format=iiif_format, iiif_quality="default")
             if img is None:
                 logger.error(f"Skipping page {i}: could not fetch image {img_url}")
                 continue
 
-            yield PageItem(i, "image", img, source=f"iiif:{img_url}")
-        return
+            yield PageItem(i, "image", img, source=f"iiif:{img_url}", meta={
+                "canvas": canvas.get("@id") or canvas.get("id"),
+            })
 
     if kind == "pdf":
         pdf_path = None
@@ -594,7 +802,6 @@ def ink_ratio(pil_img):
     thr = bg - 25
     ink = (a < thr).mean()
     return float(ink), float(bg), float(thr)
-
 
 def kraken_image_to_text(
     im: Image.Image,
@@ -849,7 +1056,7 @@ def iter_text_pages(
         return _it()
     
     def _log_and_yield(page_no: int, txt: str):
-        preview = " ".join((txt or "").split())[:100]
+        preview = " ".join((txt or "").split())[:60]
         logger.info(f"OCR result doc={_doc_id} page={page_no}: {preview}...")
         return page_no, txt
     
