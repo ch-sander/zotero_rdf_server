@@ -28,7 +28,6 @@ def ingest_pipeline(
     config_path:str=None
 ):
     from .db import index_stream
-    pages_fn = None
     items = list(items or [])
     total = len(items)
     targets = targets or []
@@ -41,9 +40,10 @@ def ingest_pipeline(
         return([{"error":"nothing to do here: no ocr, no ingest!"}])
     
     if vector:
+        logger.info("####### Loading Sentence Transformer Model for Vectors #######")
         from .vector import embed
         from .helpers import clean_ocr
-        logger.info("####### Loading Sentence Transformer Model for Vectors #######")
+        
 
     if ocr:
         from .ocr import iter_text_pages, PdfTextPolicy, IiifOcrPolicy     
