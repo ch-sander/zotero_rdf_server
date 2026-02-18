@@ -7,6 +7,8 @@ import subprocess, importlib, sys, os
 from typing import Optional
 from pathlib import Path
 import hashlib
+from functools import lru_cache
+
 
 here = Path(__file__).resolve().parent
 requirements = here / "requirements.txt"
@@ -62,6 +64,7 @@ def ensure_import(module, attr=None, requirements=requirements):
 
     return getattr(mod, attr) if attr else mod
 
+@lru_cache(maxsize=1)
 def resolve_config_path(config_path: Optional[str] = None) -> Path:
     def is_url(s: str) -> bool:
         u = urlparse(s)        
@@ -211,56 +214,56 @@ def _sniff_text_vs_json(prefix: bytes) -> Optional[Kind]:
     return "text"
 
 
-def _is_probably_iiif_json(snippet: bytes) -> bool:
-    """
-    IIIF Presentation v2/v3 manifests are JSON(-LD).
-    We sniff by looking for canonical keys in the first chunk.
-    Avoid full parse if not needed, but be willing to parse a bit of JSON.
-    """
-    # Fast, cheap string sniff
+_IIIF_CTX_RE = re.compile(r"iiif\.io/api/presentation/[23]/context\.json", re.I)
+_IIIF_TYPE_RE = re.compile(r'"(@type|type)"\s*:\s*"(sc:Manifest|Manifest)"', re.I)
+
+def _is_probably_iiif_json_bytes(b: bytes) -> bool:
+    s = b.decode("utf-8", errors="ignore")
+    if _IIIF_CTX_RE.search(s):
+        return True
+    if _IIIF_TYPE_RE.search(s):
+        return True
+    if '"sequences"' in s and '"canvases"' in s:
+        return True
+    if '"items"' in s and ('"@context"' in s or '"type"' in s):
+        return True
+    return False
+
+def _is_probably_iiif_json(
+    initial: bytes,
+    fetch_more_cb=None,
+    max_total: int = 512_000,   # 512 KB cap
+    step: int = 64_000,
+) -> bool:
+    if _is_probably_iiif_json_bytes(initial):
+        return True
+
+    if fetch_more_cb is None:
+        return False
+
+    buf = bytearray(initial)
+    while len(buf) < max_total:
+        more = fetch_more_cb(step, len(buf))
+        if not more:
+            break
+        buf.extend(more)
+        if _is_probably_iiif_json_bytes(buf):
+            return True
+
     try:
-        s = snippet.decode("utf-8", errors="ignore").lower()
+        txt = bytes(buf).decode("utf-8", errors="strict")
+        obj = json.loads(txt)
     except Exception:
-        return False
-
-    # Common IIIF hints (v2/v3)
-    if '"type":"manifest"' in s or '"@type":"sc:manifest"' in s:
-        return True
-    if '"iiif.io/api/presentation"' in s:
-        return True
-    if '"@context"' in s and ("iiif" in s and "presentation" in s):
-        return True
-    if '"items"' in s and '"id"' in s and ("manifest" in s):
-        # weak hint; try JSON parse for confirmation
-        pass
-
-    # Stronger check: parse small JSON if it looks like JSON
-    p = _strip_bom_and_ws(snippet)
-    if not (p.startswith(b"{") or p.startswith(b"[")):
-        return False
-    try:
-        obj = json.loads(p.decode("utf-8", errors="strict"))
-    except Exception:
-        return False
-
-    # v3: {"type":"Manifest", "@context": "...presentation/3/context.json", ...}
-    # v2: {"@type":"sc:Manifest", "@context": "...presentation/2/context.json", ...}
-    def get_context(o):
-        return o.get("@context") if isinstance(o, dict) else None
-
-    def context_mentions_iiif(ctx) -> bool:
-        if isinstance(ctx, str):
-            return "iiif.io/api/presentation" in ctx.lower()
-        if isinstance(ctx, list):
-            return any(isinstance(x, str) and "iiif.io/api/presentation" in x.lower() for x in ctx)
         return False
 
     if isinstance(obj, dict):
-        t = (obj.get("type") or obj.get("@type") or "").lower()
-        if t in ("manifest", "sc:manifest"):
+        t = (obj.get("type") or obj.get("@type") or "")
+        if str(t).lower() in ("manifest", "sc:manifest"):
             return True
-        ctx = get_context(obj)
-        if context_mentions_iiif(ctx):
+        ctx = obj.get("@context")
+        if isinstance(ctx, str) and "iiif.io/api/presentation" in ctx.lower():
+            return True
+        if isinstance(ctx, list) and any(isinstance(x, str) and "iiif.io/api/presentation" in x.lower() for x in ctx):
             return True
 
     return False
@@ -269,12 +272,12 @@ def _is_probably_iiif_json(snippet: bytes) -> bool:
 def detect_url_kind(
     url: str,
     timeout: int = 30,
-    sniff_bytes: int = 16384,  # enough to include JSON-LD @context etc.
+    sniff_bytes: int = 16384,
     session: Optional[requests.Session] = None,
 ) -> Kind:
     s = session or requests.Session()
 
-    # 1) HEAD best-effort (don’t trust it fully)
+    # 1) HEAD best-effort
     ctype = ""
     try:
         with s.head(url, allow_redirects=True, timeout=timeout) as h:
@@ -287,18 +290,19 @@ def detect_url_kind(
                 return "xml"
             if ctype.startswith("text/plain"):
                 return "text"
-            # JSON could be IIIF; defer to sniff
     except requests.RequestException:
         pass
 
-    # 2) GET with Range (if supported) to avoid downloading everything
-    headers = {"Range": f"bytes=0-{sniff_bytes-1}"}
+    headers = {
+        "Range": f"bytes=0-{sniff_bytes-1}",
+        "Accept": "application/ld+json, application/json;q=0.9, */*;q=0.1",
+    }
+
     try:
         with s.get(url, stream=True, allow_redirects=True, headers=headers, timeout=timeout) as r:
             r.raise_for_status()
             ctype_get = _norm_ctype(r.headers.get("Content-Type", "")) or ctype
 
-            # Read small prefix
             r.raw.decode_content = True
             prefix = r.raw.read(sniff_bytes) or b""
 
@@ -309,7 +313,6 @@ def detect_url_kind(
             # b) Markup sniff
             mk = _sniff_markup(prefix)
             if mk:
-                # If content-type says xhtml/xml/html, respect it, otherwise trust sniff
                 if ctype_get in ("text/html", "application/xhtml+xml"):
                     return "html"
                 if ctype_get in ("application/xml", "text/xml"):
@@ -318,25 +321,33 @@ def detect_url_kind(
 
             # c) JSON vs text sniff
             jt = _sniff_text_vs_json(prefix)
-            if jt == "json":
-                # IIIF check
-                if _is_probably_iiif_json(prefix):
-                    return "iiif"
-                return "json"
+
+            def fetch_more(step: int, offset: int) -> bytes:
+                h2 = {
+                    "Range": f"bytes={offset}-{offset+step-1}",
+                    "Accept": headers["Accept"],
+                }
+                rr = s.get(r.url, stream=True, allow_redirects=True, headers=h2, timeout=timeout)
+                rr.raise_for_status()
+                rr.raw.decode_content = True
+                return rr.raw.read(step) or b""
+
+            # If it looks like JSON OR server labels it JSON: try IIIF detection with fallback fetch_more
+            if jt == "json" or ctype_get in ("application/json", "application/ld+json", "application/jsonld+json"):
+                is_iiif = _is_probably_iiif_json(
+                    prefix,
+                    fetch_more_cb=fetch_more,
+                )
+                return "iiif" if is_iiif else "json"
 
             # d) Header-based text fallback
             if ctype_get.startswith("text/plain"):
                 return "text"
 
-            # e) If it's labeled JSON, keep it JSON
-            if ctype_get in ("application/json", "application/ld+json", "application/jsonld+json"):
-                return "iiif" if _is_probably_iiif_json(prefix) else "json"
-
-            # f) Otherwise default to text (safer than “json” for unknown octet-stream)
+            # e) Otherwise default to text
             return "text"
 
     except requests.RequestException:
-        # Conservative fallback
         return "text"
 
 def safe_doc_id(doc_id: str) -> str:

@@ -46,11 +46,16 @@ def ingest_pipeline(
         logger.info("####### Loading Sentence Transformer Model for Vectors #######")
 
     if ocr:
-        from .ocr import iter_text_pages, PdfTextPolicy       
+        from .ocr import iter_text_pages, PdfTextPolicy, IiifOcrPolicy     
 
         ptp = iter_pages_kwargs.get("pdf_text_policy")
         if isinstance(ptp, dict):
             iter_pages_kwargs["pdf_text_policy"] = PdfTextPolicy.from_json(ptp)
+        
+        iiif_ocr_policy = iter_pages_kwargs.get("iiif_ocr_policy")
+        if isinstance(iiif_ocr_policy, dict):
+            iter_pages_kwargs["iiif_ocr_policy"] = IiifOcrPolicy.from_json(iiif_ocr_policy)
+
         def make_pages_fn(doc_id: str, stats: dict):
             def pages_fn(u: str):
                 try:
