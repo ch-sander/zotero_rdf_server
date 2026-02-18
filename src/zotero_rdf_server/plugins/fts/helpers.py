@@ -1,10 +1,9 @@
 import json
 import re
-from typing import Literal, Optional
+from typing import Literal, Any, Dict, List, Optional, Sequence, Tuple, Union
 from urllib.parse import urlparse
 import requests
 import subprocess, importlib, sys, os
-from typing import Optional
 from pathlib import Path
 import hashlib
 from functools import lru_cache
@@ -358,4 +357,113 @@ def safe_doc_id(doc_id: str) -> str:
 def clean_ocr(text: str) -> str:
     text = text.replace("\x0c", " ")
     text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+# TODO
+
+RegexRule = Tuple[Union[str, re.Pattern], str]
+
+CLEAN_CFG = {  "clean": {
+    "replace_formfeed": True,
+    "normalize_whitespace": True,
+    "rules": [
+      {"pattern": r"[\u00AD]", "repl": ""},
+      {"pattern": r"-\s+", "repl": ""},
+      {"pattern": r"\s*\n\s*", "repl": " ", "flags": ["M"]}
+    ],
+    "vignette": {"left": 200, "right": 200, "mode": "chars"}
+  }}
+
+def _compile_rules(rules_json: Optional[Sequence[Dict[str, Any]]]) -> List[RegexRule]:
+    """
+    JSON-Format pro Regel:
+      {"pattern": "...", "repl": "...", "flags": ["I","M","S","U","A","X"]}  # flags optional
+    """
+    if not rules_json:
+        return []
+
+    flag_map = {
+        "I": re.IGNORECASE,
+        "M": re.MULTILINE,
+        "S": re.DOTALL,
+        "U": re.UNICODE,
+        "A": re.ASCII,
+        "X": re.VERBOSE,
+    }
+
+    compiled: List[RegexRule] = []
+    for r in rules_json:
+        pat = r.get("pattern")
+        repl = r.get("repl", "")
+        if not isinstance(pat, str):
+            raise ValueError(f"Rule missing string 'pattern': {r!r}")
+
+        flags_val = 0
+        for f in (r.get("flags") or []):
+            if f not in flag_map:
+                raise ValueError(f"Unknown regex flag {f!r} in rule {r!r}")
+            flags_val |= flag_map[f]
+
+        compiled.append((re.compile(pat, flags_val), str(repl)))
+    return compiled
+
+def _apply_vignette(text: str, vignette: Optional[Dict[str, Any]]) -> str:
+    """
+    JSON-Format:
+      {"left": 0, "right": 0, "mode": "chars"|"words"|"lines"}
+    """
+    if not vignette:
+        return text
+
+    left = int(vignette.get("left", 0) or 0)
+    right = int(vignette.get("right", 0) or 0)
+    mode = str(vignette.get("mode", "chars"))
+
+    if left <= 0 and right <= 0:
+        return text
+
+    if mode == "chars":
+        start = left
+        end = None if right <= 0 else -right
+        return text[start:end]
+
+    if mode == "words":
+        parts = text.split()
+        start = left
+        end = None if right <= 0 else max(0, len(parts) - right)
+        return " ".join(parts[start:end])
+
+    if mode == "lines":
+        lines = text.splitlines()
+        start = left
+        end = None if right <= 0 else max(0, len(lines) - right)
+        return "\n".join(lines[start:end])
+
+    raise ValueError(f"Unknown vignette mode: {mode!r}")
+
+def clean_ocr_new(
+    text: str,
+    *,
+    rules: Optional[Sequence[Dict[str, Any]]] = None,
+    normalize_whitespace: bool = True,
+    replace_formfeed: bool = True,
+    vignette: Optional[Dict[str, Any]] = None,
+    vignette_before_strip: bool = False,
+) -> str:
+    if replace_formfeed:
+        text = text.replace("\x0c", " ")
+
+    compiled = _compile_rules(rules)
+
+    for pattern, repl in compiled:
+        text = pattern.sub(repl, text)
+
+    if normalize_whitespace:
+        text = re.sub(r"\s+", " ", text)
+
+    if not vignette_before_strip:
+        text = text.strip()
+
+    text = _apply_vignette(text, vignette)
+
     return text.strip()
