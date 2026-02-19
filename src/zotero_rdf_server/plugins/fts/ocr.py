@@ -683,7 +683,7 @@ def iter_pages(
     else:
         logger.info(f"Processing {str(kind).upper()} {src_kind} --> {input}")
 
-    if kind in ("json", "iiif"):
+    if kind in ("json", "iiif"):    
         if src_kind == "file":
             manifest = json.loads(src_path.read_text(encoding="utf-8"))
         else:
@@ -701,37 +701,41 @@ def iter_pages(
         
         logger.info(f"Found {len(pages)} pages in IIIF, starting at {start_page}")
         pages = pages[(start_page - 1):]
+        logger.debug(f"IIIF Policy: {iiif_ocr_policy}")
+        try:
+            for i, (img_url, canvas) in enumerate(pages, start=start_page):
+                hit = find_hocr(canvas, iiif_ocr_policy)
+                if hit:                
+                    hocr_url, rule, profile = hit
+                    logger.debug(f"Found IIIF hOCR text in {hocr_url}")
+                    try:
+                        r = requests.get(hocr_url, timeout=getattr(iiif_ocr_policy, "timeout", timeout))
+                        r.raise_for_status()
+                        txt = hocr_bytes_to_text(r.content, rule)
+                        logger.debug(f"Seeing IIIF hOCR text in {hocr_url}: {txt}")
+                        if is_usable_hocr_text(txt, iiif_ocr_policy):
+                            logger.info(f"Using IIIF hOCR text from {hocr_url}")
+                            yield PageItem(i, "text", txt, source=f"hocr:{hocr_url}", meta={
+                                "canvas": canvas.get("@id") or canvas.get("id"),
+                                "profile": profile,
+                                "key": rule.key,
+                                "xpath": rule.xpath,
+                            })
+                            continue
+                    except Exception as e:
+                        logger.warning(f"hOCR fetch/parse failed for page {i} ({hocr_url}): {e}")
 
-        for i, (img_url, canvas) in enumerate(pages, start=start_page):
-            hit = find_hocr(canvas, iiif_ocr_policy)
-            if hit:                
-                hocr_url, rule, profile = hit
-                logger.debug(f"Found IIIF hOCR text in {hocr_url}")
-                try:
-                    r = requests.get(hocr_url, timeout=getattr(iiif_ocr_policy, "timeout", timeout))
-                    r.raise_for_status()
-                    txt = hocr_bytes_to_text(r.content, rule)
-                    logger.debug(f"Seeing IIIF hOCR text in {hocr_url}: {txt}")
-                    if is_usable_hocr_text(txt, iiif_ocr_policy):
-                        logger.info(f"Using IIIF hOCR text from {hocr_url}")
-                        yield PageItem(i, "text", txt, source=f"hocr:{hocr_url}", meta={
-                            "canvas": canvas.get("@id") or canvas.get("id"),
-                            "profile": profile,
-                            "key": rule.key,
-                            "xpath": rule.xpath,
-                        })
-                        continue
-                except Exception as e:
-                    logger.warning(f"hOCR fetch/parse failed for page {i} ({hocr_url}): {e}")
+                img = fetch_pil_image(img_url, timeout=timeout, iiif_format=iiif_format, iiif_quality="default")
+                if img is None:
+                    logger.error(f"Skipping page {i}: could not fetch image {img_url}")
+                    continue
 
-            img = fetch_pil_image(img_url, timeout=timeout, iiif_format=iiif_format, iiif_quality="default")
-            if img is None:
-                logger.error(f"Skipping page {i}: could not fetch image {img_url}")
-                continue
-
-            yield PageItem(i, "image", img, source=f"iiif:{img_url}", meta={
-                "canvas": canvas.get("@id") or canvas.get("id"),
-            })
+                yield PageItem(i, "image", img, source=f"iiif:{img_url}", meta={
+                    "canvas": canvas.get("@id") or canvas.get("id"),
+                })
+        except Exception as e:
+            logger.error(f"Error reading IIIF {input}: {e}")
+        return
 
     if kind == "pdf":
         pdf_path = None

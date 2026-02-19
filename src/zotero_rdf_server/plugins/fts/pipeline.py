@@ -33,8 +33,19 @@ def ingest_pipeline(
     targets = targets or []
     iter_pages_kwargs = dict(iter_pages_kwargs or {})
     page_to_text_kwargs = dict(page_to_text_kwargs or {})
-    logger.debug(f"Ingest Pipeline started with {len(items)} items...")
+    logger.info(f"Ingest Pipeline started with {len(items)} items...")
+    
     page_to_text_kwargs['config_path'] = config_path if (not page_to_text_kwargs.get('config_path') and config_path) else page_to_text_kwargs.get('config_path')
+
+    logger.info(
+        "Pipeline configuration:\n"
+        "iter_pages_kwargs:\n%s\n\n"
+        "page_to_text_kwargs:\n%s\n\n"
+        "text_image_file_kwargs:\n%s",
+        json.dumps(iter_pages_kwargs, indent=2, sort_keys=True, ensure_ascii=False),
+        json.dumps(page_to_text_kwargs, indent=2, sort_keys=True, ensure_ascii=False),
+        json.dumps(text_image_file_kwargs, indent=2, sort_keys=True, ensure_ascii=False),
+    )
 
     if not ocr and not ingest:
         return([{"error":"nothing to do here: no ocr, no ingest!"}])
@@ -43,7 +54,8 @@ def ingest_pipeline(
         logger.info("####### Loading Sentence Transformer Model for Vectors #######")
         from .vector import embed
         from .helpers import clean_ocr
-        
+
+    
 
     if ocr:
         from .ocr import iter_text_pages, PdfTextPolicy, IiifOcrPolicy     
