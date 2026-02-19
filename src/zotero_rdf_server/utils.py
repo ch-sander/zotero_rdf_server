@@ -11,7 +11,7 @@ from .logging_config import logger
 import subprocess, importlib, sys
 from uuid import uuid4
 
-from .config import MAP_TYPE_HINT, MAP_ENTRY_TYPE, RDF_TYPE, LANG_MAP, PROV_TIMESTAMP, XSD_NS, MAP_LABEL, MAP_TARGET, MAP_REGEX, RDFS_LABEL
+from .config import MAP_TYPE_HINT, MAP_ENTRY_TYPE, RDF_TYPE, LANG_MAP, PROV_TIMESTAMP, XSD_NS, MAP_LABEL, MAP_TARGET, MAP_REGEX, RDFS_LABEL, APP_USER
 
 
 CT_TO_EXT = {
@@ -207,7 +207,7 @@ def load_dict_like(
             parsed = urlparse(raw)
             if parsed.scheme in ("http", "https"):
                 try:
-                    resp = requests.get(raw, timeout=timeout)
+                    resp = requests.get(raw, timeout=timeout, headers=APP_USER)
                     resp.raise_for_status()
                 except requests.RequestException as e:
                     return _fallback(f"failed to fetch URL {raw}: {e}")
@@ -318,7 +318,7 @@ def load_text_like(
             parsed = urlparse(raw)
             if parsed.scheme in ("http", "https"):
                 try:
-                    resp = requests.get(raw, timeout=timeout)
+                    resp = requests.get(raw, timeout=timeout, headers=APP_USER)
                     resp.raise_for_status()
                     logger.info(f"{label}: loaded from URL {raw}")
                     return resp.text

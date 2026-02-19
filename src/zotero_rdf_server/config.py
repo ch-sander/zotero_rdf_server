@@ -41,6 +41,8 @@ LANG_MAP = {
                 "default": "und" # used if none found
             }
 
+APP_USER = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Zotero_RDF_server/1.0 (+https://github.com/ch-sander/zotero_rdf_server)"}
+
 
 setup_logging("INFO")
 try:

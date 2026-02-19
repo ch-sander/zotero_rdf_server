@@ -32,7 +32,7 @@ def _iter_sources(lib) -> Iterable[SourceFile]:
 
         try:
             # stream
-            resp = requests.get(url, stream=True, timeout=(5, 60), allow_redirects=True)
+            resp = requests.get(url, stream=True, timeout=(5, 60), allow_redirects=True, headers=APP_USER)
             resp.raise_for_status()
         except RequestException as e:
             logger.warning(f"Failed to download {url}: {e}")
@@ -368,10 +368,13 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 elif predicate_str == "relations" and ("dc:relation" in object or "owl:sameAs" in object or "dc:replaces" in object):
                     related_item = object.pop("dc:relation", None)
                     same_item = object.pop("owl:sameAs", None)
+                    replaces_item = object.pop("dc:replaces", None)
+
                     # TODO dc:replaces
                     related_items = related_item if isinstance(related_item, list) else ([related_item] if related_item is not None else [])
                     same_items = same_item if isinstance(same_item, list) else ([same_item] if same_item is not None else [])
-
+                    replaces_items = replaces_item if isinstance(replaces_item, list) else ([replaces_item] if replaces_item is not None else [])
+                    same_items.extend([x for x in replaces_items if x is not None])
                     rel_predicates = make_iri(field_map.get("relation_properties") or [predicate_str, PURL_RELATED],
                                             pref=ns_prefix, enforce_list=True)
                     same_predicates = make_iri(field_map.get("same_properties") or [OWL_SAME_AS],

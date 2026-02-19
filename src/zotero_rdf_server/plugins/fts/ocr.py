@@ -12,6 +12,11 @@ from urllib.parse import urlparse
 from .helpers import plugin_logger, safe_doc_id
 logger=plugin_logger()
 
+try:
+    from zotero_rdf_server.config import APP_USER
+except Exception:
+    APP_USER = None
+
 _KRAKEN_NET: dict[tuple[str, str], object] = {}
 _KRAKEN_SEG: dict[tuple[str, str], object] = {}
 _NO_UPSCALE_HOSTS: set[str] = set()
@@ -562,7 +567,7 @@ def fetch_pil_image(
 
     for attempt in range(retries + 1):
         try:
-            r = requests.get(url, timeout=timeout)
+            r = requests.get(url, timeout=timeout, headers=APP_USER)
             r.raise_for_status()
             return Image.open(BytesIO(r.content))
 
@@ -604,7 +609,7 @@ def stream_download_to_tempfile(
             with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                 tmp_path = tmp.name
 
-            with requests.get(url, stream=True, timeout=timeout) as r:
+            with requests.get(url, stream=True, timeout=timeout, headers=APP_USER) as r:
                 r.raise_for_status()
                 with open(tmp_path, "wb") as f:
                     for chunk in r.iter_content(chunk_size=chunk_size):
@@ -687,7 +692,7 @@ def iter_pages(
         if src_kind == "file":
             manifest = json.loads(src_path.read_text(encoding="utf-8"))
         else:
-            manifest = requests.get(input, timeout=timeout).json()
+            manifest = requests.get(input, timeout=timeout, headers=APP_USER).json()
 
         pages = iiif_manifest_to_pages(
             manifest,
@@ -709,7 +714,7 @@ def iter_pages(
                     hocr_url, rule, profile = hit
                     logger.debug(f"Found IIIF hOCR text in {hocr_url}")
                     try:
-                        r = requests.get(hocr_url, timeout=getattr(iiif_ocr_policy, "timeout", timeout))
+                        r = requests.get(hocr_url, timeout=getattr(iiif_ocr_policy, "timeout", timeout), headers=APP_USER)
                         r.raise_for_status()
                         txt = hocr_bytes_to_text(r.content, rule)
                         logger.debug(f"Seeing IIIF hOCR text in {hocr_url}: {txt}")
@@ -781,7 +786,7 @@ def iter_pages(
             if src_kind == "file":
                 raw = src_path.read_text(encoding="utf-8")
             else:
-                r = requests.get(input, timeout=timeout)
+                r = requests.get(input, timeout=timeout, headers=APP_USER)
                 r.raise_for_status()
                 if not r.encoding:
                     r.encoding = "utf-8"

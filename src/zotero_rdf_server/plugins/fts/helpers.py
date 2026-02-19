@@ -9,7 +9,6 @@ from pathlib import Path
 import hashlib
 from functools import lru_cache
 
-
 here = Path(__file__).resolve().parent
 requirements = here / "requirements.txt"
 
@@ -82,7 +81,7 @@ def resolve_config_path(config_path: Optional[str] = None) -> Path:
             target = cache_dir / fname
 
             if not target.exists():
-                r = requests.get(raw, timeout=15)
+                r = requests.get(raw, timeout=15) # TODO set header
                 r.raise_for_status()
                 target.write_text(r.text, encoding="utf-8")
 
