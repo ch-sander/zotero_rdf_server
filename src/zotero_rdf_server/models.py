@@ -103,23 +103,26 @@ class ZoteroLibrary:
 
         if endpoint == "items" and isinstance(filter_collection, str) and filter_collection:
             endpoint = f"collections/{filter_collection}/items"
+        if endpoint == "collections" and isinstance(filter_collection, str) and filter_collection:
+            endpoint = f"collections/{filter_collection}"
+
 
         with requests.Session() as session:
             session.mount("https://", adapter)
             session.mount("http://", adapter)
 
             while True:
-                params = {
-                    "format": "json",
-                    "limit": LIMIT,
-                    "start": start,
-                    **self.api_query_params
-                }
+                is_single = endpoint.startswith("collections/") and "/items" not in endpoint
+
+                request_params = {"format": "json", **params}
+                if not is_single:
+                    request_params.update({"limit": LIMIT, "start": start})
+
                 req = requests.Request(
                     method="GET",
                     url=f"{self.base_api_url}/{endpoint}",
                     headers=self.headers,
-                    params=params
+                    params=request_params
                 )
                 prepared = req.prepare()
                 logger.info(f"Sending API request: {prepared.method} {prepared.url}")
@@ -136,6 +139,11 @@ class ZoteroLibrary:
                 except RequestException as e:
                     logger.error(f"Request error: {e}")
                     raise
+                
+                if isinstance(data, dict):
+                    results.append(data)
+                    logger.info("Non-paginated response (single object); stopping pagination.")
+                    break
 
                 if not data:
                     logger.info(f"No more data (start={start})")
