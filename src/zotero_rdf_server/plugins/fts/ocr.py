@@ -60,8 +60,8 @@ class IiifOcrRule:
 @dataclass(frozen=True)
 class IiifOcrPolicy:
     enabled: bool = False
-    min_chars: int = 0
-    min_alpha_ratio: float = 0
+    min_chars: int = 20
+    min_alpha_ratio: float = 0.5
     # rules define valid (key/profile/xpath) combinations
     rules: Sequence[IiifOcrRule] = field(default_factory=tuple)
     timeout: int = 30
@@ -70,8 +70,8 @@ class IiifOcrPolicy:
     def from_json(cls, data: Mapping[str, Any]) -> "IiifOcrPolicy":
         try:
             enabled = bool(data.get("enabled", False))
-            min_chars = int(data.get("min_chars", 0))
-            min_alpha_ratio = float(data.get("min_alpha_ratio", 0))
+            min_chars = int(data.get("min_chars", 20))
+            min_alpha_ratio = float(data.get("min_alpha_ratio", 0.5))
             timeout = int(data.get("timeout", 30))
 
             rules_in = data.get("rules", None)
@@ -699,7 +699,6 @@ def iter_pages(
             logger.warning(f"IIIF manifest <{manifest}> has no image canvases")
             return
         
-        start_page = 300
         logger.info(f"Found {len(pages)} pages in IIIF, starting at {start_page}")
         pages = pages[(start_page - 1):]
 
