@@ -13,11 +13,11 @@ services:
       - ./src:/src # dev (no reloading, though)
       - "${CONFIG_FILE_HOST:-./app/config.yaml}:${CONFIG_FILE:-/app/config.yaml}"
       - "${ZOTERO_CONFIG_FILE_HOST:-./app/zotero.yaml}:${ZOTERO_CONFIG_FILE:-/app/zotero.yaml}"
-      - "${STORE_DIRECTORY:-./app/data}:/app/data"
-      - "${PLUGINS_DIRECTORY:-./app/plugins}:/app/plugins"
-      - "${EXPORT_DIRECTORY:-./app/exports}:/app/exports"
-      - "${IMPORT_DIRECTORY:-./app/exports}:/app/import"
-      - "${BACKUP_DIRECTORY:-./app/backup}:/app/backup"
+      - "${STORE_DIRECTORY_HOST:-./app/data}:/app/data"
+      - "${PLUGINS_DIRECTORY_HOST:-./app/plugins}:/app/plugins"
+      - "${EXPORT_DIRECTORY_HOST:-./app/exports}:/app/exports"
+      - "${IMPORT_DIRECTORY_HOST:-./app/exports}:/app/import"
+      - "${BACKUP_DIRECTORY_HOST:-./app/backup}:/app/backup"
     restart: unless-stopped
   oxigraph:
     image: ghcr.io/oxigraph/oxigraph:main
@@ -25,7 +25,7 @@ services:
     ports:
       - "7879:7879"
     volumes:
-      - ${STORE_DIRECTORY:-./app/data}:/data
+      - ${STORE_DIRECTORY_HOST:-./app/data}:/data
     command: ["serve-read-only", "--location", "/data", "--bind", "0.0.0.0:7879", "--union-default-graph", "--cors"]
     restart: unless-stopped
 
