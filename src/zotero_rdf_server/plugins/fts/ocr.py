@@ -41,19 +41,37 @@ class PdfTextPolicy:
 @dataclass(frozen=True)
 class IiifOcrRule:
     """
-    One allowed combination:
-      - key: where to look in the canvas JSON (e.g. "seeAlso", "rendering", "otherContent")
-      - profile: optional profile string to match (exact or substring match, see profile_match)
-      - xpath: XPath expression used on the fetched hOCR (parsed as XML/HTML)
-      - namespaces: optional namespace mapping for XPath (important for XHTML hOCR)
+    Two rule kinds:
+
+    1) kind="link":
+       - key: where to look in the canvas JSON (e.g. "seeAlso", "rendering", "otherContent")
+       - profile/profile_match: optional profile string matching
+       - xpath/namespaces: XPath expression used on the fetched hOCR (parsed as XML/HTML)
+
+    2) kind="derive":
+       - derive_from: where to take the source string from (default: canvas "@id")
+       - id_regex: regex with one capturing group for the page id
+       - url_template: where to plug the extracted id (default points to e-rara plaintext endpoint)
+       - xpath/namespaces are ignored for kind="derive"
     """
+    kind: str = "link"  # "link" | "derive"
+
+    # existing "link" fields
     key: str = "seeAlso"
     profile: Optional[str] = None
     profile_match: str = "equals"  # "equals" | "contains"
     xpath: str = r"//x:span[contains(concat(' ', normalize-space(@class), ' '), ' ocr_line ')]"
     namespaces: Mapping[str, str] = field(default_factory=lambda: {"x": "http://www.w3.org/1999/xhtml"})
 
+    derive_from: str = "@id"  # currently: only canvas-level fields (default: canvas["@id"])
+    id_regex: str = r"/(\d+)$"
+    url_template: str = "https://www.e-rara.ch/download/fulltext/plain/{id}"
+
     def matches_profile(self, p: Optional[str]) -> bool:
+        # Only meaningful for kind="link"; for kind="derive" we treat as "match".
+        if self.kind != "link":
+            return True
+
         if self.profile is None:
             return True
         if not p:
@@ -62,12 +80,27 @@ class IiifOcrRule:
             return self.profile in p
         return p == self.profile
 
+    @staticmethod
+    def default_rules() -> tuple["IiifOcrRule", ...]:
+        return (
+            IiifOcrRule(),
+            # e-rara Plaintext
+            IiifOcrRule(
+                kind="derive",
+                derive_from="@id",
+                id_regex=r"^https?://www\.e-rara\.ch/.*/canvas/(\d+)$",
+                url_template="https://www.e-rara.ch/download/fulltext/plain/{id}",               
+                key="@id",
+                xpath="",
+            ),
+        )
+
+
 @dataclass(frozen=True)
 class IiifOcrPolicy:
     enabled: bool = False
     min_chars: int = 20
     min_alpha_ratio: float = 0.5
-    # rules define valid (key/profile/xpath) combinations
     rules: Sequence[IiifOcrRule] = field(default_factory=tuple)
     timeout: int = 30
 
@@ -81,23 +114,36 @@ class IiifOcrPolicy:
 
             rules_in = data.get("rules", None)
             rules: list[IiifOcrRule] = []
+
             if enabled and rules_in is None:
-                rules = [IiifOcrRule()]
+                rules = list(IiifOcrRule.default_rules())
             else:
                 for r in (rules_in or []):
                     if not isinstance(r, Mapping):
                         continue
+
+                    kind = str(r.get("kind", "link"))
+
+                    # start with defaults, then override only what is supplied
+                    base = IiifOcrRule(kind=kind) if kind != "link" else IiifOcrRule()
+
                     rules.append(
                         IiifOcrRule(
-                            key=str(r.get("key", "seeAlso")),
+                            kind=kind,
+                            key=str(r.get("key", base.key)),
                             profile=(None if r.get("profile") in (None, "") else str(r.get("profile"))),
-                            profile_match=str(r.get("profile_match", "equals")),
-                            xpath=str(r.get("xpath") or IiifOcrRule().xpath),
-                            namespaces=dict(r.get("namespaces") or {"x": "http://www.w3.org/1999/xhtml"}),
+                            profile_match=str(r.get("profile_match", base.profile_match)),
+                            xpath=str(r.get("xpath") or base.xpath),
+                            namespaces=dict(r.get("namespaces") or base.namespaces),
+                            derive_from=str(r.get("derive_from", base.derive_from)),
+                            id_regex=str(r.get("id_regex", base.id_regex)),
+                            url_template=str(r.get("url_template", base.url_template)),
                         )
                     )
+
                 if enabled and not rules:
-                    rules = [IiifOcrRule()]
+                    rules = list(IiifOcrRule.default_rules())
+
             return cls(
                 enabled=enabled,
                 min_chars=min_chars,
@@ -255,12 +301,6 @@ def is_usable_text(text: str, policy: _TextPolicyLike, *, log_label: str = "text
     logger.debug(f"Found usable {log_label} (alpha_ratio={ratio:.3f}, len={len(t)})")
     return ratio >= getattr(policy, "min_alpha_ratio", 0.0)
 
-def is_usable_pdf_text(text: str, policy: PdfTextPolicy) -> bool:
-    return is_usable_text(text, policy, log_label="PDF text")
-
-def is_usable_hocr_text(text: str, policy: IiifOcrPolicy) -> bool:
-    return is_usable_text(text, policy, log_label="hOCR text")
-
 def _iter_link_objs(canvas: dict, key: str):
     obj = canvas.get(key)
     if obj is None:
@@ -281,29 +321,69 @@ def _rule_matches_profile(rule, profile: Optional[str]) -> bool:
         return rule.profile in profile
     return profile == rule.profile
 
-def find_hocr(canvas: dict, policy) -> Optional[tuple[str, Any, Optional[str]]]:
-    # returns (url, rule, profile)
+def _derive_url_from_canvas(canvas: dict, rule) -> Optional[str]:
+    # Default: canvas["@id"] -> .../plain/{id}
+    src_key = getattr(rule, "derive_from", "@id")
+    src = canvas.get(src_key) if src_key != "@id" else (canvas.get("@id") or canvas.get("id"))
+    if not isinstance(src, str) or not src:
+        return None
+
+    pattern = getattr(rule, "id_regex", r"/(\d+)$")
+    m = re.search(pattern, src)
+    if not m:
+        return None
+
+    page_id = m.group(1)
+    tmpl = getattr(rule, "url_template", "https://www.e-rara.ch/download/fulltext/plain/{id}")
+    try:
+        return tmpl.format(id=page_id)
+    except Exception:
+        return None
+
+
+def find_ocr(canvas: dict, policy) -> Optional[tuple[str, Any, Optional[str]]]:
     if not policy or not getattr(policy, "enabled", False):
         return None
+
     for rule in getattr(policy, "rules", ()):
+        kind = getattr(rule, "kind", "link")
+
+        if kind == "derive":
+            url = _derive_url_from_canvas(canvas, rule)
+            if url:
+                return url, rule, None
+            continue
+
         for obj in _iter_link_objs(canvas, rule.key):
             url = obj.get("@id") or obj.get("id")
             profile = obj.get("profile")
             if url and _rule_matches_profile(rule, profile):
                 return str(url), rule, (None if profile is None else str(profile))
+
     return None
 
-def hocr_bytes_to_text(hocr_bytes: bytes, rule) -> str:
-    namespaces = dict(getattr(rule, "namespaces", None) or {})
-    xpath = getattr(rule, "xpath", "")
-    dehyphenate = bool(getattr(rule, "dehyphenate", True))
+def ocr_bytes_to_text(ocr_bytes: bytes, rule) -> str:
 
+    kind = getattr(rule, "kind", "link")
+    xpath = getattr(rule, "xpath", "") or ""
+
+    if kind == "derive" or not xpath.strip():
+        for enc in ("utf-8", "utf-8-sig", "latin-1"):
+            try:
+                txt = ocr_bytes.decode(enc)
+                break
+            except Exception:
+                txt = ""
+        return txt.strip()
+    
+    namespaces = dict(getattr(rule, "namespaces", None) or {})
+    dehyphenate = bool(getattr(rule, "dehyphenate", True))    
     parts = []
     used_html_fallback = False
 
     # 1) XML first (keeps namespaces)
     try:
-        root = etree.fromstring(hocr_bytes, parser=etree.XMLParser(recover=True, encoding="utf-8"))
+        root = etree.fromstring(ocr_bytes, parser=etree.XMLParser(recover=True, encoding="utf-8"))
         parts = root.xpath(xpath, namespaces=namespaces) if xpath else []
     except Exception:
         parts = []
@@ -311,7 +391,7 @@ def hocr_bytes_to_text(hocr_bytes: bytes, rule) -> str:
     # 2) HTML fallback (namespace-less): retry without prefixes
     if not parts:
         used_html_fallback = True
-        root = etree.fromstring(hocr_bytes, parser=etree.HTMLParser(recover=True, encoding="utf-8"))
+        root = etree.fromstring(ocr_bytes, parser=etree.HTMLParser(recover=True, encoding="utf-8"))
         xpath_no_ns = xpath.replace("x:", "") if xpath else ""
         parts = root.xpath(xpath_no_ns) if xpath_no_ns else []
 
@@ -709,18 +789,18 @@ def iter_pages(
         logger.debug(f"IIIF Policy: {iiif_ocr_policy}")
         try:
             for i, (img_url, canvas) in enumerate(pages, start=start_page):
-                hit = find_hocr(canvas, iiif_ocr_policy)
+                hit = find_ocr(canvas, iiif_ocr_policy)
                 if hit:                
-                    hocr_url, rule, profile = hit
-                    logger.debug(f"Found IIIF hOCR text in {hocr_url}")
+                    ocr_url, rule, profile = hit
+                    logger.debug(f"Found IIIF OCR text in {ocr_url}")
                     try:
-                        r = requests.get(hocr_url, timeout=getattr(iiif_ocr_policy, "timeout", timeout), headers=APP_USER)
+                        r = requests.get(ocr_url, timeout=getattr(iiif_ocr_policy, "timeout", timeout), headers=APP_USER)
                         r.raise_for_status()
-                        txt = hocr_bytes_to_text(r.content, rule)
-                        logger.debug(f"Seeing IIIF hOCR text in {hocr_url}: {txt}")
-                        if is_usable_hocr_text(txt, iiif_ocr_policy):
-                            logger.info(f"Using IIIF hOCR text from {hocr_url}")
-                            yield PageItem(i, "text", txt, source=f"hocr:{hocr_url}", meta={
+                        txt = ocr_bytes_to_text(r.content, rule)
+                        logger.debug(f"Seeing IIIF OCR text in {ocr_url}: {txt}")
+                        if is_usable_text(txt, iiif_ocr_policy, log_label="OCR text"):
+                            logger.info(f"Using IIIF OCR text from {ocr_url}")
+                            yield PageItem(i, "text", txt, source=f"ocr:{ocr_url}", meta={
                                 "canvas": canvas.get("@id") or canvas.get("id"),
                                 "profile": profile,
                                 "key": rule.key,
@@ -728,7 +808,7 @@ def iter_pages(
                             })
                             continue
                     except Exception as e:
-                        logger.warning(f"hOCR fetch/parse failed for page {i} ({hocr_url}): {e}")
+                        logger.warning(f"OCR fetch/parse failed for page {i} ({ocr_url}): {e}")
 
                 img = fetch_pil_image(img_url, timeout=timeout, iiif_format=iiif_format, iiif_quality="default")
                 if img is None:
@@ -762,7 +842,7 @@ def iter_pages(
             logger.info(f"Found {len(reader.pages)} pages in PDF, starting at {start_page}")
             for i, page in enumerate(reader.pages, start=start_page):
                 txt = page.extract_text() or ""
-                if is_usable_pdf_text(txt, pdf_text_policy):
+                if is_usable_text(txt, pdf_text_policy, log_label="PDF text"):
                     logger.info(f"Using PDF text {input}")
                     yield PageItem(i, "text", txt, source=f"pdf-text:{input}#page={i}")
                 else:
