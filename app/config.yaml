@@ -1,8 +1,8 @@
 inject_env: true # replacing ${VAR} in this YAML from .env. Use for secrets
-server:
+server: # all values are overwritten by capititalized .env variables
   refresh_interval: 0 # seconds (min. 30), 0 = refresh at startup, -1 = do not refresh
-  # store_mode: "memory"  # or "directory" currently hard-coded to "directory"
-  # directory variables will be primarily set in .env
+  store_mode: "directory_rw"  # or "directory_rw", "directory_rw", or "memory"
+  # host directory variables will be primarily set in .env
   delay: 60 # delay at startup in seconds
   store_directory: "/app/data"
   export_directory: "/app/exports"  
