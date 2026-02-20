@@ -104,18 +104,61 @@ except Exception as e:
 config = config or {}
 zotero_config = zotero_config or {}
 
-log_level = config["server"].get("log_level", "info").upper()
+# --- Config ---
+server_cfg = config.get("server") or {}
+
+log_level = (
+    os.getenv("LOG_LEVEL")
+    or server_cfg.get("log_level")
+    or "info"
+).strip().upper()
 
 setup_logging(log_level)
 
-# --- Config ---
-REFRESH_INTERVAL = config["server"].get("refresh_interval", 0)
-DELAY = config["server"].get("delay", 60)
-STORE_MODE = "memory"
-STORE_DIRECTORY = safe_path(config["server"].get("store_directory", "/app/data"))
-EXPORT_DIRECTORY = safe_path(config["server"].get("export_directory", "/app/exports"))
-IMPORT_DIRECTORY = safe_path(config["server"].get("import_directory", "/app/import"))
-BACKUP_DIRECTORY = safe_path(config["server"].get("backup_directory", "/app/backup"))
+REFRESH_INTERVAL = int(
+    os.getenv("REFRESH_INTERVAL")
+    or server_cfg.get("refresh_interval")
+    or 0
+)
+
+DELAY = int(
+    os.getenv("DELAY")
+    or server_cfg.get("delay")
+    or 60
+)
+
+EXPORT_DIRECTORY = safe_path(
+    os.getenv("EXPORT_DIRECTORY")
+    or server_cfg.get("export_directory")
+    or "/app/exports"
+)
+
+IMPORT_DIRECTORY = safe_path(
+    os.getenv("IMPORT_DIRECTORY")
+    or server_cfg.get("import_directory")
+    or "/app/import"
+)
+
+BACKUP_DIRECTORY = safe_path(
+    os.getenv("BACKUP_DIRECTORY")
+    or server_cfg.get("backup_directory")
+    or "/app/backup"
+)
+
+STORE_MODE = os.getenv(
+    "STORE_MODE",
+    server_cfg.get("store_mode", "directory_rw")
+).strip().lower()
+
+if STORE_MODE not in {"memory", "directory_rw", "directory_ro"}:
+    STORE_MODE = "directory_rw"
+
+STORE_DIRECTORY = safe_path(
+    os.getenv("STORE_DIRECTORY")
+    or server_cfg.get("store_directory")
+    or "/app/data"
+)
+
 
 REFRESH = REFRESH_INTERVAL >= 0
 
