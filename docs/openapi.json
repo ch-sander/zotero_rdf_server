@@ -976,6 +976,19 @@
             "description": "Minimum alphabetic ratio to accept embedded PDF text."
           },
           {
+            "name": "start_page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page OCR starts on (for debugging mainly). Defaults to 1",
+              "default": 1,
+              "title": "Start Page"
+            },
+            "description": "Page OCR starts on (for debugging mainly). Defaults to 1"
+          },
+          {
             "name": "img_out",
             "in": "query",
             "required": false,
@@ -1337,10 +1350,8 @@
             "required": true,
             "schema": {
               "type": "string",
-              "description": "OpenSearch index name",
               "title": "Index"
-            },
-            "description": "OpenSearch index name"
+            }
           },
           {
             "name": "q",
@@ -1348,10 +1359,8 @@
             "required": true,
             "schema": {
               "type": "string",
-              "description": "Comma-separated expressions, e.g. 'foo, bar, baz'",
               "title": "Q"
-            },
-            "description": "Comma-separated expressions, e.g. 'foo, bar, baz'"
+            }
           },
           {
             "name": "field",
@@ -1359,11 +1368,9 @@
             "required": false,
             "schema": {
               "type": "string",
-              "description": "Text field to search",
               "default": "text",
               "title": "Field"
-            },
-            "description": "Text field to search"
+            }
           },
           {
             "name": "exact",
@@ -1371,11 +1378,9 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Enable analyzed phrase match",
               "default": true,
               "title": "Exact"
-            },
-            "description": "Enable analyzed phrase match"
+            }
           },
           {
             "name": "truncated",
@@ -1383,11 +1388,9 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Enable phrase-prefix match",
               "default": true,
               "title": "Truncated"
-            },
-            "description": "Enable phrase-prefix match"
+            }
           },
           {
             "name": "fuzzy",
@@ -1395,11 +1398,9 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Enable fuzzy match",
               "default": true,
               "title": "Fuzzy"
-            },
-            "description": "Enable fuzzy match"
+            }
           },
           {
             "name": "size",
@@ -1414,17 +1415,172 @@
             }
           },
           {
+            "name": "lucene",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Interpret q as Lucene query_string",
+              "default": false,
+              "title": "Lucene"
+            },
+            "description": "Interpret q as Lucene query_string"
+          },
+          {
+            "name": "lucene_lenient",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Lenient parsing for query_string",
+              "default": true,
+              "title": "Lucene Lenient"
+            },
+            "description": "Lenient parsing for query_string"
+          },
+          {
+            "name": "highlight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include OpenSearch highlight snippets",
+              "default": true,
+              "title": "Highlight"
+            },
+            "description": "Include OpenSearch highlight snippets"
+          },
+          {
+            "name": "highlight_field",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Field to highlight (defaults to `field`)",
+              "title": "Highlight Field"
+            },
+            "description": "Field to highlight (defaults to `field`)"
+          },
+          {
+            "name": "fragment_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 20,
+              "default": 160,
+              "title": "Fragment Size"
+            }
+          },
+          {
+            "name": "fragments",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10,
+              "minimum": 0,
+              "default": 2,
+              "title": "Fragments"
+            }
+          },
+          {
+            "name": "pre_tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Markdown pre tag for highlight",
+              "default": "**",
+              "title": "Pre Tag"
+            },
+            "description": "Markdown pre tag for highlight"
+          },
+          {
+            "name": "post_tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Markdown post tag for highlight",
+              "default": "**",
+              "title": "Post Tag"
+            },
+            "description": "Markdown post tag for highlight"
+          },
+          {
+            "name": "truncate_chars",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 5000,
+              "minimum": 0,
+              "description": "If >0: truncate plain text when no highlight",
+              "default": 0,
+              "title": "Truncate Chars"
+            },
+            "description": "If >0: truncate plain text when no highlight"
+          },
+          {
+            "name": "agg_field",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Keyword field to aggregate over, e.g. meta.author.keyword",
+              "title": "Agg Field"
+            },
+            "description": "Keyword field to aggregate over, e.g. meta.author.keyword"
+          },
+          {
+            "name": "agg_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 10,
+              "title": "Agg Size"
+            }
+          },
+          {
+            "name": "agg_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(terms|composite)$",
+              "default": "terms",
+              "title": "Agg Type"
+            }
+          },
+          {
             "name": "format",
             "in": "query",
             "required": false,
             "schema": {
               "type": "string",
               "pattern": "^(json|csv|md|markdown)$",
-              "description": "Output format: json|csv|md",
               "default": "json",
               "title": "Format"
-            },
-            "description": "Output format: json|csv|md"
+            }
           },
           {
             "name": "columns",
@@ -1439,10 +1595,8 @@
                   "type": "null"
                 }
               ],
-              "description": "Optional CSV list of columns to include",
               "title": "Columns"
-            },
-            "description": "Optional CSV list of columns to include"
+            }
           },
           {
             "name": "debug",
@@ -1450,11 +1604,9 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Include debug_query (JSON only)",
               "default": false,
               "title": "Debug"
-            },
-            "description": "Include debug_query (JSON only)"
+            }
           }
         ],
         "responses": {
@@ -2895,6 +3047,11 @@
             "title": "Pdf Text Min Alpha Ratio",
             "description": "Minimum alphabetic character ratio required to accept embedded PDF text"
           },
+          "start_page": {
+            "type": "integer",
+            "title": "Start Page",
+            "description": "Start page for OCR"
+          },
           "pages": {
             "items": {
               "$ref": "#/components/schemas/OcrPage"
@@ -2913,6 +3070,7 @@
           "pdf_text_enabled",
           "pdf_text_min_chars",
           "pdf_text_min_alpha_ratio",
+          "start_page",
           "pages"
         ],
         "title": "OcrResponse"
