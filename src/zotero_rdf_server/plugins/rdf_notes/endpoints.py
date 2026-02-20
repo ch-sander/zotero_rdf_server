@@ -1,13 +1,11 @@
-from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter
-from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse
+from fastapi import Query, HTTPException, APIRouter, Depends
 from typing import Literal as TypeLiteral
-import logging
-from pathlib import Path
 from zotero_rdf_server.store import *
-from zotero_rdf_server.logging_config import logger, LogLevel
+from zotero_rdf_server.logging_config import logger
 from zotero_rdf_server.config import *
 from zotero_rdf_server.models import ZoteroLibrary
 from zotero_rdf_server.utils import *
+from zotero_rdf_server.api import require_writable
 
 router = APIRouter(tags=["Notes RDF Interface"])
 
@@ -16,7 +14,8 @@ router = APIRouter(tags=["Notes RDF Interface"])
     "/znotes2rdf",
     summary="Zotero Notes to RDF",
     description="Writes all RDF blocks in Zotero Notes HTML into RDF, either Store or file.",
-    tags=["RDF"]
+    tags=["RDF"],
+    dependencies=[Depends(require_writable)]
 )
 async def znotes2rdf(
     graph: str | None = Query(default=None, description="Named graph IRI (optional) to write RDF resources to. Will use this named graph to detect Zotero library sync configuration to read from collection if no config parameters are given to the endpoint."),
@@ -216,6 +215,8 @@ async def taxonomy(
         raise HTTPException(status_code=400, detail=f"Invalid graph IRI: {checked_graph}. Use one of these or None: {all_graphs}")
     from zotero_rdf_server.store import store
 
+    if task == "writeStore":
+        require_writable()
     res = []
     if html_file:
         if graph:        

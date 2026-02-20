@@ -1,18 +1,15 @@
-from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter
-from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse
-from typing import Literal as TypeLiteral
-import logging
-from pathlib import Path
+from fastapi import APIRouter, Depends, Query, HTTPException
 from zotero_rdf_server.store import *
 from zotero_rdf_server.rdf import *
 from zotero_rdf_server.logging_config import logger, LogLevel
 from zotero_rdf_server.config import *
 from zotero_rdf_server.models import ZoteroLibrary
 from zotero_rdf_server.utils import *
+from zotero_rdf_server.api import require_writable
 
 router = APIRouter(tags=["Semantics"])
 
-@router.get("/parse_notes", summary="Parse notes", description="Triggers the parsing of all Zotero notes with semantic-html plugin", tags=["RDF"])
+@router.get("/parse_notes", summary="Parse notes", description="Triggers the parsing of all Zotero notes with semantic-html plugin", tags=["RDF"], dependencies=[Depends(require_writable)])
 async def parse_notes(
     delete: bool = Query(default=False, description="Delete all existing triples related to parsed note"),
     graph: str | None = Query(default=None, description="Named graph IRI containing the items/notes (optional)"),

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter
+from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Depends
 from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse
 from typing import Literal as TypeLiteral
 import logging
@@ -164,7 +164,7 @@ async def list_graphs():
         "Deletes all triples of the form `?entry zmap:target ?entity` from the given mapping graph.\n\n"
         "By default this endpoint runs in dry-run mode (`execute=false`)."
     ),
-    tags=["RDF"],
+    tags=["RDF"], dependencies=[Depends(require_writable)]
 )
 async def delete_mapping_targets(
     map_graph_iri: str = Query(..., description="Named graph IRI of the mapping graph."),
@@ -172,8 +172,7 @@ async def delete_mapping_targets(
         default=False,
         description="If true, performs the deletion. If false, only returns how many triples would be removed.",
     ),
-) -> dict:
-    require_writable()
+) -> dict:    
     from .store import store
 
     map_graph, all_graphs = get_graph(map_graph_iri)
@@ -213,7 +212,7 @@ async def delete_mapping_targets(
         "the entity must additionally not be referenced as an object in the selected graphs.\n\n"
         "By default this endpoint runs in dry-run mode (`delete=false`)."
     ),
-    tags=["RDF"],
+    tags=["RDF"], dependencies=[Depends(require_writable)]
 )
 async def purge(
     graph_iri: str | None = Query(
@@ -239,7 +238,6 @@ async def purge(
         description="If true, keeps entities that have an outgoing owl:sameAs triple in the entity graph.",
     ),
 ) -> list:
-    require_writable()
     from .store import store
 
     checked_graph, all_graphs = get_graph(graph_iri)
@@ -295,7 +293,7 @@ async def purge(
         "to the knowledge base graph. Otherwise, subject facts of `old` in the knowledge base graph are deleted.\n\n"
         "By default this endpoint runs in dry-run mode (`execute=false`)."
     ),
-    tags=["RDF", "Semantics"],
+    tags=["RDF", "Semantics"], dependencies=[Depends(require_writable)]
 )
 async def merge(
     old_iri: str = Query(..., description="IRI of the entity to be merged (old / source)."),
@@ -311,7 +309,6 @@ async def merge(
         description="If true, deduplicate and merge all mappings targeting new_iri",
     )    ,
 ) -> dict:
-    require_writable()
     from .store import store
 
     old = safeNamedNode(old_iri)
@@ -367,7 +364,7 @@ from typing import Any, Literal as TypingLiteral
         "- execute=false performs only validation and direction resolution (dry run).\n"
         "- execute=true performs the actual synchronization and returns counters."
     ),
-    tags=["RDF"],
+    tags=["RDF"], dependencies=[Depends(require_writable)]
 )
 async def kb_map_sync(
     entity_graph_iri: str = Query(..., description="Named graph IRI of the knowledge base (entities)."),
@@ -393,7 +390,6 @@ async def kb_map_sync(
         description="If true, performs the synchronization. If false, returns only checks and resolved direction.",
     ),
 ) -> dict[str, Any]:
-    require_writable()
     from .store import store
 
     entity_graph, _ = get_graph(entity_graph_iri)
@@ -464,7 +460,7 @@ async def kb_map_sync(
         "If the default graph is specified, it will be cleared but not removed.\n\n"
         "By default this endpoint performs a dry run (`execute=false`)."
     ),
-    tags=["RDF"],
+    tags=["RDF"], dependencies=[Depends(require_writable)]
 )
 async def delete_graph(
     graph_iri: str | None = Query(
@@ -479,7 +475,6 @@ async def delete_graph(
         description="If true, performs the deletion. If false, only checks existence.",
     ),
 ) -> dict[str, Any]:
-    require_writable()
     from .store import store
 
     # Resolve graph object
@@ -523,7 +518,7 @@ async def delete_graph(
     }
 
 
-@router.get("/csv", summary="Export CSV", description="Exports a named graph or the entire store as CSV or loads a CSV as RDF into the store", tags=["RDF","Data"])
+@router.get("/csv", summary="Export CSV", description="Exports a named graph or the entire store as CSV or loads a CSV as RDF into the store", tags=["RDF","Data"], dependencies=[Depends(require_writable)])
 async def get_csv(
     graph: str | None = Query(default=None, description="Named graph IRI (optional)"),
     load_csv: str | Path | None = Query(default=None, description="Load a CSV file into the store"),
@@ -565,7 +560,6 @@ async def get_csv(
 
     load_csv = safe_path(load_csv)
     if load_csv and load_csv.is_file() and load_csv is not output_file:
-        require_writable()
         if delete:
             subjects = set()
             with open(load_csv, newline="", encoding="utf-8") as f:
