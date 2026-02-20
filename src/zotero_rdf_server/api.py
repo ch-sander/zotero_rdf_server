@@ -17,6 +17,13 @@ from importlib.util import find_spec
 
 router = APIRouter()
 
+def require_writable():
+    if STORE_MODE == "directory_ro":
+        raise HTTPException(
+            status_code=503,
+            detail="Store is read-only in this service"
+        )
+    
 def include_plugins(app: FastAPI, plugins_pkg: str = "zotero_rdf_server.plugins", base_prefix: str = "/plugin") -> None:
     pkg = import_module(plugins_pkg)
 
@@ -166,6 +173,7 @@ async def delete_mapping_targets(
         description="If true, performs the deletion. If false, only returns how many triples would be removed.",
     ),
 ) -> dict:
+    require_writable()
     from .store import store
 
     map_graph, all_graphs = get_graph(map_graph_iri)
@@ -231,6 +239,7 @@ async def purge(
         description="If true, keeps entities that have an outgoing owl:sameAs triple in the entity graph.",
     ),
 ) -> list:
+    require_writable()
     from .store import store
 
     checked_graph, all_graphs = get_graph(graph_iri)
@@ -302,6 +311,7 @@ async def merge(
         description="If true, deduplicate and merge all mappings targeting new_iri",
     )    ,
 ) -> dict:
+    require_writable()
     from .store import store
 
     old = safeNamedNode(old_iri)
@@ -383,6 +393,7 @@ async def kb_map_sync(
         description="If true, performs the synchronization. If false, returns only checks and resolved direction.",
     ),
 ) -> dict[str, Any]:
+    require_writable()
     from .store import store
 
     entity_graph, _ = get_graph(entity_graph_iri)
@@ -468,6 +479,7 @@ async def delete_graph(
         description="If true, performs the deletion. If false, only checks existence.",
     ),
 ) -> dict[str, Any]:
+    require_writable()
     from .store import store
 
     # Resolve graph object
@@ -553,6 +565,7 @@ async def get_csv(
 
     load_csv = safe_path(load_csv)
     if load_csv and load_csv.is_file() and load_csv is not output_file:
+        require_writable()
         if delete:
             subjects = set()
             with open(load_csv, newline="", encoding="utf-8") as f:

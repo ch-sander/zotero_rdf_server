@@ -111,7 +111,7 @@ setup_logging(log_level)
 # --- Config ---
 REFRESH_INTERVAL = config["server"].get("refresh_interval", 0)
 DELAY = config["server"].get("delay", 60)
-STORE_MODE = "directory"
+STORE_MODE = "memory"
 STORE_DIRECTORY = safe_path(config["server"].get("store_directory", "/app/data"))
 EXPORT_DIRECTORY = safe_path(config["server"].get("export_directory", "/app/exports"))
 IMPORT_DIRECTORY = safe_path(config["server"].get("import_directory", "/app/import"))

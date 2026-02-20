@@ -19,9 +19,18 @@ def get_graph(graph: str | NamedNode):
 
 def initialize_store():
     global store
-    if STORE_MODE == "memory":
+    if STORE_MODE == "directory_ro":
+        try:
+            del store
+        except Exception:
+            pass
+        store = Store.read_only(path=str(STORE_DIRECTORY))
+        logger.warning(f"Store re-opened read-only. {len(store)} triples.")      
+    
+    elif STORE_MODE == "memory":
         store = Store()
-    elif STORE_MODE == "directory":
+        logger.warning(f"Store re-opened in memory. {len(store)} triples.")    
+    elif STORE_MODE == "directory_rw":
         STORE_DIRECTORY.mkdir(parents=True,exist_ok=True)
         try:
             store = Store(path=STORE_DIRECTORY)
@@ -45,20 +54,42 @@ def clear_directory(directory_path):
         logger.error(f"{directory} does not exist!")
 
 def ensure_store(store):
+    if STORE_MODE != "directory_rw":
+        return
+
     try:
         store.flush()
         logger.info("Store flushed to disk.")
     except Exception as e:
         logger.warning(f"Flush failed: {e}")
+
     try:
         store.optimize()
         logger.info("Store optimized after bulk load.")
     except Exception as e:
         logger.warning(f"Optimize failed: {e}")
 
-
 def refresh_store(force_reload:bool = False, remove_store:bool=True):
     global store
+
+    if STORE_MODE == "directory_ro":
+        while True:
+            try:
+                del store
+            except Exception:
+                pass
+            try:
+                store = Store.read_only(path=str(STORE_DIRECTORY))
+                logger.info(f"RO store reopened. {len(store)} triples.")
+            except Exception as e:
+                logger.warning(f"RO reopen failed: {e}")
+
+            if REFRESH_INTERVAL >= 30:
+                time.sleep(REFRESH_INTERVAL)
+            else:
+                break
+        return
+        
     if REFRESH == False and not force_reload:
         try:
             del store
