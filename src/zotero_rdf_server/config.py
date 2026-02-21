@@ -159,13 +159,13 @@ STORE_DIRECTORY = safe_path(
     or "/app/data"
 )
 
-API_USER = safe_path(
+API_USER = (
     os.getenv("API_USER")
     or server_cfg.get("api_user")
     or None
 )
 
-API_PASSWORD = safe_path(
+API_PASSWORD = (
     os.getenv("API_PASSWORD")
     or server_cfg.get("api_password")
     or None
