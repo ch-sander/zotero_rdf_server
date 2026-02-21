@@ -1086,7 +1086,6 @@ def iter_text_pages(
         return None if img_dir is None else (img_dir / f"{page_no:04d}.{img_ext}")
 
     def _parse_page_no(path: Path) -> Optional[int]:
-        # erwartet 0001.txt / 0001.jpg etc.
         try:
             return int(path.stem)
         except Exception:
@@ -1142,7 +1141,37 @@ def iter_text_pages(
                 yield page_no, tp.read_text(encoding="utf-8")
 
         return _it()
-    
+
+    def _write_lock_dir() -> Optional[Path]:
+        base = txt_dir or img_dir
+        return None if base is None else (base / ".write.lock")
+
+    def _write_lock_create() -> bool:
+        ld = _write_lock_dir()
+        if ld is None:
+            return False
+        ld.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            ld.mkdir()
+            return True
+        except FileExistsError:
+            return False
+
+    def _write_lock_remove_best_effort() -> None:
+        ld = _write_lock_dir()
+        if ld is None or not ld.exists():
+            return
+        try:
+            for p in ld.glob("*"):
+                try:
+                    if p.is_file():
+                        p.unlink()
+                except Exception:
+                    pass
+            ld.rmdir()
+        except Exception:
+            pass
+
     def _log_and_yield(page_no: int, txt: str):
         preview = " ".join((txt or "").split())[:60]
         logger.info(f"OCR result doc={_doc_id} page={page_no}: {preview}...")
@@ -1151,6 +1180,8 @@ def iter_text_pages(
     cached_page_set = _cached_pages()
 
     logger.info(f"Found {len(set(cached_page_set['text']))} text files and {len(set(cached_page_set['image']))} image files")
+
+
 
     # If text file found and not overwrite, use as result and skip download + OCR
     if (
@@ -1162,12 +1193,25 @@ def iter_text_pages(
         logger.warning(f"Using {len(set(cached_page_set['text']))} text files in {txt_dir}")
         yield from _yield_from_cache()
         return    
+    
+    # writing_enabled = (
+    #     (save_text in {"active", "overwrite"} and txt_dir is not None) or
+    #     (save_image in {"active", "overwrite"} and img_dir is not None)
+    # )
+
+    # lock_acquired = False
+    # if writing_enabled:
+    #     lock_acquired = _write_lock_create()
+    #     if lock_acquired:
+    #         logger.debug(f"Write lock set: {_write_lock_dir()}")
+    #     else:
+    #         logger.info(f"Write lock already present: {_write_lock_dir()} (another run may be writing or crashed)")
 
     # If image file found and not overwrite, use as result and skip download but proceed with OCR
     if save_image == "active" and img_dir is not None and img_dir.exists():
         cached_imgs = list(_iter_cached_image_pages(img_dir, img_ext))
         if cached_imgs:
-            logger.warning(f"Using {len(set(cached_page_set['image']))} text files in {img_dir}; no remote download")
+            logger.warning(f"Using {len(set(cached_page_set['image']))} image files in {img_dir}; no remote download")
             for page_no, img_path in cached_imgs:
                 tp = _text_path(page_no)
                 if save_text == "active" and save_text != "overwrite" and tp and tp.exists():
