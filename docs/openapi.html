@@ -23,6 +23,11 @@
         "summary": "Create export",
         "description": "Exports the store or a named graph to /home/runner/work/zotero_rdf_server/zotero_rdf_server/local/exports",
         "operationId": "export_graph_export_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
         "parameters": [
           {
             "name": "format",
@@ -92,7 +97,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
       }
     },
     "/reload": {
@@ -103,6 +113,11 @@
         "summary": "Reload app",
         "description": "Will trigger a reload, even if not set in config.",
         "operationId": "reload_store_reload_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
         "parameters": [
           {
             "name": "logging_level",
@@ -167,47 +182,12 @@
               }
             }
           }
-        }
-      }
-    },
-    "/libs": {
-      "get": {
-        "tags": [
-          "Admin"
-        ],
-        "summary": "List of all libraries",
-        "description": "Returns all available libraries with configuration.",
-        "operationId": "get_libs_libs_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
           }
-        }
-      }
-    },
-    "/graphs": {
-      "get": {
-        "tags": [
-          "RDF"
-        ],
-        "summary": "List of all named graphs",
-        "description": "Returns all available named graphs.",
-        "operationId": "list_graphs_graphs_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          }
-        }
+        ]
       }
     },
     "/delete_mapping_targets": {
@@ -218,6 +198,11 @@
         "summary": "Delete all mapping target triples from a mapping graph",
         "description": "Deletes all triples of the form `?entry zmap:target ?entity` from the given mapping graph.\n\nBy default this endpoint runs in dry-run mode (`execute=false`).",
         "operationId": "delete_mapping_targets_delete_mapping_targets_delete",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
         "parameters": [
           {
             "name": "map_graph_iri",
@@ -277,6 +262,11 @@
         "summary": "Purge orphan entities from a named entity graph",
         "description": "Finds orphan entities in the configured libraries and optionally deletes them.\n\nAn entity is considered an orphan if it is not a mapping target. If `not_mapped_only=false`, the entity must additionally not be referenced as an object in the selected graphs.\n\nBy default this endpoint runs in dry-run mode (`delete=false`).",
         "operationId": "purge_purge_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
         "parameters": [
           {
             "name": "graph_iri",
@@ -368,6 +358,11 @@
         "summary": "Merge two entities in the knowledge base graph and retarget mapping entries",
         "description": "Moves facts from `old` to `new` in the knowledge base graph, replaces all occurrences of `old` as an object across the store, retargets mapping entries in the mapping graph, and migrates facts in the mapping graph.\n\nIf `only_redirect=true`, the old subject facts are kept and a `new owl:sameAs old` triple is added to the knowledge base graph. Otherwise, subject facts of `old` in the knowledge base graph are deleted.\n\nBy default this endpoint runs in dry-run mode (`execute=false`).",
         "operationId": "merge_merge_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
         "parameters": [
           {
             "name": "old_iri",
@@ -472,6 +467,11 @@
         "summary": "Synchronize knowledge base entities and mapping entries",
         "description": "Synchronizes entities in the knowledge base graph with mapping entries in the mapping graph.\n\n- direction=auto chooses a direction based on whether mapping/entities exist.\n- execute=false performs only validation and direction resolution (dry run).\n- execute=true performs the actual synchronization and returns counters.",
         "operationId": "kb_map_sync_kb_map_sync_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
         "parameters": [
           {
             "name": "entity_graph_iri",
@@ -605,6 +605,11 @@
         "summary": "Remove or clear a graph from the RDF store",
         "description": "Removes a named graph from the store. If the default graph is specified, it will be cleared but not removed.\n\nBy default this endpoint performs a dry run (`execute=false`).",
         "operationId": "delete_graph_remove_graph_delete",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
         "parameters": [
           {
             "name": "graph_iri",
@@ -672,6 +677,11 @@
         "summary": "Export CSV",
         "description": "Exports a named graph or the entire store as CSV or loads a CSV as RDF into the store",
         "operationId": "get_csv_csv_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
         "parameters": [
           {
             "name": "graph",
@@ -773,7 +783,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
       }
     },
     "/logs/clear": {
@@ -792,6 +807,51 @@
               }
             }
           }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
+    "/libs": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "List of all libraries",
+        "description": "Returns all available libraries with configuration.",
+        "operationId": "get_libs_libs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/graphs": {
+      "get": {
+        "tags": [
+          "RDF"
+        ],
+        "summary": "List of all named graphs",
+        "description": "Returns all available named graphs.",
+        "operationId": "list_graphs_graphs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
         }
       }
     },
@@ -799,11 +859,16 @@
       "get": {
         "tags": [
           "Plugin",
-          "FTS"
+          "Fts"
         ],
         "summary": "OCR a URL (PDF or IIIF) and return text per page",
         "description": "Iterates pages from a PDF/IIIF URL and runs OCR. Output can be JSON, NDJSON (one JSON object per line), or ZIP. If `domain/model_name/segmenter` are omitted, defaults are resolved from YAML/ENV.",
         "operationId": "ocr_url_plugin_fts_ocr_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
         "parameters": [
           {
             "name": "input",
@@ -1128,7 +1193,7 @@
       "post": {
         "tags": [
           "Plugin",
-          "FTS"
+          "Fts"
         ],
         "summary": "Ingest Opensearch",
         "operationId": "ingest_opensearch_plugin_fts_opensearch_post",
@@ -1161,17 +1226,27 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
       }
     },
     "/plugin/fts/pipeline": {
       "post": {
         "tags": [
           "Plugin",
-          "FTS"
+          "Fts"
         ],
         "summary": "Ingest Route",
         "operationId": "ingest_route_plugin_fts_pipeline_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
         "parameters": [
           {
             "name": "targets",
@@ -1347,7 +1422,8 @@
       "get": {
         "tags": [
           "Plugin",
-          "FTS",
+          "Fts",
+          "Open Endpoint",
           "Search"
         ],
         "summary": "Search comma-separated terms (OR) with phrase/prefix/fuzzy modes",
@@ -1645,7 +1721,8 @@
       "get": {
         "tags": [
           "Plugin",
-          "FTS",
+          "Fts",
+          "Open Endpoint",
           "Search"
         ],
         "summary": "Proximity search between two CSV lists (A x B) using intervals",
@@ -1847,7 +1924,8 @@
       "get": {
         "tags": [
           "Plugin",
-          "FTS",
+          "Fts",
+          "Open Endpoint",
           "Search"
         ],
         "summary": "Vector k-NN similarity search by reference document _id",
@@ -2009,7 +2087,8 @@
       "get": {
         "tags": [
           "Plugin",
-          "FTS",
+          "Fts",
+          "Open Endpoint",
           "Search"
         ],
         "summary": "Token similarity search by reference document _id (More Like This)",
@@ -2188,12 +2267,18 @@
       "get": {
         "tags": [
           "Plugin",
+          "Parser",
           "Semantics",
           "RDF"
         ],
         "summary": "Parse notes",
         "description": "Triggers the parsing of all Zotero notes with semantic-html plugin",
         "operationId": "parse_notes_plugin_parser_parse_notes_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
         "parameters": [
           {
             "name": "delete",
@@ -2308,12 +2393,18 @@
       "get": {
         "tags": [
           "Plugin",
+          "Rdf Notes",
           "Notes RDF Interface",
           "RDF"
         ],
         "summary": "Zotero Notes to RDF",
         "description": "Writes all RDF blocks in Zotero Notes HTML into RDF, either Store or file.",
         "operationId": "znotes2rdf_plugin_rdf_notes_znotes2rdf_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
         "parameters": [
           {
             "name": "graph",
@@ -2486,12 +2577,18 @@
       "get": {
         "tags": [
           "Plugin",
+          "Rdf Notes",
           "Notes RDF Interface",
           "RDF"
         ],
         "summary": "RDF to Zotero Notes",
         "description": "Creates Zotero Notes with RDF dump block from Store or RDF dataset",
         "operationId": "rdf2znotes_plugin_rdf_notes_rdf2znotes_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
         "parameters": [
           {
             "name": "clear_collection",
@@ -2681,6 +2778,7 @@
       "get": {
         "tags": [
           "Plugin",
+          "Rdf Notes",
           "Notes RDF Interface",
           "RDF",
           "Semantics"
@@ -2688,6 +2786,11 @@
         "summary": "Parses taxonomy between Knowledge Base and Zotero",
         "description": "Creates a structured HTML from RDF taxonomies, and parses structured HTML back as RDF",
         "operationId": "taxonomy_plugin_rdf_notes_taxonomy_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
         "parameters": [
           {
             "name": "graph",
@@ -3176,6 +3279,12 @@
           "type"
         ],
         "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBasic": {
+        "type": "http",
+        "scheme": "basic"
       }
     }
   }
