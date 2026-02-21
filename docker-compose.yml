@@ -19,6 +19,30 @@ services:
       - "${IMPORT_DIRECTORY_HOST:-./app/exports}:/app/import"
       - "${BACKUP_DIRECTORY_HOST:-./app/backup}:/app/backup"
     restart: unless-stopped
+
+  zotero-rdf-workers:
+    build: .
+    container_name: ${ZOTERO_RDF_WORKERS_CONTAINER:-zotero-rdf-workers}
+    working_dir: /src
+    profiles:
+      - worker
+    command: uvicorn zotero_rdf_server.main:app --host 0.0.0.0 --port 8000 --workers 4
+    ports:
+      - "${SERVER_WORKER_PORT:-8001}:8000"
+    env_file:
+      - ./.env
+    environment:
+      STORE_MODE: "directory_ro"
+    volumes:
+      - "${CONFIG_FILE_HOST:-./app/config.yaml}:${CONFIG_FILE:-/app/config.yaml}"
+      - "${ZOTERO_CONFIG_FILE_HOST:-./app/zotero.yaml}:${ZOTERO_CONFIG_FILE:-/app/zotero.yaml}"
+      - "${STORE_DIRECTORY_HOST:-./app/data}:/app/data"
+      - "${PLUGINS_DIRECTORY_HOST:-./app/plugins}:/app/plugins"
+      - "${EXPORT_DIRECTORY_HOST:-./app/exports}:/app/exports"
+      - "${IMPORT_DIRECTORY_HOST:-./app/exports}:/app/import"
+      - "${BACKUP_DIRECTORY_HOST:-./app/backup}:/app/backup"
+    restart: unless-stopped
+
   oxigraph:
     image: ghcr.io/oxigraph/oxigraph:main
     container_name: ${OXIGRAPH_CONTAINER}
@@ -61,7 +85,7 @@ services:
       - "${OPENSEARCH_TRANSPORT_PORT:-9600}:9600"
 
     volumes:
-      - "${OPENSEARCH_DATA_DIR:-opensearch-data}:/usr/share/opensearch/data"
+      - "${OPENSEARCH_DATA_DIR_HOST:-opensearch-data}:/usr/share/opensearch/data"
 
     healthcheck:
       test: ["CMD-SHELL", "curl -s http://localhost:9200 >/dev/null || exit 1"]
