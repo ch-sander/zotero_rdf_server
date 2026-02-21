@@ -46,6 +46,8 @@ services:
   oxigraph:
     image: ghcr.io/oxigraph/oxigraph:main
     container_name: ${OXIGRAPH_CONTAINER}
+    profiles:
+      - oxigraph
     ports:
       - "7879:7879"
     volumes:
@@ -56,6 +58,8 @@ services:
   opensearch:
     image: "opensearchproject/opensearch:${OPENSEARCH_VERSION:-2.14.0}"
     container_name: ${OPENSEARCH_CONTAINER:-opensearch}
+    profiles:
+      - opensearch
     environment:
       - discovery.type=single-node
       - cluster.name=${OPENSEARCH_CLUSTER_NAME:-opensearch}
@@ -98,6 +102,10 @@ services:
   opensearch-dashboards:
     image: "opensearchproject/opensearch-dashboards:${OPENSEARCH_DASHBOARDS_VERSION:-2.14.0}"
     container_name: ${OPENSEARCH_DASHBOARDS_CONTAINER:-opensearch-dashboards}
+    env_file:
+      - ./.env
+    profiles:
+      - opensearch
     ports:
       - "${OPENSEARCH_DASHBOARDS_PORT:-5601}:5601"
     environment:
