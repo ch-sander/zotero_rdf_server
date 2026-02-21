@@ -159,6 +159,17 @@ STORE_DIRECTORY = safe_path(
     or "/app/data"
 )
 
+API_USER = safe_path(
+    os.getenv("API_USER")
+    or server_cfg.get("api_user")
+    or None
+)
+
+API_PASSWORD = safe_path(
+    os.getenv("API_PASSWORD")
+    or server_cfg.get("api_password")
+    or None
+)
 
 REFRESH = REFRESH_INTERVAL >= 0
 

@@ -8,6 +8,8 @@ from zotero_rdf_server.utils import *
 from zotero_rdf_server.api import require_writable
 
 router = APIRouter(tags=["Semantics"])
+open_router = APIRouter()
+
 
 @router.get("/parse_notes", summary="Parse notes", description="Triggers the parsing of all Zotero notes with semantic-html plugin", tags=["RDF"], dependencies=[Depends(require_writable)])
 async def parse_notes(

@@ -8,7 +8,7 @@ from zotero_rdf_server.utils import *
 from zotero_rdf_server.api import require_writable
 
 router = APIRouter(tags=["Notes RDF Interface"])
-
+open_router = APIRouter()
 
 @router.get(
     "/znotes2rdf",

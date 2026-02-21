@@ -1,5 +1,7 @@
-from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Depends
+from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Depends, status
 from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+import secrets
 from typing import Literal as TypeLiteral
 import logging
 from pathlib import Path
@@ -14,8 +16,24 @@ import pkgutil
 from importlib import import_module
 from importlib.util import find_spec
 
+app = FastAPI()
+security = HTTPBasic()
 
-router = APIRouter()
+def verify(credentials: HTTPBasicCredentials = Depends(security)):
+    if API_USER and API_PASSWORD:
+        correct_username = secrets.compare_digest(credentials.username, API_USER)
+        correct_password = secrets.compare_digest(credentials.password, API_PASSWORD)
+
+        if not (correct_username and correct_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unauthorized",
+                headers={"WWW-Authenticate": "Basic"},
+            )
+        return credentials.username
+    
+router = APIRouter(dependencies=[Depends(verify)])
+open_router = APIRouter()
 
 def require_writable():
     if STORE_MODE == "directory_ro":
@@ -32,6 +50,7 @@ def include_plugins(app: FastAPI, plugins_pkg: str = "zotero_rdf_server.plugins"
             continue
 
         plugin_name = m.name.rsplit(".", 1)[-1]
+        display_name = plugin_name.replace("_", " ").title()
         endpoints_mod = f"{m.name}.endpoints"
 
         if find_spec(endpoints_mod) is None:
@@ -40,13 +59,20 @@ def include_plugins(app: FastAPI, plugins_pkg: str = "zotero_rdf_server.plugins"
         try:
             mod = import_module(endpoints_mod)
             prouter = getattr(mod, "router", None)
-            if prouter is None:
-                logger.warning("Plugin %s has endpoints.py but no `router`", plugin_name)
+            open_router = getattr(mod, "open_router", None)
+
+            if prouter is None and open_router is None:
+                logger.warning("Plugin %s has endpoints.py but no routers", plugin_name)
                 continue
 
-            prefix = getattr(mod, "PLUGIN_PREFIX", f"{base_prefix}/{plugin_name}")
-            app.include_router(prouter, prefix=prefix,
-                                tags=["Plugin"])
+            if prouter is not None:
+                prefix = getattr(mod, "PLUGIN_PREFIX", f"{base_prefix}/{plugin_name}")
+                app.include_router(prouter, prefix=prefix,
+                                    tags=["Plugin", display_name], dependencies=[Depends(verify)])
+                
+            if open_router is not None:
+                app.include_router(open_router, prefix=prefix,
+                                    tags=["Plugin", display_name, "Open Endpoint"])
 
             logger.info("Loaded plugin %s at %s", plugin_name, prefix)
         except Exception:
@@ -145,12 +171,12 @@ async def optimize_store():
     return {"success":"Store optimized"}
 
 
-@router.get("/libs", summary="List of all libraries", description="Returns all available libraries with configuration.", tags=["Admin"])
+@open_router.get("/libs", summary="List of all libraries", description="Returns all available libraries with configuration.", tags=["Admin"])
 async def get_libs():
     result = [ZoteroLibrary(cfg) for cfg in ZOTERO_LIBRARIES_CONFIGS]
     return {"success": result}
 
-@router.get("/graphs", summary="List of all named graphs", description="Returns all available named graphs.", tags=["RDF"])
+@open_router.get("/graphs", summary="List of all named graphs", description="Returns all available named graphs.", tags=["RDF"])
 async def list_graphs():
     from .store import store
     graphs = [str(g) for g in store.named_graphs()]

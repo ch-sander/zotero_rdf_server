@@ -15,7 +15,8 @@ from pydantic import BaseModel, Field
 from .helpers import plugin_logger
 logger=plugin_logger()
 
-router = APIRouter(tags=["FTS"])
+router = APIRouter()
+open_router = APIRouter()
 
 class OcrPage(BaseModel):
     index: int = Field(..., description="0-based page index")
@@ -648,7 +649,7 @@ def format_search_response(
     raise HTTPException(status_code=400, detail="Invalid format. Use: json, csv, md.")
 
 
-@router.get(
+@open_router.get(
     "/search/terms",
     summary="Search comma-separated terms (OR) with phrase/prefix/fuzzy modes",
     description=(
@@ -768,7 +769,7 @@ def search_terms(
         truncate_chars=truncate_chars,
     )
 
-@router.get(
+@open_router.get(
     "/search/proximity",
     summary="Proximity search between two CSV lists (A x B) using intervals",
     description=(
@@ -831,7 +832,7 @@ def search_proximity(
         include_debug=debug,
     )
 
-@router.get(
+@open_router.get(
     "/search/knn/by-id",
     summary="Vector k-NN similarity search by reference document _id",
     description="Fetches the vector from a reference document and runs a k-NN search to find similar documents.",
@@ -888,7 +889,7 @@ def knn_by_id(
         include_debug=debug,
     )
 
-@router.get(
+@open_router.get(
     "/search/mlt/by-id",
     summary="Token similarity search by reference document _id (More Like This)",
     description="Runs a More Like This query using a reference document to find token-similar documents.",

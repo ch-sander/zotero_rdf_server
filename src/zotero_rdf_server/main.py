@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from .lifespan import app_lifespan
-from .api import router, include_plugins
+from .api import router, include_plugins, open_router
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(lifespan=app_lifespan, docs_url="/")
@@ -13,5 +13,7 @@ app.add_middleware(
 )
 
 app.include_router(router)
+app.include_router(open_router)
+
 
 include_plugins(app)
