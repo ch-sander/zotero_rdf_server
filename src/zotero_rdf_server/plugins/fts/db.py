@@ -310,7 +310,7 @@ def ingest_streaming_bulk(
                 digest["ok"] += 1
             else:
                 digest["failed"] += 1
-                logger.warning(
+                logger.error(
                     "OS bulk item failed run=%s id=%s status=%s error=%r",
                     run_id, _id, status, err
                 )

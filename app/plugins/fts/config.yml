@@ -188,16 +188,19 @@ open-search:
         - split:
             field: "meta.parent_tags"
             separator: "\\s*;\\s*"
+            ignore_missing: true
 
         # remove leading '*' from each tag value (works on arrays too)
         - gsub:
             field: "meta.parent_tags"
             pattern: "^\\*"
             replacement: ""
+            ignore_missing: true
 
         # trim whitespace on each element (optional but nice)
         - trim:
             field: "meta.parent_tags"
+            ignore_missing: true
 
   index_templates:
   
