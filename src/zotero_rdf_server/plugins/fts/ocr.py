@@ -750,7 +750,8 @@ def iter_pages(
     iiif_ocr_policy: IiifOcrPolicy = IiifOcrPolicy(),
     timeout: int = 30,
     file_formats: list | None = None,
-    start_page: int = 1
+    start_page: int = 1,
+    doc_id: str = "n/a"
 ) -> Iterator[PageItem]:
     if not start_page or int(start_page)<=0:
         start_page = 1
@@ -766,7 +767,7 @@ def iter_pages(
         logger.warning(f"File {input} skipped as not in {file_formats}")
         return
     else:
-        logger.info(f"Processing {str(kind).upper()} {src_kind} --> {input}")
+        logger.info(f"{doc_id}: Processing {str(kind).upper()} {src_kind} --> {input}")
 
     if kind in ("json", "iiif"):    
         if src_kind == "file":
@@ -784,7 +785,7 @@ def iter_pages(
             logger.warning(f"IIIF manifest <{manifest}> has no image canvases")
             return
         
-        logger.info(f"Found {len(pages)} pages in IIIF, starting at {start_page}")
+        logger.info(f"{doc_id}: Found {len(pages)} pages in IIIF, starting at {start_page}")
         pages = pages[(start_page - 1):]
         logger.debug(f"IIIF Policy: {iiif_ocr_policy}")
         try:
@@ -799,7 +800,7 @@ def iter_pages(
                         txt = ocr_bytes_to_text(r.content, rule)
                         logger.debug(f"Seeing IIIF OCR text in {ocr_url}: {txt}")
                         if is_usable_text(txt, iiif_ocr_policy, log_label="OCR text"):
-                            logger.info(f"Using IIIF OCR text from {ocr_url}")
+                            logger.info(f"{doc_id}: [{i}/{len(pages)}]: Using IIIF OCR text from {ocr_url}")
                             yield PageItem(i, "text", txt, source=f"ocr:{ocr_url}", meta={
                                 "canvas": canvas.get("@id") or canvas.get("id"),
                                 "profile": profile,
@@ -839,11 +840,12 @@ def iter_pages(
 
             reader = PdfReader(pdf_path)
             doc = pdfium.PdfDocument(pdf_path)
-            logger.info(f"Found {len(reader.pages)} pages in PDF, starting at {start_page}")
-            for i, page in enumerate(reader.pages, start=start_page):
+            pages=reader.pages
+            logger.info(f"{doc_id}: Found {len(pages)} pages in PDF, starting at {start_page}")
+            for i, page in enumerate(pages, start=start_page):
                 txt = page.extract_text() or ""
                 if is_usable_text(txt, pdf_text_policy, log_label="PDF text"):
-                    logger.info(f"Using PDF text {input}")
+                    logger.info(f"{doc_id}: [{i}/{len(pages)}]: Using PDF text {input}")
                     yield PageItem(i, "text", txt, source=f"pdf-text:{input}#page={i}")
                 else:
                     pil = doc[i-1].render(scale=pdf_dpi/72).to_pil()
@@ -1054,6 +1056,7 @@ def iter_text_pages(
         raise ValueError(f"on_error must be 'raise', 'skip', 'empty' or 'log', got {on_error!r}")
 
     _doc_id = safe_doc_id(doc_id or input)
+    iter_kwargs['doc_id']=_doc_id
 
     def _resolve_out(p: Optional[str]) -> Optional[Path]:
         if not p:
@@ -1174,12 +1177,12 @@ def iter_text_pages(
 
     def _log_and_yield(page_no: int, txt: str):
         preview = " ".join((txt or "").split())[:60]
-        logger.info(f"OCR result doc={_doc_id} page={page_no}: {preview}...")
+        logger.info(f"{_doc_id}: OCR result for page {page_no}: {preview}...")
         return page_no, txt
     
     cached_page_set = _cached_pages()
 
-    logger.info(f"Found {len(set(cached_page_set['text']))} text files and {len(set(cached_page_set['image']))} image files")
+    logger.info(f"{_doc_id}: Found {len(set(cached_page_set['text']))} text files and {len(set(cached_page_set['image']))} image files")
 
 
 
@@ -1205,7 +1208,7 @@ def iter_text_pages(
     #     if lock_acquired:
     #         logger.debug(f"Write lock set: {_write_lock_dir()}")
     #     else:
-    #         logger.info(f"Write lock already present: {_write_lock_dir()} (another run may be writing or crashed)")
+    #         logger.info(f"{_doc_id}: Write lock already present: {_write_lock_dir()} (another run may be writing or crashed)")
 
     # If image file found and not overwrite, use as result and skip download but proceed with OCR
     if save_image == "active" and img_dir is not None and img_dir.exists():
