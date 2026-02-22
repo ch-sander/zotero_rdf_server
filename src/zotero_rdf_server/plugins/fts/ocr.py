@@ -280,6 +280,7 @@ class PageItem:
     data: Union[Image.Image, str]
     source: str
     meta: Optional[dict] = None
+    total: int = 1
 
 class _TextPolicyLike(Protocol):
     enabled: bool
@@ -762,6 +763,11 @@ def iter_pages(
     else:
         kind = detect_url_kind(input, timeout=timeout)
 
+    def _log_and_yield(page: PageItem, total:int=1):
+        if page.kind=="text":
+            preview = " ".join((page.data or "").split())[:60]
+            logger.debug(f"{doc_id}: {page.index}/{total}: {preview}")
+        return page
 
     if file_formats and not kind in file_formats:
         logger.warning(f"File {input} skipped as not in {file_formats}")
@@ -801,12 +807,13 @@ def iter_pages(
                         logger.debug(f"Seeing IIIF OCR text in {ocr_url}: {txt}")
                         if is_usable_text(txt, iiif_ocr_policy, log_label="OCR text"):
                             logger.info(f"{doc_id}: [{i}/{len(pages)}]: Using IIIF OCR text from {ocr_url}")
-                            yield PageItem(i, "text", txt, source=f"ocr:{ocr_url}", meta={
+                            aPage = PageItem(i, "text", txt, source=f"ocr:{ocr_url}", meta={
                                 "canvas": canvas.get("@id") or canvas.get("id"),
                                 "profile": profile,
                                 "key": rule.key,
                                 "xpath": rule.xpath,
-                            })
+                            }, total=len(pages))
+                            yield _log_and_yield(aPage,len(pages))
                             continue
                     except Exception as e:
                         logger.warning(f"OCR fetch/parse failed for page {i} ({ocr_url}): {e}")
@@ -815,10 +822,10 @@ def iter_pages(
                 if img is None:
                     logger.error(f"Skipping page {i}: could not fetch image {img_url}")
                     continue
-
-                yield PageItem(i, "image", img, source=f"iiif:{img_url}", meta={
+                aPage = PageItem(i, "image", img, source=f"iiif:{img_url}", meta={
                     "canvas": canvas.get("@id") or canvas.get("id"),
-                })
+                }, total=len(pages))
+                yield _log_and_yield(aPage,len(pages))
         except Exception as e:
             logger.error(f"Error reading IIIF {input}: {e}")
         return
@@ -842,16 +849,19 @@ def iter_pages(
             doc = pdfium.PdfDocument(pdf_path)
             pages=reader.pages
             logger.info(f"{doc_id}: Found {len(pages)} pages in PDF, starting at {start_page}")
+            pages = pages[(start_page - 1):]
             for i, page in enumerate(pages, start=start_page):
                 txt = page.extract_text() or ""
                 if is_usable_text(txt, pdf_text_policy, log_label="PDF text"):
                     logger.info(f"{doc_id}: [{i}/{len(pages)}]: Using PDF text {input}")
-                    yield PageItem(i, "text", txt, source=f"pdf-text:{input}#page={i}")
+                    aPage = PageItem(i, "text", txt, source=f"pdf-text:{input}#page={i}", total=len(pages))
+                    yield _log_and_yield(aPage,len(pages))
                 else:
                     pil = doc[i-1].render(scale=pdf_dpi/72).to_pil()
                     # pil = downscale_if_needed(pil)
                     logger.debug(f"iter_pages yielding page={i}")
-                    yield PageItem(i, "image", pil, source=f"pdf-image:{input}#page={i}")
+                    aPage = PageItem(i, "image", pil, source=f"pdf-image:{input}#page={i}", total=len(pages))
+                    yield _log_and_yield(aPage,len(pages))
         except Exception as e:
             logger.error(f"Error reading PDF {input}: {e}")
 
@@ -874,7 +884,8 @@ def iter_pages(
                     r.encoding = "utf-8"
                 raw = r.text
             logger.debug(f"iter_pages yielding page={1}")
-            yield PageItem(1, "text", raw, source=f"{kind}:{input}")
+            aPage = PageItem(1, "text", raw, source=f"{kind}:{input}", total=1)
+            yield _log_and_yield(aPage,1)
         except Exception as e:
             logger.error(f"Reading {kind.upper()} {input}: {e}")
         return
@@ -1175,9 +1186,9 @@ def iter_text_pages(
         except Exception:
             pass
 
-    def _log_and_yield(page_no: int, txt: str):
+    def _log_and_yield(page_no: int, txt: str, total: int=1):
         preview = " ".join((txt or "").split())[:60]
-        logger.info(f"{_doc_id}: OCR result for page {page_no}: {preview}...")
+        logger.info(f"{_doc_id} {page_no}/{total}: OCR result: {preview}...")
         return page_no, txt
     
     cached_page_set = _cached_pages()
@@ -1193,7 +1204,7 @@ def iter_text_pages(
         and txt_dir is not None
         and any(txt_dir.glob(f"*.{txt_ext}"))
     ):      
-        logger.warning(f"Using {len(set(cached_page_set['text']))} text files in {txt_dir}")
+        logger.warning(f"{_doc_id}: Using {len(set(cached_page_set['text']))} text files in {txt_dir}")
         yield from _yield_from_cache()
         return    
     
@@ -1213,8 +1224,9 @@ def iter_text_pages(
     # If image file found and not overwrite, use as result and skip download but proceed with OCR
     if save_image == "active" and img_dir is not None and img_dir.exists():
         cached_imgs = list(_iter_cached_image_pages(img_dir, img_ext))
+        total = len(cached_imgs)
         if cached_imgs:
-            logger.warning(f"Using {len(set(cached_page_set['image']))} image files in {img_dir}; no remote download")
+            logger.warning(f"{_doc_id}: Using {len(set(cached_page_set['image']))} image files in {img_dir}; no remote download")
             for page_no, img_path in cached_imgs:
                 tp = _text_path(page_no)
                 if save_text == "active" and save_text != "overwrite" and tp and tp.exists():
@@ -1224,7 +1236,7 @@ def iter_text_pages(
                 try:
                     with Image.open(img_path) as im:
                         pil = im.copy()
-                    item = PageItem(page_no, "image", pil, source=f"cache-image:{img_path}")
+                    item = PageItem(page_no, "image", pil, source=f"cache-image:{img_path}",total=total)
                     if transformer:
                         logger.debug("### Using Tranformer from medieval_ocr_pipeline ###")                        
                         res = process_complete_image(item.data, verbose=False, cleanup_temp=True, models=MODELS)
@@ -1232,7 +1244,7 @@ def iter_text_pages(
                     else:                        
                         txt = page_to_text(item, **page_to_text_kwargs)  # OCR local
                 except Exception as e:
-                    logger.error(f"Failed to load cached image for page {page_no} from {img_path}: {e}")
+                    logger.error(f"{_doc_id}: Failed to load cached image for page {page_no} from {img_path}: {e}")
 
                     if on_error == "raise":
                         raise
@@ -1242,11 +1254,12 @@ def iter_text_pages(
 
                 if save_text in {"active", "overwrite"}:
                     _maybe_store_text(page_no, txt)
-                yield _log_and_yield(page_no, txt)
+                yield _log_and_yield(page_no, txt, total)
             return
     
     for item in iter_pages(input=input, **iter_kwargs):
         page_no = getattr(item, "sequence", None) or getattr(item, "index", None)
+        total = getattr(item, "total", 1)
         if page_no is None:
             raise AttributeError("PageItem has neither .sequence nor .index")
 
@@ -1259,7 +1272,7 @@ def iter_text_pages(
                         item.data = im.copy()
                     item.kind = getattr(item, "kind", "image")
                 except Exception as e:
-                    logger.error(f"Failed to load cached image for page {page_no} from {str(ip)}: {e}")
+                    logger.error(f"{_doc_id}: Failed to load cached image for page {page_no} from {str(ip)}: {e}")
 
                     if on_error == "raise":
                         raise
@@ -1273,13 +1286,13 @@ def iter_text_pages(
             try:
                 txt = tp.read_text(encoding="utf-8")
             except Exception as e:
-                logger.error(f"Failed to load cached text for page {page_no} from {str(tp)}: {e}")
+                logger.error(f"{_doc_id}: Failed to load cached text for page {page_no} from {str(tp)}: {e}")
                 if on_error == "raise":
                     raise
                 if on_error == "skip":
                     continue
                 txt = ""
-            yield _log_and_yield(page_no, txt)
+            yield _log_and_yield(page_no, txt, total)
             continue
 
         # Save image (active/overwrite)
@@ -1290,7 +1303,7 @@ def iter_text_pages(
                     try:
                         _save_pil(item.data, ip)
                     except Exception as e:
-                        logger.error(f"Failed to store image page {page_no} to {str(ip)}: {e}")
+                        logger.error(f"{_doc_id}: Failed to store image page {page_no} to {str(ip)}: {e}")
                         if on_error == "raise":
                             raise
                         if on_error == "skip":
@@ -1305,7 +1318,7 @@ def iter_text_pages(
             else:
                 txt = page_to_text(item, **page_to_text_kwargs)
         except Exception as e:
-            logger.error(f"iter_text_pages error on page {page_no}: {e}")
+            logger.error(f"{_doc_id}: iter_text_pages error on page {page_no}: {e}")
             if on_error == "raise":
                 raise
             if on_error == "skip":
@@ -1318,10 +1331,10 @@ def iter_text_pages(
                 try:
                     _save_text(txt, tp)
                 except Exception as e:
-                    logger.error(f"Failed to store text page {page_no} to {str(tp)}: {e}")
+                    logger.error(f"{_doc_id}: Failed to store text page {page_no} to {str(tp)}: {e}")
                     if on_error == "raise":
                         raise
                     if on_error == "skip":
                         continue
 
-        yield _log_and_yield(page_no, txt)
+        yield _log_and_yield(page_no, txt, total)
