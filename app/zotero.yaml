@@ -87,7 +87,7 @@ defaults:
         fuzzy: 90
         types: ["actor"] # adds defined Zotero namespace if not a complete IRI        
         role_types: ["creatorRole"]
-        properties: ["hasCreator"]
+        role_properties: ["hasCreator"]
       tags:
         fuzzy: 100
         types: ["tag","http://www.w3.org/2004/02/skos/core#Concept"]
