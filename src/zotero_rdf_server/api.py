@@ -710,3 +710,23 @@ def clear_log_file():
         return HTMLResponse(content=f"Error clearing log file: {e}", status_code=500)
 
     return RedirectResponse(url="/logs", status_code=303)
+
+@router.post(
+    "/logs/level",
+    summary="Set log level",
+    description="Sets the application log level at runtime.",
+    tags=["Admin"]
+)
+async def set_log_level(
+    logging_level: LogLevel = Query(..., description="New log level")
+):
+    old_level = logging.getLevelName(logger.level)
+
+    new_level = getattr(logging, logging_level.value)
+    logger.setLevel(new_level)
+
+    return {
+        "status": "ok",
+        "old_level": old_level,
+        "new_level": logging_level.value,
+    }
