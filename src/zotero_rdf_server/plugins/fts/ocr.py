@@ -730,6 +730,11 @@ def _get_pdf_libs():
     pdfium = ensure_import("pypdfium2")
     return PdfReader, pdfium
 
+@lru_cache(maxsize=1)
+def _get_PyMuPDF():
+    fitz = ensure_import("pymupdf")
+    return fitz
+
 import math
 
 def downscale_if_needed(im: Image.Image, max_pixels: int= 10_000_000) -> Image.Image:
@@ -770,7 +775,7 @@ def iter_pages(
         return page
 
     if file_formats and not kind in file_formats:
-        logger.warning(f"File {input} skipped as not in {file_formats}")
+        logger.warning(f"{doc_id}: File {input} skipped as {kind} not in {file_formats}")
         return
     else:
         logger.info(f"{doc_id}: Processing {str(kind).upper()} {src_kind} --> {input}")
@@ -799,12 +804,12 @@ def iter_pages(
                 hit = find_ocr(canvas, iiif_ocr_policy)
                 if hit:                
                     ocr_url, rule, profile = hit
-                    logger.debug(f"Found IIIF OCR text in {ocr_url}")
+                    logger.debug(f"{doc_id}: Found IIIF OCR text in {ocr_url}")
                     try:
                         r = requests.get(ocr_url, timeout=getattr(iiif_ocr_policy, "timeout", timeout), headers=APP_USER)
                         r.raise_for_status()
                         txt = ocr_bytes_to_text(r.content, rule)
-                        logger.debug(f"Seeing IIIF OCR text in {ocr_url}: {txt}")
+                        logger.debug(f"{doc_id}: Seeing IIIF OCR text in {ocr_url}: {txt}")
                         if is_usable_text(txt, iiif_ocr_policy, log_label="OCR text"):
                             logger.info(f"{doc_id}: [{i}/{len(pages)}]: Using IIIF OCR text from {ocr_url}")
                             aPage = PageItem(i, "text", txt, source=f"ocr:{ocr_url}", meta={
@@ -816,18 +821,18 @@ def iter_pages(
                             yield _log_and_yield(aPage,len(pages))
                             continue
                     except Exception as e:
-                        logger.warning(f"OCR fetch/parse failed for page {i} ({ocr_url}): {e}")
+                        logger.warning(f"{doc_id}: OCR fetch/parse failed for page {i} ({ocr_url}): {e}")
 
                 img = fetch_pil_image(img_url, timeout=timeout, iiif_format=iiif_format, iiif_quality="default")
                 if img is None:
-                    logger.error(f"Skipping page {i}: could not fetch image {img_url}")
+                    logger.error(f"{doc_id}: Skipping page {i}: could not fetch image {img_url}")
                     continue
                 aPage = PageItem(i, "image", img, source=f"iiif:{img_url}", meta={
                     "canvas": canvas.get("@id") or canvas.get("id"),
                 }, total=len(pages))
                 yield _log_and_yield(aPage,len(pages))
         except Exception as e:
-            logger.error(f"Error reading IIIF {input}: {e}")
+            logger.error(f"{doc_id}: Error reading IIIF {input}: {e}")
         return
 
     if kind == "pdf":
@@ -839,33 +844,43 @@ def iter_pages(
                 try:
                     pdf_path = stream_download_to_tempfile(input, suffix=".pdf")
                 except Exception as e:
-                    logger.error(f"Error downloading PDF {input}: {e}")
+                    logger.error(f"{doc_id}: Error downloading PDF {input}: {e}")
                     return
             # from pypdf import PdfReader
             # import pypdfium2 as pdfium
-            PdfReader, pdfium = _get_pdf_libs()
-
-            reader = PdfReader(pdf_path)
-            doc = pdfium.PdfDocument(pdf_path)
-            pages=reader.pages
-            logger.info(f"{doc_id}: Found {len(pages)} pages in PDF, starting at {start_page}")
-            pages = pages[(start_page - 1):]
-            for i, page in enumerate(pages, start=start_page):
-                txt = page.extract_text() or ""
+            # PdfReader, pdfium = _get_pdf_libs()
+            pymupdf = _get_PyMuPDF()
+            doc = pymupdf.open(pdf_path)
+            scale = pdf_dpi / 72
+            mat = pymupdf.Matrix(scale, scale)
+            # reader = PdfReader(pdf_path)
+            # doc = pdfium.PdfDocument(pdf_path)
+            # pages=reader.pages
+            total = doc.page_count
+            logger.info(f"{doc_id}: Found {total} pages in PDF, starting at {start_page}")
+            # pages = pages[(start_page - 1):]
+            for i in range(start_page, total + 1):
+                page = doc.load_page(i-1)
+                # txt = page.extract_text() or ""
+                txt = page.get_text("text") or ""
                 if is_usable_text(txt, pdf_text_policy, log_label="PDF text"):
-                    logger.info(f"{doc_id}: [{i}/{len(pages)}]: Using PDF text {input}")
-                    aPage = PageItem(i, "text", txt, source=f"pdf-text:{input}#page={i}", total=len(pages))
-                    yield _log_and_yield(aPage,len(pages))
+                    logger.info(f"{doc_id}: [{i}/{total}]: Using PDF text {input}")
+                    aPage = PageItem(i, "text", txt, source=f"pdf-text:{input}#page={i}", total=total)
+                    yield _log_and_yield(aPage,total)
                 else:
-                    pil = doc[i-1].render(scale=pdf_dpi/72).to_pil()
+                    pix = page.get_pixmap(matrix=mat, alpha=False)
+                    # pil = doc[i-1].render(scale=pdf_dpi/72).to_pil()
+                    pil = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
                     # pil = downscale_if_needed(pil)
-                    logger.debug(f"iter_pages yielding page={i}")
-                    aPage = PageItem(i, "image", pil, source=f"pdf-image:{input}#page={i}", total=len(pages))
-                    yield _log_and_yield(aPage,len(pages))
+                    aPage = PageItem(i, "image", pil, source=f"pdf-image:{input}#page={i}", total=total)
+                    yield _log_and_yield(aPage,total)
+                    del pil, pix, page
+            
         except Exception as e:
-            logger.error(f"Error reading PDF {input}: {e}")
+            logger.error(f"{doc_id}: Error reading PDF {input}: {e}")
 
         finally:
+            doc.close()
             if pdf_path and src_kind != "file":
                 try:
                     os.remove(pdf_path)
@@ -883,14 +898,13 @@ def iter_pages(
                 if not r.encoding:
                     r.encoding = "utf-8"
                 raw = r.text
-            logger.debug(f"iter_pages yielding page={1}")
             aPage = PageItem(1, "text", raw, source=f"{kind}:{input}", total=1)
             yield _log_and_yield(aPage,1)
         except Exception as e:
-            logger.error(f"Reading {kind.upper()} {input}: {e}")
+            logger.error(f"{doc_id}: Reading {kind.upper()} {input}: {e}")
         return
     
-    logger.error(f"Unknown URL type: {kind.upper()} {input}")
+    logger.error(f"{doc_id}: Unknown URL type: {kind.upper()} {input}")
     # raise ValueError("Unknown URL type.")
 
 
