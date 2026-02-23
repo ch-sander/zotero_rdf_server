@@ -213,19 +213,27 @@ def _sniff_text_vs_json(prefix: bytes) -> Optional[Kind]:
     return "text"
 
 
-_IIIF_CTX_RE = re.compile(r"iiif\.io/api/presentation/[23]/context\.json", re.I)
-_IIIF_TYPE_RE = re.compile(r'"(@type|type)"\s*:\s*"(sc:Manifest|Manifest)"', re.I)
+_IIIF_CTX_RE = re.compile(r"iiif\.io/api/presentation/[23]/", re.I)
+_IIIF_MANIFEST_TYPE_RE = re.compile(r'"(@type|type)"\s*:\s*"(sc:Manifest|Manifest)"', re.I)
+_IIIF_SC_TYPE_RE = re.compile(r'"@type"\s*:\s*"sc:[A-Za-z]+"\s*', re.I)
+_IIIF_URL_HINT_RE = re.compile(r'(iiif|i3f|/iiif/)', re.I)
 
 def _is_probably_iiif_json_bytes(b: bytes) -> bool:
     s = b.decode("utf-8", errors="ignore")
+
     if _IIIF_CTX_RE.search(s):
         return True
-    if _IIIF_TYPE_RE.search(s):
+    if _IIIF_MANIFEST_TYPE_RE.search(s):
         return True
+
+    if _IIIF_SC_TYPE_RE.search(s) and _IIIF_URL_HINT_RE.search(s):
+        return True
+
     if '"sequences"' in s and '"canvases"' in s:
         return True
     if '"items"' in s and ('"@context"' in s or '"type"' in s):
         return True
+
     return False
 
 def _is_probably_iiif_json(
