@@ -182,7 +182,7 @@ def page_docs(
     now = datetime.now(timezone.utc).isoformat()
     if vector:
         from .vector import embed
-        from .helpers import clean_ocr
+        from .helpers import clean_ocr        
 
     for sequence, text in pages:
         vector_doc = None
@@ -335,7 +335,6 @@ PagesFn = Callable[[str], Iterator[Tuple[int, str]]]
 def index_stream(
     *,
     config_path: str | None = None,
-    # bisher:
     input: str | None = None,
     doc_id: str | None = None,
     url_to_text_pages_fn: PagesFn | None = None,
