@@ -345,6 +345,7 @@ def ingest_route(
             )
 
         if graph or (graph is None and query is None):  # take one or multple graphs if no query given in API
+            targets_set = []
             from zotero_rdf_server.store import get_graph
             checked_graph, all_graphs = get_graph(graph)
             if graph and not checked_graph:
@@ -367,6 +368,10 @@ def ingest_route(
                         os_cfg = open_search_kwargs if open_search_kwargs is not None else (ncfg.get("open-search") or {})
                         kraken_cfg = (ncfg.get("kraken") or {})
                         targets_x = targets or os_cfg.get("targets")
+                        if isinstance(targets_x, list):
+                            targets_set.extend(targets_x)
+                        else:
+                            targets_set.append(targets_x)
 
                         if not targets_x:
                             raise HTTPException(
@@ -433,6 +438,8 @@ def ingest_route(
                     logger.debug(f"{lib.base_url} skipped")
                 else:
                     logger.warning(f"{graph} not yet supported but defined via config")
+
+            targets=list(set(targets_set))
 
         elif graph is None and query: # query directly
             if not targets:
@@ -517,17 +524,21 @@ def ingest_route(
     result = {
         "status": "ok",
         "run_ids": run_ids,
-        "targets": targets,
+        "targets": list(targets),
         "runs": len(run_ids),
     }    
-
-    _runs_filename = _default_filename("runs_result", "json")
-    with open(export_dir / _runs_filename, "w", encoding="utf-8") as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
+    try:
+        _runs_filename = _default_filename("runs_result", "json")
+        with open(export_dir / _runs_filename, "w", encoding="utf-8") as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Couldn't save file: {e}")
 
     return result
 
 ### SEARCHES ###
+MAX_SIZE = 2000
+
 
 def format_search_response(
     *,
@@ -540,7 +551,7 @@ def format_search_response(
     flatten_meta: bool = True,
     keep_meta: bool = False,
     include_aggs: bool = True,                 # include aggregations when present
-    keep_highlight: bool = False,
+    keep_highlight: bool = True,
     make_snippet: bool = False,
     highlight_field: Optional[str] = None,     # preferred highlight field for snippet selection
     truncate_chars: int = 0,                   # fallback snippet truncation if no highlight
@@ -548,7 +559,8 @@ def format_search_response(
     md_highlight_pre: str = "**",              # markdown highlight pre tag
     md_highlight_post: str = "**",             # markdown highlight post tag
     markdown_title: str = "Search Results",    # allow custom title in markdown
-    markdown_max_rows: int = 150,               # cap markdown output
+    markdown_max_rows: int = MAX_SIZE,               # cap markdown output
+    api_call: Optional[str] = None,
 ):
     """
     Return search results as JSON or as downloadable CSV/Markdown file.
@@ -585,10 +597,13 @@ def format_search_response(
         preferred=preferred_cols
         or ["_id", "_score", "doc_id", "source", "page", "snippet", "ingest_ts"],
     )
-
+    if output_format in ("md", "markdown"):
+        cols = [c for c in cols if c != "highlight"]
     # --- JSON (inline, not a file) -------------------------------------------
     if output_format == "json":
         payload: Dict[str, Any] = {"total": normalized.get("total"), "hits": rows}
+        if include_debug and api_call:
+            payload["api_call"] = api_call
         if aggs is not None:
             payload["aggregations"] = aggs
         if include_debug:
@@ -624,6 +639,14 @@ def format_search_response(
                 "```\n\n"
             )
 
+        if include_debug and api_call:
+            header += (
+                "## API Call\n\n"
+                "```text\n"
+                f"{api_call}\n"
+                "```\n\n"
+            )
+            
         body = render_markdown(
             rows,
             cols,
@@ -648,6 +671,19 @@ def format_search_response(
 
     raise HTTPException(status_code=400, detail="Invalid format. Use: json, csv, md.")
 
+from enum import Enum
+
+
+
+class OutputFormat(str, Enum):
+    json = "json"
+    csv = "csv"
+    markdown = "markdown"
+
+
+class AggType(str, Enum):
+    terms = "terms"
+    composite = "composite"
 
 @open_router.get(
     "/search/terms",
@@ -659,33 +695,152 @@ def format_search_response(
     tags=["Search"]
 )
 def search_terms(
-    index: str = Query(...),
-    q: str = Query(...),
-    field: str = Query("text"),
+    request: Request,
+    index: str = Query(
+        ...,
+        description="Name of the OpenSearch index to query.",
+    ),
+    q: str = Query(
+        ...,
+        description="Search query. Comma-separated expressions unless lucene=true.",
+    ),
+    field: str = Query(
+        "text",
+        description="Analyzed text field to search in. Defaults to 'text'.",
+    ),
 
-    exact: bool = Query(True),
-    truncated: bool = Query(True),
-    fuzzy: bool = Query(True),
-    size: int = Query(10, ge=1, le=1000),
-    lucene: bool = Query(False, description="Interpret q as Lucene query_string"),
-    lucene_lenient: bool = Query(True, description="Lenient parsing for query_string"),
-    highlight: bool = Query(True, description="Include OpenSearch highlight snippets"),
-    highlight_field: Optional[str] = Query(None, description="Field to highlight (defaults to `field`)"),
-    fragment_size: int = Query(160, ge=20, le=500),
-    fragments: int = Query(2, ge=0, le=10),
-    pre_tag: str = Query("**", description="Markdown pre tag for highlight"),
-    post_tag: str = Query("**", description="Markdown post tag for highlight"),
-    truncate_chars: int = Query(0, ge=0, le=5000, description="If >0: truncate plain text when no highlight"),
-    agg_field: Optional[str] = Query(None, description="Keyword field to aggregate over, e.g. meta.author.keyword"),
-    agg_size: int = Query(10, ge=1, le=1000),
-    agg_type: str = Query("terms", pattern="^(terms|composite)$"),
+    exact: bool = Query(
+        True,
+        description="Enable match_phrase (analyzed phrase match with slop).",
+    ),
+    truncated: bool = Query(
+        True,
+        description="Enable match_phrase_prefix (prefix matching on last token).",
+    ),
+    fuzzy: bool = Query(
+        True,
+        description="Enable fuzzy matching (edit distance depending on token length).",
+    ),
 
-    format: str = Query("json", pattern="^(json|csv|md|markdown)$"),
-    columns: Optional[str] = Query(None),
-    debug: bool = Query(False),
+    size: int = Query(
+        10,
+        ge=1,
+        le=MAX_SIZE,
+        description=(
+            f"Number of documents returned in hits.hits (top-level hits). "
+            f"Hard-capped at {MAX_SIZE} for cluster safety. "
+            "Does NOT limit aggregation bucket counts."
+        ),
+    ),
+
+    offset: int = Query(
+        0,
+        ge=0,
+        description=(
+            "Starting offset for hits.hits via 'from'. "
+            "Use together with 'size' for basic pagination. "
+            "Does NOT affect aggregations."
+        ),
+    ),
+
+    lucene: bool = Query(
+        False,
+        description="Interpret 'q' as a Lucene query_string instead of comma-separated terms.",
+    ),
+    lucene_lenient: bool = Query(
+        True,
+        description="Enable lenient parsing for query_string.",
+    ),
+
+    highlight: bool = Query(
+        True,
+        description="Include OpenSearch highlight snippets in the response.",
+    ),
+    highlight_field: Optional[str] = Query(
+        None,
+        description="Field to highlight. Defaults to the search field.",
+    ),
+    fragment_size: int = Query(
+        160,
+        ge=20,
+        le=500,
+        description="Size of each highlight fragment.",
+    ),
+    fragments: int = Query(
+        2,
+        ge=0,
+        le=10,
+        description="Number of highlight fragments to return (0 disables fragments).",
+    ),
+
+    pre_tag: str = Query(
+        "**",
+        description="Markdown prefix for highlighted terms.",
+    ),
+    post_tag: str = Query(
+        "**",
+        description="Markdown suffix for highlighted terms.",
+    ),
+
+    truncate_chars: int = Query(
+        0,
+        ge=0,
+        le=5000,
+        description="If >0: truncate plain text when no highlight is present.",
+    ),
+
+    agg_field: Optional[str] = Query(
+        None,
+        description=(
+            "If set, compute an aggregation over this field and return it under "
+            "'aggregations.by_field'. "
+            "Use a keyword field (e.g. meta.parent_key). "
+            "Aggregation does NOT group hits.hits."
+        ),
+    ),
+
+    agg_size: int = Query(
+        10,
+        ge=1,
+        le=1000,
+        description=(
+            "Number of aggregation buckets (groups) to return. "
+            "For agg_type=terms: top-N buckets by doc_count. "
+            "For agg_type=composite: buckets per page."
+        ),
+    ),
+
+    # agg_type: AggType = Query(
+    #     AggType.terms,
+    #     description=(
+    #         "Aggregation type. "
+    #         "'terms' returns top buckets sorted by doc_count. "
+    #         "'composite' supports bucket pagination (after_key handling not implemented here)."
+    #     ),
+    # ),
+
+    format: OutputFormat = Query(
+        OutputFormat.json,
+        description=(
+            "Response format. "
+            "json: structured API response. "
+            "csv: flat table from hits.hits. "
+            "md/markdown: human-readable document blocks from hits.hits."
+        ),
+    ),
+
+    columns: Optional[str] = Query(
+        None,
+        description="Comma-separated list of fields to include from _source.",
+    ),
+
+    debug: bool = Query(
+        False,
+        description="Include generated OpenSearch query in the response.",
+    ),
 ):
     from .search import parse_csv, build_terms_should_queries, os_search, apply_paging
-
+    api_call = str(request.url) 
     # --- Build query ---------------------------------------------------------
     if lucene:
         # TODO safer for end-user input would be simple_query_string
@@ -716,7 +871,7 @@ def search_terms(
         )
         body = {"query": {"bool": {"should": should, "minimum_should_match": 1}}}
 
-    apply_paging(body, size=size)
+    apply_paging(body, size=size, offset=offset)
 
     # --- Highlight -----------------------------------------------------------
     if highlight:
@@ -730,13 +885,13 @@ def search_terms(
                     "number_of_fragments": fragments,
                 }
             },
-            # Optional: avoids highlighting fields that didn't match
-            "require_field_match": True,
+            "require_field_match": False,
         }
 
     # --- Aggregation ---------------------------------------------------------
     if agg_field:
-        if agg_type == "terms":
+        agg_type="terms" #  pinning parameter
+        if agg_type == AggType.terms:
             body["aggs"] = {
                 "by_field": {
                     "terms": {"field": agg_field, "size": agg_size}
@@ -753,20 +908,44 @@ def search_terms(
                 }
             }
 
+    source_columns = columns
+    render_columns = columns
+    if highlight or truncate_chars > 0:
+        if render_columns:
+            cols = [c.strip() for c in render_columns.split(",") if c.strip()]
+            if "snippet" not in cols:
+                cols.insert(0, "snippet")
+            render_columns = ",".join(cols)
+        else:
+            render_columns = None
+
     try:
-        resp = os_search(index=index, body=body, columns=columns)
+        resp = os_search(index=index, body=body, columns=source_columns)
+        if resp.get("hits", {}).get("hits"):
+            h0 = resp["hits"]["hits"][0]
+            logger.info("First hit keys: %s", list(h0.keys()))
+            logger.info("First hit highlight: %s", h0.get("highlight"))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
 
     return format_search_response(
         resp=resp,
         debug_query=body,
-        output_format=format,
-        columns=columns,
+        output_format=format.value if hasattr(format, "value") else format,
+        columns=render_columns,
         include_debug=debug,
-        md_pre_tag=pre_tag,
-        md_post_tag=post_tag,
+        flatten_meta=True,
+        keep_meta=False,
+        include_aggs=True,
+        keep_highlight=True,
+        make_snippet=highlight,
+        highlight_field=highlight_field or field,
         truncate_chars=truncate_chars,
+        truncate_field=field,
+        md_highlight_pre=pre_tag,
+        md_highlight_post=post_tag,
+        markdown_max_rows=size,
+        api_call=api_call,
     )
 
 @open_router.get(
@@ -779,6 +958,7 @@ def search_terms(
     tags=["Search"]
 )
 def search_proximity(
+    request: Request,
     index: str = Query(..., description="OpenSearch index name"),
     a: str = Query(..., description="CSV list A"),
     b: str = Query(..., description="CSV list B"),
@@ -790,12 +970,19 @@ def search_proximity(
     allow_fuzzy: bool = Query(True),
     fuzzy_edits: int = Query(1, ge=0, le=2),
     size: int = Query(10, ge=1, le=1000),
-    format: str = Query("json", description="Output format: json|csv|md", pattern="^(json|csv|md|markdown)$"),
-    columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
+    format: OutputFormat = Query(
+        OutputFormat.json,
+        description=(
+            "Response format. "
+            "json: structured API response. "
+            "csv: flat table from hits.hits. "
+            "md/markdown: human-readable document blocks from hits.hits."
+        ),
+    ),    columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     debug: bool = Query(False, description="Include debug_query (JSON only)"),
 ):
     from .search import parse_csv, build_proximity_intervals_query, os_search, apply_paging
-
+    api_call = str(request.url) 
     try:
         list_a = parse_csv(a)
         list_b = parse_csv(b)
@@ -827,9 +1014,11 @@ def search_proximity(
     return format_search_response(
         resp=resp,
         debug_query=body,
-        output_format=format,
+        output_format=format.value if hasattr(format, "value") else format,
         columns=columns,
         include_debug=debug,
+        markdown_max_rows=size,
+        api_call=api_call,
     )
 
 @open_router.get(
@@ -839,6 +1028,7 @@ def search_proximity(
     tags=["Search"]
 )
 def knn_by_id(
+    request: Request,
     index: str = Query(..., description="OpenSearch index name"),
     os_id: str = Query(..., description="Reference document OpenSearch _id"),
     vector_field: str = Query("vector", description="knn_vector field name"),
@@ -847,12 +1037,19 @@ def knn_by_id(
     ef_search: Optional[int] = Query(None, ge=1),
     exclude_self: bool = Query(True),
 
-    format: str = Query("json", description="Output format: json|csv|md", pattern="^(json|csv|md|markdown)$"),
-    columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
+    format: OutputFormat = Query(
+        OutputFormat.json,
+        description=(
+            "Response format. "
+            "json: structured API response. "
+            "csv: flat table from hits.hits. "
+            "md/markdown: human-readable document blocks from hits.hits."
+        ),
+    ),    columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     debug: bool = Query(False, description="Include debug_query (JSON only)"),
 ):
     from .search import get_doc_vector, os_search, apply_paging
-
+    api_call = str(request.url) 
     try:
         query_vec = get_doc_vector(index=index, os_id=os_id, vector_field=vector_field)
     except Exception as e:
@@ -884,9 +1081,11 @@ def knn_by_id(
     return format_search_response(
         resp=resp,
         debug_query=body,
-        output_format=format,
+        output_format=format.value if hasattr(format, "value") else format,
         columns=columns,
         include_debug=debug,
+        markdown_max_rows=size,
+        api_call=api_call,
     )
 
 @open_router.get(
@@ -896,6 +1095,7 @@ def knn_by_id(
     tags=["Search"]
 )
 def mlt_by_id(
+    request: Request,
     index: str = Query(..., description="OpenSearch index name"),
     os_id: str = Query(..., description="Reference document OpenSearch _id"),
     fields: str = Query("text", description="CSV list of fields, typically 'text'"),
@@ -906,12 +1106,20 @@ def mlt_by_id(
     size: int = Query(20, ge=1, le=1000),
     exclude_self: bool = Query(True),
 
-    format: str = Query("json", description="Output format: json|csv|md", pattern="^(json|csv|md|markdown)$"),
-    columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
+    format: OutputFormat = Query(
+        OutputFormat.json,
+        description=(
+            "Response format. "
+            "json: structured API response. "
+            "csv: flat table from hits.hits. "
+            "md/markdown: human-readable document blocks from hits.hits."
+        ),
+    ),    columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     debug: bool = Query(False, description="Include debug_query (JSON only)"),
+    
 ):
     from .search import os_search, apply_paging
-
+    api_call = str(request.url) 
     field_list = [f.strip() for f in fields.split(",") if f.strip()]
     if not field_list:
         raise HTTPException(status_code=400, detail="No fields provided.")
@@ -949,7 +1157,8 @@ def mlt_by_id(
     return format_search_response(
         resp=resp,
         debug_query=body,
-        output_format=format,
+        output_format=format.value if hasattr(format, "value") else format,
         columns=columns,
         include_debug=debug,
+        api_call=api_call,
     )

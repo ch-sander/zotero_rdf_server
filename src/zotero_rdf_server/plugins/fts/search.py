@@ -17,7 +17,7 @@ logger.info(f"Client config loaded from {cfg_path}")
 # --- Helpers -----------------------------------------------------------------
 
 DEFAULT_SIZE = 10
-MAX_SIZE = 200  # hard safety limit
+from .endpoints import MAX_SIZE
 
 def apply_paging(
     body: Dict[str, Any],
@@ -257,17 +257,21 @@ def flatten_meta_fields(row: Dict[str, Any], meta_key: str = "meta", prefix: str
     walk(meta, [], out)
     return out
 
-def _first_highlight_fragment(h: Dict[str, Any], preferred_field: Optional[str] = None) -> Optional[str]:
+def _all_highlight_fragments(
+    h: Dict[str, Any],
+    preferred_field: Optional[str] = None,
+    sep: str = " … "
+) -> Optional[str]:
     hl = h.get("highlight") or {}
     if not hl:
         return None
 
     if preferred_field and preferred_field in hl and hl[preferred_field]:
-        return hl[preferred_field][0]
+        return sep.join(hl[preferred_field])
 
     for _, frags in hl.items():
         if frags:
-            return frags[0]
+            return sep.join(frags)
     return None
 
 def _truncate_text(s: str, n: int) -> str:
@@ -299,7 +303,7 @@ def normalize_hits(
             row["highlight"] = h.get("highlight") or {}
 
         if make_snippet:
-            frag = _first_highlight_fragment(h, preferred_field=highlight_field)
+            frag = _all_highlight_fragments(h, preferred_field=highlight_field)
             if frag:
                 row["snippet"] = frag
             elif truncate_chars > 0:
