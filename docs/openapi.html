@@ -815,6 +815,53 @@
         ]
       }
     },
+    "/logs/level": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Set log level",
+        "description": "Sets the application log level at runtime.",
+        "operationId": "set_log_level_logs_level_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "logging_level",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/LogLevel",
+              "description": "New log level"
+            },
+            "description": "New log level"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/libs": {
       "get": {
         "tags": [
@@ -3034,7 +3081,7 @@
             "examples": [
               {
                 "img_out": "kraken/images",
-                "save_image": "active",
+                "save_image": "skip",
                 "save_text": "active",
                 "txt_out": "kraken/texts"
               }
