@@ -22,3 +22,4 @@ app/.sync_d71c4c954ce7.db
 /app/opensearch/opensearch-data
 *.db-shm
 /app/plugins/parser/claudius
+/app/opensearch/snapshots
