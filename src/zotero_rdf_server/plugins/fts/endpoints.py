@@ -1,5 +1,5 @@
 from __future__ import annotations
-from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Body
+from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Body, Depends
 from fastapi.responses import StreamingResponse, FileResponse, Response, JSONResponse, PlainTextResponse
 from typing import Literal, Any, Dict, Iterator, List, Optional, Union
 from pathlib import Path
@@ -539,6 +539,36 @@ def ingest_route(
 ### SEARCHES ###
 MAX_SIZE = 2000
 
+class KeywordFilter(BaseModel):
+    filter_field: Optional[str] = None
+    filter_value: Optional[str] = None
+    filter_values: Optional[List[str]] = None
+
+
+def keyword_filter_params(
+    filter_field: Optional[str] = Query(
+        None,
+        description="Keyword field to filter on (e.g. meta.parent_key)"
+    ),
+    filter_value: Optional[str] = Query(
+        None,
+        description="Single exact filter value"
+    ),
+    filter_values: Optional[str] = Query(
+        None,
+        description="CSV list of exact filter values"
+    ),
+) -> KeywordFilter:
+
+    values = None
+    if filter_values:
+        values = [v.strip() for v in filter_values.split(",") if v.strip()]
+
+    return KeywordFilter(
+        filter_field=filter_field,
+        filter_value=filter_value,
+        filter_values=values,
+    )
 
 def format_search_response(
     *,
@@ -833,13 +863,13 @@ def search_terms(
         None,
         description="Comma-separated list of fields to include from _source.",
     ),
-
+    filters: KeywordFilter = Depends(keyword_filter_params),
     debug: bool = Query(
         False,
         description="Include generated OpenSearch query in the response.",
     ),
 ):
-    from .search import parse_csv, build_terms_should_queries, os_search, apply_paging
+    from .search import parse_csv, build_terms_should_queries, os_search, apply_paging, apply_keyword_filter
     api_call = str(request.url) 
     # --- Build query ---------------------------------------------------------
     if lucene:
@@ -870,7 +900,8 @@ def search_terms(
             fuzzy=fuzzy,
         )
         body = {"query": {"bool": {"should": should, "minimum_should_match": 1}}}
-
+        
+    apply_keyword_filter(body, filters)
     apply_paging(body, size=size, offset=offset)
 
     # --- Highlight -----------------------------------------------------------
@@ -970,6 +1001,7 @@ def search_proximity(
     allow_fuzzy: bool = Query(True),
     fuzzy_edits: int = Query(1, ge=0, le=2),
     size: int = Query(10, ge=1, le=1000),
+    filters: KeywordFilter = Depends(keyword_filter_params),
     format: OutputFormat = Query(
         OutputFormat.json,
         description=(
@@ -981,7 +1013,7 @@ def search_proximity(
     ),    columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     debug: bool = Query(False, description="Include debug_query (JSON only)"),
 ):
-    from .search import parse_csv, build_proximity_intervals_query, os_search, apply_paging
+    from .search import parse_csv, build_proximity_intervals_query, os_search, apply_paging, apply_keyword_filter
     api_call = str(request.url) 
     try:
         list_a = parse_csv(a)
@@ -1003,7 +1035,7 @@ def search_proximity(
         allow_fuzzy=allow_fuzzy,
         fuzzy_edits=fuzzy_edits,
     )
-
+    apply_keyword_filter(body, filters)
     apply_paging(body, size=size)
 
     try:
@@ -1036,7 +1068,7 @@ def knn_by_id(
     size: int = Query(20, ge=1, le=1000),
     ef_search: Optional[int] = Query(None, ge=1),
     exclude_self: bool = Query(True),
-
+    filters: KeywordFilter = Depends(keyword_filter_params),
     format: OutputFormat = Query(
         OutputFormat.json,
         description=(
@@ -1109,7 +1141,7 @@ def mlt_by_id(
     minimum_should_match: str = Query("30%", description="e.g. '30%' or '2'"),
     size: int = Query(20, ge=1, le=1000),
     exclude_self: bool = Query(True),
-
+    filters: KeywordFilter = Depends(keyword_filter_params),
     format: OutputFormat = Query(
         OutputFormat.json,
         description=(
@@ -1122,7 +1154,7 @@ def mlt_by_id(
     debug: bool = Query(False, description="Include debug_query (JSON only)"),
     
 ):
-    from .search import os_search, apply_paging
+    from .search import os_search, apply_paging, apply_keyword_filter
     api_call = str(request.url) 
     field_list = [f.strip() for f in fields.split(",") if f.strip()]
     if not field_list:
@@ -1140,17 +1172,12 @@ def mlt_by_id(
     }
 
     if exclude_self:
-        query: Dict[str, Any] = {
-            "bool": {
-                "must": [mlt_query],
-                "must_not": [{"ids": {"values": [os_id]}}],
-            }
-        }
+        query = {"bool": {"must": [mlt_query], "must_not": [{"ids": {"values": [os_id]}}]}}
     else:
-        query = {"query": mlt_query}
+        query = mlt_query
+    body = {"query": query}
 
-
-    body: Dict[str, Any] = {"query": query}
+    apply_keyword_filter(body, filters)
     apply_paging(body, size=size)
 
     try:

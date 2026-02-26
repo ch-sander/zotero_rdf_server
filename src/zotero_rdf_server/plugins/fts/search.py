@@ -455,3 +455,32 @@ def os_search(index: str, body: Dict[str, Any], columns: Optional[str]) -> Dict[
     """Central OpenSearch search that applies _source includes if columns is set."""    
     apply_source_includes(body, columns)
     return client.search(index=index, body=body)
+
+from .endpoints import KeywordFilter
+
+def apply_keyword_filter(body: dict, filters: KeywordFilter):
+    if not filters.filter_field:
+        return
+
+    if not filters.filter_value and not filters.filter_values:
+        return
+
+    if "query" not in body:
+        body["query"] = {"match_all": {}}
+
+    base_query = body["query"]
+
+    if filters.filter_values:
+        clause = {"terms": {filters.filter_field: filters.filter_values}}
+    else:
+        clause = {"term": {filters.filter_field: filters.filter_value}}
+
+    if isinstance(base_query, dict) and "bool" in base_query:
+        base_query["bool"].setdefault("filter", []).append(clause)
+    else:
+        body["query"] = {
+            "bool": {
+                "must": [base_query],
+                "filter": [clause],
+            }
+        }
