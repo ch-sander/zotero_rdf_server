@@ -1054,20 +1054,24 @@ def knn_by_id(
         query_vec = get_doc_vector(index=index, os_id=os_id, vector_field=vector_field)
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"Could not fetch vector for doc {os_id}: {e}")
-
-    knn_clause: Dict[str, Any] = {"field": vector_field, "query_vector": query_vec, "k": k}
+    
+    if not query_vec:
+        raise HTTPException(404, detail="Reference doc has no vector")
+    
+    knn_inner = {"vector": query_vec, "k": k}
     if ef_search is not None:
-        knn_clause["ef_search"] = ef_search
+        knn_inner["method_parameters"] = {"ef_search": ef_search}
 
+    knn_query = {"knn": {vector_field: knn_inner}}
     if exclude_self:
-        query: Dict[str, Any] = {
+        query = {
             "bool": {
-                "must": [{"knn": knn_clause}],
+                "must": [knn_query],
                 "must_not": [{"ids": {"values": [os_id]}}],
             }
         }
     else:
-        query = {"knn": knn_clause}
+        query = knn_query
 
     body: Dict[str, Any] = {"query": query}
 
