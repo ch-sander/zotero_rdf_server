@@ -539,6 +539,54 @@ def ingest_route(
 ### SEARCHES ###
 MAX_SIZE = 2000
 
+class OutputHeader(BaseModel):
+    header_json: Optional[Dict[str, Any]] = None
+    header_md: Optional[str] = None
+    header_kv: Optional[Dict[str, str]] = None
+
+def output_header_params(
+    header_json: Optional[str] = Query(
+        None,
+        description=(
+            "JSON string to be embedded as a codeblock in the Markdown header."
+            "Example: {\"created by\":\"Zotero RDF\",\"job_id\":\"123\"}"
+        ),
+    ),
+    header_md: Optional[str] = Query(
+        None,
+        description="Raw Markdown appended to the Markdown header.",
+    ),
+    header_kv: Optional[List[str]] = Query(
+        None,
+        description="Repeatable key:value pairs. Example: header_kv=createdBy:Zotero RDF&header_kv=job:123",
+    ),
+) -> OutputHeader:
+    parsed_json = None
+    if header_json:
+        try:
+            parsed_json = json.loads(header_json)
+        except Exception as e:
+            logger.error(f"Invalid header_json: {e}")
+
+    kv: Dict[str, str] = {}
+    if header_kv:
+        for item in header_kv:
+            if ":" in item:
+                k, v = item.split(":", 1)
+                k, v = k.strip(), v.strip()
+                if k:
+                    kv[k] = v
+
+    return OutputHeader(header_json=parsed_json, header_md=header_md, header_kv=kv or None)
+
+def make_header(out_header:OutputHeader):
+    meta: Dict[str, Any] = {}
+    if out_header.header_json:
+        meta.update(out_header.header_json)
+    if out_header.header_kv:
+        meta.update(out_header.header_kv)
+    return meta
+
 class KeywordFilter(BaseModel):
     filter_field: Optional[str] = None
     filter_value: Optional[str] = None
@@ -591,6 +639,8 @@ def format_search_response(
     markdown_title: str = "Search Results",    # allow custom title in markdown
     markdown_max_rows: int = MAX_SIZE,               # cap markdown output
     api_call: Optional[str] = None,
+    header_meta: Optional[Dict[str, Any]] = None,
+    header_md_extra: Optional[str] = None,
 ):
     """
     Return search results as JSON or as downloadable CSV/Markdown file.
@@ -621,7 +671,6 @@ def format_search_response(
     if columns:
         preferred_cols = [c.strip() for c in columns.split(",") if c.strip()]
 
-    # Include snippet in default preferred list; harmless if not present.
     cols = collect_columns(
         rows,
         preferred=preferred_cols
@@ -632,6 +681,8 @@ def format_search_response(
     # --- JSON (inline, not a file) -------------------------------------------
     if output_format == "json":
         payload: Dict[str, Any] = {"total": normalized.get("total"), "hits": rows}
+        if header_meta:
+            payload["meta"] = header_meta
         if include_debug and api_call:
             payload["api_call"] = api_call
         if aggs is not None:
@@ -659,7 +710,18 @@ def format_search_response(
     if output_format in ("md", "markdown"):
         header = render_markdown_query_header(debug_query)
 
-        # Optional: include aggregations block
+        if header_meta:
+            pretty_meta = json.dumps(header_meta, indent=2, ensure_ascii=False)
+            header += (
+                "## Metadata\n\n"
+                "```json\n"
+                f"{pretty_meta}\n"
+                "```\n\n"
+            )
+
+        if header_md_extra:
+            header += header_md_extra.rstrip() + "\n\n"
+
         if aggs is not None:
             pretty_aggs = json.dumps(aggs, indent=2, ensure_ascii=False)
             header += (
@@ -848,7 +910,7 @@ def search_terms(
     #         "'composite' supports bucket pagination (after_key handling not implemented here)."
     #     ),
     # ),
-
+    out_header: OutputHeader = Depends(output_header_params),
     format: OutputFormat = Query(
         OutputFormat.json,
         description=(
@@ -958,6 +1020,8 @@ def search_terms(
             logger.info("First hit highlight: %s", h0.get("highlight"))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
+    
+    meta = make_header(out_header)
 
     return format_search_response(
         resp=resp,
@@ -977,6 +1041,8 @@ def search_terms(
         md_highlight_post=post_tag,
         markdown_max_rows=size,
         api_call=api_call,
+        header_meta=meta or None,
+        header_md_extra=out_header.header_md,
     )
 
 @open_router.get(
@@ -1010,7 +1076,9 @@ def search_proximity(
             "csv: flat table from hits.hits. "
             "md/markdown: human-readable document blocks from hits.hits."
         ),
-    ),    columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
+    ),    
+    columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
+    out_header: OutputHeader = Depends(output_header_params),
     debug: bool = Query(False, description="Include debug_query (JSON only)"),
 ):
     from .search import parse_csv, build_proximity_intervals_query, os_search, apply_paging, apply_keyword_filter
@@ -1042,6 +1110,8 @@ def search_proximity(
         resp = os_search(index=index, body=body, columns=columns)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
+    
+    meta = make_header(out_header)
 
     return format_search_response(
         resp=resp,
@@ -1051,6 +1121,8 @@ def search_proximity(
         include_debug=debug,
         markdown_max_rows=size,
         api_call=api_call,
+        header_meta=meta or None,
+        header_md_extra=out_header.header_md,
     )
 
 @open_router.get(
@@ -1077,7 +1149,9 @@ def knn_by_id(
             "csv: flat table from hits.hits. "
             "md/markdown: human-readable document blocks from hits.hits."
         ),
-    ),    columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
+    ),    
+    columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
+    out_header: OutputHeader = Depends(output_header_params),
     debug: bool = Query(False, description="Include debug_query (JSON only)"),
 ):
     from .search import get_doc_vector, os_search, apply_paging
@@ -1113,6 +1187,8 @@ def knn_by_id(
         resp = os_search(index=index, body=body, columns=columns)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
+    
+    meta = make_header(out_header)
 
     return format_search_response(
         resp=resp,
@@ -1122,6 +1198,8 @@ def knn_by_id(
         include_debug=debug,
         markdown_max_rows=size,
         api_call=api_call,
+        header_meta=meta or None,
+        header_md_extra=out_header.header_md,
     )
 
 @open_router.get(
@@ -1150,7 +1228,9 @@ def mlt_by_id(
             "csv: flat table from hits.hits. "
             "md/markdown: human-readable document blocks from hits.hits."
         ),
-    ),    columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
+    ),    
+    columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
+    out_header: OutputHeader = Depends(output_header_params),
     debug: bool = Query(False, description="Include debug_query (JSON only)"),
     
 ):
@@ -1184,6 +1264,8 @@ def mlt_by_id(
         resp = os_search(index=index, body=body, columns=columns)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
+    
+    meta = make_header(out_header)
 
     return format_search_response(
         resp=resp,
@@ -1192,4 +1274,6 @@ def mlt_by_id(
         columns=columns,
         include_debug=debug,
         api_call=api_call,
+        header_meta=meta or None,
+        header_md_extra=out_header.header_md,
     )
