@@ -114,39 +114,6 @@ def import_rdf(lib: ZoteroLibrary, store: Store):
                 except Exception:
                     pass
 
-def import_rdf_from_disk(lib: ZoteroLibrary, store: Store): # TODO deprecate
-    subdir = Path(lib.load_from) if lib.load_from else Path(IMPORT_DIRECTORY) / lib.name
-    subdir = subdir.resolve()
-    if not subdir.is_dir():
-        logger.warning(f"Directory not found for manual import: {subdir}")
-        return
-
-    logger.info(f"Importing RDF files for '{lib.name}' from {subdir} to {lib.base_url}")
-    for filepath in subdir.iterdir():
-        if not filepath.is_file():
-            continue
-        logger.info(f"Found: {filepath.name}")
-        ext = filepath.suffix.lstrip('.').lower()
-        if ext == "json":  # call for JSON
-            logger.warning(f"A {filepath.name} will be parsed as Zotero Export JSON file. For JSON-LD, use .jsonld extension instead!")
-            build_graph_for_library(lib, store, json_path=filepath)
-            continue
-
-        fmt = RdfFormat.from_extension(ext)
-        if fmt is None:
-            logger.info(f"Skipping unsupported file: {filepath.name}")
-            continue
-
-        before = len(store)
-        store.bulk_load(
-            path=filepath,
-            format=fmt,
-            base_iri=f"{lib.base_url}/items/",
-            to_graph=NamedNode(lib.base_url)
-        )
-        after = len(store)
-        logger.info(f"Imported {after - before} triples from {filepath.name}")
-
 def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, ns_prefix: str, base_uri: str, map: dict, knowledge_base_graph: str = None, mapping_base_graph: str = None,language: str = None):
     GRAPH_URI = safeNamedNode(base_uri)
     
