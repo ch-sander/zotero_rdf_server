@@ -23,3 +23,4 @@ app/.sync_d71c4c954ce7.db
 *.db-shm
 /app/plugins/parser/claudius
 /app/opensearch/snapshots
+docker-compose_scigma.yml
