@@ -28,10 +28,13 @@ VALUES ?link_type { "linked_url" "imported_url" }. # filter on attachment types
 OPTIONAL { ?parent rdfs:label ?parent_label }
 OPTIONAL { ?parent zot:date ?date }
 OPTIONAL { ?parent zot:key ?parent_key }
-OPTIONAL { ?parent (zot:creators/zot:hasCreator) ?person_1742_8. }
 
-OPTIONAL {  ?person_1742_8 rdf:type zot:actor;
-                           rdfs:label ?text_1724_9.  }
+OPTIONAL {
+  ?parent (zot:creators/zot:hasCreator) ?person_1742_8 .
+  ?person_1742_8 a zot:actor ;
+                 rdfs:label ?text_1724_9 .
+}
+
 
 OPTIONAL {  ?file zot:url ?url;
                   zot:inLibrary ?library.}
@@ -44,9 +47,9 @@ OPTIONAL {  ?library rdf:type zot:library;
 # #    CONTAINS(?file_label, "Books")
 #   )
 
-# FILTER( # filter on attachment URL
-#     CONTAINS(STR(?url), "archive") 
-#   )
+  # FILTER( # filter on attachment URL
+  #     CONTAINS(STR(?url), "digitale-sammlungen.de") 
+  # )
 
   ?file zot:tags ?t . # ?t_ingest, ?t_pdf .
 
@@ -64,4 +67,5 @@ OPTIONAL {  ?library rdf:type zot:library;
   }
 }
 GROUP BY ?file
+ORDER BY ?_input
 # LIMIT 1
