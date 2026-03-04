@@ -43,6 +43,8 @@ LANG_MAP = {
 
 APP_USER = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Zotero_RDF_server/1.0 (+https://github.com/ch-sander/zotero_rdf_server)"}
 
+from dotenv import load_dotenv
+load_dotenv()
 
 setup_logging("INFO")
 try:
@@ -52,15 +54,13 @@ except Exception as e:
     logger.critical(f"Failed to set WORKDIR!")
 
 def load_config(source):
-    from .utils import load_dict_like
-    from dotenv import load_dotenv
+    from .utils import load_dict_like    
     from string import Template
     config =  load_dict_like(source, label="Loading initial config")
     logger.debug(json.dumps(config,indent=4))
     if config.get("inject_env"):
         try:
             logger.warning(f"Trying to inject .env into {source}")            
-            load_dotenv()
             logger.debug(os.environ)
             config_str = json.dumps(config)
             config_str = Template(config_str).safe_substitute(os.environ)
@@ -81,12 +81,12 @@ def safe_path(path_str: str | Path | None, base_dir: Path | str = WORKDIR) -> Pa
     else:
         return None
 
-config_path = safe_path(os.getenv("CONFIG_FILE", "config.yaml"))
-zotero_config_path = safe_path(os.getenv("ZOTERO_CONFIG_FILE", "zotero.yaml"))
+config_path = os.getenv("CONFIG_FILE", "config.yaml")
+zotero_config_path = os.getenv("ZOTERO_CONFIG_FILE", "zotero.yaml")
 
 try:    
     logger.info(f"Loading config YAML...")
-    config =  load_config(config_path)    
+    config =  load_config(config_path)
 except Exception as e:
     logger.warning(f"Failed to load {config_path}: {e}!")
     # logger.critical(f"EXITING")
@@ -114,6 +114,7 @@ log_level = (
 ).strip().upper()
 
 setup_logging(log_level)
+logger.info(f"Log level set to {log_level}")
 
 REFRESH_INTERVAL = int(
     os.getenv("REFRESH_INTERVAL")
