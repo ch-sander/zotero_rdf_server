@@ -15,7 +15,7 @@ PROV_TIMESTAMP = "http://www.w3.org/ns/prov#generatedAtTime"
 OWL_SAME_AS = "http://www.w3.org/2002/07/owl#sameAs"
 PURL_RELATED = "http://purl.org/dc/elements/1.1/relation"
 
-MAPPING_BASE = "https://zotero-rdf-server/mapping/"
+MAPPING_BASE = "https://zotero-rdf-server.org/mapping/"
 MAP_ENTRY_TYPE = f"{MAPPING_BASE}Entry"
 MAP_TARGET     = f"{MAPPING_BASE}target"     # Entry -> Entity IRI
 MAP_LABEL      = f"{MAPPING_BASE}label"      # Entry -> Literal (Variante)
