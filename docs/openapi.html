@@ -112,7 +112,7 @@
         ],
         "summary": "Reload app",
         "description": "Will trigger a reload, even if not set in config.",
-        "operationId": "reload_store_reload_get",
+        "operationId": "reload_reload_get",
         "security": [
           {
             "HTTPBasic": []
@@ -120,15 +120,27 @@
         ],
         "parameters": [
           {
+            "name": "reload_libraries",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Reload libraries/graphs into the store from (re)loaded configuration",
+              "default": true,
+              "title": "Reload Libraries"
+            },
+            "description": "Reload libraries/graphs into the store from (re)loaded configuration"
+          },
+          {
             "name": "logging_level",
             "in": "query",
             "required": false,
             "schema": {
               "$ref": "#/components/schemas/LogLevel",
-              "description": "Sets log level",
+              "description": "Temporarily sets log level during reload",
               "default": "INFO"
             },
-            "description": "Sets log level"
+            "description": "Temporarily sets log level during reload"
           },
           {
             "name": "remove_store",
@@ -136,11 +148,23 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Clears data directory before loading",
+              "description": "Clears data directory / store before loading",
               "default": true,
               "title": "Remove Store"
             },
-            "description": "Clears data directory before loading"
+            "description": "Clears data directory / store before loading"
+          },
+          {
+            "name": "reload_config",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Reload the entire configuration (re-read env/config and reinit globals)",
+              "default": true,
+              "title": "Reload Config"
+            },
+            "description": "Reload the entire configuration (re-read env/config and reinit globals)"
           }
         ],
         "responses": {
@@ -1483,8 +1507,10 @@
             "required": true,
             "schema": {
               "type": "string",
+              "description": "Name of the OpenSearch index to query.",
               "title": "Index"
-            }
+            },
+            "description": "Name of the OpenSearch index to query."
           },
           {
             "name": "q",
@@ -1492,8 +1518,10 @@
             "required": true,
             "schema": {
               "type": "string",
+              "description": "Search query. Comma-separated expressions unless lucene=true.",
               "title": "Q"
-            }
+            },
+            "description": "Search query. Comma-separated expressions unless lucene=true."
           },
           {
             "name": "field",
@@ -1501,9 +1529,11 @@
             "required": false,
             "schema": {
               "type": "string",
+              "description": "Analyzed text field to search in. Defaults to 'text'.",
               "default": "text",
               "title": "Field"
-            }
+            },
+            "description": "Analyzed text field to search in. Defaults to 'text'."
           },
           {
             "name": "exact",
@@ -1511,9 +1541,11 @@
             "required": false,
             "schema": {
               "type": "boolean",
+              "description": "Enable match_phrase (analyzed phrase match with slop).",
               "default": true,
               "title": "Exact"
-            }
+            },
+            "description": "Enable match_phrase (analyzed phrase match with slop)."
           },
           {
             "name": "truncated",
@@ -1521,9 +1553,11 @@
             "required": false,
             "schema": {
               "type": "boolean",
+              "description": "Enable match_phrase_prefix (prefix matching on last token).",
               "default": true,
               "title": "Truncated"
-            }
+            },
+            "description": "Enable match_phrase_prefix (prefix matching on last token)."
           },
           {
             "name": "fuzzy",
@@ -1531,9 +1565,11 @@
             "required": false,
             "schema": {
               "type": "boolean",
+              "description": "Enable fuzzy matching (edit distance depending on token length).",
               "default": true,
               "title": "Fuzzy"
-            }
+            },
+            "description": "Enable fuzzy matching (edit distance depending on token length)."
           },
           {
             "name": "size",
@@ -1541,11 +1577,26 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 1000,
+              "maximum": 2000,
               "minimum": 1,
+              "description": "Number of documents returned in hits.hits (top-level hits). Hard-capped at 2000 for cluster safety. Does NOT limit aggregation bucket counts.",
               "default": 10,
               "title": "Size"
-            }
+            },
+            "description": "Number of documents returned in hits.hits (top-level hits). Hard-capped at 2000 for cluster safety. Does NOT limit aggregation bucket counts."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Starting offset for hits.hits via 'from'. Use together with 'size' for basic pagination. Does NOT affect aggregations.",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Starting offset for hits.hits via 'from'. Use together with 'size' for basic pagination. Does NOT affect aggregations."
           },
           {
             "name": "lucene",
@@ -1553,11 +1604,11 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Interpret q as Lucene query_string",
+              "description": "Interpret 'q' as a Lucene query_string instead of comma-separated terms.",
               "default": false,
               "title": "Lucene"
             },
-            "description": "Interpret q as Lucene query_string"
+            "description": "Interpret 'q' as a Lucene query_string instead of comma-separated terms."
           },
           {
             "name": "lucene_lenient",
@@ -1565,11 +1616,11 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Lenient parsing for query_string",
+              "description": "Enable lenient parsing for query_string.",
               "default": true,
               "title": "Lucene Lenient"
             },
-            "description": "Lenient parsing for query_string"
+            "description": "Enable lenient parsing for query_string."
           },
           {
             "name": "highlight",
@@ -1577,11 +1628,11 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Include OpenSearch highlight snippets",
+              "description": "Include OpenSearch highlight snippets in the response.",
               "default": true,
               "title": "Highlight"
             },
-            "description": "Include OpenSearch highlight snippets"
+            "description": "Include OpenSearch highlight snippets in the response."
           },
           {
             "name": "highlight_field",
@@ -1596,10 +1647,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Field to highlight (defaults to `field`)",
+              "description": "Field to highlight. Defaults to the search field.",
               "title": "Highlight Field"
             },
-            "description": "Field to highlight (defaults to `field`)"
+            "description": "Field to highlight. Defaults to the search field."
           },
           {
             "name": "fragment_size",
@@ -1609,9 +1660,11 @@
               "type": "integer",
               "maximum": 500,
               "minimum": 20,
+              "description": "Size of each highlight fragment.",
               "default": 160,
               "title": "Fragment Size"
-            }
+            },
+            "description": "Size of each highlight fragment."
           },
           {
             "name": "fragments",
@@ -1621,9 +1674,11 @@
               "type": "integer",
               "maximum": 10,
               "minimum": 0,
+              "description": "Number of highlight fragments to return (0 disables fragments).",
               "default": 2,
               "title": "Fragments"
-            }
+            },
+            "description": "Number of highlight fragments to return (0 disables fragments)."
           },
           {
             "name": "pre_tag",
@@ -1631,11 +1686,11 @@
             "required": false,
             "schema": {
               "type": "string",
-              "description": "Markdown pre tag for highlight",
+              "description": "Markdown prefix for highlighted terms.",
               "default": "**",
               "title": "Pre Tag"
             },
-            "description": "Markdown pre tag for highlight"
+            "description": "Markdown prefix for highlighted terms."
           },
           {
             "name": "post_tag",
@@ -1643,11 +1698,11 @@
             "required": false,
             "schema": {
               "type": "string",
-              "description": "Markdown post tag for highlight",
+              "description": "Markdown suffix for highlighted terms.",
               "default": "**",
               "title": "Post Tag"
             },
-            "description": "Markdown post tag for highlight"
+            "description": "Markdown suffix for highlighted terms."
           },
           {
             "name": "truncate_chars",
@@ -1657,11 +1712,11 @@
               "type": "integer",
               "maximum": 5000,
               "minimum": 0,
-              "description": "If >0: truncate plain text when no highlight",
+              "description": "If >0: truncate plain text when no highlight is present.",
               "default": 0,
               "title": "Truncate Chars"
             },
-            "description": "If >0: truncate plain text when no highlight"
+            "description": "If >0: truncate plain text when no highlight is present."
           },
           {
             "name": "agg_field",
@@ -1676,10 +1731,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Keyword field to aggregate over, e.g. meta.author.keyword",
+              "description": "If set, compute an aggregation over this field and return it under 'aggregations.by_field'. Use a keyword field (e.g. meta.parent_key). Aggregation does NOT group hits.hits.",
               "title": "Agg Field"
             },
-            "description": "Keyword field to aggregate over, e.g. meta.author.keyword"
+            "description": "If set, compute an aggregation over this field and return it under 'aggregations.by_field'. Use a keyword field (e.g. meta.parent_key). Aggregation does NOT group hits.hits."
           },
           {
             "name": "agg_size",
@@ -1689,31 +1744,22 @@
               "type": "integer",
               "maximum": 1000,
               "minimum": 1,
+              "description": "Number of aggregation buckets (groups) to return. For agg_type=terms: top-N buckets by doc_count. For agg_type=composite: buckets per page.",
               "default": 10,
               "title": "Agg Size"
-            }
-          },
-          {
-            "name": "agg_type",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "pattern": "^(terms|composite)$",
-              "default": "terms",
-              "title": "Agg Type"
-            }
+            },
+            "description": "Number of aggregation buckets (groups) to return. For agg_type=terms: top-N buckets by doc_count. For agg_type=composite: buckets per page."
           },
           {
             "name": "format",
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "pattern": "^(json|csv|md|markdown)$",
-              "default": "json",
-              "title": "Format"
-            }
+              "$ref": "#/components/schemas/OutputFormat",
+              "description": "Response format. json: structured API response. csv: flat table from hits.hits. md/markdown: human-readable document blocks from hits.hits.",
+              "default": "json"
+            },
+            "description": "Response format. json: structured API response. csv: flat table from hits.hits. md/markdown: human-readable document blocks from hits.hits."
           },
           {
             "name": "columns",
@@ -1728,8 +1774,10 @@
                   "type": "null"
                 }
               ],
+              "description": "Comma-separated list of fields to include from _source.",
               "title": "Columns"
-            }
+            },
+            "description": "Comma-separated list of fields to include from _source."
           },
           {
             "name": "debug",
@@ -1737,9 +1785,122 @@
             "required": false,
             "schema": {
               "type": "boolean",
+              "description": "Include generated OpenSearch query in the response.",
               "default": false,
               "title": "Debug"
-            }
+            },
+            "description": "Include generated OpenSearch query in the response."
+          },
+          {
+            "name": "header_json",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "JSON string to be embedded as a codeblock in the Markdown header.Example: {\"created by\":\"Zotero RDF\",\"job_id\":\"123\"}",
+              "title": "Header Json"
+            },
+            "description": "JSON string to be embedded as a codeblock in the Markdown header.Example: {\"created by\":\"Zotero RDF\",\"job_id\":\"123\"}"
+          },
+          {
+            "name": "header_md",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Raw Markdown appended to the Markdown header.",
+              "title": "Header Md"
+            },
+            "description": "Raw Markdown appended to the Markdown header."
+          },
+          {
+            "name": "header_kv",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Repeatable key:value pairs. Example: header_kv=createdBy:Zotero RDF&header_kv=job:123",
+              "title": "Header Kv"
+            },
+            "description": "Repeatable key:value pairs. Example: header_kv=createdBy:Zotero RDF&header_kv=job:123"
+          },
+          {
+            "name": "filter_field",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Keyword field to filter on (e.g. meta.parent_key)",
+              "title": "Filter Field"
+            },
+            "description": "Keyword field to filter on (e.g. meta.parent_key)"
+          },
+          {
+            "name": "filter_value",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Single exact filter value",
+              "title": "Filter Value"
+            },
+            "description": "Single exact filter value"
+          },
+          {
+            "name": "filter_values",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "CSV list of exact filter values",
+              "title": "Filter Values"
+            },
+            "description": "CSV list of exact filter values"
           }
         ],
         "responses": {
@@ -1906,13 +2067,11 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "pattern": "^(json|csv|md|markdown)$",
-              "description": "Output format: json|csv|md",
-              "default": "json",
-              "title": "Format"
+              "$ref": "#/components/schemas/OutputFormat",
+              "description": "Response format. json: structured API response. csv: flat table from hits.hits. md/markdown: human-readable document blocks from hits.hits.",
+              "default": "json"
             },
-            "description": "Output format: json|csv|md"
+            "description": "Response format. json: structured API response. csv: flat table from hits.hits. md/markdown: human-readable document blocks from hits.hits."
           },
           {
             "name": "columns",
@@ -1943,6 +2102,117 @@
               "title": "Debug"
             },
             "description": "Include debug_query (JSON only)"
+          },
+          {
+            "name": "filter_field",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Keyword field to filter on (e.g. meta.parent_key)",
+              "title": "Filter Field"
+            },
+            "description": "Keyword field to filter on (e.g. meta.parent_key)"
+          },
+          {
+            "name": "filter_value",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Single exact filter value",
+              "title": "Filter Value"
+            },
+            "description": "Single exact filter value"
+          },
+          {
+            "name": "filter_values",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "CSV list of exact filter values",
+              "title": "Filter Values"
+            },
+            "description": "CSV list of exact filter values"
+          },
+          {
+            "name": "header_json",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "JSON string to be embedded as a codeblock in the Markdown header.Example: {\"created by\":\"Zotero RDF\",\"job_id\":\"123\"}",
+              "title": "Header Json"
+            },
+            "description": "JSON string to be embedded as a codeblock in the Markdown header.Example: {\"created by\":\"Zotero RDF\",\"job_id\":\"123\"}"
+          },
+          {
+            "name": "header_md",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Raw Markdown appended to the Markdown header.",
+              "title": "Header Md"
+            },
+            "description": "Raw Markdown appended to the Markdown header."
+          },
+          {
+            "name": "header_kv",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Repeatable key:value pairs. Example: header_kv=createdBy:Zotero RDF&header_kv=job:123",
+              "title": "Header Kv"
+            },
+            "description": "Repeatable key:value pairs. Example: header_kv=createdBy:Zotero RDF&header_kv=job:123"
           }
         ],
         "responses": {
@@ -2069,13 +2339,11 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "pattern": "^(json|csv|md|markdown)$",
-              "description": "Output format: json|csv|md",
-              "default": "json",
-              "title": "Format"
+              "$ref": "#/components/schemas/OutputFormat",
+              "description": "Response format. json: structured API response. csv: flat table from hits.hits. md/markdown: human-readable document blocks from hits.hits.",
+              "default": "json"
             },
-            "description": "Output format: json|csv|md"
+            "description": "Response format. json: structured API response. csv: flat table from hits.hits. md/markdown: human-readable document blocks from hits.hits."
           },
           {
             "name": "columns",
@@ -2106,6 +2374,117 @@
               "title": "Debug"
             },
             "description": "Include debug_query (JSON only)"
+          },
+          {
+            "name": "filter_field",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Keyword field to filter on (e.g. meta.parent_key)",
+              "title": "Filter Field"
+            },
+            "description": "Keyword field to filter on (e.g. meta.parent_key)"
+          },
+          {
+            "name": "filter_value",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Single exact filter value",
+              "title": "Filter Value"
+            },
+            "description": "Single exact filter value"
+          },
+          {
+            "name": "filter_values",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "CSV list of exact filter values",
+              "title": "Filter Values"
+            },
+            "description": "CSV list of exact filter values"
+          },
+          {
+            "name": "header_json",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "JSON string to be embedded as a codeblock in the Markdown header.Example: {\"created by\":\"Zotero RDF\",\"job_id\":\"123\"}",
+              "title": "Header Json"
+            },
+            "description": "JSON string to be embedded as a codeblock in the Markdown header.Example: {\"created by\":\"Zotero RDF\",\"job_id\":\"123\"}"
+          },
+          {
+            "name": "header_md",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Raw Markdown appended to the Markdown header.",
+              "title": "Header Md"
+            },
+            "description": "Raw Markdown appended to the Markdown header."
+          },
+          {
+            "name": "header_kv",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Repeatable key:value pairs. Example: header_kv=createdBy:Zotero RDF&header_kv=job:123",
+              "title": "Header Kv"
+            },
+            "description": "Repeatable key:value pairs. Example: header_kv=createdBy:Zotero RDF&header_kv=job:123"
           }
         ],
         "responses": {
@@ -2249,13 +2628,11 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "pattern": "^(json|csv|md|markdown)$",
-              "description": "Output format: json|csv|md",
-              "default": "json",
-              "title": "Format"
+              "$ref": "#/components/schemas/OutputFormat",
+              "description": "Response format. json: structured API response. csv: flat table from hits.hits. md/markdown: human-readable document blocks from hits.hits.",
+              "default": "json"
             },
-            "description": "Output format: json|csv|md"
+            "description": "Response format. json: structured API response. csv: flat table from hits.hits. md/markdown: human-readable document blocks from hits.hits."
           },
           {
             "name": "columns",
@@ -2286,6 +2663,117 @@
               "title": "Debug"
             },
             "description": "Include debug_query (JSON only)"
+          },
+          {
+            "name": "filter_field",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Keyword field to filter on (e.g. meta.parent_key)",
+              "title": "Filter Field"
+            },
+            "description": "Keyword field to filter on (e.g. meta.parent_key)"
+          },
+          {
+            "name": "filter_value",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Single exact filter value",
+              "title": "Filter Value"
+            },
+            "description": "Single exact filter value"
+          },
+          {
+            "name": "filter_values",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "CSV list of exact filter values",
+              "title": "Filter Values"
+            },
+            "description": "CSV list of exact filter values"
+          },
+          {
+            "name": "header_json",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "JSON string to be embedded as a codeblock in the Markdown header.Example: {\"created by\":\"Zotero RDF\",\"job_id\":\"123\"}",
+              "title": "Header Json"
+            },
+            "description": "JSON string to be embedded as a codeblock in the Markdown header.Example: {\"created by\":\"Zotero RDF\",\"job_id\":\"123\"}"
+          },
+          {
+            "name": "header_md",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Raw Markdown appended to the Markdown header.",
+              "title": "Header Md"
+            },
+            "description": "Raw Markdown appended to the Markdown header."
+          },
+          {
+            "name": "header_kv",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Repeatable key:value pairs. Example: header_kv=createdBy:Zotero RDF&header_kv=job:123",
+              "title": "Header Kv"
+            },
+            "description": "Repeatable key:value pairs. Example: header_kv=createdBy:Zotero RDF&header_kv=job:123"
           }
         ],
         "responses": {
@@ -3286,6 +3774,15 @@
           "doc"
         ],
         "title": "OpenSearchDocRequest"
+      },
+      "OutputFormat": {
+        "type": "string",
+        "enum": [
+          "json",
+          "csv",
+          "markdown"
+        ],
+        "title": "OutputFormat"
       },
       "ValidationError": {
         "properties": {
