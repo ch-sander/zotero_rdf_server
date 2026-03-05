@@ -146,23 +146,55 @@ async def backup_store():
     return {"status": "success", "backup store":{"path": backup_path,"named_graphs":graphs, "len":len(store)}}
 
 @router.get("/reload", summary="Reload app", description="Will trigger a reload, even if not set in config.", tags=["Data"])
-async def reload_store(logging_level: LogLevel = Query(default=log_level, description="Sets log level"), remove_store: bool = Query(default=True, description="Clears data directory before loading")):
+async def reload(
+    reload_libraries: bool = Query(
+        default=True,
+        description="Reload libraries/graphs into the store from (re)loaded configuration",
+    ),
+    logging_level: LogLevel = Query(
+        default=log_level,
+        description="Temporarily sets log level during reload",
+    ),
+    remove_store: bool = Query(
+        default=True,
+        description="Clears data directory / store before loading",
+    ),
+    reload_config: bool = Query(
+        default=True,
+        description="Reload the entire configuration (re-read env/config and reinit globals)",
+    ),
+):
+    current_level = logger.level
     if logging_level:
-        current_level = logger.level
         new_level = getattr(logging, logging_level.upper(), None)
         if not isinstance(new_level, int):
             return {"error": f"Invalid log level: {logging_level}"}
-        
         logger.setLevel(new_level)
-        try:
+
+    try:
+        if reload_config:
+            from . import config as config_module
+            importlib.reload(config_module)
+
+        if reload_libraries:
             refresh_store(True, remove_store=remove_store)
-        finally:
-            logger.setLevel(current_level)
-    else:
-        refresh_store(True, remove_store=remove_store)
-    from .store import store
-    graphs = [str(g) for g in store.named_graphs()]
-    return {"status": "success", "store":{"named_graphs":graphs, "len":len(store)}}
+        else:
+            refresh_store(False, remove_store=remove_store)
+
+        from .store import store
+        graphs = [str(g) for g in store.named_graphs()]
+        return {
+            "status": "success",
+            "reloaded": {
+                "config": bool(reload_config),
+                "libraries": bool(reload_libraries),
+                "store_cleared": bool(remove_store),
+            },
+            "store": {"named_graphs": graphs, "len": len(store)},
+        }
+
+    finally:
+        logger.setLevel(current_level)
 
 @router.get("/optimize", summary="Optimize Store", description="Will optimize the oxigraph store", tags=["Data"])
 async def optimize_store():
