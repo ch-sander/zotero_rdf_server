@@ -1,0 +1,1496 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Mapping + Entity Editor (File + Remote SPARQL + Federation)</title>
+
+    <!-- shacl-form bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/@ulb-darmstadt/shacl-form/dist/bundle.js" type="module"></script>
+
+    <style>
+      :root { font-family: system-ui, sans-serif; color: #111; }
+      body { margin: 0; display: grid; grid-template-columns: 440px 1fr; height: 100vh; }
+
+      aside { border-right: 1px solid #e7e7e7; padding: 12px; overflow: auto; }
+      main  { padding: 12px; overflow: auto; display: grid; grid-template-rows: auto auto 1fr; gap: 12px; }
+
+      .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      input[type="search"], select, input[type="url"], input[type="text"] {
+        width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 10px; background: #fff;
+      }
+      button {
+        padding: 10px 12px; border: 1px solid #ddd; border-radius: 10px; background: #fff; cursor: pointer;
+      }
+      button.primary { border-color: #111; font-weight: 700; }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+      .list { margin-top: 10px; display: grid; gap: 6px; }
+      .item { padding: 10px; border: 1px solid #eee; border-radius: 12px; cursor: pointer; }
+      .item:hover { border-color: #ddd; }
+      .item.active { border-color: #111; }
+      .muted { color: #666; font-size: 12px; }
+      .small { font-size: 12px; color: #666; }
+
+      .divider { height: 1px; background: #eee; margin: 10px 0; }
+
+      .forms { display: grid; grid-template-columns: 1fr; gap: 12px; align-items: start; }
+      .panel { border: 1px solid #eee; border-radius: 14px; padding: 10px; }
+      .panel h2 { margin: 6px 6px 10px; font-size: 16px; }
+
+      textarea#trigOut {
+        width: 100%;
+        height: 240px;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        padding: 10px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 12px;
+        line-height: 1.35;
+        resize: vertical;
+        box-sizing: border-box;
+      }
+
+      .item.needsTarget { border-color: #f3c200; }
+      .item.needsTarget:hover { border-color: #e0b000; }
+      .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border: 1px solid #e7e7e7;
+        border-radius: 999px;
+        font-size: 12px;
+        color: #666;
+        margin-left: 8px;
+      }
+      .badge.warn { border-color: #f3c200; color: #8a6a00; }
+
+      .copyIcon {
+        cursor: pointer;
+        user-select: none;
+        margin-left: 8px;
+        font-size: 14px;
+        opacity: 0.7;
+      }
+      .copyIcon:hover { opacity: 1; }
+      .copyIcon.disabled { opacity: 0.25; cursor: not-allowed; }
+
+      .chiprow { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+      .chip { display:flex; gap:6px; align-items:center; padding:6px 10px; border:1px solid #eee; border-radius:999px; font-size:12px; color:#444; background:#fff; }
+      .chip input { width:auto; }
+
+      shacl-form { --shacl-label-width: 11em; }
+    </style>
+
+    <!-- Comunica v2 browser bundle (works as global script) -->
+    <script src="https://rdf.js.org/comunica-browser/versions/v2/engines/query-sparql/comunica-browser.js"></script>
+  </head>
+
+  <body>
+    <aside>
+      <div class="row">
+        <button id="openFile" class="primary">Open TriG file…</button>
+        <button id="clearLocal">Clear local</button>
+        <input id="fileInput" type="file" accept=".trig,.ttl,.nq,.nt,text/plain,application/trig,text/turtle,application/n-quads"
+               style="display:none" />
+      </div>
+      <div class="muted small" id="fileInfo" style="margin-top:6px;">No local file loaded.</div>
+
+      <div class="divider"></div>
+
+      <div class="row">
+        <input id="endpoint" type="url" placeholder="Remote SPARQL endpoint (e.g. http://localhost:7879/query)" />
+      </div>
+
+      <div class="row" style="margin-top:8px;">
+        <button id="useEndpoint">Use endpoint</button>
+        <button id="clearEndpoint">Clear endpoint</button>
+      </div>
+
+      <div class="chiprow" style="margin-top:8px;">
+        <label class="chip" title="Local file only">
+          <input type="radio" name="mode" value="local" checked />
+          Local
+        </label>
+        <label class="chip" title="Remote endpoint only">
+          <input type="radio" name="mode" value="remote" />
+          Remote
+        </label>
+        <label class="chip" title="Federation: local + remote">
+          <input type="radio" name="mode" value="both" />
+          Both
+        </label>
+        <label class="chip" title="Comunica option unionDefaultGraph">
+          <input id="unionDefaultGraph" type="checkbox" checked />
+          unionDefaultGraph
+        </label>
+      </div>
+
+      <div class="muted small" id="sourceInfo" style="margin-top:8px;">Sources: local (empty)</div>
+
+      <div class="divider"></div>
+
+      <div class="row">
+        <input id="q" type="search" placeholder="Search mappings (by label)…" />
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <select id="typeHintFilter" title="Filter by map:typeHint">
+          <option value="">All type hints</option>
+        </select>
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <button id="prev">◀</button>
+        <div class="muted">Page <span id="page">1</span></div>
+        <button id="next">▶</button>
+        <div style="flex:1;"></div>
+        <button id="reload">Reload</button>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="muted">
+        Click a mapping to load the mapping (top form) and its target entity (bottom form).
+      </div>
+
+      <div id="list" class="list"></div>
+    </aside>
+
+    <main>
+      <div class="row">
+        <button id="exportSelected" class="primary" disabled>Download TriG (selected)</button>
+        <button id="exportMapping" disabled>Download mapping TriG</button>
+        <button id="exportEntity" disabled>Download entity TriG</button>
+        <div style="flex:1;"></div>
+        <button id="exportFull" class="primary">Download full graphs (TriG)</button>
+        <div id="status" class="muted"></div>
+      </div>
+
+      <div class="small">
+        Mode can be Local, Remote endpoint, or Both (federated via Comunica). Saving edits affects the local session store only.
+      </div>
+
+      <div class="panel">
+        <div class="row" style="margin-bottom:8px;">
+          <button id="showSelected" disabled>Show TriG (selected)</button>
+          <button id="showMapping" disabled>Show mapping TriG</button>
+          <button id="showEntity" disabled>Show entity TriG</button>
+          <button id="copyTrig" disabled>Copy</button>
+          <button id="clearTrig">Clear</button>
+          <div class="small" style="margin-left:auto;">Auto-preview updates after edits</div>
+        </div>
+        <textarea id="trigOut" spellcheck="false" placeholder="TriG preview will appear here…"></textarea>
+      </div>
+
+      <div class="small">
+        <button id="saveSelected" class="primary" disabled>Save</button>
+        <button id="newMapping">New mapping</button>
+        <button id="deleteMapping" disabled>Delete mapping</button>
+
+        <button id="newEntity">New entity</button>
+        <button id="deleteEntity" disabled>Delete entity</button>
+      </div>
+
+      <div class="forms">
+        <details class="panel" open>
+          <summary><h2>Mapping</h2></summary>
+          <div class="muted small">
+            IRI: <code id="mappingIri">(none)</code>
+            <span id="copyMappingIri" class="copyIcon disabled" title="Copy IRI" role="button" tabindex="0">📋</span>
+          </div>
+
+          <shacl-form
+            id="mappingForm"
+            data-use-shadow-root="false"
+            data-dense="true"
+            data-collapse="open"
+            data-values-graph="https://scigma.de/mappings"
+          ></shacl-form>
+        </details>
+
+        <details class="panel" open>
+          <summary><h2>Entity</h2></summary>
+          <div class="muted small">
+            IRI: <code id="entityIri">(none)</code>
+            <span id="copyEntityIri" class="copyIcon disabled" title="Copy IRI" role="button" tabindex="0">📋</span>
+          </div>
+
+          <shacl-form
+            id="entityForm"
+            data-use-shadow-root="false"
+            data-dense="true"
+            data-collapse="open"
+            data-values-graph="https://scigma.de/entities"
+          ></shacl-form>
+        </details>
+      </div>
+    </main>
+
+    <!-- N3 -->
+    <script src="https://cdn.jsdelivr.net/npm/n3@1.23.0/browser/n3.min.js"></script>
+
+    <script type="module">
+      // =====================================================
+      // CONFIG
+      // =====================================================
+      const G_MAPPINGS = "https://scigma.de/mappings";
+      const G_ENTITIES = "https://scigma.de/entities";
+
+      const MAP_NS         = "https://zotero-rdf-server.org/mapping/";
+      const MAP_ENTRY      = MAP_NS + "Entry";
+      const MAP_LABEL_P    = MAP_NS + "label";
+      const MAP_TARGET_P   = MAP_NS + "target";
+      const MAP_TYPEHINT_P = MAP_NS + "typeHint";
+
+      const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+      const PROV_GENERATED_AT = "http://www.w3.org/ns/prov#generatedAtTime";
+
+      const PREVIEW_PREFIXES = {
+        sh: "http://www.w3.org/ns/shacl#",
+        xsd: "http://www.w3.org/2001/XMLSchema#",
+        rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+        rdfs: "http://www.w3.org/2000/01/rdf-schema#",
+        prov: "http://www.w3.org/ns/prov#",
+        schema: "https://schema.org/",
+        owl: "http://www.w3.org/2002/07/owl#",
+        map: MAP_NS,
+        dash: "http://datashapes.org/dash#",
+        dcterms: "http://purl.org/dc/terms/",
+        skos: "http://www.w3.org/2004/02/skos/core#",
+        scigma: "https://scigma.de/",
+        smap: "https://scigma.de/mappings/",
+        sent: "https://scigma.de/entities/",
+        zot: "http://www.zotero.org/namespaces/export#",
+        sem: "https://semantic-html.org/",
+        sshap: "https://scigma.de/shapes/"
+      };
+
+      const PAGE_SIZE = 25;
+
+      const FORM_PROPS = [
+        "http://www.w3.org/2000/01/rdf-schema#label",
+        "http://www.w3.org/2000/01/rdf-schema#comment",
+        "http://www.w3.org/2002/07/owl#sameAs",
+        "https://schema.org/keywords",
+        RDF_TYPE,
+        MAP_LABEL_P, MAP_TARGET_P, MAP_TYPEHINT_P, PROV_GENERATED_AT
+      ];
+
+      // =====================================================
+      // SHAPES
+      // =====================================================
+      const SHAPES_TTL = `
+@prefix sh: <http://www.w3.org/ns/shacl#>.
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>.
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
+@prefix prov: <http://www.w3.org/ns/prov#>.
+@prefix schema: <https://schema.org/>.
+@prefix owl: <http://www.w3.org/2002/07/owl#>.
+@prefix map: <https://zotero-rdf-server.org/mapping/>.
+@prefix dash: <http://datashapes.org/dash#>.
+@prefix dcterms: <http://purl.org/dc/terms/>.
+@prefix skos: <http://www.w3.org/2004/02/skos/core#>.
+@prefix scigma: <https://scigma.de/>.
+@prefix smap: <https://scigma.de/mappings/>.
+@prefix sent: <https://scigma.de/entities/>.
+@prefix zot: <http://www.zotero.org/namespaces/export#>.
+@prefix sem: <https://semantic-html.org/>.
+@prefix sshap: <https://scigma.de/shapes/>.
+
+<https://scigma.de/shapes/MappingShape>
+a sh:NodeShape ;
+sh:property [
+  sh:path <${MAP_LABEL_P}> ;
+  sh:name "Mapping label"@en, "Mapping-Bezeichnung"@de ;
+  sh:datatype xsd:string ;
+  sh:minCount 1 ;
+  sh:order 1 ;
+] ;
+sh:property [
+  sh:path <${MAP_TYPEHINT_P}> ;
+  sh:name "Type hint"@en, "Typ-Hinweis"@de ;
+  sh:nodeKind sh:IRI ;
+  sh:order 2 ;
+] ;
+sh:property [
+  sh:path prov:generatedAtTime ;
+  sh:name "Generated at"@en, "Erzeugt am"@de ;
+  sh:datatype xsd:dateTime ;
+  sh:maxCount 1 ;
+  sh:order 3 ;
+] ;
+sh:property [
+  sh:path <${MAP_TARGET_P}> ;
+  sh:name "Target entity (IRI)"@en, "Ziel-Entität (IRI)"@de ;
+  sh:nodeKind sh:IRI ;
+  sh:pattern "^https?://.*" ;
+  sh:minCount 1 ;
+  sh:maxCount 1 ;
+  sh:order 4 ;
+  sh:message "Target must be an IRI!"@en, "Target muss eine IRI sein!"@de ;
+] .
+
+<https://scigma.de/shapes/EntityShape>
+  a sh:NodeShape ;
+
+  sh:property [
+    sh:path rdfs:label ;
+    sh:name "Label"@en, "Bezeichnung"@de ;
+    sh:datatype xsd:string ;
+    sh:order 1 ;
+  ] ;
+
+  sh:property [
+    sh:path rdf:type ;
+    sh:name "Types"@en, "Typen"@de ;
+    sh:nodeKind sh:IRI ;
+    sh:order 2 ;
+  ] ;
+
+  sh:property [
+    sh:datatype rdf:langString ;
+    sh:languageIn ( "en" "de" ) ;
+    sh:maxCount 1 ;
+    sh:name "Comment"@en, "Kommentar"@de ;
+    sh:description "Add your comment"@en, "Kommentar hinzufügen"@de ;
+    dash:singleLine false ;
+    sh:order 3 ;
+    sh:path rdfs:comment
+  ] ;
+
+  sh:property [
+    sh:path owl:sameAs ;
+    sh:name "sameAs"@en, "Gleich wie"@de ;
+    sh:nodeKind sh:IRI ;
+    sh:order 4 ;
+  ] ;
+
+  sh:property [
+    sh:path schema:keywords ;
+    sh:name "Keywords"@en, "Schlagwörter"@de ;
+    sh:datatype xsd:string ;
+    sh:order 5 ;
+  ] .
+`.trim();
+
+      // =====================================================
+      // DOM
+      // =====================================================
+      const $ = (id) => document.getElementById(id);
+
+      const openFileBtn = $("openFile");
+      const clearLocalBtn = $("clearLocal");
+      const fileInput = $("fileInput");
+      const fileInfo = $("fileInfo");
+
+      const endpointEl = $("endpoint");
+      const useEndpointBtn = $("useEndpoint");
+      const clearEndpointBtn = $("clearEndpoint");
+      const unionDefaultGraphEl = $("unionDefaultGraph");
+      const sourceInfoEl = $("sourceInfo");
+
+      const listEl = $("list");
+      const qEl = $("q");
+      const typeHintFilterEl = $("typeHintFilter");
+      const pageEl = $("page");
+      const statusEl = $("status");
+
+      const prevBtn = $("prev");
+      const nextBtn = $("next");
+      const reloadBtn = $("reload");
+
+      const exportSelectedBtn = $("exportSelected");
+      const exportMappingBtn = $("exportMapping");
+      const exportEntityBtn = $("exportEntity");
+      const exportFullBtn = $("exportFull");
+      const saveBtn = $("saveSelected");
+
+      const showSelectedBtn = $("showSelected");
+      const showMappingBtn = $("showMapping");
+      const showEntityBtn = $("showEntity");
+      const copyTrigBtn = $("copyTrig");
+      const clearTrigBtn = $("clearTrig");
+      const trigOut = $("trigOut");
+
+      const newMappingBtn = $("newMapping");
+      const deleteMappingBtn = $("deleteMapping");
+      const newEntityBtn = $("newEntity");
+      const deleteEntityBtn = $("deleteEntity");
+
+      const mappingIriEl = $("mappingIri");
+      const entityIriEl  = $("entityIri");
+
+      const copyMappingIriEl = $("copyMappingIri");
+      const copyEntityIriEl  = $("copyEntityIri");
+      const mappingForm = $("mappingForm");
+      const entityForm = $("entityForm");
+
+      // =====================================================
+      // State
+      // =====================================================
+      let page = 0;
+      let selectedMapping = null;
+      let selectedTarget = null;
+      let previewTimer = null;
+      let syncTimer = null;
+
+      // local in-memory datasets
+      const dataset = new window.N3.Store();       // "local dataset" for SPARQL when mode includes local
+      const storeMappings = new window.N3.Store(); // for full export (local)
+      const storeEntities = new window.N3.Store(); // for full export (local)
+
+      // overlay for shacl-form reload (subject -> Turtle)
+      const savedTTL = { mappings: new Map(), entities: new Map() };
+
+      // remote endpoint
+      let remoteEndpoint = ""; // string URL
+
+      // Comunica engine
+      const engine = new window.Comunica.QueryEngine();
+
+      // =====================================================
+      // Helpers
+      // =====================================================
+      function setStatus(msg) { statusEl.textContent = msg || ""; }
+
+      function escapeHtml(s) {
+        return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+      }
+
+      function subjectTerm(iri) { return window.N3.DataFactory.namedNode(iri); }
+      function graphTerm(iri) { return window.N3.DataFactory.namedNode(iri); }
+
+      function refreshActions() {
+        exportMappingBtn.disabled = !selectedMapping;
+        exportEntityBtn.disabled = !selectedTarget;
+        exportSelectedBtn.disabled = !(selectedMapping && selectedTarget);
+
+        showMappingBtn.disabled = !selectedMapping;
+        showEntityBtn.disabled = !selectedTarget;
+        showSelectedBtn.disabled = !(selectedMapping || selectedTarget);
+
+        deleteMappingBtn.disabled = !selectedMapping;
+        deleteEntityBtn.disabled = !selectedTarget;
+        saveBtn.disabled = !(selectedMapping || selectedTarget);
+
+        copyTrigBtn.disabled = !(trigOut.value && trigOut.value.trim().length);
+      }
+
+      function updateIriHeadersAndCopyState() {
+        mappingIriEl.textContent = selectedMapping || "(none)";
+        entityIriEl.textContent  = selectedTarget  || "(none)";
+        copyMappingIriEl.classList.toggle("disabled", !selectedMapping);
+        copyEntityIriEl.classList.toggle("disabled", !selectedTarget);
+      }
+
+      function mintIRI(base) {
+        return base + "/" + crypto.randomUUID();
+      }
+
+      // -----------------------------------------------------
+      // Mode / Sources (Local / Remote / Both)
+      // -----------------------------------------------------
+      function getMode() {
+        return document.querySelector('input[name="mode"]:checked')?.value || "local";
+      }
+
+        function buildSources() {
+        const mode = getMode();
+        const sources = [];
+
+        if (mode === "local" || mode === "both") {
+            sources.push({ type: "rdfjsSource", value: dataset });
+        }
+
+        if ((mode === "remote" || mode === "both") && remoteEndpoint) {
+            sources.push({ type: "sparql", value: remoteEndpoint });
+        }
+
+        return sources;
+        }
+
+      function updateSourceInfo() {
+        const mode = getMode();
+        const localCount = dataset.size || 0;
+        const parts = [];
+        if (mode === "local" || mode === "both") parts.push(`local (${localCount} quads)`);
+        if (mode === "remote" || mode === "both") parts.push(remoteEndpoint ? `remote (${remoteEndpoint})` : "remote (not set)");
+        sourceInfoEl.textContent = `Sources: ${parts.join(" + ")}`;
+      }
+
+      // -----------------------------------------------------
+      // Clipboard
+      // -----------------------------------------------------
+      async function copyText(text) {
+        const s = (text || "").trim();
+        if (!s) return false;
+
+        try {
+          if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+            await navigator.clipboard.writeText(s);
+            return true;
+          }
+        } catch {}
+
+        try {
+          const ta = document.createElement("textarea");
+          ta.value = s;
+          ta.setAttribute("readonly", "");
+          ta.style.position = "fixed";
+          ta.style.left = "-9999px";
+          ta.style.top = "0";
+          document.body.appendChild(ta);
+          ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length);
+          const ok = document.execCommand("copy");
+          document.body.removeChild(ta);
+          return ok;
+        } catch {
+          return false;
+        }
+      }
+
+      async function handleCopy(what) {
+        const s = (what || "").trim();
+        if (!s) { setStatus("Nothing to copy."); setTimeout(() => setStatus(""), 800); return; }
+        const ok = await copyText(s);
+        setStatus(ok ? "Copied." : "Copy failed.");
+        setTimeout(() => setStatus(""), 800);
+        if (!ok) window.prompt("Copy:", s);
+      }
+
+      function wireCopyOnce(el, getter) {
+        if (!el) return;
+        const run = async () => {
+          if (el.classList.contains("disabled")) return;
+          await handleCopy(getter());
+        };
+        el.addEventListener("click", run);
+        el.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); run(); }
+        });
+      }
+
+      // =====================================================
+      // Comunica SPARQL wrappers (keep old interface)
+      // =====================================================
+      function bindingsStreamToArray(stream) {
+        return new Promise((resolve, reject) => {
+          const out = [];
+          stream.on("data", (b) => out.push(b));
+          stream.on("end", () => resolve(out));
+          stream.on("error", reject);
+        });
+      }
+
+      function termToSparqlJson(term) {
+        if (!term) return null;
+        if (term.termType === "NamedNode") return { type: "uri", value: term.value };
+        if (term.termType === "BlankNode") return { type: "bnode", value: term.value };
+        if (term.termType === "Literal") {
+          const obj = { type: "literal", value: term.value };
+          if (term.language) obj["xml:lang"] = term.language;
+          if (term.datatype?.value) obj.datatype = term.datatype.value;
+          return obj;
+        }
+        return { type: "unknown", value: String(term.value || "") };
+      }
+
+      async function sparqlSelect(query) {
+        const sources = buildSources();
+        console.log("sparqlSelect sources:", sources, "mode:", getMode());
+        console.log("query:", query);
+        if (!sources.length) return { head: { vars: [] }, results: { bindings: [] } };
+
+        const bs = await engine.queryBindings(query, {
+          sources,
+          unionDefaultGraph: !!unionDefaultGraphEl.checked,
+        });
+
+        const bindingsArr = await bindingsStreamToArray(bs);
+        const varsSet = new Set();
+        const rows = [];
+
+        for (const b of bindingsArr) {
+          const row = {};
+          for (const [key, value] of b) {
+            // key is usually an RDFJS Variable
+            const varName =
+              typeof key === "string"
+                ? key.replace(/^\?/, "")
+                : (key && typeof key.value === "string" ? key.value : String(key));
+
+            varsSet.add(varName);
+            row[varName] = termToSparqlJson(value);
+          }
+          rows.push(row);
+        }
+
+        return {
+          head: { vars: Array.from(varsSet) },
+          results: { bindings: rows },
+        };
+      }
+
+      async function sparqlConstruct(query) {
+        const sources = buildSources();
+        if (!sources.length) return "";
+
+        const quadStream = await engine.queryQuads(query, {
+          sources,
+          unionDefaultGraph: !!unionDefaultGraphEl.checked,
+        });
+
+        const writer = new window.N3.Writer({ format: "text/turtle", prefixes: {} });
+
+        return await new Promise((resolve, reject) => {
+          quadStream.on("data", (q) => writer.addQuad(q));
+          quadStream.on("error", reject);
+          quadStream.on("end", () => writer.end((err, out) => err ? reject(err) : resolve(out)));
+        });
+      }
+
+      // =====================================================
+      // Forms init
+      // =====================================================
+      function initForms() {
+        mappingForm.setAttribute("data-shapes", SHAPES_TTL);
+        mappingForm.setAttribute("data-shape-subject", "https://scigma.de/shapes/MappingShape");
+
+        entityForm.setAttribute("data-shapes", SHAPES_TTL);
+        entityForm.setAttribute("data-shape-subject",  "https://scigma.de/shapes/EntityShape");
+      }
+
+      // =====================================================
+      // File load (local dataset)
+      // =====================================================
+      function guessFormat(text, fileName="") {
+        const lower = (fileName || "").toLowerCase();
+        if (lower.endsWith(".trig")) return "application/trig";
+        if (lower.endsWith(".ttl")) return "text/turtle";
+        if (lower.endsWith(".nq"))  return "application/n-quads";
+        if (lower.endsWith(".nt"))  return "application/n-triples";
+        // heuristic
+        if (text.includes("{") && text.includes("}")) return "application/trig";
+        return "text/turtle";
+      }
+
+      function parseToQuads(text, format) {
+        const baseIRI = document.baseURI || window.location.href;
+        const parser = new window.N3.Parser({ format, baseIRI });
+        return parser.parse(text);
+      }
+
+      function clearLocalStores() {
+        dataset.removeQuads(dataset.getQuads(null,null,null,null));
+        storeMappings.removeQuads(storeMappings.getQuads(null,null,null,null));
+        storeEntities.removeQuads(storeEntities.getQuads(null,null,null,null));
+        savedTTL.mappings.clear();
+        savedTTL.entities.clear();
+        updateSourceInfo();
+      }
+
+      async function loadFileTextIntoStores(text, fileName) {
+        setStatus("Parsing local file…");
+        clearLocalStores();
+
+        let quads;
+        try {
+          quads = parseToQuads(text, guessFormat(text, fileName));
+        } catch {
+          quads = parseToQuads(text, "application/trig");
+        }
+
+        dataset.addQuads(quads);
+
+        // fill per-graph stores for local full-export
+        const gM = graphTerm(G_MAPPINGS);
+        const gE = graphTerm(G_ENTITIES);
+        for (const q of quads) {
+          if (q.graph?.termType !== "NamedNode") continue;
+          if (q.graph.equals(gM)) storeMappings.addQuad(q);
+          else if (q.graph.equals(gE)) storeEntities.addQuad(q);
+        }
+
+        updateSourceInfo();
+        setStatus("");
+      }
+
+      // =====================================================
+      // SPARQL queries (unchanged)
+      // =====================================================
+      async function loadTypeHints() {
+        const q = `
+SELECT DISTINCT ?t WHERE {
+  GRAPH <${G_MAPPINGS}> { ?m <${MAP_TYPEHINT_P}> ?t . }
+}
+ORDER BY STR(?t)
+LIMIT 500
+`.trim();
+
+        try {
+          const data = await sparqlSelect(q);
+          const hints = data.results.bindings.map(b => b.t?.value).filter(Boolean);
+
+          const current = typeHintFilterEl.value;
+          typeHintFilterEl.innerHTML = `<option value="">All type hints</option>`;
+
+          for (const t of hints) {
+            const opt = document.createElement("option");
+            opt.value = t;
+            opt.textContent = t;
+            typeHintFilterEl.appendChild(opt);
+          }
+          if (hints.includes(current)) typeHintFilterEl.value = current;
+        } catch (e) {
+          console.warn("Could not load type hints:", e);
+        }
+      }
+
+      async function loadMappingList() {
+        setStatus("Loading mappings…");
+        listEl.innerHTML = "";
+
+        const q = (qEl.value || "").trim().toLowerCase();
+        const offset = page * PAGE_SIZE;
+        const hintFilter = (typeHintFilterEl.value || "").trim();
+
+        const query = `
+        SELECT ?m
+            (SAMPLE(?label) AS ?label)
+            (SAMPLE(?time) AS ?time)
+            (SAMPLE(?hint) AS ?hint)
+            (SAMPLE(?target) AS ?target)
+        WHERE {
+        GRAPH <${G_MAPPINGS}> {
+            ?m <${MAP_LABEL_P}> ?label .
+
+            OPTIONAL { ?m <${PROV_GENERATED_AT}> ?time . }
+            OPTIONAL { ?m <${MAP_TYPEHINT_P}> ?hint . }
+            OPTIONAL { ?m <${MAP_TARGET_P}> ?target . }
+
+            ${q ? `FILTER(CONTAINS(LCASE(STR(?label)), "${q.replaceAll('"', '\\"')}"))` : ""}
+        }
+
+        ${
+          hintFilter
+            ? `FILTER(EXISTS {
+                GRAPH <${G_MAPPINGS}> { ?m <${MAP_TYPEHINT_P}> <${hintFilter}> }
+              })`
+            : ""
+        }
+        }
+        GROUP BY ?m
+        ORDER BY LCASE(STR(?label)) STR(?m)
+        LIMIT ${PAGE_SIZE}
+        OFFSET ${offset}
+        `.trim();
+
+        const data = await sparqlSelect(query);
+        const rows = data.results.bindings;
+
+        if (!rows.length) {
+          listEl.innerHTML = `<div class="muted">No results.</div>`;
+          setStatus("");
+          return;
+        }
+
+        for (const b of rows) {
+          const iri = b.m?.value || "";
+          const label = b.label?.value || "(no label)";
+          const time = b.time?.value || "";
+          const hint = b.hint?.value || "";
+          const target = b.target?.value || "";
+          const needsTarget = !target;
+
+          const div = document.createElement("div");
+          div.className =
+            "item" +
+            (iri === selectedMapping ? " active" : "") +
+            (needsTarget ? " needsTarget" : "");
+
+          div.innerHTML = `
+            <div>
+              <strong>${escapeHtml(label)}</strong>
+              ${needsTarget ? `<span class="badge warn">missing target</span>` : ""}
+            </div>
+            <div class="muted">${escapeHtml(iri)}</div>
+            ${hint ? `<div class="muted">typeHint: ${escapeHtml(hint)}</div>` : `<div class="muted">(no typeHint)</div>`}
+            ${time ? `<div class="muted">time: ${escapeHtml(time)}</div>` : ""}
+          `;
+
+          div.addEventListener("click", () => selectMapping(iri));
+          listEl.appendChild(div);
+        }
+
+        setStatus("");
+      }
+
+      async function fetchTargetIri(mappingIri) {
+        const q = `
+SELECT ?target WHERE {
+  GRAPH <${G_MAPPINGS}> { <${mappingIri}> <${MAP_TARGET_P}> ?target . }
+} LIMIT 1
+`.trim();
+        const data = await sparqlSelect(q);
+        return data.results.bindings[0]?.target?.value || null;
+      }
+
+      async function loadMappingTTL(mappingIri) {
+        const q = `
+CONSTRUCT { <${mappingIri}> ?p ?o . }
+WHERE     { GRAPH <${G_MAPPINGS}> { <${mappingIri}> ?p ?o . } }
+`.trim();
+        return await sparqlConstruct(q);
+      }
+
+      async function loadEntityTTL(entityIri) {
+        const q = `
+CONSTRUCT { <${entityIri}> ?p ?o . }
+WHERE     { GRAPH <${G_ENTITIES}> { <${entityIri}> ?p ?o . } }
+`.trim();
+        return await sparqlConstruct(q);
+      }
+
+      // =====================================================
+      // Export / Preview — robust against Turtle vs TriG vs N-Quads
+      // =====================================================
+      function downloadText(filename, text, mime = "application/trig;charset=utf-8") {
+        const blob = new Blob([text], { type: mime });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }
+
+      function trySerialize(formEl, mime) {
+        try {
+          const out = formEl.serialize(mime);
+          if (typeof out === "string" && out.trim().length > 0) return out;
+        } catch {}
+        return null;
+      }
+
+      async function toTriGFromSerialized(serialized, format, graphIri) {
+        const parser = new window.N3.Parser({ format });
+        const quads = parser.parse(serialized);
+
+        const g = window.N3.DataFactory.namedNode(graphIri);
+        const hasGraph = quads.some(q => q.graph && q.graph.termType !== "DefaultGraph");
+
+        const finalQuads = hasGraph
+          ? quads
+          : quads.map(q => window.N3.DataFactory.quad(q.subject, q.predicate, q.object, g));
+
+        const writer = new window.N3.Writer({ format: "application/trig" });
+        writer.addQuads(finalQuads);
+
+        return await new Promise((resolve, reject) => {
+          writer.end((err, out) => (err ? reject(err) : resolve(out)));
+        });
+      }
+
+      async function formToTriG(formEl) {
+        const graphIri = formEl.getAttribute("data-values-graph");
+        const subject = formEl.getAttribute("data-values-subject");
+        if (!graphIri) throw new Error("data-values-graph missing on form");
+        if (!subject) throw new Error("data-values-subject missing on form (nothing selected)");
+
+        const trig = trySerialize(formEl, "application/trig");
+        if (trig) return trig;
+
+        const nquads = trySerialize(formEl, "application/n-quads");
+        if (nquads) return await toTriGFromSerialized(nquads, "application/n-quads", graphIri);
+
+        const turtleish = trySerialize(formEl, "text/turtle") || trySerialize(formEl, "text/turtle; charset=utf-8");
+        if (!turtleish) throw new Error("Could not serialize form (no supported mime).");
+
+        const looksLikeTriG = turtleish.includes("{");
+        const fmt = looksLikeTriG ? "application/trig" : "text/turtle";
+        return await toTriGFromSerialized(turtleish, fmt, graphIri);
+      }
+
+      function quadsFromTrigOrTurtle(text) {
+        const baseIRI = document.baseURI || window.location.href;
+        const looksLikeTriG = text.includes("{");
+        const format = looksLikeTriG ? "application/trig" : "text/turtle";
+        const parser = new window.N3.Parser({ format, baseIRI });
+        return parser.parse(text);
+      }
+
+      async function writeTriG(quads, prefixes = {}) {
+        const writer = new window.N3.Writer({ format: "application/trig", prefixes });
+        writer.addQuads(quads);
+        return await new Promise((resolve, reject) => writer.end((e, out) => e ? reject(e) : resolve(out)));
+      }
+
+      // =====================================================
+      // Local save helpers (affect local stores only)
+      // =====================================================
+      function parseSerializedToQuads(serialized, formatHint = null) {
+        const baseIRI = document.baseURI || window.location.href;
+        let format = formatHint;
+        if (!format) {
+          const looksLikeTriG = serialized.includes("{");
+          const looksTurtle = serialized.includes("@prefix") || serialized.includes("PREFIX") || serialized.includes(";");
+          format = looksLikeTriG ? "application/trig" : (looksTurtle ? "text/turtle" : "application/n-quads");
+        }
+        const parser = new window.N3.Parser({ format, baseIRI });
+        return parser.parse(serialized);
+      }
+
+      async function subjectFromStoreToTurtle(store, graphIri, subjectIri) {
+        const g = graphTerm(graphIri);
+        const s = subjectTerm(subjectIri);
+        const quads = store.getQuads(s, null, null, g);
+
+        const writer = new window.N3.Writer({ format: "text/turtle", prefixes: {} });
+        for (const q of quads) writer.addQuad(window.N3.DataFactory.quad(q.subject, q.predicate, q.object));
+
+        return await new Promise((resolve, reject) => {
+          writer.end((err, out) => (err ? reject(err) : resolve(out)));
+        });
+      }
+
+      async function replaceSubjectInStore(store, graphIri, subjectIri, newQuads) {
+        const g = graphTerm(graphIri);
+        const s = subjectTerm(subjectIri);
+
+        for (const p of FORM_PROPS) {
+          const quads = store.getQuads(s, window.N3.DataFactory.namedNode(p), null, g);
+          store.removeQuads(quads);
+        }
+
+        const forced = newQuads
+          .filter(q => q.subject && q.subject.equals(s))
+          .map(q => window.N3.DataFactory.quad(q.subject, q.predicate, q.object, g));
+
+        if (forced.length) store.addQuads(forced);
+      }
+
+      async function saveFormToLocalOverlay(formEl, which /* "mappings" | "entities" */) {
+        const graphIri = formEl.getAttribute("data-values-graph");
+        const subjectIri = formEl.getAttribute("data-values-subject");
+        if (!graphIri || !subjectIri) return;
+
+        const trig = await formToTriG(formEl);
+        if (!trig.trim()) return;
+
+        const quads = parseSerializedToQuads(trig, "application/trig");
+
+        const perStore = (which === "mappings") ? storeMappings : storeEntities;
+
+        // update per-graph store for local exports
+        await replaceSubjectInStore(perStore, graphIri, subjectIri, quads);
+
+        // update local SPARQL dataset (so list sees edits when local included)
+        await replaceSubjectInStore(dataset, graphIri, subjectIri, quads);
+
+        // overlay Turtle for shacl-form
+        const turtle = await subjectFromStoreToTurtle(perStore, graphIri, subjectIri);
+        savedTTL[which].set(subjectIri, turtle);
+
+        updateSourceInfo();
+      }
+
+      async function storeToTriGAsync(store, graphIri) {
+        const g = graphTerm(graphIri);
+        const writer = new window.N3.Writer({ format: "application/trig", prefixes: {} });
+
+        const quads = store.getQuads(null, null, null, g);
+        let i = 0;
+        for (const q of quads) {
+          writer.addQuad(q);
+          if ((++i % 20000) === 0) await new Promise(r => setTimeout(r, 0));
+        }
+
+        return await new Promise((resolve, reject) => {
+          writer.end((err, out) => (err ? reject(err) : resolve(out)));
+        });
+      }
+
+      // =====================================================
+      // Preview + sync
+      // =====================================================
+      async function previewSelectedNow() {
+        if (!selectedMapping && !selectedTarget) return;
+
+        const parts = [];
+        if (selectedMapping) parts.push(...quadsFromTrigOrTurtle(await formToTriG(mappingForm)));
+        if (selectedTarget)  parts.push(...quadsFromTrigOrTurtle(await formToTriG(entityForm)));
+
+        trigOut.value = await writeTriG(parts, PREVIEW_PREFIXES);
+        refreshActions();
+      }
+
+      function debouncePreviewSelected() {
+        clearTimeout(previewTimer);
+        previewTimer = setTimeout(async () => { try { await previewSelectedNow(); } catch {} }, 600);
+      }
+
+      function debounceSyncTarget() {
+        clearTimeout(syncTimer);
+        syncTimer = setTimeout(async () => {
+          if (!selectedMapping) return;
+          try {
+            const newTarget = await fetchTargetIri(selectedMapping);
+            if (!newTarget || newTarget === selectedTarget) return;
+
+            selectedTarget = newTarget;
+            setStatus("Target changed → loading entity…");
+
+            const entityTTL = savedTTL.entities.get(selectedTarget) || await loadEntityTTL(selectedTarget);
+            entityForm.setAttribute("data-values", entityTTL);
+            entityForm.setAttribute("data-values-subject", selectedTarget);
+
+            updateIriHeadersAndCopyState();
+            refreshActions();
+            setStatus("");
+
+            debouncePreviewSelected();
+          } catch (e) {
+            setStatus(String(e));
+          }
+        }, 250);
+      }
+
+      async function selectMapping(mappingIri) {
+        selectedMapping = mappingIri;
+        updateIriHeadersAndCopyState();
+
+        [...listEl.querySelectorAll(".item")].forEach(el => {
+          const iriText = el.querySelector(".muted")?.textContent || "";
+          if (iriText.includes(mappingIri)) el.classList.add("active");
+          else el.classList.remove("active");
+        });
+
+        setStatus("Loading mapping…");
+        const mappingTTL = savedTTL.mappings.get(mappingIri) || await loadMappingTTL(mappingIri);
+        mappingForm.setAttribute("data-values", mappingTTL);
+        mappingForm.setAttribute("data-values-subject", mappingIri);
+
+        setStatus("Resolving target entity…");
+        selectedTarget = await fetchTargetIri(mappingIri);
+        updateIriHeadersAndCopyState();
+
+        if (!selectedTarget) {
+          entityForm.setAttribute("data-values", "");
+          entityForm.removeAttribute("data-values-subject");
+          trigOut.value = "";
+          refreshActions();
+          setStatus("No target entity found for this mapping.");
+          return;
+        }
+
+        setStatus("Loading entity…");
+        const entityTTL = savedTTL.entities.get(selectedTarget) || await loadEntityTTL(selectedTarget);
+        entityForm.setAttribute("data-values", entityTTL);
+        entityForm.setAttribute("data-values-subject", selectedTarget);
+
+        setStatus("");
+        refreshActions();
+        debouncePreviewSelected();
+      }
+
+      // =====================================================
+      // Actions: Create/Delete
+      // =====================================================
+      newMappingBtn.addEventListener("click", async () => {
+        const iri = mintIRI("https://scigma.de/mappings");
+        const now = new Date().toISOString();
+        const ttl = `
+<${iri}> a <${MAP_ENTRY}> ;
+  <${MAP_LABEL_P}> "New mapping" ;
+  <${PROV_GENERATED_AT}> "${now}"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
+`.trim() + "\n";
+
+        mappingForm.setAttribute("data-values", ttl);
+        mappingForm.setAttribute("data-values-subject", iri);
+
+        selectedMapping = iri;
+        updateIriHeadersAndCopyState();
+        savedTTL.mappings.set(iri, ttl);
+
+        refreshActions();
+        debouncePreviewSelected();
+        setStatus("New mapping created (not yet saved).");
+      });
+
+      newEntityBtn.addEventListener("click", async () => {
+        const iri = mintIRI("https://scigma.de/entities");
+        const ttl = `<${iri}> a <http://www.w3.org/2002/07/owl#Thing> .\n`;
+
+        entityForm.setAttribute("data-values", ttl);
+        entityForm.setAttribute("data-values-subject", iri);
+
+        selectedTarget = iri;
+        updateIriHeadersAndCopyState();
+        savedTTL.entities.set(iri, ttl);
+
+        refreshActions();
+        debouncePreviewSelected();
+        setStatus("New entity created.");
+      });
+
+      deleteMappingBtn.addEventListener("click", () => {
+        if (!selectedMapping) return;
+
+        const g = graphTerm(G_MAPPINGS);
+        const s = subjectTerm(selectedMapping);
+
+        storeMappings.removeQuads(storeMappings.getQuads(s, null, null, g));
+        dataset.removeQuads(dataset.getQuads(s, null, null, g));
+        savedTTL.mappings.delete(selectedMapping);
+
+        selectedMapping = null;
+
+        mappingForm.setAttribute("data-values", "");
+        mappingForm.removeAttribute("data-values-subject");
+
+        updateIriHeadersAndCopyState();
+        updateSourceInfo();
+        refreshActions();
+        debouncePreviewSelected();
+        setStatus("Mapping deleted (local session).");
+      });
+
+      deleteEntityBtn.addEventListener("click", () => {
+        if (!selectedTarget) return;
+
+        const g = graphTerm(G_ENTITIES);
+        const s = subjectTerm(selectedTarget);
+
+        storeEntities.removeQuads(storeEntities.getQuads(s, null, null, g));
+        dataset.removeQuads(dataset.getQuads(s, null, null, g));
+        savedTTL.entities.delete(selectedTarget);
+
+        selectedTarget = null;
+
+        entityForm.setAttribute("data-values", "");
+        entityForm.removeAttribute("data-values-subject");
+
+        updateIriHeadersAndCopyState();
+        updateSourceInfo();
+        refreshActions();
+        debouncePreviewSelected();
+        setStatus("Entity deleted (local session).");
+      });
+
+      // =====================================================
+      // Save
+      // =====================================================
+      saveBtn.addEventListener("click", async () => {
+        const oldText = saveBtn.textContent;
+        try {
+          setStatus("Saving locally…");
+          if (selectedMapping) await saveFormToLocalOverlay(mappingForm, "mappings");
+          if (selectedTarget)  await saveFormToLocalOverlay(entityForm,  "entities");
+
+          saveBtn.textContent = "Saved ✓";
+          setTimeout(() => (saveBtn.textContent = oldText), 900);
+
+          // refresh list based on current mode
+          await loadTypeHints();
+          await loadMappingList();
+          await previewSelectedNow();
+
+          setStatus("");
+        } catch (e) {
+          saveBtn.textContent = oldText;
+          setStatus(String(e));
+        }
+      });
+
+      // =====================================================
+      // Show / Copy / Clear preview
+      // =====================================================
+      showMappingBtn.addEventListener("click", async () => {
+        try { setStatus("Generating mapping TriG…"); trigOut.value = await formToTriG(mappingForm); setStatus(""); refreshActions(); }
+        catch (e) { setStatus(String(e)); }
+      });
+
+      showEntityBtn.addEventListener("click", async () => {
+        try { setStatus("Generating entity TriG…"); trigOut.value = await formToTriG(entityForm); setStatus(""); refreshActions(); }
+        catch (e) { setStatus(String(e)); }
+      });
+
+      showSelectedBtn.addEventListener("click", async () => {
+        try {
+          setStatus("Generating selected TriG…");
+          if (!selectedMapping && !selectedTarget) { setStatus("Nothing selected."); return; }
+          await previewSelectedNow();
+          setStatus("");
+          refreshActions();
+        } catch (e) { setStatus(String(e)); }
+      });
+
+      copyTrigBtn.addEventListener("click", async () => {
+        const ok = await copyText(trigOut.value || "");
+        setStatus(ok ? "Copied." : "Copy failed.");
+        setTimeout(() => setStatus(""), 800);
+      });
+
+      clearTrigBtn.addEventListener("click", () => {
+        trigOut.value = "";
+        refreshActions();
+      });
+
+      // =====================================================
+      // Downloads
+      // =====================================================
+      exportMappingBtn.addEventListener("click", async () => {
+        try { setStatus("Exporting selected mapping…"); downloadText("mapping.trig", await formToTriG(mappingForm)); setStatus(""); }
+        catch (e) { setStatus(String(e)); }
+      });
+
+      exportEntityBtn.addEventListener("click", async () => {
+        try { setStatus("Exporting selected entity…"); downloadText("entity.trig", await formToTriG(entityForm)); setStatus(""); }
+        catch (e) { setStatus(String(e)); }
+      });
+
+      exportSelectedBtn.addEventListener("click", async () => {
+        try {
+          setStatus("Exporting selected mapping + entity…");
+          const trigM = await formToTriG(mappingForm);
+          const trigE = await formToTriG(entityForm);
+          downloadText("mapping+entity.trig", trigM + "\n\n" + trigE);
+          setStatus("");
+        } catch (e) { setStatus(String(e)); }
+      });
+
+async function exportFullRemoteAndLocal() {
+  const DF = window.N3.DataFactory;
+  const writer = new window.N3.Writer({ format: "application/trig" });
+  const graphs = [G_MAPPINGS, G_ENTITIES];
+
+  // helper: for one graph, build (subject -> set(predicates)) that should override remote
+  function buildOverrideIndexForGraph(gNode) {
+    const idx = new Map(); // subjectIri -> Set(predicateIri)
+    for (const q of dataset.getQuads(null, null, null, gNode)) {
+      if (q.subject?.termType !== "NamedNode") continue;
+      if (q.predicate?.termType !== "NamedNode") continue;
+      let set = idx.get(q.subject.value);
+      if (!set) idx.set(q.subject.value, (set = new Set()));
+      set.add(q.predicate.value);
+    }
+    return idx;
+  }
+
+  for (const gIri of graphs) {
+    const g = DF.namedNode(gIri);
+
+    // override remote only for predicates that are locally present.
+    const overrideIdx = buildOverrideIndexForGraph(g);
+
+    // 1) Remote (keep remote props unless locally overridden)
+    if (remoteEndpoint) {
+      const query = `
+        CONSTRUCT { ?s ?p ?o }
+        WHERE     { GRAPH <${gIri}> { ?s ?p ?o } }
+      `.trim();
+
+      const stream = await engine.queryQuads(query, {
+        sources: [{ type: "sparql", value: remoteEndpoint }],
+        unionDefaultGraph: !!unionDefaultGraphEl.checked,
+      });
+
+      await new Promise((resolve, reject) => {
+        stream.on("data", (q) => {
+          // stamp into target named graph (remote often yields DefaultGraph)
+          const outQ = DF.quad(q.subject, q.predicate, q.object, g);
+
+          // predicate-level local wins:
+          if (q.subject?.termType === "NamedNode" && q.predicate?.termType === "NamedNode") {
+            const predSet = overrideIdx.get(q.subject.value);
+            if (predSet && predSet.has(q.predicate.value)) return; // overridden by local
+          }
+
+          writer.addQuad(outQ);
+        });
+        stream.on("error", reject);
+        stream.on("end", resolve);
+      });
+    }
+
+    // 2) Local (adds/overrides the edited predicates)
+    for (const q of dataset.getQuads(null, null, null, g)) {
+      writer.addQuad(q);
+    }
+  }
+
+  return await new Promise((resolve, reject) =>
+    writer.end((e, out) => (e ? reject(e) : resolve(out)))
+  );
+}
+// replace your exportFull button handler
+exportFullBtn.addEventListener("click", async () => {
+  try {
+    setStatus("Exporting full store (remote + local)…");
+    const trig = await exportFullRemoteAndLocal({ localWins: true });
+
+    const header =
+      `# FULL EXPORT (remote + local)\n` +
+      `# remote: ${remoteEndpoint || "(none)"}\n` +
+      `# localWins: true\n\n`;
+
+    downloadText("full-graphs.trig", header + trig);
+    setStatus("Download finished.");
+    setTimeout(() => setStatus(""), 1200);
+  } catch (e) {
+    setStatus(String(e));
+  }
+});
+
+      // =====================================================
+      // Navigation controls
+      // =====================================================
+      prevBtn.addEventListener("click", async () => {
+        page = Math.max(0, page - 1);
+        pageEl.textContent = String(page + 1);
+        try { await loadMappingList(); } catch (e) { setStatus(String(e)); }
+      });
+
+      nextBtn.addEventListener("click", async () => {
+        page += 1;
+        pageEl.textContent = String(page + 1);
+        try { await loadMappingList(); } catch (e) { setStatus(String(e)); }
+      });
+
+      reloadBtn.addEventListener("click", async () => {
+        try { await loadTypeHints(); await loadMappingList(); } catch (e) { setStatus(String(e)); }
+      });
+
+      let searchTimer = null;
+      function triggerSearchReload() {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(async () => {
+          page = 0;
+          pageEl.textContent = "1";
+          try { await loadMappingList(); } catch (e) { setStatus(String(e)); }
+        }, 250);
+      }
+      qEl.addEventListener("input", triggerSearchReload);
+      typeHintFilterEl.addEventListener("change", triggerSearchReload);
+
+      // =====================================================
+      // Mode controls
+      // =====================================================
+      document.querySelectorAll('input[name="mode"]').forEach(r => {
+        r.addEventListener("change", async () => {
+          updateSourceInfo();
+          page = 0;
+          pageEl.textContent = "1";
+          await loadTypeHints();
+          await loadMappingList();
+        });
+      });
+
+      unionDefaultGraphEl.addEventListener("change", async () => {
+        page = 0;
+        pageEl.textContent = "1";
+        await loadTypeHints();
+        await loadMappingList();
+      });
+
+      // =====================================================
+      // File + endpoint UI
+      // =====================================================
+      openFileBtn.addEventListener("click", () => fileInput.click());
+
+      fileInput.addEventListener("change", async () => {
+        const f = fileInput.files?.[0];
+        if (!f) return;
+        try {
+          const text = await f.text();
+          fileInfo.textContent = `Loaded local: ${f.name} (${Math.round(f.size/1024)} KB)`;
+          await loadFileTextIntoStores(text, f.name);
+
+          // refresh list based on current mode
+          updateSourceInfo();
+          page = 0;
+          pageEl.textContent = "1";
+          await loadTypeHints();
+          await loadMappingList();
+        } catch (e) {
+          setStatus(String(e));
+        } finally {
+          fileInput.value = "";
+        }
+      });
+
+      clearLocalBtn.addEventListener("click", async () => {
+        clearLocalStores();
+        fileInfo.textContent = "No local file loaded.";
+        trigOut.value = "";
+        refreshActions();
+        updateSourceInfo();
+        page = 0;
+        pageEl.textContent = "1";
+        await loadTypeHints();
+        await loadMappingList();
+      });
+
+      useEndpointBtn.addEventListener("click", async () => {
+        const url = (endpointEl.value || "").trim();
+        console.log("Use endpoint clicked, url=", url);
+        remoteEndpoint = url;
+        const bs = await engine.queryBindings(
+        "SELECT (COUNT(*) AS ?c) WHERE { ?s ?p ?o }",
+        { sources: [{ type: "sparql", value: remoteEndpoint }] }
+        );
+
+        bs.on("data", b => console.log("comunica count:", b.get("?c")?.value));
+        bs.on("error", e => console.error("comunica error:", e));
+        const testResp = await fetch(remoteEndpoint, {
+        method: "POST",
+        headers: {
+            "content-type": "application/sparql-query",
+            "accept": "application/sparql-results+json"
+        },
+        body: "SELECT (COUNT(*) AS ?c) WHERE { ?s ?p ?o }"
+        });
+        console.log("manual fetch status", testResp.status);
+        console.log(await testResp.text());
+        updateSourceInfo();
+        page = 0;
+        pageEl.textContent = "1";
+        await loadTypeHints();
+        await loadMappingList();
+      });
+
+      clearEndpointBtn.addEventListener("click", async () => {
+        remoteEndpoint = "";
+        endpointEl.value = "";
+        updateSourceInfo();
+        page = 0;
+        pageEl.textContent = "1";
+        await loadTypeHints();
+        await loadMappingList();
+      });
+
+      // =====================================================
+      // Form change listeners
+      // =====================================================
+      mappingForm.addEventListener("change", () => { debounceSyncTarget(); debouncePreviewSelected(); });
+      entityForm.addEventListener("change", debouncePreviewSelected);
+
+      // =====================================================
+      // Start
+      // =====================================================
+      initForms();
+      wireCopyOnce(copyMappingIriEl, () => selectedMapping || "");
+      wireCopyOnce(copyEntityIriEl,  () => selectedTarget  || "");
+
+      updateIriHeadersAndCopyState();
+      refreshActions();
+      updateSourceInfo();
+
+      listEl.innerHTML = `<div class="muted">Load a local TriG file and/or set a remote endpoint.</div>`;
+
+      // initial load attempts (won't error if no sources)
+      await loadTypeHints();
+      await loadMappingList();
+    </script>
+  </body>
+</html>

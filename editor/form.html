@@ -1,0 +1,789 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Mapping + Entity Editor (shacl-form demo)</title>
+
+    <!-- shacl-form bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/@ulb-darmstadt/shacl-form/dist/bundle.js" type="module"></script>
+
+    <style>
+      :root { font-family: system-ui, sans-serif; color: #111; }
+      body { margin: 0; display: grid; grid-template-columns: 440px 1fr; height: 100vh; }
+
+      aside { border-right: 1px solid #e7e7e7; padding: 12px; overflow: auto; }
+      main  { padding: 12px; overflow: auto; display: grid; grid-template-rows: auto auto 1fr; gap: 12px; }
+
+      .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      input[type="search"], select {
+        width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 10px; background: #fff;
+      }
+      button {
+        padding: 10px 12px; border: 1px solid #ddd; border-radius: 10px; background: #fff; cursor: pointer;
+      }
+      button.primary { border-color: #111; font-weight: 700; }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+      .list { margin-top: 10px; display: grid; gap: 6px; }
+      .item { padding: 10px; border: 1px solid #eee; border-radius: 12px; cursor: pointer; }
+      .item:hover { border-color: #ddd; }
+      .item.active { border-color: #111; }
+      .muted { color: #666; font-size: 12px; }
+      .small { font-size: 12px; color: #666; }
+
+      .divider { height: 1px; background: #eee; margin: 10px 0; }
+
+      /* forms stacked vertically */
+      .forms { display: grid; grid-template-columns: 1fr; gap: 12px; align-items: start; }
+      .panel { border: 1px solid #eee; border-radius: 14px; padding: 10px; }
+      .panel h2 { margin: 6px 6px 10px; font-size: 16px; }
+
+      /* TriG preview */
+      textarea#trigOut {
+        width: 100%;
+        height: 240px;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        padding: 10px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 12px;
+        line-height: 1.35;
+        resize: vertical;
+        box-sizing: border-box;
+      }
+
+      shacl-form { --shacl-label-width: 11em; }
+    </style>
+  </head>
+
+  <body>
+    <aside>
+      <div class="row">
+        <input id="q" type="search" placeholder="Search mappings (by label)…" />
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <select id="typeHintFilter" title="Filter by map:typeHint">
+          <option value="">All type hints</option>
+        </select>
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <button id="prev">◀</button>
+        <div class="muted">Page <span id="page">1</span></div>
+        <button id="next">▶</button>
+        <div style="flex:1;"></div>
+        <button id="reload">Reload</button>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="muted">
+        Click a mapping to load the mapping (top form) and its target entity (bottom form).
+      </div>
+
+      <div id="list" class="list"></div>
+    </aside>
+
+    <main>
+      <!-- actions -->
+      <div class="row">
+        <button id="exportSelected" class="primary" disabled>Download TriG (selected)</button>
+        <button id="exportMapping" disabled>Download mapping TriG</button>
+        <button id="exportEntity" disabled>Download entity TriG</button>
+        <div style="flex:1;"></div>
+        <button id="exportFull" class="primary">Download full graphs (TriG)</button>
+        <div id="status" class="muted"></div>
+      </div>
+      <div class="small">
+        “Download full graphs” fetches both named graphs via paging (can take a while for large datasets).
+      </div>
+
+      <!-- TriG preview panel -->
+      <div class="panel">
+        <div class="row" style="margin-bottom:8px;">
+          <button id="showSelected" disabled>Show TriG (selected)</button>
+          <button id="showMapping" disabled>Show mapping TriG</button>
+          <button id="showEntity" disabled>Show entity TriG</button>
+          <button id="copyTrig" disabled>Copy</button>
+          <button id="clearTrig">Clear</button>
+          <div class="small" style="margin-left:auto;">Auto-preview updates after edits</div>
+        </div>
+        <textarea id="trigOut" spellcheck="false" placeholder="TriG preview will appear here…"></textarea>
+      </div>
+
+      <!-- forms -->
+      <div class="forms">
+        <div class="panel">
+          <h2>Mapping</h2>
+          <shacl-form
+            id="mappingForm"
+            data-use-shadow-root="false"
+            data-dense="true"
+            data-collapse="open"
+            data-values-graph="https://scigma.de/mappings"
+          ></shacl-form>
+        </div>
+
+        <div class="panel">
+          <h2>Entity</h2>
+          <shacl-form
+            id="entityForm"
+            data-use-shadow-root="false"
+            data-dense="true"
+            data-collapse="open"
+            data-values-graph="https://scigma.de/entities"
+          ></shacl-form>
+        </div>
+      </div>
+    </main>
+
+    <!-- N3 for TriG/N-Quads parsing/writing -->
+    <script src="https://cdn.jsdelivr.net/npm/n3@1.23.0/browser/n3.min.js"></script>
+
+    <script type="module">
+      // =====================================================
+      // CONFIG
+      // =====================================================
+      const SPARQL_QUERY_ENDPOINT = "http://localhost:7879/query";
+
+      // Named graphs in your dataset
+      const G_MAPPINGS = "https://scigma.de/mappings";
+      const G_ENTITIES = "https://scigma.de/entities";
+
+      // Mapping vocabulary (keep consistent everywhere)
+      const MAP_NS         = "https://zotero-rdf-server.org/mapping/";
+      const MAP_ENTRY      = MAP_NS + "Entry";
+      const MAP_LABEL_P    = MAP_NS + "label";
+      const MAP_TARGET_P   = MAP_NS + "target";
+      const MAP_TYPEHINT_P = MAP_NS + "typeHint";
+
+      const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+      const PROV_GENERATED_AT = "http://www.w3.org/ns/prov#generatedAtTime";
+
+      // Pagination
+      const PAGE_SIZE = 25;
+
+      // Full-graph export paging (tune for your setup)
+      const EXPORT_PAGE_SIZE = 50000;
+
+      // =====================================================
+      // SHAPES
+      // =====================================================
+      const SHAPES_TTL = `
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix schema: <https://schema.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix map:  <${MAP_NS}> .
+
+<#MappingShape>
+  a sh:NodeShape ;
+  sh:property [
+    sh:path <${MAP_LABEL_P}> ;
+    sh:name "Mapping label" ;
+    sh:datatype xsd:string ;
+    sh:minCount 1 ;
+    sh:order 1 ;
+  ] ;
+  sh:property [
+    sh:path <${MAP_TYPEHINT_P}> ;
+    sh:name "Type hint" ;
+    sh:nodeKind sh:IRI ;
+    sh:order 2 ;
+  ] ;
+  sh:property [
+    sh:path prov:generatedAtTime ;
+    sh:name "Generated at" ;
+    sh:datatype xsd:dateTime ;
+    sh:maxCount 1 ;
+    sh:order 3 ;
+  ] ;
+  sh:property [
+    sh:path <${MAP_TARGET_P}> ;
+    sh:name "Target entity (IRI)" ;
+    sh:nodeKind sh:IRI ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:order 4 ;
+  ] .
+
+<#EntityShape>
+  a sh:NodeShape ;
+  sh:property [
+    sh:path rdfs:label ;
+    sh:name "Label" ;
+    sh:datatype xsd:string ;
+    sh:maxCount 1 ;
+    sh:order 1 ;
+  ] ;
+  sh:property [
+    sh:path rdf:type ;
+    sh:name "Types" ;
+    sh:nodeKind sh:IRI ;
+    sh:order 2 ;
+  ] ;
+  sh:property [
+    sh:path owl:sameAs ;
+    sh:name "sameAs" ;
+    sh:nodeKind sh:IRI ;
+    sh:order 3 ;
+  ] ;
+  sh:property [
+    sh:path schema:keywords ;
+    sh:name "keywords" ;
+    sh:datatype xsd:string ;
+    sh:order 4 ;
+  ] .
+`.trim();
+
+      // =====================================================
+      // DOM
+      // =====================================================
+      const $ = (id) => document.getElementById(id);
+
+      const listEl = $("list");
+      const qEl = $("q");
+      const typeHintFilterEl = $("typeHintFilter");
+      const pageEl = $("page");
+      const statusEl = $("status");
+
+      const prevBtn = $("prev");
+      const nextBtn = $("next");
+      const reloadBtn = $("reload");
+
+      const exportSelectedBtn = $("exportSelected");
+      const exportMappingBtn = $("exportMapping");
+      const exportEntityBtn = $("exportEntity");
+      const exportFullBtn = $("exportFull");
+
+      const showSelectedBtn = $("showSelected");
+      const showMappingBtn = $("showMapping");
+      const showEntityBtn = $("showEntity");
+      const copyTrigBtn = $("copyTrig");
+      const clearTrigBtn = $("clearTrig");
+      const trigOut = $("trigOut");
+
+      const mappingForm = $("mappingForm");
+      const entityForm = $("entityForm");
+
+      // =====================================================
+      // State
+      // =====================================================
+      let page = 0;
+      let selectedMapping = null;
+      let selectedTarget = null;
+
+      // =====================================================
+      // SPARQL helpers
+      // =====================================================
+      async function sparqlSelect(query) {
+        const resp = await fetch(SPARQL_QUERY_ENDPOINT, {
+          method: "POST",
+          headers: {
+            "content-type": "application/sparql-query",
+            "accept": "application/sparql-results+json"
+          },
+          body: query
+        });
+        const text = await resp.text();
+        if (!resp.ok) throw new Error(`SPARQL SELECT failed (${resp.status}): ${text}`);
+        return JSON.parse(text);
+      }
+
+      async function sparqlConstruct(query) {
+        const resp = await fetch(SPARQL_QUERY_ENDPOINT, {
+          method: "POST",
+          headers: {
+            "content-type": "application/sparql-query",
+            "accept": "text/turtle"
+          },
+          body: query
+        });
+        const ttl = await resp.text();
+        if (!resp.ok) throw new Error(`SPARQL CONSTRUCT failed (${resp.status}): ${ttl}`);
+        return ttl;
+      }
+
+      function setStatus(msg) { statusEl.textContent = msg || ""; }
+
+      // =====================================================
+      // Forms init
+      // =====================================================
+      function initForms() {
+        mappingForm.setAttribute("data-shapes", SHAPES_TTL);
+        mappingForm.setAttribute("data-shape-subject", "#MappingShape");
+
+        entityForm.setAttribute("data-shapes", SHAPES_TTL);
+        entityForm.setAttribute("data-shape-subject", "#EntityShape");
+      }
+
+      function refreshActions() {
+        exportMappingBtn.disabled = !selectedMapping;
+        exportEntityBtn.disabled = !selectedTarget;
+        exportSelectedBtn.disabled = !(selectedMapping && selectedTarget);
+
+        showMappingBtn.disabled = !selectedMapping;
+        showEntityBtn.disabled = !selectedTarget;
+        showSelectedBtn.disabled = !(selectedMapping && selectedTarget);
+
+        copyTrigBtn.disabled = !(trigOut.value && trigOut.value.trim().length);
+      }
+
+      // =====================================================
+      // Type-hint filter: populate dropdown
+      // =====================================================
+      async function loadTypeHints() {
+        const q = `
+SELECT DISTINCT ?t WHERE {
+  GRAPH <${G_MAPPINGS}> { ?m <${MAP_TYPEHINT_P}> ?t . }
+}
+ORDER BY STR(?t)
+LIMIT 500
+`.trim();
+
+        try {
+          const data = await sparqlSelect(q);
+          const hints = data.results.bindings.map(b => b.t.value);
+          const current = typeHintFilterEl.value;
+
+          typeHintFilterEl.innerHTML = `<option value="">All type hints</option>`;
+          for (const t of hints) {
+            const opt = document.createElement("option");
+            opt.value = t;
+            opt.textContent = t;
+            typeHintFilterEl.appendChild(opt);
+          }
+          if (hints.includes(current)) typeHintFilterEl.value = current;
+        } catch (e) {
+          console.warn("Could not load type hints:", e);
+        }
+      }
+
+      // =====================================================
+      // List mappings (filter by label + typeHint)
+      // =====================================================
+      async function loadMappingList() {
+        setStatus("Loading mappings…");
+        listEl.innerHTML = "";
+
+        const q = (qEl.value || "").trim().toLowerCase();
+        const offset = page * PAGE_SIZE;
+        const hintFilter = (typeHintFilterEl.value || "").trim();
+
+        const query = `
+SELECT ?m ?label ?time ?hint WHERE {
+  GRAPH <${G_MAPPINGS}> {
+    ?m <${MAP_LABEL_P}> ?label .
+    OPTIONAL { ?m <${PROV_GENERATED_AT}> ?time . }
+    OPTIONAL { ?m <${MAP_TYPEHINT_P}> ?hint . }
+
+    ${hintFilter ? `?m <${MAP_TYPEHINT_P}> <${hintFilter}> .` : ""}
+    ${q ? `FILTER(CONTAINS(LCASE(STR(?label)), "${q.replaceAll('"', '\\"')}"))` : ""}
+  }
+}
+ORDER BY LCASE(STR(?label)) STR(?m)
+LIMIT ${PAGE_SIZE}
+OFFSET ${offset}
+`.trim();
+
+        const data = await sparqlSelect(query);
+        const rows = data.results.bindings;
+
+        if (rows.length === 0) {
+          listEl.innerHTML = `<div class="muted">No results.</div>`;
+          setStatus("");
+          return;
+        }
+
+        for (const b of rows) {
+          const iri = b.m.value;
+          const label = b.label?.value || "(no label)";
+          const time = b.time?.value || "";
+          const hint = b.hint?.value || "";
+
+          const div = document.createElement("div");
+          div.className = "item" + (iri === selectedMapping ? " active" : "");
+          div.innerHTML = `
+            <div><strong>${escapeHtml(label)}</strong></div>
+            <div class="muted">${escapeHtml(iri)}</div>
+            ${hint ? `<div class="muted">typeHint: ${escapeHtml(hint)}</div>` : ""}
+            ${time ? `<div class="muted">time: ${escapeHtml(time)}</div>` : ""}
+          `;
+          div.addEventListener("click", () => selectMapping(iri));
+          listEl.appendChild(div);
+        }
+
+        setStatus("");
+      }
+
+      // =====================================================
+      // Load mapping + target entity
+      // =====================================================
+      async function fetchTargetIri(mappingIri) {
+        const q = `
+SELECT ?target WHERE {
+  GRAPH <${G_MAPPINGS}> { <${mappingIri}> <${MAP_TARGET_P}> ?target . }
+} LIMIT 1
+`.trim();
+        const data = await sparqlSelect(q);
+        return data.results.bindings[0]?.target?.value || null;
+      }
+
+      async function loadMappingTTL(mappingIri) {
+        const q = `
+CONSTRUCT { <${mappingIri}> ?p ?o . }
+WHERE     { GRAPH <${G_MAPPINGS}> { <${mappingIri}> ?p ?o . } }
+`.trim();
+        return await sparqlConstruct(q);
+      }
+
+      async function loadEntityTTL(entityIri) {
+        const q = `
+CONSTRUCT { <${entityIri}> ?p ?o . }
+WHERE     { GRAPH <${G_ENTITIES}> { <${entityIri}> ?p ?o . } }
+`.trim();
+        return await sparqlConstruct(q);
+      }
+
+      async function selectMapping(mappingIri) {
+        selectedMapping = mappingIri;
+
+        // highlight current
+        [...listEl.querySelectorAll(".item")].forEach(el => {
+          const iriText = el.querySelector(".muted")?.textContent || "";
+          if (iriText.includes(mappingIri)) el.classList.add("active");
+          else el.classList.remove("active");
+        });
+
+        setStatus("Loading mapping…");
+        const mappingTTL = await loadMappingTTL(mappingIri);
+        mappingForm.setAttribute("data-values", mappingTTL);
+        mappingForm.setAttribute("data-values-subject", mappingIri);
+
+        setStatus("Resolving target entity…");
+        const target = await fetchTargetIri(mappingIri);
+        selectedTarget = target;
+
+        if (!selectedTarget) {
+          entityForm.setAttribute("data-values", "");
+          entityForm.removeAttribute("data-values-subject");
+          refreshActions();
+          trigOut.value = "";
+          setStatus("No target entity found for this mapping.");
+          return;
+        }
+
+        setStatus("Loading entity…");
+        const entityTTL = await loadEntityTTL(selectedTarget);
+        entityForm.setAttribute("data-values", entityTTL);
+        entityForm.setAttribute("data-values-subject", selectedTarget);
+
+        refreshActions();
+        setStatus("");
+
+        debounceSyncTarget();
+        debouncePreviewSelected();
+      }
+
+      // Sync entity when target changes in mapping
+      let syncTimer = null;
+      function debounceSyncTarget() {
+        clearTimeout(syncTimer);
+        syncTimer = setTimeout(async () => {
+          if (!selectedMapping) return;
+          try {
+            const newTarget = await fetchTargetIri(selectedMapping);
+            if (!newTarget || newTarget === selectedTarget) return;
+
+            selectedTarget = newTarget;
+            setStatus("Target changed → loading entity…");
+
+            const entityTTL = await loadEntityTTL(selectedTarget);
+            entityForm.setAttribute("data-values", entityTTL);
+            entityForm.setAttribute("data-values-subject", selectedTarget);
+
+            refreshActions();
+            setStatus("");
+
+            debouncePreviewSelected();
+          } catch (e) {
+            setStatus(String(e));
+          }
+        }, 250);
+      }
+      mappingForm.addEventListener("change", () => {
+        debounceSyncTarget();
+        debouncePreviewSelected();
+      });
+
+      // =====================================================
+      // Export / Preview — robust against Turtle vs TriG vs N-Quads
+      // =====================================================
+      function downloadText(filename, text, mime = "application/trig;charset=utf-8") {
+        const blob = new Blob([text], { type: mime });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }
+
+      function trySerialize(formEl, mime) {
+        try {
+          const out = formEl.serialize(mime);
+          if (typeof out === "string" && out.trim().length > 0) return out;
+        } catch {}
+        return null;
+      }
+
+      async function toTriGFromSerialized(serialized, format, graphIri) {
+        const parser = new window.N3.Parser({ format });
+        const quads = parser.parse(serialized);
+
+        // If parsed quads are triples (default graph), attach the named graph.
+        const g = window.N3.DataFactory.namedNode(graphIri);
+        const hasGraph = quads.some(q => q.graph && q.graph.termType !== "DefaultGraph");
+
+        const finalQuads = hasGraph
+          ? quads
+          : quads.map(q => window.N3.DataFactory.quad(q.subject, q.predicate, q.object, g));
+
+        const writer = new window.N3.Writer({ format: "application/trig" });
+        writer.addQuads(finalQuads);
+
+        return await new Promise((resolve, reject) => {
+          writer.end((err, out) => (err ? reject(err) : resolve(out)));
+        });
+      }
+
+      async function formToTriG(formEl) {
+        const graphIri = formEl.getAttribute("data-values-graph");
+        const subject = formEl.getAttribute("data-values-subject");
+        if (!graphIri) throw new Error("data-values-graph missing on form");
+        if (!subject) throw new Error("data-values-subject missing on form (nothing selected)");
+
+        // 1) direct TriG
+        const trig = trySerialize(formEl, "application/trig");
+        if (trig) return trig;
+
+        // 2) N-Quads
+        const nquads = trySerialize(formEl, "application/n-quads");
+        if (nquads) return await toTriGFromSerialized(nquads, "application/n-quads", graphIri);
+
+        // 3) Turtle fallback (may actually be TriG; detect by "{")
+        const turtleish = trySerialize(formEl, "text/turtle") || trySerialize(formEl, "text/turtle; charset=utf-8");
+        if (!turtleish) throw new Error("Could not serialize form (no supported mime).");
+
+        const looksLikeTriG = turtleish.includes("{");
+        const fmt = looksLikeTriG ? "application/trig" : "text/turtle";
+        return await toTriGFromSerialized(turtleish, fmt, graphIri);
+      }
+
+      // Show buttons (write into textarea)
+      showMappingBtn.addEventListener("click", async () => {
+        try {
+          setStatus("Generating mapping TriG…");
+          trigOut.value = await formToTriG(mappingForm);
+          setStatus("");
+          refreshActions();
+        } catch (e) { setStatus(String(e)); }
+      });
+
+      showEntityBtn.addEventListener("click", async () => {
+        try {
+          setStatus("Generating entity TriG…");
+          trigOut.value = await formToTriG(entityForm);
+          setStatus("");
+          refreshActions();
+        } catch (e) { setStatus(String(e)); }
+      });
+
+      showSelectedBtn.addEventListener("click", async () => {
+        try {
+          setStatus("Generating selected TriG…");
+          const trigM = await formToTriG(mappingForm);
+          const trigE = await formToTriG(entityForm);
+          trigOut.value = trigM + "\n\n" + trigE;
+          setStatus("");
+          refreshActions();
+        } catch (e) { setStatus(String(e)); }
+      });
+
+      copyTrigBtn.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(trigOut.value || "");
+          setStatus("Copied.");
+          setTimeout(() => setStatus(""), 800);
+        } catch {
+          setStatus("Copy failed (clipboard permission?).");
+        }
+      });
+
+      clearTrigBtn.addEventListener("click", () => {
+        trigOut.value = "";
+        refreshActions();
+      });
+
+      // Download buttons
+      exportMappingBtn.addEventListener("click", async () => {
+        try {
+          setStatus("Exporting selected mapping…");
+          const trig = await formToTriG(mappingForm);
+          downloadText("mapping.trig", trig);
+          setStatus("");
+        } catch (e) { setStatus(String(e)); }
+      });
+
+      exportEntityBtn.addEventListener("click", async () => {
+        try {
+          setStatus("Exporting selected entity…");
+          const trig = await formToTriG(entityForm);
+          downloadText("entity.trig", trig);
+          setStatus("");
+        } catch (e) { setStatus(String(e)); }
+      });
+
+      exportSelectedBtn.addEventListener("click", async () => {
+        try {
+          setStatus("Exporting selected mapping + entity…");
+          const trigM = await formToTriG(mappingForm);
+          const trigE = await formToTriG(entityForm);
+          downloadText("mapping+entity.trig", trigM + "\n\n" + trigE);
+          setStatus("");
+        } catch (e) { setStatus(String(e)); }
+      });
+
+      // Auto-preview selected (debounced)
+      let previewTimer = null;
+      function debouncePreviewSelected() {
+        clearTimeout(previewTimer);
+        previewTimer = setTimeout(async () => {
+          if (!(selectedMapping && selectedTarget)) return;
+          try {
+            const trigM = await formToTriG(mappingForm);
+            const trigE = await formToTriG(entityForm);
+            trigOut.value = trigM + "\n\n" + trigE;
+            refreshActions();
+          } catch {
+            // ignore preview errors
+          }
+        }, 600);
+      }
+      entityForm.addEventListener("change", debouncePreviewSelected);
+
+      // =====================================================
+      // Download full graphs (paged SELECT → TriG)
+      // =====================================================
+      function termFromBinding(b) {
+        if (!b) return null;
+        if (b.type === "uri") return window.N3.DataFactory.namedNode(b.value);
+        if (b.type === "bnode") return window.N3.DataFactory.blankNode(b.value);
+        const dt = b.datatype ? window.N3.DataFactory.namedNode(b.datatype) : null;
+        const lang = b["xml:lang"] || b.lang || "";
+        return window.N3.DataFactory.literal(b.value, lang ? lang : (dt || undefined));
+      }
+
+      async function sparqlSelectRows(query) {
+        const data = await sparqlSelect(query);
+        return data.results.bindings;
+      }
+
+      async function exportWholeNamedGraphToTriG(graphIri, filename, pageSize = EXPORT_PAGE_SIZE) {
+        const g = window.N3.DataFactory.namedNode(graphIri);
+        const writer = new window.N3.Writer({ format: "application/trig" });
+
+        let offset = 0;
+        while (true) {
+          const q = `
+SELECT ?s ?p ?o WHERE {
+  GRAPH <${graphIri}> { ?s ?p ?o }
+  FILTER(isIRI(?p))
+}
+ORDER BY STR(?s) STR(?p) STR(?o)
+LIMIT ${pageSize}
+OFFSET ${offset}
+`.trim();
+
+          const rows = await sparqlSelectRows(q);
+          if (rows.length === 0) break;
+
+          for (const r of rows) {
+            const s = termFromBinding(r.s);
+            if (r.p.type !== "uri") continue; // predicate must be IRI
+            const p = window.N3.DataFactory.namedNode(r.p.value);
+            const o = termFromBinding(r.o);
+            writer.addQuad(window.N3.DataFactory.quad(s, p, o, g));
+          }
+
+          offset += pageSize;
+          setStatus(`Downloading ${graphIri} … fetched ${offset} triples`);
+          await new Promise(r => setTimeout(r, 0));
+        }
+
+        const trig = await new Promise((resolve, reject) => {
+          writer.end((err, out) => (err ? reject(err) : resolve(out)));
+        });
+
+        downloadText(filename, trig);
+      }
+
+      exportFullBtn.addEventListener("click", async () => {
+        try {
+          setStatus("Downloading full graphs…");
+          await exportWholeNamedGraphToTriG(G_MAPPINGS, "mappings-full.trig");
+          await exportWholeNamedGraphToTriG(G_ENTITIES, "entities-full.trig");
+          setStatus("Full graph downloads finished.");
+          setTimeout(() => setStatus(""), 1500);
+        } catch (e) {
+          setStatus(String(e));
+        }
+      });
+
+      // =====================================================
+      // Navigation controls
+      // =====================================================
+      prevBtn.addEventListener("click", async () => {
+        page = Math.max(0, page - 1);
+        pageEl.textContent = String(page + 1);
+        await loadMappingList();
+      });
+
+      nextBtn.addEventListener("click", async () => {
+        page += 1;
+        pageEl.textContent = String(page + 1);
+        await loadMappingList();
+      });
+
+      reloadBtn.addEventListener("click", async () => loadMappingList());
+
+      let searchTimer = null;
+      function triggerSearchReload() {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(async () => {
+          page = 0;
+          pageEl.textContent = "1";
+          await loadMappingList();
+        }, 250);
+      }
+      qEl.addEventListener("input", triggerSearchReload);
+      typeHintFilterEl.addEventListener("change", triggerSearchReload);
+
+      function escapeHtml(s) {
+        return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+      }
+
+      // =====================================================
+      // Start
+      // =====================================================
+      initForms();
+      await loadTypeHints();
+      await loadMappingList();
+      refreshActions();
+    </script>
+  </body>
+</html>
