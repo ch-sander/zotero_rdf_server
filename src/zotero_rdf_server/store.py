@@ -171,14 +171,12 @@ def refresh_store(force_reload:bool = False, remove_store:bool=True):
                             logger.info("Start Parser Plugin")
                             # TODO read predicate/query, and tag filter from YAML?
                             
-                            if find_spec(".plugins.parse_note.parse_all_notes") is not None:
-                                try:
-                                    from .plugins.parser.parse_note import parse_all_notes
-                                    parse_all_notes(lib, store, delete=True)
-                                except ImportError:
-                                    logger.exception("parse_all_notes import failed!")                                
-                            else:                       
-                                logger.exception(f"parse_all_notes module not found!")
+                            try:
+                                from .plugins.parser.parse_note import parse_all_notes
+                                parse_all_notes(lib, store, delete=True)
+                            except ImportError:
+                                logger.exception("parse_all_notes import failed!")                                
+
                             
                         except Exception as e:
                             logger.error(f"Error parsing notes: {e}")

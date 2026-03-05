@@ -685,7 +685,7 @@ def retarget_mapping_entries(
     for e in entries:
         if e == keeper:
             continue
-        migrate_facts(store, e, keeper, map_graph, ignore_predicates=ignore,delete_old=dedup)
+        migrate_facts(store, e, keeper, map_graph, ignore_predicates=ignore)
         delete_subject_facts(store, e, map_graph)
 
 def first_literal(store: Store, subj: NamedNode, pred: NamedNode, graph: NamedNode) -> str | None:
