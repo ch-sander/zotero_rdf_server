@@ -16,7 +16,9 @@ defaults:
                      # manual_import: it will look for all files in the import folder in a directory of the library's "name" or set in "load_from" ("$" will be replaced by library_id for a path pattern).
   rdf_export_format: "rdf_zotero" # "rdf_zotero" or "rdf_bibliontology" only needed if load_mode = "rdf"
   # base_uri: "https://www.example.com#" used as the uri for the library named graph and as the base uri for all named nodes created for zotero items and collections. By default is "{context.base}{libraries.library_type}/{libraries.library_id}" as specified in this yaml
-  knowledge_base_graph: "https://www.zotero.org/entities" # Will be used to create identical uuids for named nodes accross multiple libraries in the union graph. If not given, uses base_uri. A knowledge base to be loaded into the graph can be set as library below, with library_type: "knowledge base".
+  knowledge_base_graph: "https://www.zotero.org/entities" # Will be used to create identical uuids for named nodes accross multiple libraries in the union graph. If not given, uses base_uri. A knowledge base to be loaded into the store can be set as library below, with library_type: "knowledge base".
+  mapping_base_graph: "https://www.zotero.org/mappings"  # Will be used to map between Zotero input data and the knowledge base. A mapping graph to be loaded into the store can be set as library below, with library_type: "mapping".
+  
   plugin: # config related to plugins, not checked for consistency, and read by plugin individually, but per library
     taxonomy: # requires sync config for library (adding Zotero notes to remote libary)
       note_key : null # create if none
@@ -159,6 +161,15 @@ libraries:
     #   library_type: "group"
     #   library_id: "000"
     #   collection_id: "000"
+
+
+  - name: MAP # stores mapping for entity matching between library and knowledge base
+    library_type: "mapping"
+    base_uri: "https://www.zotero.org/mappings"    
+    plugin:
+      notes_parser:
+        auto: false
+
   - name: Open-Access History Books
     library_type: "groups"
     library_id: "5250572"
