@@ -59,13 +59,13 @@ class ZoteroLibrary:
             if not any([str(self.base_url).startswith("http"),str(self.base_api_url).startswith("http"),str(self.knowledge_base_graph).startswith("http")]):
                 passing = False
                 logger.warning(f"{self.name}: Some library config variable is expected to be a IRI/URI but is not!")
-            if not str(self.library_id).isdigit() and not self.library_type in ["knowledge base", "mapping"]:
+            if not str(self.library_id).isdigit() and not self.library_type in ["knowledge base", "mapping", "dataset"]:
                 passing = False
                 logger.error(f"{self.name}: Invalid library ID --> {type(self.library_id)}!")
             if not self.load_mode in ["json", "rdf", "manual_import"]:
                 passing = False
                 logger.warning(f"{self.name}: Invalid load_mode {self.load_mode}!")
-            if not self.library_type in ["groups", "user", "knowledge base", "mapping"]:            
+            if not self.library_type in ["groups", "user", "knowledge base", "mapping", "dataset"]:            
                 passing = False
                 logger.error(f"{self.name}: Invalid library_type {self.library_type}!")
             if not self.rdf_export_format in ["rdf_zotero", "rdf_bibliontology"] and self.load_mode == "rdf":
