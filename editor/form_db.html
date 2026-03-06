@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Mapping + Entity Editor (Local-first with Remote Import)</title>
+    <title>Mapping + Entity Editor (Local-first with Remote Import + Snapshot Cache)</title>
 
     <script src="https://cdn.jsdelivr.net/npm/@ulb-darmstadt/shacl-form/dist/bundle.js" type="module"></script>
     <script src="https://cdn.jsdelivr.net/npm/n3@1.23.0/browser/n3.min.js"></script>
@@ -91,9 +91,8 @@
         vertical-align: -2px;
         margin-right: 8px;
       }
-      @keyframes spin {
-        to { transform: rotate(360deg); }
-      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
       shacl-form { --shacl-label-width: 11em; }
     </style>
   </head>
@@ -144,7 +143,7 @@
         <div class="muted">Page <span id="page">1</span></div>
         <button id="next">▶</button>
         <div style="flex:1;"></div>
-        <button id="reload">Refresh</button>
+        <button id="reload">Reload</button>
       </div>
 
       <div class="divider"></div>
@@ -269,6 +268,11 @@
         RDF_TYPE,
         MAP_LABEL_P, MAP_TARGET_P, MAP_TYPEHINT_P, PROV_GENERATED_AT, DCTERMS_CONFORMS_TO
       ];
+
+      const DB_NAME = "mapping_entity_editor_db";
+      const DB_VERSION = 1;
+      const SNAPSHOT_STORE = "snapshots";
+      const SNAPSHOT_KEY = "main_local_snapshot";
 
       const SHAPES_TTL = `
 @prefix sh: <http://www.w3.org/ns/shacl#>.
@@ -429,11 +433,17 @@ sh:property [
       function subjectTerm(iri) { return window.N3.DataFactory.namedNode(iri); }
       function graphTerm(iri) { return window.N3.DataFactory.namedNode(iri); }
 
+      function formatBytes(bytes) {
+        if (!Number.isFinite(bytes) || bytes < 0) return "unknown size";
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+      }
+
       function setListLoading(isLoading, msg = "Loading…") {
         prevBtn.disabled = isLoading || page === 0;
         nextBtn.disabled = isLoading;
         reloadBtn.disabled = isLoading;
-
         if (isLoading) {
           listEl.innerHTML = `<div class="muted"><span class="spinner"></span>${escapeHtml(msg)}</div>`;
         }
@@ -464,6 +474,84 @@ sh:property [
         const endpointTxt = remoteEndpoint ? `endpoint: ${remoteEndpoint}` : "endpoint: (none)";
         const remoteTxt = loadedRemoteMeta ? `remote snapshot loaded: ${loadedRemoteMeta}` : "remote snapshot loaded: no";
         sourceInfoEl.textContent = `Store: local (${localCount} quads) • ${endpointTxt} • ${remoteTxt}`;
+      }
+
+      function openSnapshotDb() {
+        return new Promise((resolve, reject) => {
+          const req = indexedDB.open(DB_NAME, DB_VERSION);
+          req.onupgradeneeded = () => {
+            const db = req.result;
+            if (!db.objectStoreNames.contains(SNAPSHOT_STORE)) {
+              db.createObjectStore(SNAPSHOT_STORE);
+            }
+          };
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+      }
+
+      async function datasetToNQuads() {
+        const writer = new window.N3.Writer({ format: "application/n-quads" });
+        for (const q of dataset.getQuads(null, null, null, null)) writer.addQuad(q);
+        return await new Promise((resolve, reject) => writer.end((e, out) => e ? reject(e) : resolve(out)));
+      }
+
+      async function saveSnapshotToIndexedDb() {
+        const db = await openSnapshotDb();
+        const nquads = await datasetToNQuads();
+        const payload = {
+          nquads,
+          savedAt: new Date().toISOString(),
+          remoteEndpoint,
+          loadedRemoteMeta,
+        };
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction(SNAPSHOT_STORE, "readwrite");
+          tx.objectStore(SNAPSHOT_STORE).put(payload, SNAPSHOT_KEY);
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error);
+          tx.onabort = () => reject(tx.error);
+        });
+        db.close();
+      }
+
+      async function loadSnapshotFromIndexedDb() {
+        const db = await openSnapshotDb();
+        const payload = await new Promise((resolve, reject) => {
+          const tx = db.transaction(SNAPSHOT_STORE, "readonly");
+          const req = tx.objectStore(SNAPSHOT_STORE).get(SNAPSHOT_KEY);
+          req.onsuccess = () => resolve(req.result || null);
+          req.onerror = () => reject(req.error);
+        });
+        db.close();
+
+        if (!payload || !payload.nquads) return false;
+
+        const parser = new window.N3.Parser({ format: "application/n-quads" });
+        const quads = parser.parse(payload.nquads);
+
+        clearLocalStores();
+        addQuadsToStores(quads);
+        rebuildPerGraphStores();
+
+        remoteEndpoint = payload.remoteEndpoint || "";
+        loadedRemoteMeta = payload.loadedRemoteMeta || `restored ${payload.savedAt || ""}`;
+        if (remoteEndpoint) endpointEl.value = remoteEndpoint;
+
+        updateSourceInfo();
+        return true;
+      }
+
+      async function clearSnapshotFromIndexedDb() {
+        const db = await openSnapshotDb();
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction(SNAPSHOT_STORE, "readwrite");
+          tx.objectStore(SNAPSHOT_STORE).delete(SNAPSHOT_KEY);
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error);
+          tx.onabort = () => reject(tx.error);
+        });
+        db.close();
       }
 
       function mintIRI(base) { return base + "/" + crypto.randomUUID(); }
@@ -640,6 +728,7 @@ sh:property [
         }
         addQuadsToStores(quads);
         updateSourceInfo();
+        await saveSnapshotToIndexedDb();
         setStatus("");
       }
 
@@ -676,6 +765,7 @@ sh:property [
         addQuadsToStores(imported);
         loadedRemoteMeta = `${new Date().toLocaleString()} (${imported.length} quads)`;
         updateSourceInfo();
+        await saveSnapshotToIndexedDb();
         setStatus("Remote snapshot imported.");
         setTimeout(() => setStatus(""), 1000);
       }
@@ -705,81 +795,80 @@ LIMIT 500
         }
       }
 
-    async function loadMappingList() {
-      setStatus("Loading mappings…");
-      setListLoading(true, `Loading page ${page + 1}…`);
+      async function loadMappingList() {
+        setStatus("Loading mappings…");
+        setListLoading(true, `Loading page ${page + 1}…`);
+        try {
+          const q = (qEl.value || "").trim().toLowerCase();
+          const offset = page * PAGE_SIZE;
+          const hintFilter = (typeHintFilterEl.value || "").trim();
 
-      try {
-        const q = (qEl.value || "").trim().toLowerCase();
-        const offset = page * PAGE_SIZE;
-        const hintFilter = (typeHintFilterEl.value || "").trim();
-
-        const query = `
-        SELECT ?m
-            (SAMPLE(?label) AS ?label)
-            (SAMPLE(?time) AS ?time)
-            (SAMPLE(?hint) AS ?hint)
-            (SAMPLE(?target) AS ?target)
-        WHERE {
-          GRAPH <${G_MAPPINGS}> {
-            ?m <${MAP_LABEL_P}> ?label .
-            OPTIONAL { ?m <${PROV_GENERATED_AT}> ?time . }
-            OPTIONAL { ?m <${MAP_TYPEHINT_P}> ?hint . }
-            OPTIONAL { ?m <${MAP_TARGET_P}> ?target . }
-            ${q ? `FILTER(CONTAINS(LCASE(STR(?label)), "${q.replaceAll('"', '\\"')}"))` : ""}
+          const query = `
+          SELECT ?m
+              (SAMPLE(?label) AS ?label)
+              (SAMPLE(?time) AS ?time)
+              (SAMPLE(?hint) AS ?hint)
+              (SAMPLE(?target) AS ?target)
+          WHERE {
+            GRAPH <${G_MAPPINGS}> {
+              ?m <${MAP_LABEL_P}> ?label .
+              OPTIONAL { ?m <${PROV_GENERATED_AT}> ?time . }
+              OPTIONAL { ?m <${MAP_TYPEHINT_P}> ?hint . }
+              OPTIONAL { ?m <${MAP_TARGET_P}> ?target . }
+              ${q ? `FILTER(CONTAINS(LCASE(STR(?label)), "${q.replaceAll('"', '\\"')}"))` : ""}
+            }
+            ${hintFilter ? `FILTER(EXISTS { GRAPH <${G_MAPPINGS}> { ?m <${MAP_TYPEHINT_P}> <${hintFilter}> } })` : ""}
           }
-          ${hintFilter ? `FILTER(EXISTS { GRAPH <${G_MAPPINGS}> { ?m <${MAP_TYPEHINT_P}> <${hintFilter}> } })` : ""}
-        }
-        GROUP BY ?m
-        ORDER BY LCASE(STR(?label)) STR(?m)
-        LIMIT ${PAGE_SIZE}
-        OFFSET ${offset}
-        `.trim();
+          GROUP BY ?m
+          ORDER BY LCASE(STR(?label)) STR(?m)
+          LIMIT ${PAGE_SIZE}
+          OFFSET ${offset}
+          `.trim();
 
-        const data = await sparqlSelectLocal(query);
-        const rows = data.results.bindings;
+          const data = await sparqlSelectLocal(query);
+          const rows = data.results.bindings;
+          listEl.innerHTML = "";
 
-        listEl.innerHTML = "";
+          if (!rows.length) {
+            listEl.innerHTML = `<div class="muted">No results.</div>`;
+            setStatus("");
+            return;
+          }
 
-        if (!rows.length) {
-          listEl.innerHTML = `<div class="muted">No results.</div>`;
+          for (const b of rows) {
+            const iri = b.m?.value || "";
+            const label = b.label?.value || "(no label)";
+            const time = b.time?.value || "";
+            const hint = b.hint?.value || "";
+            const target = b.target?.value || "";
+            const needsTarget = !target;
+            const isRemoteImported = !savedTTL.mappings.has(iri) && !!loadedRemoteMeta;
+
+            const div = document.createElement("div");
+            div.className =
+              "item" +
+              (iri === selectedMapping ? " active" : "") +
+              (needsTarget ? " needsTarget" : "");
+
+            div.innerHTML = `
+              <div>
+                <strong>${escapeHtml(label)}</strong>
+                ${needsTarget ? `<span class="badge warn">missing target</span>` : ""}
+                ${isRemoteImported ? `<span class="badge info">snapshot</span>` : ""}
+              </div>
+              <div class="muted">${escapeHtml(iri)}</div>
+              ${hint ? `<div class="muted">typeHint: ${escapeHtml(hint)}</div>` : `<div class="muted">(no typeHint)</div>`}
+              ${time ? `<div class="muted">time: ${escapeHtml(time)}</div>` : ""}
+            `;
+            div.addEventListener("click", () => selectMapping(iri));
+            listEl.appendChild(div);
+          }
+
           setStatus("");
-          return;
+        } finally {
+          setListLoading(false);
         }
-
-        for (const b of rows) {
-          const iri = b.m?.value || "";
-          const label = b.label?.value || "(no label)";
-          const time = b.time?.value || "";
-          const hint = b.hint?.value || "";
-          const target = b.target?.value || "";
-          const needsTarget = !target;
-
-          const div = document.createElement("div");
-          div.className =
-            "item" +
-            (iri === selectedMapping ? " active" : "") +
-            (needsTarget ? " needsTarget" : "");
-
-          div.innerHTML = `
-            <div>
-              <strong>${escapeHtml(label)}</strong>
-              ${needsTarget ? `<span class="badge warn">missing target</span>` : ""}
-            </div>
-            <div class="muted">${escapeHtml(iri)}</div>
-            ${hint ? `<div class="muted">typeHint: ${escapeHtml(hint)}</div>` : `<div class="muted">(no typeHint)</div>`}
-            ${time ? `<div class="muted">time: ${escapeHtml(time)}</div>` : ""}
-          `;
-
-          div.addEventListener("click", () => selectMapping(iri));
-          listEl.appendChild(div);
-        }
-
-        setStatus("");
-      } finally {
-        setListLoading(false);
       }
-    }
 
       async function fetchTargetIri(mappingIri) {
         const q = `
@@ -797,9 +886,7 @@ SELECT ?target WHERE {
         const quads = store.getQuads(s, null, null, g);
         const writer = new window.N3.Writer({ format: "text/turtle", prefixes: PREVIEW_PREFIXES });
         for (const q of quads) writer.addQuad(window.N3.DataFactory.quad(q.subject, q.predicate, q.object));
-        return await new Promise((resolve, reject) => {
-          writer.end((err, out) => err ? reject(err) : resolve(out));
-        });
+        return await new Promise((resolve, reject) => writer.end((err, out) => err ? reject(err) : resolve(out)));
       }
 
       async function loadMappingTTL(mappingIri) {
@@ -826,9 +913,7 @@ SELECT ?target WHERE {
         const finalQuads = hasGraph ? quads : quads.map(q => window.N3.DataFactory.quad(q.subject, q.predicate, q.object, g));
         const writer = new window.N3.Writer({ format: "application/trig", prefixes: PREVIEW_PREFIXES });
         writer.addQuads(finalQuads);
-        return await new Promise((resolve, reject) => {
-          writer.end((err, out) => (err ? reject(err) : resolve(out)));
-        });
+        return await new Promise((resolve, reject) => writer.end((err, out) => (err ? reject(err) : resolve(out))));
       }
 
       async function formToTriG(formEl) {
@@ -1002,6 +1087,7 @@ SELECT ?target WHERE {
         updateIriHeadersAndCopyState();
         refreshActions();
         debouncePreviewSelected();
+        await saveSnapshotToIndexedDb();
         setStatus("New mapping created.");
       });
 
@@ -1018,6 +1104,7 @@ SELECT ?target WHERE {
         updateIriHeadersAndCopyState();
         refreshActions();
         debouncePreviewSelected();
+        await saveSnapshotToIndexedDb();
         setStatus("New entity created.");
       });
 
@@ -1033,6 +1120,7 @@ SELECT ?target WHERE {
         updateIriHeadersAndCopyState();
         refreshActions();
         updateSourceInfo();
+        await saveSnapshotToIndexedDb();
         await loadTypeHints();
         await loadMappingList();
         setStatus("Mapping deleted from local store.");
@@ -1050,6 +1138,7 @@ SELECT ?target WHERE {
         updateIriHeadersAndCopyState();
         refreshActions();
         updateSourceInfo();
+        await saveSnapshotToIndexedDb();
         setStatus("Entity deleted from local store.");
       });
 
@@ -1062,8 +1151,9 @@ SELECT ?target WHERE {
           saveBtn.textContent = "Saved ✓";
           setTimeout(() => (saveBtn.textContent = oldText), 900);
           rebuildPerGraphStores();
+          await saveSnapshotToIndexedDb();
           await loadTypeHints();
-          // await loadMappingList();
+          await loadMappingList();
           await previewSelectedNow();
           setStatus("");
         } catch (e) {
@@ -1174,7 +1264,7 @@ SELECT ?target WHERE {
         if (!f) return;
         try {
           const text = await f.text();
-          fileInfo.textContent = `Loaded local: ${f.name} (${Math.round(f.size / 1024)} KB)`;
+          fileInfo.textContent = `Loaded local: ${f.name} (${formatBytes(f.size)})`;
           await loadFileTextIntoStores(text, f.name);
           page = 0;
           pageEl.textContent = "1";
@@ -1189,6 +1279,7 @@ SELECT ?target WHERE {
 
       clearLocalBtn.addEventListener("click", async () => {
         clearLocalStores();
+        await clearSnapshotFromIndexedDb();
         clearSelection();
         fileInfo.textContent = "No local file loaded.";
         page = 0;
@@ -1223,8 +1314,20 @@ SELECT ?target WHERE {
       wireCopyOnce(copyEntityIriEl, () => selectedTarget || "");
       updateIriHeadersAndCopyState();
       refreshActions();
+      listEl.innerHTML = `<div class="muted"><span class="spinner"></span>Restoring local snapshot…</div>`;
+
+      try {
+        await loadSnapshotFromIndexedDb();
+      } catch (e) {
+        console.warn("Could not restore snapshot:", e);
+      }
+
       updateSourceInfo();
-      listEl.innerHTML = `<div class="muted">Load a local TriG file and/or import a remote endpoint snapshot.</div>`;
+
+      if (!dataset.size) {
+        listEl.innerHTML = `<div class="muted">Load a local TriG file and/or import a remote endpoint snapshot.</div>`;
+      }
+
       await loadTypeHints();
       await loadMappingList();
     </script>
