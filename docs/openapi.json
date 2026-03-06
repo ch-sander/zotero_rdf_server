@@ -11,7 +11,6 @@
           "Data"
         ],
         "summary": "Create export",
-        "description": "Exports the store or a named graph to /home/runner/work/zotero_rdf_server/zotero_rdf_server/local/exports",
         "operationId": "export_graph_export_get",
         "security": [
           {
@@ -36,16 +35,19 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 },
                 {
                   "type": "null"
                 }
               ],
-              "description": "Named graph IRI (optional)",
+              "description": "Named graph IRIs (repeat parameter)",
               "title": "Graph"
             },
-            "description": "Named graph IRI (optional)"
+            "description": "Named graph IRIs (repeat parameter)"
           }
         ],
         "responses": {
