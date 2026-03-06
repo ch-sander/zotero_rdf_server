@@ -112,18 +112,19 @@ async def export_graph(
 
     extension = rdf_format.file_extension
     if len(checked_graphs) == 1:
-        filename_base = iri_to_filename(checked_graphs[0])
+        filename_base = iri_to_filename(graph[0])
     else:
         filename_base = "zotero_store" if not checked_graphs else "graph_subset"
-        
-    path = EXPORT_DIRECTORY / f"{filename_base}.{extension}"
 
+    path = EXPORT_DIRECTORY / f"{filename_base}.{extension}"
+    len_store = 0
     logger.info(f"Create {path}")
     logger.info(f"Checked graphs: {checked_graphs!r}")
 
     if not checked_graphs:
+        len_store = len(store)
         if rdf_format.supports_datasets:
-            store.dump(output=path, format=rdf_format, prefixes=PREFIXES)
+            store.dump(output=path, format=rdf_format, prefixes=PREFIXES)            
         else:
             store.dump(
                 output=path,
@@ -132,6 +133,7 @@ async def export_graph(
                 from_graph=DefaultGraph(),
             )
     elif len(checked_graphs) == 1:
+        len_store = len(store)
         g = checked_graphs[0]
         store.dump(
             output=path,
@@ -143,46 +145,8 @@ async def export_graph(
     else:
         subset_store = build_subset_store(store, checked_graphs)
         subset_store.dump(output=path, format=rdf_format, prefixes=PREFIXES)
-
-    return {"success": f"Export to: {path}"}
-
-
-def export_graph_deprecated(
-    format: str = Query("trig"),
-    graph: str | None = Query(default=None, description="Named graph IRI (optional)")
-):
-    from .store import store
-    checked_graph, all_graphs = get_graph(graph)
-    if graph and not checked_graph:
-        raise HTTPException(status_code=400, detail=f"Invalid graph IRI. Use one of these or None: {all_graphs}")
-
-    EXPORT_DIRECTORY.mkdir(parents=True,exist_ok=True)
-
-    rdf_format = ensure_rdf_format(format=format) # RdfFormat.from_extension(format.lower())
-    if rdf_format is None:
-        raise ValueError(f"Unsupported RDF format: {format}")
-
-    extension = rdf_format.file_extension
-    filename_base = iri_to_filename(graph) if graph else "zotero_store"
-    
-    path = EXPORT_DIRECTORY / f"{filename_base}.{extension}"
-    logger.info(f"Create {path}")
-
-    kwargs = {}
-    if graph:
-        kwargs["from_graph"] = checked_graph
-        logger.info(f"Export from graph: {checked_graph}")
-    elif not rdf_format.supports_datasets:        
-        kwargs["from_graph"] = DefaultGraph()
-        logger.info("Export from DefaultGraph")
-    else:
-        logger.info(f"Export from graphs: {list(store.named_graphs())}")
-        
-    logger.info(f"Checked graph: {checked_graph!r}")
-    logger.info(f"Graph triples: {len(list(store.quads_for_pattern(None,None,None,checked_graph)))}")
-    store.dump(output=path, format=rdf_format, prefixes=PREFIXES, from_graph=checked_graph, base_iri= str(checked_graph.value).rstrip('/') + '/' if checked_graph else None) #
-    return {"success":f"Export to: {path}"}
-    # return FileResponse(path, filename=os.path.basename(path))
+        len_store = len(subset_store)
+    return {"success": f"Exported {[str(g) for g in checked_graphs] or [str(g) for g in store.named_graphs()]}", "len": len_store, "path":path}
 
 @router.get("/backup", summary="Create backup", description=f"Creates a complete backup of the store to {BACKUP_DIRECTORY}", tags=["Data"])
 async def backup_store():
