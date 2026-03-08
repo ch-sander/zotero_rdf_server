@@ -837,6 +837,7 @@ def iter_pages(
 
     if kind == "pdf":
         pdf_path = None
+        doc = None
         try:
             if src_kind == "file":
                 pdf_path = str(src_path)
@@ -880,7 +881,8 @@ def iter_pages(
             logger.error(f"{doc_id}: Error reading PDF {input}: {e}")
 
         finally:
-            doc.close()
+            if doc:
+                doc.close()
             if pdf_path and src_kind != "file":
                 try:
                     os.remove(pdf_path)
