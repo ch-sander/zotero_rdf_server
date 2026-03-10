@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Dep
 from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import secrets
-from typing import Literal as TypeLiteral
+from typing import Any, Literal as TypingLiteral
 import logging
 from pathlib import Path
 # import asyncio
@@ -471,7 +471,7 @@ async def merge(
         "map_graph": str(checked_graph_map)
     }
 
-from typing import Any, Literal as TypingLiteral
+
 
 @router.post(
     "/kb-map-sync",
