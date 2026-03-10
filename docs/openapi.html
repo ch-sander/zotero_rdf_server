@@ -285,8 +285,8 @@
         "tags": [
           "RDF"
         ],
-        "summary": "Purge orphan entities from a named entity graph",
-        "description": "Finds orphan entities in the configured libraries and optionally deletes them.\n\nAn entity is considered an orphan if it is not a mapping target. If `not_mapped_only=false`, the entity must additionally not be referenced as an object in the selected graphs.\n\nBy default this endpoint runs in dry-run mode (`delete=false`).",
+        "summary": "Purge orphan entities or dangling mapping entries",
+        "description": "Finds inconsistent resources in the configured libraries and optionally deletes them.\n\nmode=entities:\n- An entity is considered an orphan if it is not a mapping target.\n- If `not_mapped_only=false`, the entity must additionally not be referenced as an object in the selected graphs.\n\nmode=mappings:\n- A mapping entry is considered dangling if it has no target.\n- Optionally, entries can also be treated as dangling if their target does not exist in the knowledge base graph.\n\nBy default this endpoint runs in dry-run mode (`delete=false`).",
         "operationId": "purge_purge_get",
         "security": [
           {
@@ -313,16 +313,32 @@
             "description": "Optional filter: run only for a specific library identifier (e.g., the library base URL). If omitted, runs for all configured libraries."
           },
           {
+            "name": "mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "entities",
+                "mappings"
+              ],
+              "type": "string",
+              "description": "Select whether to purge orphan entities or dangling mapping entries.",
+              "default": "entities",
+              "title": "Mode"
+            },
+            "description": "Select whether to purge orphan entities or dangling mapping entries."
+          },
+          {
             "name": "delete",
             "in": "query",
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "If true, deletes subject facts for the detected orphans in the entity graph.",
+              "description": "If true, deletes the detected resources from the selected graph.",
               "default": false,
               "title": "Delete"
             },
-            "description": "If true, deletes subject facts for the detected orphans in the entity graph."
+            "description": "If true, deletes the detected resources from the selected graph."
           },
           {
             "name": "not_mapped_only",
@@ -330,11 +346,11 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "If true, returns all entities that are not mapping targets. If false, returns only those that are not mapping targets AND not referenced as objects.",
+              "description": "Entities mode only: if true, returns all entities that are not mapping targets. If false, returns only those that are not mapping targets AND not referenced as objects.",
               "default": true,
               "title": "Not Mapped Only"
             },
-            "description": "If true, returns all entities that are not mapping targets. If false, returns only those that are not mapping targets AND not referenced as objects."
+            "description": "Entities mode only: if true, returns all entities that are not mapping targets. If false, returns only those that are not mapping targets AND not referenced as objects."
           },
           {
             "name": "keep_if_sameas_subject",
@@ -342,11 +358,35 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "If true, keeps entities that have an outgoing owl:sameAs triple in the entity graph.",
+              "description": "Entities mode only: if true, keeps entities that have an outgoing owl:sameAs triple in the entity graph.",
               "default": false,
               "title": "Keep If Sameas Subject"
             },
-            "description": "If true, keeps entities that have an outgoing owl:sameAs triple in the entity graph."
+            "description": "Entities mode only: if true, keeps entities that have an outgoing owl:sameAs triple in the entity graph."
+          },
+          {
+            "name": "delete_if_missing_target",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Mappings mode only: if true, includes mapping entries that do not define a target.",
+              "default": true,
+              "title": "Delete If Missing Target"
+            },
+            "description": "Mappings mode only: if true, includes mapping entries that do not define a target."
+          },
+          {
+            "name": "delete_if_target_not_in_kb",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Mappings mode only: if true, includes mapping entries whose target does not exist in the entity graph.",
+              "default": false,
+              "title": "Delete If Target Not In Kb"
+            },
+            "description": "Mappings mode only: if true, includes mapping entries whose target does not exist in the entity graph."
           }
         ],
         "responses": {
