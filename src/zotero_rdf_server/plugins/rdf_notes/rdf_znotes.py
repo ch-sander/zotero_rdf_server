@@ -537,7 +537,7 @@ def taxononmy_to_store(
                 kb_store.add(Quad(subj, safeNamedNode(p["sameAs"]), safeNamedNode(par), KB_GRAPH))
             continue
 
-        if update_modifiers and mod == "add":
+        if update_modifiers and mod == "add": # TODO: what about labels?
             for p in p["props"]:
                 for o in p["objects"]:
                     kb_store.add(Quad(subj, safeNamedNode(p), safeNamedNode(o), KB_GRAPH))
