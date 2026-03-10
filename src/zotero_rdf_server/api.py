@@ -293,11 +293,17 @@ async def delete_mapping_targets(
 
 @router.get(
     "/purge",
-    summary="Purge orphan entities from a named entity graph",
+    summary="Purge orphan entities or dangling mapping entries",
     description=(
-        "Finds orphan entities in the configured libraries and optionally deletes them.\n\n"
-        "An entity is considered an orphan if it is not a mapping target. If `not_mapped_only=false`, "
-        "the entity must additionally not be referenced as an object in the selected graphs.\n\n"
+        "Finds inconsistent resources in the configured libraries and optionally deletes them.\n\n"
+        "mode=entities:\n"
+        "- An entity is considered an orphan if it is not a mapping target.\n"
+        "- If `not_mapped_only=false`, the entity must additionally not be referenced as an object "
+        "in the selected graphs.\n\n"
+        "mode=mappings:\n"
+        "- A mapping entry is considered dangling if it has no target.\n"
+        "- Optionally, entries can also be treated as dangling if their target does not exist "
+        "in the knowledge base graph.\n\n"
         "By default this endpoint runs in dry-run mode (`delete=false`)."
     ),
     tags=["RDF"], dependencies=[Depends(require_writable)]
@@ -310,20 +316,32 @@ async def purge(
             "If omitted, runs for all configured libraries."
         ),
     ),
+    mode: TypingLiteral["entities", "mappings"] = Query(
+        default="entities",
+        description="Select whether to purge orphan entities or dangling mapping entries.",
+    ),
     delete: bool = Query(
         default=False,
-        description="If true, deletes subject facts for the detected orphans in the entity graph.",
+        description="If true, deletes the detected resources from the selected graph.",
     ),
     not_mapped_only: bool = Query(
         default=True,
         description=(
-            "If true, returns all entities that are not mapping targets. "
+            "Entities mode only: if true, returns all entities that are not mapping targets. "
             "If false, returns only those that are not mapping targets AND not referenced as objects."
         ),
     ),
     keep_if_sameas_subject: bool = Query(
         default=False,
-        description="If true, keeps entities that have an outgoing owl:sameAs triple in the entity graph.",
+        description="Entities mode only: if true, keeps entities that have an outgoing owl:sameAs triple in the entity graph.",
+    ),
+    delete_if_missing_target: bool = Query(
+        default=True,
+        description="Mappings mode only: if true, includes mapping entries that do not define a target.",
+    ),
+    delete_if_target_not_in_kb: bool = Query(
+        default=False,
+        description="Mappings mode only: if true, includes mapping entries whose target does not exist in the entity graph.",
     ),
 ) -> list:
     from .store import store
@@ -344,28 +362,40 @@ async def purge(
             logger.debug("Skipping %s (filtered by graph_iri=%s)", lib.base_url, graph_iri)
             continue
 
-        logger.info("Purging for %s (delete=%s)...", lib.base_url, delete)
+        logger.info("Purging for %s (mode=%s, delete=%s)...", lib.base_url, mode, delete)
 
         entity_graph = safeNamedNode(lib.knowledge_base_graph)
         map_graph = safeNamedNode(lib.mapping_base_graph)
 
-        # Graphs to scan for object references
-        graphs_to_check = [
-            safeNamedNode(lib.knowledge_base_graph),
-            safeNamedNode(lib.base_url),
-        ]
+        if mode == "entities":
+            graphs_to_check = [
+                safeNamedNode(lib.knowledge_base_graph),
+                safeNamedNode(lib.base_url),
+            ]
 
-        results.append(
-            purge_orphan_entities(
-                store,
-                entity_graph=entity_graph,
-                map_graph=map_graph,
-                graphs_to_check_for_objects=graphs_to_check,
-                delete=delete,
-                not_mapped_only=not_mapped_only,
-                keep_if_sameas_subject=keep_if_sameas_subject,
+            results.append(
+                purge_orphan_entities(
+                    store,
+                    entity_graph=entity_graph,
+                    map_graph=map_graph,
+                    graphs_to_check_for_objects=graphs_to_check,
+                    delete=delete,
+                    not_mapped_only=not_mapped_only,
+                    keep_if_sameas_subject=keep_if_sameas_subject,
+                )
             )
-        )
+
+        elif mode == "mappings":
+            results.append(
+                purge_dangling_mappings(
+                    store,
+                    entity_graph=entity_graph,
+                    map_graph=map_graph,
+                    delete=delete,
+                    delete_if_missing_target=delete_if_missing_target,
+                    delete_if_target_not_in_kb=delete_if_target_not_in_kb,
+                )
+            )
 
     return results
 
