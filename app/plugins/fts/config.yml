@@ -135,22 +135,48 @@ open-search:
                 type: pattern_replace
                 pattern: "\\s*\\n\\s*"
                 replacement: " "
+              ocr_punctuation_soften:
+                type: pattern_replace
+                pattern: "[,:;.!?()\\[\\]{}]+"
+                replacement: " "
 
             filter:
               latin_stop_minimal:
                 type: stop
                 stopwords: ["et", "in", "ad", "de", "ut"]
+              latin_stop_file:
+                type: stop
+                stopwords_path: latin_stopwords.txt
+                lenient: true
+              latin_synonyms:
+                type: synonym_graph
+                expand: true
+                lenient: true
+                synonyms:
+                  - "vbi, ubi"
+                  - "fit, sit"
+                  - "iustitia, justitia"
+                  - "caelum, coelum"
+                  - "philosophia, filosofia"
+                  - "dominus, dom."
+                  - "liber, book"
+              latin_synonyms_file:
+                type: synonym_graph
+                synonyms_path: latin_synonyms.txt
+                expand: true
+                lenient: true
+
             analyzer:
               latin_ocr_index:
                 type: custom
-                char_filter: ["ocr_common_map", "ocr_dehyphenate_linebreak", "ocr_newlines_to_space", "ocr_dehyphenate_linebreak_not"]
+                char_filter: ["ocr_common_map", "ocr_dehyphenate_linebreak", "ocr_newlines_to_space", "ocr_dehyphenate_linebreak_not", "ocr_punctuation_soften"]
                 tokenizer: standard
                 filter: ["lowercase", "asciifolding"]
               latin_ocr_search:
                 type: custom
-                char_filter: ["ocr_common_map", "ocr_dehyphenate_linebreak", "ocr_newlines_to_space", "ocr_search_extra_map"]
+                char_filter: ["ocr_common_map", "ocr_dehyphenate_linebreak", "ocr_newlines_to_space", "ocr_search_extra_map", "ocr_punctuation_soften"]
                 tokenizer: standard
-                filter: ["lowercase", "asciifolding", "latin_stop_minimal"]
+                filter: ["lowercase", "asciifolding", "latin_stop_minimal", "latin_stop_file", "latin_synonyms", "latin_synonyms_file"]
 
         mappings:
           dynamic: false

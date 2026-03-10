@@ -1,0 +1,80 @@
+# variants
+ecclesia, eclesia
+christus, xpistus
+spiritus sanctus, spiritus-sanctus
+
+# theological concepts
+deus, dominus
+dominus, dns
+spiritus sanctus, spiritus
+gratia, misericordia
+peccatum, culpa
+fides, credere
+salus, salvatio
+redemptio, redemptor
+
+# abbreviations
+dominus, dom., dns
+christus, xps
+christus, chr
+spiritus, sp.
+
+# common OCR confusions
+vbi, ubi
+u, v
+i, j
+rn, m
+cl, d
+
+# orthographic variants
+iustitia, justitia
+iudicium, judicium
+iudaeus, judaeus
+iesus, jesus
+ioannes, johannes
+hierusalem, jerusalem
+caelum, coelum
+coena, cena
+saeculum, seculum
+foedus, fedus
+poena, pena
+
+# u/v and i/j related search variants
+vbi, ubi
+vnus, unus
+veritas, ueritas
+vita, uita
+iustus, justus
+iudex, judex
+
+# common manuscript / theological abbreviations
+dominus, dom., dns
+deus, ds
+christus, xps, christus
+iesus christus, ihesus christus, iesus xps
+spiritus sanctus, sp. sanctus, spiritus-sanctus
+beata maria virgo, bmv
+
+# theological concepts and close equivalents
+# caritas, dilectio
+# gratia, misericordia
+# peccatum, culpa
+# redemptio, salvatio
+# fides, credulitas
+# ecclesia, congregatio
+
+# frequent spelling damage
+ecclesia, eclesia
+christianus, cristianus
+scriptura, scripturra
+apostolus, apostulus
+evangelium, euangelium
+propheta, prophetae
+
+# common Latin / vernacular bridges
+deus, god
+dominus, lord
+gratia, grace
+peccatum, sin
+fides, faith
+caritas, charity, love
