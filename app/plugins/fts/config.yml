@@ -79,6 +79,7 @@ open-search:
     max_retries: 2
   meta:
     owner: "zotero-rdf-server"
+    default_alias: "ocr"
     environment: "dev"
     # Minimum OpenSearch version this config is designed for
     opensearch_min_version: "2.0.0"
@@ -217,7 +218,17 @@ open-search:
             number_of_shards: 1
             number_of_replicas: 1
             default_pipeline: "ocr_meta_pipeline_v1"
-
+        aliases:
+          ocr:
+            is_write_index: false
+            # filter:
+            #   bool:
+            #     must:
+            #       - term:
+            #           meta.parent_tags: "*public"
+            #     must_not:
+            #       - term:
+            #           meta.parent_tags: "*deprecated"
   # indices:
   #   # Optional bootstrap index. Recommended if you want to write to an alias.
   #   zotero-ocr-000001:
