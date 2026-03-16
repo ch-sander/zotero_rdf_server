@@ -667,10 +667,10 @@ def fetch_pil_image(
                 time.sleep(backoff ** attempt)
                 continue
 
-            logger.error(f"fetch_pil_image failed for {url}: {e}")
+            logger.error(f"Fetching image failed for {url}: {e}")
             return None
 
-    logger.error(f"fetch_pil_image failed for {url}: {last_exc}")
+    logger.error(f"Fetching image failed for {url}: {last_exc}")
     return None
 
 def stream_download_to_tempfile(
@@ -825,7 +825,7 @@ def iter_pages(
 
                 img = fetch_pil_image(img_url, timeout=timeout, iiif_format=iiif_format, iiif_quality="default")
                 if img is None:
-                    logger.error(f"{doc_id}: Skipping page {i}: could not fetch image {img_url}")
+                    logger.warning(f"{doc_id}: Skipping page {i}: could not fetch image {img_url}")
                     continue
                 aPage = PageItem(i, "image", img, source=f"iiif:{img_url}", meta={
                     "canvas": canvas.get("@id") or canvas.get("id"),
@@ -1183,6 +1183,7 @@ def iter_text_pages(
         ld.parent.mkdir(parents=True, exist_ok=True)
         try:
             ld.mkdir()
+            logger.info(f"Lock acquired: {ld}")
             return True
         except FileExistsError:
             return False
@@ -1199,6 +1200,7 @@ def iter_text_pages(
                 except Exception:
                     pass
             ld.rmdir()
+            logger.info(f"Lock removed: {ld}")
         except Exception:
             pass
 
@@ -1236,6 +1238,7 @@ def iter_text_pages(
     #         logger.debug(f"Write lock set: {_write_lock_dir()}")
     #     else:
     #         logger.info(f"{_doc_id}: Write lock already present: {_write_lock_dir()} (another run may be writing or crashed)")
+    # TODO call _write_lock_remove_best_effort in finally
 
     # If image file found and not overwrite, use as result and skip download but proceed with OCR
     if save_image == "active" and img_dir is not None and img_dir.exists():
