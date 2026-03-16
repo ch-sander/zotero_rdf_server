@@ -47,9 +47,7 @@ OPTIONAL {  ?library rdf:type zot:library;
 # #    CONTAINS(?file_label, "Books")
 #   )
 
-  # FILTER( # filter on attachment URL
-  #     CONTAINS(STR(?url), "digitale-sammlungen.de") 
-  # )
+  # FILTER(CONTAINS(STR(?url), "digitale-sammlungen.de")) # filter on attachment URL
 
   ?file zot:tags ?t . # ?t_ingest, ?t_pdf .
 
@@ -59,6 +57,7 @@ OPTIONAL {  ?library rdf:type zot:library;
      zot:tag ?tagVal .
 
   VALUES ?tagVal { "*pdf" "*iiif" }.
+  # FILTER(?tagVal NOT IN ("*broken_url", "*broken_ocr"))
 
   OPTIONAL {
     ?parent zot:tags ?tag_1502_13.
