@@ -79,6 +79,7 @@ open-search:
     max_retries: 2
   meta:
     owner: "zotero-rdf-server"
+    default_alias: "ocr"
     environment: "dev"
     # Minimum OpenSearch version this config is designed for
     opensearch_min_version: "2.0.0"
@@ -134,22 +135,48 @@ open-search:
                 type: pattern_replace
                 pattern: "\\s*\\n\\s*"
                 replacement: " "
+              ocr_punctuation_soften:
+                type: pattern_replace
+                pattern: "[,:;.!?()\\[\\]{}]+"
+                replacement: " "
 
             filter:
               latin_stop_minimal:
                 type: stop
                 stopwords: ["et", "in", "ad", "de", "ut"]
+              latin_stop_file:
+                type: stop
+                stopwords_path: latin_stopwords.txt
+                lenient: true
+              latin_synonyms:
+                type: synonym_graph
+                expand: true
+                lenient: true
+                synonyms:
+                  - "vbi, ubi"
+                  - "fit, sit"
+                  - "iustitia, justitia"
+                  - "caelum, coelum"
+                  - "philosophia, filosofia"
+                  - "dominus, dom."
+                  - "liber, book"
+              latin_synonyms_file:
+                type: synonym_graph
+                synonyms_path: latin_synonyms.txt
+                expand: true
+                lenient: true
+
             analyzer:
               latin_ocr_index:
                 type: custom
-                char_filter: ["ocr_common_map", "ocr_dehyphenate_linebreak", "ocr_newlines_to_space", "ocr_dehyphenate_linebreak_not"]
+                char_filter: ["ocr_common_map", "ocr_dehyphenate_linebreak", "ocr_newlines_to_space", "ocr_dehyphenate_linebreak_not", "ocr_punctuation_soften"]
                 tokenizer: standard
                 filter: ["lowercase", "asciifolding"]
               latin_ocr_search:
                 type: custom
-                char_filter: ["ocr_common_map", "ocr_dehyphenate_linebreak", "ocr_newlines_to_space", "ocr_search_extra_map"]
+                char_filter: ["ocr_common_map", "ocr_dehyphenate_linebreak", "ocr_newlines_to_space", "ocr_search_extra_map", "ocr_punctuation_soften"]
                 tokenizer: standard
-                filter: ["lowercase", "asciifolding", "latin_stop_minimal"]
+                filter: ["lowercase", "asciifolding", "latin_stop_minimal", "latin_stop_file", "latin_synonyms", "latin_synonyms_file"]
 
         mappings:
           dynamic: false
@@ -217,7 +244,17 @@ open-search:
             number_of_shards: 1
             number_of_replicas: 1
             default_pipeline: "ocr_meta_pipeline_v1"
-
+        aliases:
+          ocr:
+            is_write_index: false
+            # filter:
+            #   bool:
+            #     must:
+            #       - term:
+            #           meta.parent_tags: "*public"
+            #     must_not:
+            #       - term:
+            #           meta.parent_tags: "*deprecated"
   # indices:
   #   # Optional bootstrap index. Recommended if you want to write to an alias.
   #   zotero-ocr-000001:

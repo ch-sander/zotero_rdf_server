@@ -12,7 +12,7 @@ oscfg = get_os_config(cfg_path)
 logger.debug(f"{oscfg}")
 client = make_client(oscfg)
 logger.info(f"Client config loaded from {cfg_path}")
-
+DEFAULT_ALIAS = oscfg.get("default_alias", "ocr")
 
 # --- Helpers -----------------------------------------------------------------
 
@@ -69,6 +69,7 @@ def effective_fuzzy_edits(term: str, requested_edits: int) -> int:
 
 def get_doc_vector(index: str, os_id: str, vector_field: str = "vector") -> List[float]:
     """Fetch a document and return its vector from _source."""
+    if not index: index = DEFAULT_ALIAS
     doc = client.get(index=index, id=os_id)
     src = doc.get("_source", {})
     vec = src.get(vector_field)
@@ -454,6 +455,7 @@ def apply_source_includes(body: Dict[str, Any], columns: Optional[str]) -> None:
 def os_search(index: str, body: Dict[str, Any], columns: Optional[str]) -> Dict[str, Any]:
     """Central OpenSearch search that applies _source includes if columns is set."""    
     apply_source_includes(body, columns)
+    if not index: index = DEFAULT_ALIAS
     return client.search(index=index, body=body)
 
 from .endpoints import KeywordFilter

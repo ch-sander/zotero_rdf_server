@@ -904,6 +904,48 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
     else:
         logger.warning("No items!") if not json_path_collections else None
 
+def purge_dangling_mappings(
+    store: Store,
+    *,
+    entity_graph: NamedNode,
+    map_graph: NamedNode,
+    delete: bool = False,
+    delete_if_missing_target: bool = True,
+    delete_if_target_not_in_kb: bool = False,
+):
+    missing_target: list[NamedNode] = []
+    target_not_in_kb: list[NamedNode] = []
+
+    candidates = list(iter_mapping_entries(store, map_graph))
+
+    for entry in candidates:
+        target = get_target_of_entry(store, entry, map_graph)
+
+        if not target:
+            if delete_if_missing_target:
+                missing_target.append(entry)
+            continue
+
+        if delete_if_target_not_in_kb and not has_any_facts(store, target, entity_graph):
+            target_not_in_kb.append(entry)
+
+    to_delete = missing_target + target_not_in_kb
+
+    if delete:
+        for entry in to_delete:
+            delete_subject_facts(store, entry, map_graph)
+
+    return {
+        "entity_graph": str(entity_graph),
+        "map_graph": str(map_graph),
+        "candidates": len(candidates),
+        "delete_if_missing_target": delete_if_missing_target,
+        "delete_if_target_not_in_kb": delete_if_target_not_in_kb,
+        "missing_target": [str(n) for n in missing_target],
+        "target_not_in_kb": [str(n) for n in target_not_in_kb],
+        "deleted": len(to_delete) if delete else 0,
+    }
+
 def purge_orphan_entities(
     store: Store,
     *,

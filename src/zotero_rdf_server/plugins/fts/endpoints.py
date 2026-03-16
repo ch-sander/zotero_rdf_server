@@ -592,7 +592,6 @@ class KeywordFilter(BaseModel):
     filter_value: Optional[str] = None
     filter_values: Optional[List[str]] = None
 
-
 def keyword_filter_params(
     filter_field: Optional[str] = Query(
         None,
@@ -765,13 +764,10 @@ def format_search_response(
 
 from enum import Enum
 
-
-
 class OutputFormat(str, Enum):
     json = "json"
     csv = "csv"
     markdown = "markdown"
-
 
 class AggType(str, Enum):
     terms = "terms"
@@ -789,8 +785,8 @@ class AggType(str, Enum):
 def search_terms(
     request: Request,
     index: str = Query(
-        ...,
-        description="Name of the OpenSearch index to query.",
+        None,
+        description="Name of the OpenSearch index to query. Default alias can be set in cofiguration.",
     ),
     q: str = Query(
         ...,
@@ -1056,7 +1052,7 @@ def search_terms(
 )
 def search_proximity(
     request: Request,
-    index: str = Query(..., description="OpenSearch index name"),
+    index: str = Query(None, description="OpenSearch index name. Default alias can be set in cofiguration"),
     a: str = Query(..., description="CSV list A"),
     b: str = Query(..., description="CSV list B"),
     field: str = Query("text", description="Text field to search"),
@@ -1133,7 +1129,7 @@ def search_proximity(
 )
 def knn_by_id(
     request: Request,
-    index: str = Query(..., description="OpenSearch index name"),
+    index: str = Query(None, description="OpenSearch index name. Default alias can be set in cofiguration"),
     os_id: str = Query(..., description="Reference document OpenSearch _id"),
     vector_field: str = Query("vector", description="knn_vector field name"),
     k: int = Query(50, ge=1, le=10000),
@@ -1154,7 +1150,7 @@ def knn_by_id(
     out_header: OutputHeader = Depends(output_header_params),
     debug: bool = Query(False, description="Include debug_query (JSON only)"),
 ):
-    from .search import get_doc_vector, os_search, apply_paging
+    from .search import get_doc_vector, os_search, apply_paging, apply_keyword_filter
     api_call = str(request.url) 
     try:
         query_vec = get_doc_vector(index=index, os_id=os_id, vector_field=vector_field)
@@ -1181,6 +1177,7 @@ def knn_by_id(
 
     body: Dict[str, Any] = {"query": query}
 
+    apply_keyword_filter(body, filters)
     apply_paging(body, size=size)
 
     try:
@@ -1210,7 +1207,7 @@ def knn_by_id(
 )
 def mlt_by_id(
     request: Request,
-    index: str = Query(..., description="OpenSearch index name"),
+    index: str = Query(None, description="OpenSearch index name. Default alias can be set in cofiguration"),
     os_id: str = Query(..., description="Reference document OpenSearch _id"),
     fields: str = Query("text", description="CSV list of fields, typically 'text'"),
     min_term_freq: int = Query(1, ge=0),
@@ -1265,6 +1262,77 @@ def mlt_by_id(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
     
+    meta = make_header(out_header)
+
+    return format_search_response(
+        resp=resp,
+        debug_query=body,
+        output_format=format.value if hasattr(format, "value") else format,
+        columns=columns,
+        include_debug=debug,
+        api_call=api_call,
+        header_meta=meta or None,
+        header_md_extra=out_header.header_md,
+    )
+
+@open_router.get(
+    "/search/mlt/by-text",
+    summary="Token similarity search by free text (More Like This)",
+    description="Runs a More Like This query using input text to find token-similar documents.",
+    tags=["Search"]
+)
+def mlt_by_text(
+    request: Request,
+    index: str = Query(None, description="OpenSearch index name. Default alias can be set in configuration"),
+    like_text: str = Query(..., description="Reference text, sentence, or paragraph"),
+    fields: str = Query("text", description="CSV list of fields, typically 'text'"),
+    min_term_freq: int = Query(1, ge=0),
+    min_doc_freq: int = Query(1, ge=0),
+    max_query_terms: int = Query(25, ge=1, le=100),
+    minimum_should_match: str = Query("30%", description="e.g. '30%' or '2'"),
+    size: int = Query(20, ge=1, le=1000),
+    filters: KeywordFilter = Depends(keyword_filter_params),
+    format: OutputFormat = Query(
+        OutputFormat.json,
+        description=(
+            "Response format. "
+            "json: structured API response. "
+            "csv: flat table from hits.hits. "
+            "md/markdown: human-readable document blocks from hits.hits."
+        ),
+    ),
+    columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
+    out_header: OutputHeader = Depends(output_header_params),
+    debug: bool = Query(False, description="Include debug_query (JSON only)"),
+):
+    from .search import os_search, apply_paging, apply_keyword_filter
+
+    api_call = str(request.url)
+    field_list = [f.strip() for f in fields.split(",") if f.strip()]
+    if not field_list:
+        raise HTTPException(status_code=400, detail="No fields provided.")
+
+    body: Dict[str, Any] = {
+        "query": {
+            "more_like_this": {
+                "fields": field_list,
+                "like": [like_text],
+                "min_term_freq": min_term_freq,
+                "min_doc_freq": min_doc_freq,
+                "max_query_terms": max_query_terms,
+                "minimum_should_match": minimum_should_match,
+            }
+        }
+    }
+
+    apply_keyword_filter(body, filters)
+    apply_paging(body, size=size)
+
+    try:
+        resp = os_search(index=index, body=body, columns=columns)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
+
     meta = make_header(out_header)
 
     return format_search_response(

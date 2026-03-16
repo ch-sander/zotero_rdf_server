@@ -275,8 +275,8 @@
         "tags": [
           "RDF"
         ],
-        "summary": "Purge orphan entities from a named entity graph",
-        "description": "Finds orphan entities in the configured libraries and optionally deletes them.\n\nAn entity is considered an orphan if it is not a mapping target. If `not_mapped_only=false`, the entity must additionally not be referenced as an object in the selected graphs.\n\nBy default this endpoint runs in dry-run mode (`delete=false`).",
+        "summary": "Purge orphan entities or dangling mapping entries",
+        "description": "Finds inconsistent resources in the configured libraries and optionally deletes them.\n\nmode=entities:\n- An entity is considered an orphan if it is not a mapping target.\n- If `not_mapped_only=false`, the entity must additionally not be referenced as an object in the selected graphs.\n\nmode=mappings:\n- A mapping entry is considered dangling if it has no target.\n- Optionally, entries can also be treated as dangling if their target does not exist in the knowledge base graph.\n\nBy default this endpoint runs in dry-run mode (`delete=false`).",
         "operationId": "purge_purge_get",
         "security": [
           {
@@ -303,16 +303,32 @@
             "description": "Optional filter: run only for a specific library identifier (e.g., the library base URL). If omitted, runs for all configured libraries."
           },
           {
+            "name": "mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "entities",
+                "mappings"
+              ],
+              "type": "string",
+              "description": "Select whether to purge orphan entities or dangling mapping entries.",
+              "default": "entities",
+              "title": "Mode"
+            },
+            "description": "Select whether to purge orphan entities or dangling mapping entries."
+          },
+          {
             "name": "delete",
             "in": "query",
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "If true, deletes subject facts for the detected orphans in the entity graph.",
+              "description": "If true, deletes the detected resources from the selected graph.",
               "default": false,
               "title": "Delete"
             },
-            "description": "If true, deletes subject facts for the detected orphans in the entity graph."
+            "description": "If true, deletes the detected resources from the selected graph."
           },
           {
             "name": "not_mapped_only",
@@ -320,11 +336,11 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "If true, returns all entities that are not mapping targets. If false, returns only those that are not mapping targets AND not referenced as objects.",
+              "description": "Entities mode only: if true, returns all entities that are not mapping targets. If false, returns only those that are not mapping targets AND not referenced as objects.",
               "default": true,
               "title": "Not Mapped Only"
             },
-            "description": "If true, returns all entities that are not mapping targets. If false, returns only those that are not mapping targets AND not referenced as objects."
+            "description": "Entities mode only: if true, returns all entities that are not mapping targets. If false, returns only those that are not mapping targets AND not referenced as objects."
           },
           {
             "name": "keep_if_sameas_subject",
@@ -332,11 +348,35 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "If true, keeps entities that have an outgoing owl:sameAs triple in the entity graph.",
+              "description": "Entities mode only: if true, keeps entities that have an outgoing owl:sameAs triple in the entity graph.",
               "default": false,
               "title": "Keep If Sameas Subject"
             },
-            "description": "If true, keeps entities that have an outgoing owl:sameAs triple in the entity graph."
+            "description": "Entities mode only: if true, keeps entities that have an outgoing owl:sameAs triple in the entity graph."
+          },
+          {
+            "name": "delete_if_missing_target",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Mappings mode only: if true, includes mapping entries that do not define a target.",
+              "default": true,
+              "title": "Delete If Missing Target"
+            },
+            "description": "Mappings mode only: if true, includes mapping entries that do not define a target."
+          },
+          {
+            "name": "delete_if_target_not_in_kb",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Mappings mode only: if true, includes mapping entries whose target does not exist in the entity graph.",
+              "default": false,
+              "title": "Delete If Target Not In Kb"
+            },
+            "description": "Mappings mode only: if true, includes mapping entries whose target does not exist in the entity graph."
           }
         ],
         "responses": {
@@ -1496,13 +1536,13 @@
           {
             "name": "index",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
-              "description": "Name of the OpenSearch index to query.",
+              "description": "Name of the OpenSearch index to query. Default alias can be set in cofiguration.",
               "title": "Index"
             },
-            "description": "Name of the OpenSearch index to query."
+            "description": "Name of the OpenSearch index to query. Default alias can be set in cofiguration."
           },
           {
             "name": "q",
@@ -1932,13 +1972,13 @@
           {
             "name": "index",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
-              "description": "OpenSearch index name",
+              "description": "OpenSearch index name. Default alias can be set in cofiguration",
               "title": "Index"
             },
-            "description": "OpenSearch index name"
+            "description": "OpenSearch index name. Default alias can be set in cofiguration"
           },
           {
             "name": "a",
@@ -2244,13 +2284,13 @@
           {
             "name": "index",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
-              "description": "OpenSearch index name",
+              "description": "OpenSearch index name. Default alias can be set in cofiguration",
               "title": "Index"
             },
-            "description": "OpenSearch index name"
+            "description": "OpenSearch index name. Default alias can be set in cofiguration"
           },
           {
             "name": "os_id",
@@ -2516,13 +2556,13 @@
           {
             "name": "index",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
-              "description": "OpenSearch index name",
+              "description": "OpenSearch index name. Default alias can be set in cofiguration",
               "title": "Index"
             },
-            "description": "OpenSearch index name"
+            "description": "OpenSearch index name. Default alias can be set in cofiguration"
           },
           {
             "name": "os_id",
@@ -2613,6 +2653,285 @@
               "type": "boolean",
               "default": true,
               "title": "Exclude Self"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/OutputFormat",
+              "description": "Response format. json: structured API response. csv: flat table from hits.hits. md/markdown: human-readable document blocks from hits.hits.",
+              "default": "json"
+            },
+            "description": "Response format. json: structured API response. csv: flat table from hits.hits. md/markdown: human-readable document blocks from hits.hits."
+          },
+          {
+            "name": "columns",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional CSV list of columns to include",
+              "title": "Columns"
+            },
+            "description": "Optional CSV list of columns to include"
+          },
+          {
+            "name": "debug",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include debug_query (JSON only)",
+              "default": false,
+              "title": "Debug"
+            },
+            "description": "Include debug_query (JSON only)"
+          },
+          {
+            "name": "filter_field",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Keyword field to filter on (e.g. meta.parent_key)",
+              "title": "Filter Field"
+            },
+            "description": "Keyword field to filter on (e.g. meta.parent_key)"
+          },
+          {
+            "name": "filter_value",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Single exact filter value",
+              "title": "Filter Value"
+            },
+            "description": "Single exact filter value"
+          },
+          {
+            "name": "filter_values",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "CSV list of exact filter values",
+              "title": "Filter Values"
+            },
+            "description": "CSV list of exact filter values"
+          },
+          {
+            "name": "header_json",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "JSON string to be embedded as a codeblock in the Markdown header.Example: {\"created by\":\"Zotero RDF\",\"job_id\":\"123\"}",
+              "title": "Header Json"
+            },
+            "description": "JSON string to be embedded as a codeblock in the Markdown header.Example: {\"created by\":\"Zotero RDF\",\"job_id\":\"123\"}"
+          },
+          {
+            "name": "header_md",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Raw Markdown appended to the Markdown header.",
+              "title": "Header Md"
+            },
+            "description": "Raw Markdown appended to the Markdown header."
+          },
+          {
+            "name": "header_kv",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Repeatable key:value pairs. Example: header_kv=createdBy:Zotero RDF&header_kv=job:123",
+              "title": "Header Kv"
+            },
+            "description": "Repeatable key:value pairs. Example: header_kv=createdBy:Zotero RDF&header_kv=job:123"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugin/fts/search/mlt/by-text": {
+      "get": {
+        "tags": [
+          "Plugin",
+          "Fts",
+          "Open Endpoint",
+          "Search"
+        ],
+        "summary": "Token similarity search by free text (More Like This)",
+        "description": "Runs a More Like This query using input text to find token-similar documents.",
+        "operationId": "mlt_by_text_plugin_fts_search_mlt_by_text_get",
+        "parameters": [
+          {
+            "name": "index",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "OpenSearch index name. Default alias can be set in configuration",
+              "title": "Index"
+            },
+            "description": "OpenSearch index name. Default alias can be set in configuration"
+          },
+          {
+            "name": "like_text",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Reference text, sentence, or paragraph",
+              "title": "Like Text"
+            },
+            "description": "Reference text, sentence, or paragraph"
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "CSV list of fields, typically 'text'",
+              "default": "text",
+              "title": "Fields"
+            },
+            "description": "CSV list of fields, typically 'text'"
+          },
+          {
+            "name": "min_term_freq",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 1,
+              "title": "Min Term Freq"
+            }
+          },
+          {
+            "name": "min_doc_freq",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 1,
+              "title": "Min Doc Freq"
+            }
+          },
+          {
+            "name": "max_query_terms",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Max Query Terms"
+            }
+          },
+          {
+            "name": "minimum_should_match",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "e.g. '30%' or '2'",
+              "default": "30%",
+              "title": "Minimum Should Match"
+            },
+            "description": "e.g. '30%' or '2'"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 20,
+              "title": "Size"
             }
           },
           {

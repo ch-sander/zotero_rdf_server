@@ -36,6 +36,7 @@ def make_client(cfg: dict) -> OpenSearch:
         return cli
     except Exception as e:
         logger.critical("Client failed. Service running?")
+        logger.info(e)
 
 def ensure_ingest_pipeline(client: OpenSearch, *, name: str, body: dict) -> None:
     logger.debug("putting ingest_pipeline")
