@@ -88,8 +88,9 @@ defaults:
         # resource: # Node or Literal
         fuzzy: 90
         types: ["actor"] # adds defined Zotero namespace if not a complete IRI        
-        role_types: ["creatorRole"]
-        role_properties: ["hasCreator"]
+        role_types: ["creatorRole"] # RDF type of role node
+        role_properties: ["hasCreator"] # property from role node to actor
+        properties: ["creators"] # property from item to role node
       tags:
         fuzzy: 100
         types: ["tag","http://www.w3.org/2004/02/skos/core#Concept"]
