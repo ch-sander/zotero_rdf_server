@@ -66,17 +66,18 @@
       <div class="col-lg-12 px-0">
 
         <p>Queries are sent to <a href="#" id="displayEndpoint">...</a></p>
-
+<!-- endpoint="/explorer/sparql?ds=/app/exports/zotero_store.trig" -->
         <spar-natural 
             src="config-dev.ttl"
-            endpoint="http://localhost:7879/query"
-            <!-- endpoint="/explorer/sparql?ds=/app/exports/zotero_store.trig" -->
+            endpoint="http://localhost:7879/query"            
             lang="en"
             defaultLang="en"
             distinct="true"
             limit="1000"
+            maxOr="10"
+            maxDepth="10"
             debug="true"
-            prefixes="zot:http://www.zotero.org/namespaces/export# semz:https://semantic-html.org/vocab# owl:http://www.w3.org/2002/07/owl# skos:http://www.w3.org/2004/02/skos/core#"
+            prefixes="zot:http://www.zotero.org/namespaces/export# semz:https://semantic-html.org/vocab# owl:http://www.w3.org/2002/07/owl# skos:http://www.w3.org/2004/02/skos/core# zmap:https://zotero-rdf-server.org/mapping/"
         ></spar-natural>
 
         <span class="btn btn-primary" id="sparql-toggle">Toggle SPARQL query</span>
