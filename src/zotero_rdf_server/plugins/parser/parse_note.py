@@ -69,16 +69,16 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
         mapping = load_dict_like(
             parser_cfg.get("mapping"),
             default={"@context": {"@base": lib.base_url, "@vocab": ZOT_NS}}, # TODO fallback not sufficient
-            label="Parser mapping"
+            label="Parser mapping",
+            verbose=True
         )
 
         metadata = load_dict_like(
             parser_cfg.get("metadata"),
             default={"wasGeneratedBy": lib.user},
-            label="Parser metadata"
+            label="Parser metadata",
+            verbose=True
         )
-
-
 
         map_KB = parser_cfg.get("knowledge_base_mapping", False)
         tag_filter = parser_cfg.get("tag_filter")
@@ -307,15 +307,15 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                                     # Update pool                                
                                     filter_target_subjects.add(new_node)
 
-                                    if add_jsonld:
+                                    if add_jsonld:                                        
                                         try:
                                             jsonld_copy = add_jsonld
                                             if "@graph" in jsonld_copy:
                                                 logger.warning(f"[ADD] '@graph' found in ADD block and is ignored. Only single object additions are supported.")
                                             else:                                            
-                                                jsonld_copy["@id"] = str(new_node)
+                                                jsonld_copy["@id"] = str(new_node.value)
                                                 result_store.load(json.dumps(jsonld_copy), to_graph=entity_graph_uri, format=RdfFormat.JSON_LD)
-                                                logger.debug(f"[ADD] Added JSON-LD supplement for {new_node}")
+                                                logger.debug(f"[ADD] Added JSON-LD supplement for {new_node}")                                             
                                         except Exception as e:
                                             logger.warning(f"[ADD] Failed to add JSON-LD for {new_node}: {e}")
 
