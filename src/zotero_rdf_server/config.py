@@ -88,6 +88,7 @@ try:
     logger.info(f"Loading config YAML...")
     config =  load_config(config_path)
 except Exception as e:
+    config = None
     logger.warning(f"Failed to load {config_path}: {e}!")
     # logger.critical(f"EXITING")
     # sys.exit(1)
@@ -97,6 +98,7 @@ try:
     logger.info(f"Loading Zotero YAML...")
     zotero_config = load_config(zotero_config_path)
 except Exception as e:
+    zotero_config = None
     logger.warning(f"Failed to load {zotero_config_path}: {e}!")
     # logger.critical(f"EXITING")
     # sys.exit(1)

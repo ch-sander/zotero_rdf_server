@@ -292,7 +292,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
 
                     type_nodes = make_iri(field_map.get("types", ["actor"]), ns_prefix, enforce_list=True)
                     role_types = make_iri(field_map.get("role_types", ["creatorRole"]), ns_prefix, enforce_list=True)
-                    role_properties = make_iri(field_map.get("role_properties", "hasCreator"), ns_prefix, True)
+                    role_properties = make_iri(field_map.get("role_properties", ["hasCreator"]), ns_prefix, True)
 
                     fuzzy_threshold_specific = field_map.get("fuzzy") or fuzzy_threshold
 

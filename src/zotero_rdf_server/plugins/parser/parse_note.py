@@ -278,7 +278,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                                     ensure_mapping_literal(result_store, entry, lit_value, map_label_prop, mapping_graph_uri)                               
                                     
 
-                                elif allow_create: # TODO uuid4?
+                                elif allow_create: # TODO uuid4 because same literal may have multiple types?
                                     ENTITY_UUID = uuid5(NAMESPACE_URL, str(entity_graph_uri.value))
                                     iri_suffix = uuid5(ENTITY_UUID, lit_value)
                                     base_uri = parser_cfg.get('base_uri', f"{str(entity_graph_uri.value).rstrip('/')}") 

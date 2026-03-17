@@ -191,24 +191,24 @@ def load_dict_like(
     def _fallback(reason: str) -> dict:
         logger.info(f"got raw to load: {raw}")
         if required:
-            raise
+            raise ValueError(f"{label}: {reason}")
         if default is not None:
             logger.warning(f"{label}: {reason}; using fallback default")
-            _return(deepcopy(dict(default)))
+            return _return(deepcopy(dict(default)))
         logger.warning(f"{label}: {reason}; using empty mapping")        
-        _return({})
+        return _return({})
 
     try:
         if isinstance(raw, dict):
-            _return(deepcopy(dict(raw)))
+            return _return(deepcopy(dict(raw)))
 
         if raw is None:
-            _return(deepcopy(dict(default)) if default is not None else {})
+            return _return(deepcopy(dict(default)) if default is not None else {})
 
         if isinstance(raw, Path):
             path = raw.resolve()
             if not path.exists():
-                _return(_fallback(f"file not found: {path}"))
+                return _return(_fallback(f"file not found: {path}"))
             content = path.read_text(encoding="utf-8")
             suffix = path.suffix.lower()
 
@@ -219,7 +219,7 @@ def load_dict_like(
                     resp = requests.get(raw, timeout=timeout, headers=APP_USER)
                     resp.raise_for_status()
                 except requests.RequestException as e:
-                    _return(_fallback(f"failed to fetch URL {raw}: {e}"))
+                    return _return(_fallback(f"failed to fetch URL {raw}: {e}"))
                 content = resp.text
                 suffix = Path(parsed.path).suffix.lower()
                 logger.info(f"{label}: loaded from URL {raw}")
@@ -233,18 +233,18 @@ def load_dict_like(
                     try:
                         data = json.loads(raw)
                         logger.info(f"{label}: loaded from JSON string")
-                        _return(_ensure_dict(data, label))
+                        return _return(_ensure_dict(data, label))
                     except json.JSONDecodeError:
                         try:
                             data = yaml.safe_load(raw)
                             logger.info(f"{label}: loaded from YAML string")
-                            _return(_ensure_dict(data, label))
+                            return _return(_ensure_dict(data, label))
                         except yaml.YAMLError as e:
                             if "," in raw.splitlines()[0]:
                                 try:
                                     data = _parse_csv_to_dict(raw, label)
                                     logger.info(f"{label}: parsed CSV (sniffed)")
-                                    _return(data)
+                                    return _return(data)
                                 except Exception:
                                     pass
                             return _fallback(f"string is not valid: {e}")
@@ -252,48 +252,48 @@ def load_dict_like(
         if suffix in (".yaml", ".yml"):
             data = yaml.safe_load(content)
             logger.info(f"{label}: parsed YAML")
-            _return(_ensure_dict(data, label))
+            return _return(_ensure_dict(data, label))
         if suffix == ".json" or not suffix:
             try:
                 data = json.loads(content)
                 logger.info(f"{label}: parsed JSON")
-                _return(_ensure_dict(data, label))
+                return _return(_ensure_dict(data, label))
             except json.JSONDecodeError:
                 try:
                     data = yaml.safe_load(content)
                     logger.info(f"{label}: parsed YAML (no/unknown suffix)")
-                    _return(_ensure_dict(data, label))
+                    return _return(_ensure_dict(data, label))
                 except yaml.YAMLError as e:
-                    _return(_fallback(f"failed to parse content as JSON/YAML: {e}"))                
+                    return _return(_fallback(f"failed to parse content as JSON/YAML: {e}"))                
         if suffix == ".csv":
             try:
                 data = _parse_csv_to_dict(content, label)
                 logger.info(f"{label}: parsed CSV")
-                _return(data)
+                return _return(data)
             except Exception as e:
-                _return(_fallback(str(e)))
+                return _return(_fallback(str(e)))
             
         try:
             data = json.loads(content)
             logger.info(f"{label}: parsed JSON despite suffix {suffix}")
-            _return(_ensure_dict(data, label))
+            return _return(_ensure_dict(data, label))
         except json.JSONDecodeError:
             try:
                 data = yaml.safe_load(content)
                 logger.info(f"{label}: parsed YAML despite suffix {suffix}")
-                _return(_ensure_dict(data, label))
+                return _return(_ensure_dict(data, label))
             except yaml.YAMLError:                
                 if "," in content.splitlines()[0]:
                     try:
                         data = _parse_csv_to_dict(content, label)
                         logger.info(f"{label}: parsed CSV (sniffed)")
-                        _return(data)
+                        return _return(data)
                     except Exception:
                         pass
-                _return(_fallback("failed to parse content"))
+                return _return(_fallback("failed to parse content"))
             
     except Exception as _:
-        _return(_fallback("unexpected error"))
+        return _return(_fallback("unexpected error"))
 
 
 def load_text_like(
