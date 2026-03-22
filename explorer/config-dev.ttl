@@ -1,9 +1,9 @@
 @prefix dash: <http://datashapes.org/dash#> .
 @prefix grace: <https://w3id.org/grace/ontology/> .
-@prefix ns1: <dcterms:> .
-@prefix ns2: <vann:> .
-@prefix ns3: <bibo:> .
-@prefix ns4: <dc:> .
+@prefix ns1: <vann:> .
+@prefix ns2: <bibo:> .
+@prefix ns3: <dc:> .
+@prefix ns4: <dcterms:> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix prov: <http://www.w3.org/ns/prov#> .
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
@@ -1469,8 +1469,7 @@ semz:has_label a owl:DatatypeProperty ;
 
 semz:instructure_transitive a owl:ObjectProperty ;
     rdfs:label "inStructure transitive"@en ;
-    sparnatural:sparqlString "<https://semantic-html.org/vocab#instructure_transitive>+"@en ;
-    sparnatural:tooltip "The parent structure of something, transitive, i.e. traverses all parent structures, too (This is only a query pattern) (transitive property)"@en ;
+    sparnatural:tooltip "The parent structure of something, transitive, i.e. traverses all parent structures, too (This is only a query pattern)"@en ;
     rdfs:comment "The parent structure of something, transitive, i.e. traverses all parent structures, too"@en ;
     rdfs:domain [ a owl:Class ;
             grace:unionOf semz:Annotation,
@@ -1619,20 +1618,20 @@ semz:sameAs a owl:ObjectProperty ;
 
 grace: a owl:Ontology ;
     rdfs:label "Graceful17 Ontology"@en ;
-    ns3:status <bibo:status/draft> ;
-    ns4:title "Graceful17 Ontology"@en ;
-    ns1:created "2026-03-17T14:23:39"@en ;
-    ns1:creator "Bruno Boute"@en,
+    ns2:status <bibo:status/draft> ;
+    ns3:title "Graceful17 Ontology"@en ;
+    ns4:created "2026-03-20T14:28:17"@en ;
+    ns4:creator "Bruno Boute"@en,
         "Christoph Sander"@en ;
-    ns1:license <http://creativecommons.org/licenses/by/4.0/> ;
+    ns4:license <http://creativecommons.org/licenses/by/4.0/> ;
     owl:backwardCompatibleWith grace:1.0.0 ;
     owl:imports <http://www.opengis.net/ont/geosparql> ;
     owl:priorVersion grace:1.0.0 ;
     owl:versionIRI grace:1.0.1 ;
-    prov:generatedAtTime "2026-03-17T14:23:39"^^xsd:dateTime ;
+    prov:generatedAtTime "2026-03-20T14:28:17"^^xsd:dateTime ;
     schema:citation "Sander, Christoph; Boute, Bruno. (2025). The Graceful17 Ontology, https://w3id.org/g17/ontology (Version 1.0.1)"@en ;
-    ns2:preferredNamespacePrefix "grace"@en ;
-    ns2:preferredNamespaceUri "https://w3id.org/grace/ontology/"@en .
+    ns1:preferredNamespacePrefix "grace"@en ;
+    ns1:preferredNamespaceUri "https://w3id.org/grace/ontology/"@en .
 
 zmap:has_mapping_label a owl:DatatypeProperty ;
     rdfs:label "has mapping label"@en ;
@@ -5013,7 +5012,7 @@ zotsn:property_1869 a sh:PropertyShape ;
     sh:name "is in Structure (transitive)"@en ;
     sh:node zotsn:structure_1756 ;
     sh:nodeKind sh:IRI ;
-    sh:path semz:inStructure .
+    sh:path [ sh:oneOrMorePath semz:inStructure ] .
 
 zotsn:property_1923 a sh:PropertyShape ;
     rdfs:label "in quotation"@en ;
