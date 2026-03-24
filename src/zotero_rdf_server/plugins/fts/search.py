@@ -12,7 +12,8 @@ oscfg = get_os_config(cfg_path)
 logger.debug(f"{oscfg}")
 client = make_client(oscfg)
 logger.info(f"Client config loaded from {cfg_path}")
-DEFAULT_ALIAS = oscfg.get("default_alias", "ocr")
+DEFAULT_ALIAS = oscfg.get("meta", {}).get("default_alias", "ocr")
+logger.info(f"DEFAULT_ALIAS: {DEFAULT_ALIAS}")
 
 # --- Helpers -----------------------------------------------------------------
 
