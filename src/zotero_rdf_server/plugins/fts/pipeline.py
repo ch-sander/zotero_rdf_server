@@ -15,17 +15,17 @@ def _meta_flat_strings(d: Dict[str, Any]) -> Dict[str, str]:
     return out
 
 
-def ingest_pipeline(        
-    items:list=[],
-    targets:str|list=[],
-    ocr:bool=False,
-    transformer:bool=False,
+def ingest_pipeline(
+    items: list = [],
+    targets: str | list = [],
+    ocr: bool = False,
+    framework: TypeLiteral["kraken", "tesseract", "transformer"] = "kraken",
     vector: bool = True,
-    ingest:bool=True,
-    iter_pages_kwargs:dict={},
-    page_to_text_kwargs:dict={},
-    text_image_file_kwargs:dict={},
-    config_path:str=None
+    ingest: bool = True,
+    iter_pages_kwargs: dict = {},
+    page_to_text_kwargs: dict = {},
+    text_image_file_kwargs: dict = {},
+    config_path: str = None
 ):
     from .db import index_stream
     items = list(items or [])
@@ -33,8 +33,8 @@ def ingest_pipeline(
     targets = targets or []
     iter_pages_kwargs = dict(iter_pages_kwargs or {})
     page_to_text_kwargs = dict(page_to_text_kwargs or {})
-    logger.info(f"Ingest Pipeline started with {len(items)} items...")
-    
+    logger.info(f"Ingest Pipeline started with {len(items)} items using framework={framework}...")
+
     page_to_text_kwargs['config_path'] = config_path if (not page_to_text_kwargs.get('config_path') and config_path) else page_to_text_kwargs.get('config_path')
 
     logger.info(
@@ -67,7 +67,7 @@ def ingest_pipeline(
         iiif_ocr_policy = iter_pages_kwargs.get("iiif_ocr_policy")
         if isinstance(iiif_ocr_policy, dict):
             iter_pages_kwargs["iiif_ocr_policy"] = IiifOcrPolicy.from_json(iiif_ocr_policy)
-
+        
         def make_pages_fn(doc_id: str, stats: dict):
             def pages_fn(u: str):
                 try:
@@ -77,7 +77,7 @@ def ingest_pipeline(
                         iter_kwargs=iter_pages_kwargs,
                         page_to_text_kwargs=page_to_text_kwargs,
                         text_image_file_kwargs=text_image_file_kwargs,
-                        transformer=transformer
+                        framework=framework,
                     ):
                         stats["pages_emitted"] += 1
                         yield page
@@ -85,7 +85,7 @@ def ingest_pipeline(
                     logger.exception("pages_fn failed for doc_id=%s input=%r", doc_id, u)
                     raise
             return pages_fn
-        
+                
         if not ingest:
             results: List[Dict[str, Any]] = []
             for i, obj in enumerate(items, start=1):
@@ -137,12 +137,11 @@ def ingest_pipeline(
                     "input": input_,
                     "meta": meta,
                     "ocr": True,
+                    "framework": framework,
                     "vector": vector,
-                    "transformer": bool(transformer),
                     "ocr_pages": len(pages),
                     "ingest": False,
                     "targets": targets,
-                    # "pages": pages, # Too big for result
                 })
             logger.info(f"OCR Pipeline finsihed with {len(results)} results!")
 
@@ -182,7 +181,7 @@ def ingest_pipeline(
                         vector=vector
                     )         
                 digest["ocr"] = True
-                digest["transformer"] = bool(transformer)       
+                digest["framework"] = framework     
                 digest["ocr_pages"] = stats["pages_emitted"]
                 digest["ingest"] = True
                 runs.append(digest)
@@ -208,7 +207,7 @@ def ingest_pipeline(
                     )
                 
                 digest["ocr"] = False
-                digest["transformer"] = bool(transformer)
+                digest["framework"] = framework
                 digest["ingest"] = True
                 runs.append(digest)
 

@@ -1,4 +1,4 @@
-logging:
+logging: # not implemented yet
   active: true
   store: ./logs
   templates:
@@ -68,6 +68,21 @@ kraken:
     #   url: "https://zenodo.org/records/14602569/files/blla.mlmodel?download=1"
     #   checksum_algo: "md5"
     #   checksum: "0e3f0e1c5e954c8b673ef5dbd0865058"
+
+tesseract:
+  executable: /usr/bin/tesseract
+  tessdata_dir: /opt/tessdata
+  data_repo: best         # fast | best | standard
+  active:
+    lang: lat
+    config: "--psm 3"
+  defaults:
+    print:
+      lang: lat
+      config: "--psm 3"
+    handwriting:
+      lang: lat
+      config: "--psm 6"
 
 open-search:
   client:

@@ -1,16 +1,20 @@
 from dataclasses import dataclass, field
 from typing import Iterator, Optional, Dict, Any, List, Literal, Union, Tuple, Mapping, Iterable, Callable, Set, Sequence, Protocol
 import io, json, os, tempfile, time, re, math, requests
-from PIL import Image
 from functools import lru_cache
 from pathlib import Path
 from .helpers import ensure_import, _hash_file,  resolve_config_path, _download, plugin_logger, detect_url_kind, detect_file_kind, resolve_source
 from io import BytesIO
-from lxml import etree # TODO import
 from urllib.parse import urlparse
 
 from .helpers import plugin_logger, safe_doc_id
 logger=plugin_logger()
+
+ensure_import("PIL")
+ensure_import("lxml")
+from PIL import Image
+from lxml import etree # TODO import
+
 
 try:
     from zotero_rdf_server.config import APP_USER
@@ -160,17 +164,21 @@ class KrakenModelSpec:
     url: Optional[str] = None
     checksum_algo: Optional[str] = None   # "md5" or "sha256"
     checksum: Optional[str] = None
-   
+
+@lru_cache(maxsize=8)
+def get_ocr_cfg(config_path: Path) -> dict[str, Any]:
+    from zotero_rdf_server.utils import load_dict_like
+    return load_dict_like(config_path, label="OCR Config") or {}  
+ 
 @lru_cache(maxsize=8)
 def get_kraken_cfg(config_path: Path) -> dict[str, Any]:
-    # import yaml
-    from zotero_rdf_server.utils import load_dict_like
-    
-    # path = Path(config_path).expanduser().resolve()
-    # with path.open("r", encoding="utf-8") as f:
-    #     cfg = yaml.safe_load(f) or {}
-    cfg = load_dict_like(config_path,label= "Kraken Config")
+    cfg = get_ocr_cfg(config_path)
     return cfg.get("kraken") or cfg
+
+@lru_cache(maxsize=8)
+def get_tesseract_cfg(config_path: Path) -> dict[str, Any]:
+    cfg = get_ocr_cfg(config_path)
+    return cfg.get("tesseract") or cfg
 
 def resolve_domain(*, config_path: Path, domain: Optional[str]) -> str:
     if domain:
@@ -272,6 +280,122 @@ def resolve_kraken_model_path(
 
     return path
 
+## TESSERARCT
+
+def resolve_tesseract_lang(
+    *,
+    config_path: Path,
+    domain: Optional[str] = None,
+    lang: Optional[str] = None,
+) -> str:
+    if lang:
+        return lang
+
+    tcfg = get_tesseract_cfg(config_path)
+    active = tcfg.get("active") or {}
+    if active.get("lang"):
+        return active["lang"]
+
+    defaults = tcfg.get("defaults") or {}
+    dom_cfg = defaults.get(domain or "", {})
+    if isinstance(dom_cfg, dict) and dom_cfg.get("lang"):
+        return dom_cfg["lang"]
+
+    if tcfg.get("default_lang"):
+        return tcfg["default_lang"]
+
+    return "lat"
+
+def resolve_tesseract_config(
+    *,
+    config_path: Path,
+    domain: Optional[str] = None,
+    config: Optional[str] = None,
+) -> str:
+    if config:
+        return config
+
+    tcfg = get_tesseract_cfg(config_path)
+    active = tcfg.get("active") or {}
+    if active.get("config"):
+        return active["config"]
+
+    defaults = tcfg.get("defaults") or {}
+    dom_cfg = defaults.get(domain or "", {})
+    if isinstance(dom_cfg, dict) and dom_cfg.get("config"):
+        return dom_cfg["config"]
+
+    return tcfg.get("default_config") or ""
+
+def configure_tesseract_binary(*, config_path: Path) -> None:
+    tcfg = get_tesseract_cfg(config_path)
+    exe = tcfg.get("executable", "/usr/bin/tesseract")
+    if exe:
+        import pytesseract
+        pytesseract.pytesseract.tesseract_cmd = exe
+
+
+def tesseract_image_to_text(
+    im: Image.Image,
+    *,
+    config_path: str | None = None,
+    domain: str | None = None,
+    lang: str | None = None,
+    config: str | None = None,
+    binarize: bool = False,
+    ink_ratio_range: list | None = None,
+) -> str:
+    try:
+        ensure_import("pytesseract")
+        import pytesseract
+
+        cfg_path = resolve_config_path(config_path)
+        configure_tesseract_binary(config_path=cfg_path)
+
+        lang_x = resolve_tesseract_lang(
+            config_path=cfg_path,
+            domain=domain,
+            lang=lang,
+        )
+        config_x = resolve_tesseract_config(
+            config_path=cfg_path,
+            domain=domain,
+            config=config,
+        )
+
+        work = im
+
+        if ink_ratio_range:
+            r, bg, thr = ink_ratio(work)
+            logger.debug(f"Found page for tesseract, r={r:.5f}, bg={bg:.1f}, thr={thr:.1f}")
+            if r < ink_ratio_range[0]:
+                logger.warning(
+                    f"Skipping page (blank), r={r:.5f}, bg={bg:.1f}, thr={thr:.1f}"
+                )
+                return ""
+            if r > ink_ratio_range[1]:
+                logger.warning(
+                    f"Skipping page (too dark/ornament), r={r:.3f}, bg={bg:.1f}"
+                )
+                return ""
+
+        if binarize:
+            g = work.convert("L")
+            a = np.asarray(g)
+            thr = max(1, int(np.median(a) - 25))
+            bw = (a > thr).astype(np.uint8) * 255
+            work = Image.fromarray(bw)
+
+        txt = pytesseract.image_to_string(work, lang=lang_x, config=config_x or "")
+        logger.debug(txt)
+        return txt or ""
+
+    except Exception:
+        logger.exception("Tesseract OCR failed")
+        return ""
+    
+
+## OCR        
 
 @dataclass(frozen=True)
 class PageItem:
@@ -1007,13 +1131,28 @@ def page_to_text(
     model_name: str | None = None,
     segmenter: str | None = None,
     binarize: bool = True,
+    framework: Literal["kraken", "tesseract"] = "kraken",
+    tesseract_lang: str | None = None,
+    tesseract_config: str | None = None,
 ) -> str:
     if item.kind == "text":
-        return item.data or "" # type: ignore[return-value]
+        return item.data or ""
+
     logger.debug(f"processing image {item.index} of {item.source}")
     if item.data is None:
         logger.error(f"page_to_text got None image: page={item.index} source={item.source}")
         return ""
+
+    if framework == "tesseract":
+        return tesseract_image_to_text(
+            item.data,
+            config_path=config_path,
+            domain=domain,
+            lang=tesseract_lang,
+            config=tesseract_config,
+            binarize=binarize,
+        )
+
     return kraken_image_to_text(
         item.data,
         config_path=config_path,
@@ -1030,16 +1169,18 @@ def iter_text_pages(
     iter_kwargs: Dict[str, Any],
     page_to_text_kwargs: Dict[str, Any],
     text_image_file_kwargs: Optional[Dict[str, Any]] = None,
-    transformer: bool = False
+    framework: Literal["kraken", "tesseract", "transformer"] = "kraken",
 ) -> Iterator[Tuple[int, str]]:
+    
     iter_kwargs = dict(iter_kwargs or {})
     page_to_text_kwargs = dict(page_to_text_kwargs or {})
     logger.debug(
-        f"iter_text_pages received: {[iter_kwargs, page_to_text_kwargs, text_image_file_kwargs]}"
+        f"iter_text_pages received: {[iter_kwargs, page_to_text_kwargs, text_image_file_kwargs, framework]}"
     )
     cfg = text_image_file_kwargs or {}
+    use_transformer = framework == "transformer"
 
-    if transformer:
+    if use_transformer:
         try:
             logger.info("### Using Tranformer from medieval_ocr_pipeline ###")
             here = Path(__file__).resolve().parent
@@ -1056,8 +1197,7 @@ def iter_text_pages(
             # src\zotero_rdf_server\plugins\fts\medieval_ocr_pipeline\complete_ocr_pipeline.py
         except Exception as e:
             logger.exception("Transformer plugin import failed")
-
-            transformer = False
+            use_transformer = False
 
     try:
         from zotero_rdf_server.config import EXPORT_DIRECTORY
@@ -1206,7 +1346,7 @@ def iter_text_pages(
 
     def _log_and_yield(page_no: int, txt: str, total: int=1):
         preview = " ".join((txt or "").split())[:60]
-        logger.info(f"{_doc_id} {page_no}/{total}: OCR result: {preview}...")
+        logger.info(f"{_doc_id} {page_no}/{total}: {framework.upper()} result: {preview}...")
         return page_no, txt
     
     cached_page_set = _cached_pages()
@@ -1256,12 +1396,16 @@ def iter_text_pages(
                     with Image.open(img_path) as im:
                         pil = im.copy()
                     item = PageItem(page_no, "image", pil, source=f"cache-image:{img_path}",total=total)
-                    if transformer:
-                        logger.debug("### Using Tranformer from medieval_ocr_pipeline ###")                        
+                    if use_transformer:
+                        logger.debug("### Using Tranformer from medieval_ocr_pipeline ###")
                         res = process_complete_image(item.data, verbose=False, cleanup_temp=True, models=MODELS)
                         txt = "" if res is None else res[0]
-                    else:                        
-                        txt = page_to_text(item, **page_to_text_kwargs)  # OCR local
+                    else:
+                        txt = page_to_text(
+                            item,
+                            framework=framework if framework in {"kraken", "tesseract"} else "kraken",
+                            **page_to_text_kwargs
+                        )
                 except Exception as e:
                     logger.error(f"{_doc_id}: Failed to load cached image for page {page_no} from {img_path}: {e}")
 
@@ -1330,12 +1474,17 @@ def iter_text_pages(
 
         # OCR / page_to_text
         try:
-            if transformer and item.kind == "image":
+            if use_transformer  and item.kind == "image":
                 logger.debug("### Using Tranformer from medieval_ocr_pipeline ###")
                 res = process_complete_image(item.data, verbose=False, cleanup_temp=True, models=MODELS)
                 txt = "" if res is None else res[0]
             else:
-                txt = page_to_text(item, **page_to_text_kwargs)
+                txt = page_to_text(
+                    item,
+                    framework=framework if framework in {"kraken", "tesseract"} else "kraken",
+                    **page_to_text_kwargs
+                )
+
         except Exception as e:
             logger.error(f"{_doc_id}: iter_text_pages error on page {page_no}: {e}")
             if on_error == "raise":
