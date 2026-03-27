@@ -62,20 +62,20 @@ class OcrResponse(BaseModel):
 def ocr_url(
     input: str = Query(..., description="PDF or IIIF URL or file path"),
 
-    # Output mode
-    # stream: bool = Query(
-    #     False,
-    #     description="If true, stream results as NDJSON (one line per page). If false, return a single JSON document.",
-    # ),
     output: Literal["json", "ndjson", "zip"] = Query(
         "json",
         description="Output mode: json (single document), ndjson (one line per page), zip (metadata + pages as json/ndjson).",
     ),
-    # Config resolution: param > ENV > YAML > fallback
     config_path: Optional[str] = Query(
         None,
         description="Path to YAML config. If omitted: ENV FTS_CONFIG, otherwise ./config.yml",
     ),
+
+    framework: Literal["kraken", "tesseract", "transformer"] = Query(
+        "kraken",
+        description="OCR backend: kraken, tesseract, or transformer.",
+    ),
+
     domain: Optional[str] = Query(
         None,
         description="Domain override (e.g., print/handwriting/medieval). If omitted, resolved from YAML/ENV.",
@@ -88,10 +88,18 @@ def ocr_url(
         None,
         description='Segmenter override: "BLLA" (package fallback) or a model name from YAML.',
     ),
-    # OCR behavior
+
+    tesseract_lang: Optional[str] = Query(
+        "lat",
+        description="Tesseract language override, e.g. deu, eng, deu+eng.",
+    ),
+    tesseract_config: Optional[str] = Query(
+        "--oem 3",
+        description='Extra Tesseract config, e.g. "--psm 6 --oem 3".',
+    ),
+
     binarize: bool = Query(True, description="If true, apply nlbin binarization before segmentation/OCR."),
 
-    # Input rendering controls
     iiif_max_width: int = Query(
         2000, ge=200, le=8000,
         description="Maximum width for IIIF images (scaling parameter).",
@@ -100,7 +108,6 @@ def ocr_url(
         200, ge=72, le=600,
         description="DPI used to rasterize PDF pages.",
     ),
-    # Embedded PDF text policy (matches your dataclass defaults)
     pdf_text_enabled: bool = Query(
         True,
         description="If true, attempt to use embedded PDF text when it looks reliable.",
@@ -133,23 +140,19 @@ def ocr_url(
         "txt",
         description="Text file extension.",
     ),
-    safe_text: str = Query(
+    save_text: Literal["skip", "overwrite", "active"] = Query(
         "skip",
-        pattern="^(skip|overwrite|active)$",
         description="What to do if text file already exists.",
     ),
-    safe_image: str = Query(
+    save_image: Literal["skip", "overwrite", "active"] = Query(
         "skip",
-        pattern="^(skip|overwrite|active)$",
         description="What to do if image file already exists.",
     ),
-    on_error: str = Query(
+    on_error: Literal["log", "raise", "skip", "empty"] = Query(
         "raise",
-        pattern="^(log|raise|skip|empty)$",
         description="Behaviour if OCR/text extraction fails.",
     )
 ) -> Union[OcrResponse, StreamingResponse, dict]:
-    # Local imports to avoid heavy imports at app startup (and to match your earlier pattern).
     from .ocr import iter_text_pages, PdfTextPolicy
 
     text_image_file_kwargs = {
@@ -157,10 +160,11 @@ def ocr_url(
         "txt_out": txt_out,
         "img_ext": img_ext,
         "txt_ext": txt_ext,
-        "safe_text": safe_text,
-        "safe_image": safe_image,
+        "save_text": save_text,
+        "save_image": save_image,
         "on_error": on_error,
     }
+
     pdf_text_policy = PdfTextPolicy(
         enabled=pdf_text_enabled,
         min_chars=pdf_text_min_chars,
@@ -170,7 +174,6 @@ def ocr_url(
     def iter_page_results() -> Iterator[dict]:
         for page_no, text in iter_text_pages(
             input=input,
-            # doc_id=input          
             iter_kwargs=dict(
                 iiif_max_width=iiif_max_width,
                 pdf_dpi=pdf_dpi,
@@ -183,10 +186,14 @@ def ocr_url(
                 model_name=model_name,
                 segmenter=segmenter,
                 binarize=binarize,
+                tesseract_lang=tesseract_lang,
+                tesseract_config=tesseract_config,
             ),
             text_image_file_kwargs=text_image_file_kwargs,
+            framework=framework,
         ):
             yield {"index": page_no, "text": text}
+
     try:
         if output == "ndjson":
             def gen():
@@ -202,9 +209,12 @@ def ocr_url(
 
             meta = {
                 "input": input,
+                "framework": framework,
                 "domain": domain,
                 "model_name": model_name,
                 "segmenter": segmenter,
+                "tesseract_lang": tesseract_lang,
+                "tesseract_config": tesseract_config,
                 "binarize": binarize,
                 "iiif_max_width": iiif_max_width,
                 "pdf_dpi": pdf_dpi,
@@ -216,7 +226,6 @@ def ocr_url(
             with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
                 zf.writestr("meta.json", json.dumps(meta, ensure_ascii=False, indent=2))
 
-                # pages as NDJSON inside zip (most efficient)
                 lines = []
                 for obj in iter_page_results():
                     lines.append(json.dumps(obj, ensure_ascii=False))
@@ -228,7 +237,6 @@ def ocr_url(
                 filename="ocr.zip",
             )
 
-        # default: single JSON document
         pages: List[OcrPage] = [OcrPage(**obj) for obj in iter_page_results()]
         return OcrResponse(
             input=input,
@@ -242,11 +250,10 @@ def ocr_url(
             pdf_text_min_chars=pdf_text_min_chars,
             pdf_text_min_alpha_ratio=pdf_text_min_alpha_ratio,
             start_page=start_page,
-            pages=pages,            
+            pages=pages,
         )
 
     except ValueError as e:
-        # Typical examples: checksum mismatch, invalid config values, etc.
         raise HTTPException(status_code=400, detail=str(e))
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -258,16 +265,6 @@ class OpenSearchDocRequest(BaseModel):
     targets: str | list[str]
     doc: dict | list[dict]
 
-@router.post("/opensearch")
-def ingest_opensearch(req: OpenSearchDocRequest = Body(...)):
-    from .db import index_stream
-
-    run = index_stream(
-        doc_id=req.doc_id,
-        targets=req.targets,
-        doc=req.doc,
-    )
-    return run #{"status": "ok", "run_id": run_id}
 
 def _default_filename(prefix: str, ext: str) -> str:
     import datetime
@@ -278,12 +275,16 @@ JsonObj = Dict[str, Any]
 JsonBody = Union[JsonObj, List[JsonObj]]
 
 @router.post("/pipeline")
+@router.post("/pipeline")
 def ingest_route(
     input: Optional[JsonBody] = Body(default=None, examples=[None]),
-    targets: str | list = Query(default=None, description="Index or alias"),    
+    targets: str | list = Query(default=None, description="Index or alias"),
     ocr: bool = Query(default=True, description="If true, run OCR pages ingest via pages_fn"),
+    framework: Literal["kraken", "tesseract", "transformer"] = Query(
+        default="kraken",
+        description="OCR backend: kraken, tesseract, or transformer.",
+    ),
     vector: bool = Query(default=True, description="If true, vectorizes text with sentence transformer (1024 dimensions)"),
-    transformer: bool = Query(None, description="If true, run transformer pipeline (doi:10.3390/electronics14153083)"),
     ingest: bool = Query(default=True, description="If true, ingest into Open Search"),
     query: Optional[str] = Query(default=None, description="SPARQL SELECT query or path to file with query code (used when body is null)"),
     graph: str | None = Query(default=None, description="Named graph IRI containing the attachments or documents (optional)"),
@@ -294,7 +295,7 @@ def ingest_route(
     store_path: Optional[str] = Query(default=None, description="Oxigraph store path (defaults to main store)"),
     open_search_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for Open Search Config", examples=[None]),
     ocr_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for OCR Config", examples=[None]),
-    model_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for Kraken Config", examples=[None]),
+    model_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for OCR Backend Config", examples=[None]),
     file_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for File Output", examples=[{'img_out':'kraken/images','txt_out':'kraken/texts','save_text':'active','save_image':'skip'}]),
 ):
     from .pipeline import ingest_pipeline
@@ -389,7 +390,8 @@ def ingest_route(
                             )
                         
                         ocr_x = ocr if ocr is not None else ncfg.get("ocr", True)
-                        transformer_x = transformer if transformer is not None else ncfg.get("transformer", False)
+                        
+                        framework_x = framework  if framework is not None else ncfg.get("framework", "kraken")
                         ingest_x = ingest if ingest is not None else ncfg.get("ingest", True)
                         vector_x = vector if vector is not None else ncfg.get("vector", True)
 
@@ -401,11 +403,12 @@ def ingest_route(
 
                         try:
                             sparql_query=load_text_like(query_x,label="Ingest Pipeline SPARQL Query")
-                            logger.debug(f"{sparql_query}")
+                            logger.info(f"SPARQL query:\n\n{sparql_query}")
                             bindings = store.query(
                                 sparql_query,
                                 use_default_graph_as_union=False,
-                                default_graph=[NamedNode(lib.base_url), NamedNode(lib.knowledge_base_graph)])
+                                default_graph=[NamedNode(lib.base_url), NamedNode(lib.knowledge_base_graph)]
+                                )
                             var_names = [v.value for v in bindings.variables]
                             logger.info(f"SPARQL returned columns: {var_names}")
                             for sol in bindings:
@@ -413,7 +416,7 @@ def ingest_route(
                                     name: (sol[name].value if sol[name] is not None else None)
                                     for name in var_names
                                 })                            
-                            logger.info(f"{len(items)} results")  
+                            logger.info(f"{len(items)} results (store LEN: {len(store)})")  
 
                             # Save as CSV
                             save_query_to_file(items=items,var_names=var_names)
@@ -427,7 +430,7 @@ def ingest_route(
                         run_ids.extend(ingest_pipeline(items=items,
                                                 targets=targets_x, 
                                                 ocr=ocr_x,
-                                                transformer=transformer_x,
+                                                framework=framework_x,
                                                 vector=vector_x,
                                                 ingest=ingest_x,
                                                 iter_pages_kwargs=iter_pages_kwargs,
@@ -476,7 +479,7 @@ def ingest_route(
             run_ids.extend(ingest_pipeline(items=items,
                                             targets=targets, 
                                             ocr=ocr,
-                                            transformer=transformer,
+                                            framework=framework,
                                             vector=vector,
                                             ingest=ingest,
                                             iter_pages_kwargs=ocr_kwargs,
@@ -513,7 +516,7 @@ def ingest_route(
         run_ids.extend(ingest_pipeline( items=items,
                                         targets=targets, 
                                         ocr=ocr,
-                                        transformer=transformer,
+                                        framework=framework,
                                         vector=vector,
                                         ingest=ingest,
                                         iter_pages_kwargs=ocr_kwargs,
@@ -537,6 +540,18 @@ def ingest_route(
     return result
 
 ### SEARCHES ###
+
+@router.post("/opensearch")
+def ingest_opensearch(req: OpenSearchDocRequest = Body(...)):
+    from .db import index_stream
+
+    run = index_stream(
+        doc_id=req.doc_id,
+        targets=req.targets,
+        doc=req.doc,
+    )
+    return run #{"status": "ok", "run_id": run_id}
+
 MAX_SIZE = 2000
 
 class OutputHeader(BaseModel):
