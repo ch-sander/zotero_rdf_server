@@ -24,3 +24,4 @@ app/.sync_d71c4c954ce7.db
 /app/plugins/parser/claudius
 /app/opensearch/snapshots
 docker-compose_scigma.yml
+app/.sync-exclude.lst
