@@ -57,7 +57,7 @@ OPTIONAL {  ?library rdf:type zot:library;
      zot:tag ?tagVal .
 
   VALUES ?tagVal { "*pdf" "*iiif" }.
-  # FILTER(?tagVal NOT IN ("*broken_url", "*broken_ocr"))
+  FILTER(?tagVal NOT IN ("*broken_url", "*broken_ocr"))
 
   OPTIONAL {
     ?parent zot:tags ?tag_1502_13.
