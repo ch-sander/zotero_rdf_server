@@ -15,6 +15,7 @@ import logging
 
 logger=plugin_logger()
 
+
 @lru_cache(maxsize=8)
 def get_os_config(config_path: Path) -> dict[str, Any]:
     # import yaml

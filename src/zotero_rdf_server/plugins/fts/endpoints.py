@@ -1,6 +1,7 @@
 from __future__ import annotations
 from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Body, Depends
-from fastapi.responses import StreamingResponse, FileResponse, Response, JSONResponse, PlainTextResponse
+from fastapi.responses import StreamingResponse, FileResponse, Response, JSONResponse, PlainTextResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from typing import Literal, Any, Dict, Iterator, List, Optional, Union
 from pathlib import Path
 import json, io
@@ -12,7 +13,7 @@ from pydantic import BaseModel, Field
 # from zotero_rdf_server.models import ZoteroLibrary
 # from zotero_rdf_server.utils import *
 
-from .helpers import plugin_logger
+from .helpers import plugin_logger, safe_doc_id
 logger=plugin_logger()
 
 router = APIRouter()
@@ -274,7 +275,6 @@ def _default_filename(prefix: str, ext: str) -> str:
 JsonObj = Dict[str, Any]
 JsonBody = Union[JsonObj, List[JsonObj]]
 
-@router.post("/pipeline")
 @router.post("/pipeline")
 def ingest_route(
     input: Optional[JsonBody] = Body(default=None, examples=[None]),
@@ -681,17 +681,22 @@ def format_search_response(
     rows = normalized.get("hits", [])
     aggs = normalized.get("aggregations") if include_aggs else None
 
-    preferred_cols = None
+    default_cols = ["_id", "_score", "doc_id", "source", "page", "snippet", "ingest_ts"]
+
+    preferred_cols = []
     if columns:
         preferred_cols = [c.strip() for c in columns.split(",") if c.strip()]
 
+    combined_cols = list(dict.fromkeys(default_cols + preferred_cols))
+
     cols = collect_columns(
         rows,
-        preferred=preferred_cols
-        or ["_id", "_score", "doc_id", "source", "page", "snippet", "ingest_ts"],
+        preferred=combined_cols,
     )
+
     if output_format in ("md", "markdown"):
         cols = [c for c in cols if c != "highlight"]
+        
     # --- JSON (inline, not a file) -------------------------------------------
     if output_format == "json":
         payload: Dict[str, Any] = {"total": normalized.get("total"), "hits": rows}
@@ -1360,3 +1365,76 @@ def mlt_by_text(
         header_meta=meta or None,
         header_md_extra=out_header.header_md,
     )
+
+# VIEWER
+
+@open_router.get(
+    "/image/{os_doc_id:path}",
+    summary="Return image for one page",
+)
+def get_image(os_doc_id: str):
+    from .viewer import split_doc_id, image_file
+    doc_key, page = split_doc_id(os_doc_id)
+    img_path = image_file(doc_key, page)
+
+    logger.info(f"get_image os_doc_id={os_doc_id}")
+    logger.info(f"get_image img_path={img_path} exists={img_path.exists()}")
+
+    if not img_path.exists() or not img_path.is_file():
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    return FileResponse(img_path)
+
+
+@open_router.get(
+    "/view/{os_doc_id:path}",
+    summary="View image page and OCR",
+    description="Indicate root directories and file extensions in configuration under 'viewer'.",
+)
+def view_page(os_doc_id: str):
+    from .viewer import render_page, split_doc_id, image_file, text_file, list_pages, discover_doc_url, IMAGE_EXT
+
+    original_os_doc_id = (os_doc_id or "").strip()
+    doc_key, page = split_doc_id(original_os_doc_id)
+
+    img_path = image_file(doc_key, page)
+    txt_path = text_file(doc_key, page)
+
+    pages = list_pages(doc_key)
+
+    if not pages and not img_path.exists() and not txt_path.exists():
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    image_url = None
+    if img_path.exists():
+        image_url = f"/image-files/{doc_key}/{page}.{IMAGE_EXT}"
+
+    if txt_path.exists():
+        try:
+            text = txt_path.read_text(encoding="utf-8", errors="replace")
+        except Exception as exc:
+            logger.warning(f"Could not read text file {txt_path}: {exc}")
+            text = "[error reading text]"
+    else:
+        text = "[no text on this page]"
+
+    prev_page = None
+    next_page = None
+    if page in pages:
+        idx = pages.index(page)
+        if idx > 0:
+            prev_page = pages[idx - 1]
+        if idx < len(pages) - 1:
+            next_page = pages[idx + 1]
+
+    html = render_page(
+        os_doc_id=original_os_doc_id.rsplit(":", 1)[0],
+        page=page,
+        pages=pages,
+        image_url=image_url,
+        text=text,
+        prev_page=prev_page,
+        next_page=next_page,
+        discover_url=discover_doc_url(original_os_doc_id.rsplit(":", 1)[0], page),
+    )
+    return HTMLResponse(html)

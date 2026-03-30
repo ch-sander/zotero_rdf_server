@@ -7,6 +7,14 @@ logging: # not implemented yet
     open-search:
       trig: ""
 
+viewer:
+  image_root: "/app/exports/kraken/images"
+  text_root: "/app/exports/kraken/texts"
+  image_ext: jpg
+  text_ext: txt
+  dashboard_url: 
+  default_alias: ocr
+
 kraken:
   models_dir: "/app/plugins/fts/models"
 
