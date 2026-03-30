@@ -130,20 +130,12 @@ def list_pages(doc_key: str) -> list[str]:
 
     return sorted(pages)
 
-
-def discover_doc_url(original_os_doc_id: str, page: str) -> str | None:
-    """
-    Discover URL should use the original document ID semantics, not the sanitized folder name.
-    """
-    dashboard_url = DASHBOARD_URL
-    index_pattern_id = DEFAULT_ALIAS
-
-    if not dashboard_url or not index_pattern_id:
+def discover_doc_url(original_os_doc_id: str) -> str | None:
+    if not DASHBOARD_URL:
         return None
-
-    doc_id = f"{original_os_doc_id}:{page}"
-    return f"{dashboard_url.rstrip('/')}/app/discover#/doc/{index_pattern_id}/{doc_id}"
-
+    from urllib.parse import quote
+    encoded_doc_id = quote(original_os_doc_id, safe="")
+    return f"{DASHBOARD_URL}{encoded_doc_id}"
 
 def render_page(
     os_doc_id: str,

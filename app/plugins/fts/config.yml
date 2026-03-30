@@ -12,8 +12,8 @@ viewer:
   text_root: "/app/exports/kraken/texts"
   image_ext: jpg
   text_ext: txt
-  dashboard_url: 
-  default_alias: ocr
+  dashboard_url: http://localhost:5601/app/discover#/doc/fe2dc870-1182-11f1-86a9-eb629f790cf7/zotero-ocr-vec-big?id=
+  default_alias: zotero-ocr-vec-big
   base_url: "http://localhost:8000/plugin/fts/view"
 
 kraken:
@@ -103,7 +103,7 @@ open-search:
     max_retries: 2
   meta:
     owner: "zotero-rdf-server"
-    default_alias: "ocr"
+    default_alias: zotero-ocr-vec-big
     environment: "dev"
     # Minimum OpenSearch version this config is designed for
     opensearch_min_version: "2.0.0"

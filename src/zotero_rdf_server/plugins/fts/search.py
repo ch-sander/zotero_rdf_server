@@ -390,18 +390,8 @@ def normalize_md_block(text: str) -> str:
     return text
 
 def normalize_html_block(text: str) -> str:
-    """
-    HTML variant of normalize_md_block:
-    - normalize line endings
-    - preserve readability with <br>
-    """
     text = text.replace("\r\n", "\n").replace("\r", "\n")
-    text = text.replace("\n", "<br>\n")
-    return text
-
-
-
-
+    return text.replace("\n", " ")
 
 def render_markdown(
     rows: List[Dict[str, Any]],
@@ -490,7 +480,12 @@ def render_html(
             if col == "_id":
                 doc_id = str(raw_value)
                 safe_id = html.escape(doc_id)
-                value_html = f'<a href="{BASE_URL}/{safe_id}">{safe_id}</a>'
+                value_html = f'<a href="{BASE_URL}/{safe_id}" target="_blank">{safe_id}</a>'
+
+            elif str(raw_value).startswith("http"):
+                safe_url = html.escape(raw_value)
+                value_html = f'<a href="{safe_url}" target="_blank">Link</a>'
+
             else:
                 if isinstance(value, str):
                     value = highlight_html_to_html(value, pre=highlight_pre, post=highlight_post)

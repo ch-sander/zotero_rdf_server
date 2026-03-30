@@ -658,7 +658,7 @@ def format_search_response(
 ):
     from .search import (
         normalize_hits,
-        collect_columns,
+        # collect_columns,
         render_csv,
         render_markdown,
         render_markdown_query_header,
@@ -688,11 +688,12 @@ def format_search_response(
 
     combined_cols = list(dict.fromkeys(default_cols + preferred_cols))
 
-    cols = collect_columns(
-        rows,
-        preferred=combined_cols,
-    )
+    # cols = collect_columns(
+    #     rows,
+    #     preferred=combined_cols,
+    # )
 
+    cols = [c for c in combined_cols if c in {k for r in rows for k in r.keys()}]
     if output_format in ("md", "markdown", "html"):
         cols = [c for c in cols if c != "highlight"]
 
@@ -825,14 +826,14 @@ def format_search_response(
         #         "Content-Disposition": f'attachment; filename="{filename or _default_filename("search", "html")}"'
         #     },
         # )
-        return HTMLResponse(content=content)
-        # return StreamingResponse(
-        #     io.BytesIO(content.encode("utf-8")),
-        #     media_type="text/html; charset=utf-8",
-        #     headers={
-        #         "Content-Disposition": f'inline; filename="{filename or _default_filename("search", "html")}"'
-        #     },
-        # )
+        # return HTMLResponse(content=content)
+        return StreamingResponse(
+            io.BytesIO(content.encode("utf-8")),
+            media_type="text/html; charset=utf-8",
+            headers={
+                "Content-Disposition": f'inline; filename="{filename or _default_filename("search", "html")}"'
+            },
+        )
 
     raise HTTPException(status_code=400, detail="Invalid format. Use: json, csv, md, html.")
 
@@ -1662,6 +1663,6 @@ def view_page(os_doc_id: str):
         text=text,
         prev_page=prev_page,
         next_page=next_page,
-        discover_url=discover_doc_url(original_os_doc_id.rsplit(":", 1)[0], page),
+        discover_url=discover_doc_url(original_os_doc_id),
     )
     return HTMLResponse(html)
