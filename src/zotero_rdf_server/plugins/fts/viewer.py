@@ -38,7 +38,7 @@ TEXT_ROOT_STR = cfg.get("text_root") or ""
 IMAGE_EXT = str(cfg.get("image_ext") or "jpg").lstrip(".")
 TEXT_EXT = str(cfg.get("text_ext") or "txt").lstrip(".")
 DASHBOARD_URL = cfg.get("dashboard_url") or None
-BASE_IMAGES = cfg.get("dashboard_url", "/image-files")
+BASE_URL = str(cfg.get("base_url", "/plugin/fts/view")).rstrip("/")
 
 mount_path = "/image-files"
 
@@ -158,24 +158,23 @@ def render_page(
     safe_os_doc_id = escape(os_doc_id)
     safe_page = escape(page)
     safe_text = escape(text or "")
-    plugin_prefix = "/plugin/fts/view"
     options = []
     for p in pages:
         selected = " selected" if p == page else ""
         label = str(int(p)) if p.isdigit() else p
         options.append(
-            f'<option value="{plugin_prefix}/{safe_os_doc_id}:{escape(p)}"{selected}>{escape(label)}</option>'
+            f'<option value="{BASE_URL}/{safe_os_doc_id}:{escape(p)}"{selected}>{escape(label)}</option>'
         )
     options_html = "\n".join(options)
 
     nav_parts = []
     if prev_page:
         nav_parts.append(
-            f'<a href="{plugin_prefix}/{safe_os_doc_id}:{escape(prev_page)}">Previous</a>'
+            f'<a href="{BASE_URL}/{safe_os_doc_id}:{escape(prev_page)}">Previous</a>'
         )
     if next_page:
         nav_parts.append(
-            f'<a href="{plugin_prefix}/{safe_os_doc_id}:{escape(next_page)}">Next</a>'
+            f'<a href="{BASE_URL}/{safe_os_doc_id}:{escape(next_page)}">Next</a>'
         )
     nav_html = "\n".join(nav_parts)
 
