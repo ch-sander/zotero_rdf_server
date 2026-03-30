@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse, FileResponse, Response, JSONRes
 from fastapi.staticfiles import StaticFiles
 from typing import Literal, Any, Dict, Iterator, List, Optional, Union
 from pathlib import Path
-import json, io
+import json, io, html
 from pydantic import BaseModel, Field
 # from zotero_rdf_server.store import *
 # from zotero_rdf_server.rdf import *
@@ -642,6 +642,210 @@ def format_search_response(
     filename: Optional[str] = None,
     flatten_meta: bool = True,
     keep_meta: bool = False,
+    include_aggs: bool = True,
+    keep_highlight: bool = True,
+    make_snippet: bool = False,
+    highlight_field: Optional[str] = None,
+    truncate_chars: int = 0,
+    truncate_field: str = "text",
+    md_highlight_pre: str = "**",
+    md_highlight_post: str = "**",
+    markdown_title: str = "Search Results",
+    markdown_max_rows: int = MAX_SIZE,
+    api_call: Optional[str] = None,
+    header_meta: Optional[Dict[str, Any]] = None,
+    header_md_extra: Optional[str] = None,
+):
+    from .search import (
+        normalize_hits,
+        collect_columns,
+        render_csv,
+        render_markdown,
+        render_markdown_query_header,
+        render_html,
+        render_html_query_header,
+    )
+
+    normalized = normalize_hits(
+        resp,
+        flatten_meta=flatten_meta,
+        keep_meta=keep_meta,
+        keep_highlight=keep_highlight,
+        make_snippet=make_snippet,
+        highlight_field=highlight_field,
+        truncate_chars=truncate_chars,
+        truncate_field=truncate_field,
+    )
+
+    rows = normalized.get("hits", [])
+    aggs = normalized.get("aggregations") if include_aggs else None
+
+    default_cols = ["_id", "_score", "doc_id", "source", "page", "snippet", "ingest_ts"]
+
+    preferred_cols = []
+    if columns:
+        preferred_cols = [c.strip() for c in columns.split(",") if c.strip()]
+
+    combined_cols = list(dict.fromkeys(default_cols + preferred_cols))
+
+    cols = collect_columns(
+        rows,
+        preferred=combined_cols,
+    )
+
+    if output_format in ("md", "markdown", "html"):
+        cols = [c for c in cols if c != "highlight"]
+
+    if output_format == "json":
+        payload: Dict[str, Any] = {"total": normalized.get("total"), "hits": rows}
+        if header_meta:
+            payload["meta"] = header_meta
+        if include_debug and api_call:
+            payload["api_call"] = api_call
+        if aggs is not None:
+            payload["aggregations"] = aggs
+        if include_debug:
+            payload["debug_query"] = debug_query
+        return JSONResponse(payload)
+
+    if output_format == "csv":
+        content = render_csv(rows, cols)
+        stream = io.BytesIO(content.encode("utf-8"))
+
+        return StreamingResponse(
+            stream,
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="{filename or _default_filename("search", "csv")}"'
+                )
+            },
+        )
+
+    if output_format in ("md", "markdown"):
+        header = render_markdown_query_header(debug_query)
+
+        if header_meta:
+            pretty_meta = json.dumps(header_meta, indent=2, ensure_ascii=False)
+            header += (
+                "## Metadata\n\n"
+                "```json\n"
+                f"{pretty_meta}\n"
+                "```\n\n"
+            )
+
+        if header_md_extra:
+            header += header_md_extra.rstrip() + "\n\n"
+
+        if aggs is not None:
+            pretty_aggs = json.dumps(aggs, indent=2, ensure_ascii=False)
+            header += (
+                "## Aggregations\n\n"
+                "```json\n"
+                f"{pretty_aggs}\n"
+                "```\n\n"
+            )
+
+        if include_debug and api_call:
+            header += (
+                "## API Call\n\n"
+                "```text\n"
+                f"{api_call}\n"
+                "```\n\n"
+            )
+
+        body = render_markdown(
+            rows,
+            cols,
+            max_rows=markdown_max_rows,
+            title=markdown_title,
+        )
+
+        content = header + body
+
+        if keep_highlight or make_snippet:
+            content = content.replace("<em>", md_highlight_pre).replace("</em>", md_highlight_post)
+
+        stream = io.BytesIO(content.encode("utf-8"))
+        return StreamingResponse(
+            stream,
+            media_type="text/markdown; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename or _default_filename("search", "md")}"'
+            },
+        )
+
+    if output_format == "html":
+        header = render_html_query_header(debug_query)
+
+        if header_meta:
+            pretty_meta = html.escape(json.dumps(header_meta, indent=2, ensure_ascii=False))
+            header += f"<h2>Metadata</h2><pre><code>{pretty_meta}</code></pre>"
+
+        if header_md_extra:
+            header += f"<div>{header_md_extra.rstrip()}</div>"
+
+        if aggs is not None:
+            pretty_aggs = html.escape(json.dumps(aggs, indent=2, ensure_ascii=False))
+            header += f"<h2>Aggregations</h2><pre><code>{pretty_aggs}</code></pre>"
+
+        if include_debug and api_call:
+            header += f"<h2>API Call</h2><pre><code>{html.escape(api_call)}</code></pre>"
+
+        body = render_html(
+            rows,
+            cols,
+            max_rows=markdown_max_rows,
+            title=markdown_title,
+        )
+
+        content = (
+            "<!doctype html>"
+            "<html><head><meta charset='utf-8'>"
+            "<title>Search Results</title>"
+            "<style>"
+            "body{font-family:system-ui,sans-serif;max-width:1000px;margin:40px auto;padding:0 20px;line-height:1.5;}"
+            "pre{background:#f6f8fa;padding:12px;border-radius:8px;overflow:auto;}"
+            "code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}"
+            "hr{margin:32px 0;}"
+            "a{color:#0969da;text-decoration:none;}"
+            "a:hover{text-decoration:underline;}"
+            "strong{font-weight:600;}"
+            "</style>"
+            "</head><body>"
+            f"{header}{body}"
+            "</body></html>"
+        )
+
+        # stream = io.BytesIO(content.encode("utf-8"))
+        # return StreamingResponse(
+        #     stream,
+        #     media_type="text/html; charset=utf-8",
+        #     headers={
+        #         "Content-Disposition": f'attachment; filename="{filename or _default_filename("search", "html")}"'
+        #     },
+        # )
+        return HTMLResponse(content=content)
+        # return StreamingResponse(
+        #     io.BytesIO(content.encode("utf-8")),
+        #     media_type="text/html; charset=utf-8",
+        #     headers={
+        #         "Content-Disposition": f'inline; filename="{filename or _default_filename("search", "html")}"'
+        #     },
+        # )
+
+    raise HTTPException(status_code=400, detail="Invalid format. Use: json, csv, md, html.")
+
+def format_search_response_legacy(
+    *,
+    resp: Dict[str, Any],
+    debug_query: Dict[str, Any],
+    output_format: str = "json",
+    columns: Optional[str] = None,
+    include_debug: bool = False,
+    filename: Optional[str] = None,
+    flatten_meta: bool = True,
+    keep_meta: bool = False,
     include_aggs: bool = True,                 # include aggregations when present
     keep_highlight: bool = True,
     make_snippet: bool = False,
@@ -788,6 +992,7 @@ class OutputFormat(str, Enum):
     json = "json"
     csv = "csv"
     markdown = "markdown"
+    html = "html"
 
 class AggType(str, Enum):
     terms = "terms"
@@ -933,6 +1138,7 @@ def search_terms(
             "Response format. "
             "json: structured API response. "
             "csv: flat table from hits.hits. "
+            "html: human-readable HTML document hits.hits. "
             "md/markdown: human-readable document blocks from hits.hits."
         ),
     ),
@@ -1090,6 +1296,7 @@ def search_proximity(
             "Response format. "
             "json: structured API response. "
             "csv: flat table from hits.hits. "
+            "html: human-readable HTML document hits.hits. "
             "md/markdown: human-readable document blocks from hits.hits."
         ),
     ),    
@@ -1243,6 +1450,7 @@ def mlt_by_id(
             "Response format. "
             "json: structured API response. "
             "csv: flat table from hits.hits. "
+            "html: human-readable HTML document hits.hits. "
             "md/markdown: human-readable document blocks from hits.hits."
         ),
     ),    
@@ -1319,6 +1527,7 @@ def mlt_by_text(
             "json: structured API response. "
             "csv: flat table from hits.hits. "
             "md/markdown: human-readable document blocks from hits.hits."
+            "html: human-readable HTML document hits.hits. "
         ),
     ),
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
@@ -1371,7 +1580,7 @@ def mlt_by_text(
 @open_router.get(
     "/image/{os_doc_id:path}",
     summary="Return image for one page",
-)
+    tags=["Viewer"])
 def get_image(os_doc_id: str):
     from .viewer import split_doc_id, image_file
     doc_key, page = split_doc_id(os_doc_id)
@@ -1385,11 +1594,29 @@ def get_image(os_doc_id: str):
 
     return FileResponse(img_path)
 
+@open_router.get(
+    "/text/{os_doc_id:path}",
+    summary="Return text for one page",
+    tags=["Viewer"])
+def get_text(os_doc_id: str):
+    from .viewer import split_doc_id, text_file
+    doc_key, page = split_doc_id(os_doc_id)
+
+    txt_path = text_file(doc_key, page)
+
+    logger.info(f"get_text os_doc_id={os_doc_id}")
+    logger.info(f"get_text txt_path={txt_path} exists={txt_path.exists()}")
+
+    if not txt_path.exists() or not txt_path.is_file():
+        raise HTTPException(status_code=404, detail="Text file not found")
+
+    return FileResponse(txt_path)
 
 @open_router.get(
     "/view/{os_doc_id:path}",
     summary="View image page and OCR",
     description="Indicate root directories and file extensions in configuration under 'viewer'.",
+    tags=["Viewer"]
 )
 def view_page(os_doc_id: str):
     from .viewer import render_page, split_doc_id, image_file, text_file, list_pages, discover_doc_url, IMAGE_EXT

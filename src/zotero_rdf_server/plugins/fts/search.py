@@ -1,4 +1,5 @@
 from typing import Any, Dict, List, Optional
+import html
 
 # --- OpenSearch client --------------------------------------------------------
 
@@ -372,6 +373,12 @@ def highlight_html_to_markdown(text: str, pre: str = "**", post: str = "**") -> 
     # Convert <em>...</em> fragments from OpenSearch highlight to Markdown emphasis
     return _EM_RE.sub(lambda m: f"{pre}{m.group(1)}{post}", text)
 
+def highlight_html_to_html(text: str, pre: str = "<strong>", post: str = "</strong>") -> str:
+    """
+    Convert OpenSearch highlight fragments (<em>...</em>) to desired HTML tags.
+    """
+    return _EM_RE.sub(lambda m: f"{pre}{m.group(1)}{post}", text)
+
 def normalize_md_block(text: str) -> str:
     """
     Keep your 'sheet style' printable blocks readable:
@@ -382,6 +389,20 @@ def normalize_md_block(text: str) -> str:
     text = text.replace("\n", " ")
     return text
 
+def normalize_html_block(text: str) -> str:
+    """
+    HTML variant of normalize_md_block:
+    - normalize line endings
+    - preserve readability with <br>
+    """
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = text.replace("\n", "<br>\n")
+    return text
+
+
+
+
+
 def render_markdown(
     rows: List[Dict[str, Any]],
     columns: List[str],
@@ -391,6 +412,12 @@ def render_markdown(
     highlight_pre: str = "**",
     highlight_post: str = "**",
 ) -> str:
+    
+    try:
+        from .viewer import BASE_URL
+    except:
+        BASE_URL = "/plugin/fts/view"
+
     lines: List[str] = []
     rows = rows[:max_rows]
 
@@ -408,11 +435,15 @@ def render_markdown(
             if col not in row:
                 continue
 
-            value = flatten_value(row.get(col))
+            raw_value = row.get(col)
+            value = flatten_value(raw_value)
             if value == "":
                 continue
 
-            if isinstance(value, str):
+            if col == "_id":
+                doc_id = str(raw_value)
+                value = f"[{doc_id}]({BASE_URL}/{value})"
+            elif isinstance(value, str):
                 value = highlight_html_to_markdown(value, pre=highlight_pre, post=highlight_post)
                 value = normalize_md_block(value)
 
@@ -423,6 +454,72 @@ def render_markdown(
 
     return "\n".join(lines)
 
+def render_html(
+    rows: List[Dict[str, Any]],
+    columns: List[str],
+    *,
+    max_rows: int = 150,
+    title: str = "Search Results",
+    highlight_pre: str = "<strong>",
+    highlight_post: str = "</strong>",
+) -> str:
+    parts: List[str] = []
+    rows = rows[:max_rows]
+
+    try:
+        from .viewer import BASE_URL
+    except:
+        BASE_URL = "/plugin/fts/view"
+
+    parts.append(f"<h1>{html.escape(title)}</h1>")
+    parts.append(f"<p>Total documents shown: <strong>{len(rows)}</strong></p>")
+
+    for idx, row in enumerate(rows, start=1):
+        parts.append("<hr>")
+        parts.append(f"<h2>Document {idx}</h2>")
+
+        for col in columns:
+            if col not in row:
+                continue
+
+            raw_value = row.get(col)
+            value = flatten_value(raw_value)
+            if value == "":
+                continue
+
+            if col == "_id":
+                doc_id = str(raw_value)
+                safe_id = html.escape(doc_id)
+                value_html = f'<a href="{BASE_URL}/{safe_id}">{safe_id}</a>'
+            else:
+                if isinstance(value, str):
+                    value = highlight_html_to_html(value, pre=highlight_pre, post=highlight_post)
+
+                    value = value.replace(highlight_pre, "___H_PRE___").replace(highlight_post, "___H_POST___")
+                    value = html.escape(value)
+                    value = value.replace("___H_PRE___", highlight_pre).replace("___H_POST___", highlight_post)
+
+                    value = normalize_html_block(value)
+                else:
+                    value = html.escape(str(value))
+
+                value_html = value
+
+            parts.append(f"<p><strong>{html.escape(col)}</strong></p>")
+            parts.append(f"<p>{value_html}</p>")
+
+    return "\n".join(parts)
+
+def render_html_query_header(debug_query: Dict[str, Any]) -> str:
+    ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    pretty = html.escape(json.dumps(debug_query, indent=2, ensure_ascii=False))
+
+    return (
+        "<h1>Search</h1>\n"
+        f"<p><strong>Generated:</strong> {ts}</p>\n"
+        "<p><strong>Query:</strong></p>\n"
+        f"<pre><code>{pretty}</code></pre>\n"
+    )
 
 def render_markdown_query_header(debug_query: Dict[str, Any]) -> str:
     """Render the OpenSearch query as a markdown code block."""

@@ -14,6 +14,7 @@ viewer:
   text_ext: txt
   dashboard_url: 
   default_alias: ocr
+  base_url: "http://localhost:8000/plugin/fts/view"
 
 kraken:
   models_dir: "/app/plugins/fts/models"
