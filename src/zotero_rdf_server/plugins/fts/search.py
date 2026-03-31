@@ -401,6 +401,7 @@ def render_markdown(
     title: str = "Search Results",
     highlight_pre: str = "**",
     highlight_post: str = "**",
+    verbose: bool = True,
 ) -> str:
     
     try:
@@ -433,6 +434,16 @@ def render_markdown(
             if col == "_id":
                 doc_id = str(raw_value)
                 value = f"[{doc_id}]({BASE_URL}/{value})"
+                
+            elif str(raw_value).startswith("http"):
+                safe_url = html.escape(raw_value)
+                if verbose:
+                    value = f"[{safe_url}](safe_url)"
+                else:
+                    lines.append(f"[**{col}**](safe_url)")
+                    lines.append("")
+                    continue
+
             elif isinstance(value, str):
                 value = highlight_html_to_markdown(value, pre=highlight_pre, post=highlight_post)
                 value = normalize_md_block(value)
@@ -452,6 +463,7 @@ def render_html(
     title: str = "Search Results",
     highlight_pre: str = "<strong>",
     highlight_post: str = "</strong>",
+    verbose: bool = True,
 ) -> str:
     parts: List[str] = []
     rows = rows[:max_rows]
@@ -484,8 +496,12 @@ def render_html(
 
             elif str(raw_value).startswith("http"):
                 safe_url = html.escape(raw_value)
-                value_html = f'<a href="{safe_url}" target="_blank">Link</a>'
-
+                if verbose:
+                    value_html = f'<a href="{safe_url}" target="_blank">{safe_url}</a>'
+                else:
+                    parts.append(f'<p><strong><a href="{safe_url}" target="_blank">{html.escape(col)}</a></strong></p>')
+                    continue
+            
             else:
                 if isinstance(value, str):
                     value = highlight_html_to_html(value, pre=highlight_pre, post=highlight_post)
@@ -505,9 +521,9 @@ def render_html(
 
     return "\n".join(parts)
 
-def render_html_query_header(debug_query: Dict[str, Any]) -> str:
+def render_html_query_header(context_query: Dict[str, Any]) -> str:
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    pretty = html.escape(json.dumps(debug_query, indent=2, ensure_ascii=False))
+    pretty = html.escape(json.dumps(context_query, indent=2, ensure_ascii=False))
 
     return (
         "<h1>Search</h1>\n"
@@ -516,10 +532,10 @@ def render_html_query_header(debug_query: Dict[str, Any]) -> str:
         f"<pre><code>{pretty}</code></pre>\n"
     )
 
-def render_markdown_query_header(debug_query: Dict[str, Any]) -> str:
+def render_markdown_query_header(context_query: Dict[str, Any]) -> str:
     """Render the OpenSearch query as a markdown code block."""
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    pretty = json.dumps(debug_query, indent=2, ensure_ascii=False)
+    pretty = json.dumps(context_query, indent=2, ensure_ascii=False)
 
     return (
         "# Search\n\n"

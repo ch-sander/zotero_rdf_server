@@ -635,10 +635,10 @@ def keyword_filter_params(
 def format_search_response(
     *,
     resp: Dict[str, Any],
-    debug_query: Dict[str, Any],
+    context_query: Dict[str, Any],
     output_format: str = "json",
     columns: Optional[str] = None,
-    include_debug: bool = False,
+    include_context: bool = False,
     filename: Optional[str] = None,
     flatten_meta: bool = True,
     keep_meta: bool = False,
@@ -686,7 +686,7 @@ def format_search_response(
     if columns:
         preferred_cols = [c.strip() for c in columns.split(",") if c.strip()]
 
-    combined_cols = list(dict.fromkeys(default_cols + preferred_cols))
+    combined_cols = list(dict.fromkeys(default_cols + preferred_cols)) if include_context else list(dict.fromkeys(preferred_cols))
 
     # cols = collect_columns(
     #     rows,
@@ -701,12 +701,12 @@ def format_search_response(
         payload: Dict[str, Any] = {"total": normalized.get("total"), "hits": rows}
         if header_meta:
             payload["meta"] = header_meta
-        if include_debug and api_call:
+        if include_context and api_call:
             payload["api_call"] = api_call
         if aggs is not None:
             payload["aggregations"] = aggs
-        if include_debug:
-            payload["debug_query"] = debug_query
+        if include_context:
+            payload["context_query"] = context_query
         return JSONResponse(payload)
 
     if output_format == "csv":
@@ -724,7 +724,7 @@ def format_search_response(
         )
 
     if output_format in ("md", "markdown"):
-        header = render_markdown_query_header(debug_query)
+        header = render_markdown_query_header(context_query)
 
         if header_meta:
             pretty_meta = json.dumps(header_meta, indent=2, ensure_ascii=False)
@@ -747,7 +747,7 @@ def format_search_response(
                 "```\n\n"
             )
 
-        if include_debug and api_call:
+        if include_context and api_call:
             header += (
                 "## API Call\n\n"
                 "```text\n"
@@ -760,6 +760,7 @@ def format_search_response(
             cols,
             max_rows=markdown_max_rows,
             title=markdown_title,
+            verbose=include_context
         )
 
         content = header + body
@@ -777,7 +778,7 @@ def format_search_response(
         )
 
     if output_format == "html":
-        header = render_html_query_header(debug_query)
+        header = render_html_query_header(context_query)
 
         if header_meta:
             pretty_meta = html.escape(json.dumps(header_meta, indent=2, ensure_ascii=False))
@@ -790,7 +791,7 @@ def format_search_response(
             pretty_aggs = html.escape(json.dumps(aggs, indent=2, ensure_ascii=False))
             header += f"<h2>Aggregations</h2><pre><code>{pretty_aggs}</code></pre>"
 
-        if include_debug and api_call:
+        if include_context and api_call:
             header += f"<h2>API Call</h2><pre><code>{html.escape(api_call)}</code></pre>"
 
         body = render_html(
@@ -798,6 +799,7 @@ def format_search_response(
             cols,
             max_rows=markdown_max_rows,
             title=markdown_title,
+            verbose=include_context
         )
 
         content = (
@@ -836,156 +838,6 @@ def format_search_response(
         )
 
     raise HTTPException(status_code=400, detail="Invalid format. Use: json, csv, md, html.")
-
-def format_search_response_legacy(
-    *,
-    resp: Dict[str, Any],
-    debug_query: Dict[str, Any],
-    output_format: str = "json",
-    columns: Optional[str] = None,
-    include_debug: bool = False,
-    filename: Optional[str] = None,
-    flatten_meta: bool = True,
-    keep_meta: bool = False,
-    include_aggs: bool = True,                 # include aggregations when present
-    keep_highlight: bool = True,
-    make_snippet: bool = False,
-    highlight_field: Optional[str] = None,     # preferred highlight field for snippet selection
-    truncate_chars: int = 0,                   # fallback snippet truncation if no highlight
-    truncate_field: str = "text",              # fallback source field for truncation
-    md_highlight_pre: str = "**",              # markdown highlight pre tag
-    md_highlight_post: str = "**",             # markdown highlight post tag
-    markdown_title: str = "Search Results",    # allow custom title in markdown
-    markdown_max_rows: int = MAX_SIZE,               # cap markdown output
-    api_call: Optional[str] = None,
-    header_meta: Optional[Dict[str, Any]] = None,
-    header_md_extra: Optional[str] = None,
-):
-    """
-    Return search results as JSON or as downloadable CSV/Markdown file.
-    """
-    from .search import (
-        normalize_hits,
-        collect_columns,
-        render_csv,
-        render_markdown,
-        render_markdown_query_header,
-    )
-
-    normalized = normalize_hits(
-        resp,
-        flatten_meta=flatten_meta,
-        keep_meta=keep_meta,
-        keep_highlight=keep_highlight,
-        make_snippet=make_snippet,
-        highlight_field=highlight_field,
-        truncate_chars=truncate_chars,
-        truncate_field=truncate_field,
-    )
-
-    rows = normalized.get("hits", [])
-    aggs = normalized.get("aggregations") if include_aggs else None
-
-    default_cols = ["_id", "_score", "doc_id", "source", "page", "snippet", "ingest_ts"]
-
-    preferred_cols = []
-    if columns:
-        preferred_cols = [c.strip() for c in columns.split(",") if c.strip()]
-
-    combined_cols = list(dict.fromkeys(default_cols + preferred_cols))
-
-    cols = collect_columns(
-        rows,
-        preferred=combined_cols,
-    )
-
-    if output_format in ("md", "markdown"):
-        cols = [c for c in cols if c != "highlight"]
-        
-    # --- JSON (inline, not a file) -------------------------------------------
-    if output_format == "json":
-        payload: Dict[str, Any] = {"total": normalized.get("total"), "hits": rows}
-        if header_meta:
-            payload["meta"] = header_meta
-        if include_debug and api_call:
-            payload["api_call"] = api_call
-        if aggs is not None:
-            payload["aggregations"] = aggs
-        if include_debug:
-            payload["debug_query"] = debug_query
-        return JSONResponse(payload)
-
-    # --- CSV download --------------------------------------------------------
-    if output_format == "csv":
-        content = render_csv(rows, cols)
-        stream = io.BytesIO(content.encode("utf-8"))
-
-        return StreamingResponse(
-            stream,
-            media_type="text/csv; charset=utf-8",
-            headers={
-                "Content-Disposition": (
-                    f'attachment; filename="{filename or _default_filename("search", "csv")}"'
-                )
-            },
-        )
-
-    # --- Markdown download ---------------------------------------------------
-    if output_format in ("md", "markdown"):
-        header = render_markdown_query_header(debug_query)
-
-        if header_meta:
-            pretty_meta = json.dumps(header_meta, indent=2, ensure_ascii=False)
-            header += (
-                "## Metadata\n\n"
-                "```json\n"
-                f"{pretty_meta}\n"
-                "```\n\n"
-            )
-
-        if header_md_extra:
-            header += header_md_extra.rstrip() + "\n\n"
-
-        if aggs is not None:
-            pretty_aggs = json.dumps(aggs, indent=2, ensure_ascii=False)
-            header += (
-                "## Aggregations\n\n"
-                "```json\n"
-                f"{pretty_aggs}\n"
-                "```\n\n"
-            )
-
-        if include_debug and api_call:
-            header += (
-                "## API Call\n\n"
-                "```text\n"
-                f"{api_call}\n"
-                "```\n\n"
-            )
-            
-        body = render_markdown(
-            rows,
-            cols,
-            max_rows=markdown_max_rows,
-            title=markdown_title,
-        )
-
-        content = header + body
-
-        # Only convert <em> tags if caller enabled highlight/snippets
-        if keep_highlight or make_snippet:
-            content = content.replace("<em>", md_highlight_pre).replace("</em>", md_highlight_post)
-
-        stream = io.BytesIO(content.encode("utf-8"))
-        return StreamingResponse(
-            stream,
-            media_type="text/markdown; charset=utf-8",
-            headers={
-                "Content-Disposition": f'attachment; filename="{filename or _default_filename("search", "md")}"'
-            },
-        )
-
-    raise HTTPException(status_code=400, detail="Invalid format. Use: json, csv, md.")
 
 from enum import Enum
 
@@ -1149,7 +1001,7 @@ def search_terms(
         description="Comma-separated list of fields to include from _source.",
     ),
     filters: KeywordFilter = Depends(keyword_filter_params),
-    debug: bool = Query(
+    context: bool = Query(
         False,
         description="Include generated OpenSearch query in the response.",
     ),
@@ -1248,10 +1100,10 @@ def search_terms(
 
     return format_search_response(
         resp=resp,
-        debug_query=body,
+        context_query=body,
         output_format=format.value if hasattr(format, "value") else format,
         columns=render_columns,
-        include_debug=debug,
+        include_context=context,
         flatten_meta=True,
         keep_meta=False,
         include_aggs=True,
@@ -1303,7 +1155,7 @@ def search_proximity(
     ),    
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     out_header: OutputHeader = Depends(output_header_params),
-    debug: bool = Query(False, description="Include debug_query (JSON only)"),
+    verbose: bool = Query(False, description="Include context (JSON only)"),
 ):
     from .search import parse_csv, build_proximity_intervals_query, os_search, apply_paging, apply_keyword_filter
     api_call = str(request.url) 
@@ -1339,10 +1191,10 @@ def search_proximity(
 
     return format_search_response(
         resp=resp,
-        debug_query=body,
+        context_query=body,
         output_format=format.value if hasattr(format, "value") else format,
         columns=columns,
-        include_debug=debug,
+        include_context=context,
         markdown_max_rows=size,
         api_call=api_call,
         header_meta=meta or None,
@@ -1376,7 +1228,7 @@ def knn_by_id(
     ),    
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     out_header: OutputHeader = Depends(output_header_params),
-    debug: bool = Query(False, description="Include debug_query (JSON only)"),
+    context: bool = Query(False, description="Include context"),
 ):
     from .search import get_doc_vector, os_search, apply_paging, apply_keyword_filter
     api_call = str(request.url) 
@@ -1417,10 +1269,10 @@ def knn_by_id(
 
     return format_search_response(
         resp=resp,
-        debug_query=body,
+        context_query=body,
         output_format=format.value if hasattr(format, "value") else format,
         columns=columns,
-        include_debug=debug,
+        include_context=context,
         markdown_max_rows=size,
         api_call=api_call,
         header_meta=meta or None,
@@ -1457,7 +1309,7 @@ def mlt_by_id(
     ),    
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     out_header: OutputHeader = Depends(output_header_params),
-    debug: bool = Query(False, description="Include debug_query (JSON only)"),
+    context: bool = Query(False, description="Include context"),
     
 ):
     from .search import os_search, apply_paging, apply_keyword_filter
@@ -1495,10 +1347,10 @@ def mlt_by_id(
 
     return format_search_response(
         resp=resp,
-        debug_query=body,
+        context_query=body,
         output_format=format.value if hasattr(format, "value") else format,
         columns=columns,
-        include_debug=debug,
+        include_context=context,
         api_call=api_call,
         header_meta=meta or None,
         header_md_extra=out_header.header_md,
@@ -1533,7 +1385,7 @@ def mlt_by_text(
     ),
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     out_header: OutputHeader = Depends(output_header_params),
-    debug: bool = Query(False, description="Include debug_query (JSON only)"),
+    context: bool = Query(False, description="Include context"),
 ):
     from .search import os_search, apply_paging, apply_keyword_filter
 
@@ -1567,10 +1419,10 @@ def mlt_by_text(
 
     return format_search_response(
         resp=resp,
-        debug_query=body,
+        context_query=body,
         output_format=format.value if hasattr(format, "value") else format,
         columns=columns,
-        include_debug=debug,
+        include_context=context,
         api_call=api_call,
         header_meta=meta or None,
         header_md_extra=out_header.header_md,
