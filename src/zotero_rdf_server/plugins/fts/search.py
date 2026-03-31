@@ -418,8 +418,18 @@ def render_markdown(
     lines.append("")
 
     for idx, row in enumerate(rows, start=1):
+        doc_id = str(row.get("_id"))
+
         lines.append("---")
-        lines.append(f"## Document {idx}")
+        if doc_id:
+            if verbose:
+                doc_value = f"[{doc_id}]({BASE_URL}/{doc_id})"
+            else:
+                doc_value = doc_id
+            lines.append(f"## Document {idx} ({doc_value})")
+        else:
+            lines.append(f"## Document {idx}")
+
         lines.append("")
 
         for col in columns:
@@ -428,14 +438,13 @@ def render_markdown(
 
             raw_value = row.get(col)
             value = flatten_value(raw_value)
-            if value == "":
+            if value == "" or col == "_id":
                 continue
 
-            if col == "_id":
-                doc_id = str(raw_value)
-                value = f"[{doc_id}]({BASE_URL}/{value})"
-                
-            elif str(raw_value).startswith("http"):
+            # if col == "_id" and verbose:
+            #     value = f"[{doc_id}]({BASE_URL}/{value})"
+
+            if str(raw_value).startswith("http"):
                 safe_url = html.escape(raw_value)
                 if verbose:
                     value = f"[{safe_url}](safe_url)"
@@ -477,8 +486,18 @@ def render_html(
     parts.append(f"<p>Total documents shown: <strong>{len(rows)}</strong></p>")
 
     for idx, row in enumerate(rows, start=1):
+        doc_id = str(row.get("_id"))
+
         parts.append("<hr>")
-        parts.append(f"<h2>Document {idx}</h2>")
+        if doc_id:
+            if verbose:
+                doc_value = f'<a href="{BASE_URL}/{doc_id}" target="_blank">{doc_id}</a>'
+            else:
+                doc_value = doc_id
+
+            parts.append(f"<h2>Document {idx} ({doc_value})</h2>")
+        else:
+            parts.append(f"<h2>Document {idx}</h2>")
 
         for col in columns:
             if col not in row:
@@ -486,15 +505,14 @@ def render_html(
 
             raw_value = row.get(col)
             value = flatten_value(raw_value)
-            if value == "":
+            if value == "" or col == "_id":
                 continue
 
-            if col == "_id":
-                doc_id = str(raw_value)
-                safe_id = html.escape(doc_id)
-                value_html = f'<a href="{BASE_URL}/{safe_id}" target="_blank">{safe_id}</a>'
+            # if col == "_id" and verbose:
+            #     safe_id = html.escape(doc_id)
+            #     value_html = f'<a href="{BASE_URL}/{safe_id}" target="_blank">{safe_id}</a>'
 
-            elif str(raw_value).startswith("http"):
+            if str(raw_value).startswith("http"):
                 safe_url = html.escape(raw_value)
                 if verbose:
                     value_html = f'<a href="{safe_url}" target="_blank">{safe_url}</a>'

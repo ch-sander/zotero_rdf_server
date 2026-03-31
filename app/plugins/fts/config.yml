@@ -14,7 +14,7 @@ viewer:
   text_ext: txt
   dashboard_url: http://localhost:5601/app/discover#/doc/fe2dc870-1182-11f1-86a9-eb629f790cf7/zotero-ocr-vec-big?id=
   default_alias: zotero-ocr-vec-big
-  base_url: "http://localhost:8000/plugin/fts/view"
+  base_url: "/plugin/fts/view"
 
 kraken:
   models_dir: "/app/plugins/fts/models"

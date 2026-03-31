@@ -680,13 +680,14 @@ def format_search_response(
     rows = normalized.get("hits", [])
     aggs = normalized.get("aggregations") if include_aggs else None
 
-    default_cols = ["_id", "_score", "doc_id", "source", "page", "snippet", "ingest_ts"]
+    default_cols = ["_id", "_score", "source", "page", "snippet", "ingest_ts", "meta_parent", "meta_parent_label"]
+    default_cols_small = ["source", "page", "snippet"]
 
     preferred_cols = []
     if columns:
         preferred_cols = [c.strip() for c in columns.split(",") if c.strip()]
 
-    combined_cols = list(dict.fromkeys(default_cols + preferred_cols)) if include_context else list(dict.fromkeys(preferred_cols))
+    combined_cols = list(dict.fromkeys(default_cols + preferred_cols)) if include_context else list(dict.fromkeys(preferred_cols + default_cols_small))
 
     # cols = collect_columns(
     #     rows,
@@ -718,13 +719,13 @@ def format_search_response(
             media_type="text/csv; charset=utf-8",
             headers={
                 "Content-Disposition": (
-                    f'attachment; filename="{filename or _default_filename("search", "csv")}"'
+                    f'attachment; filename="{_default_filename(filename or "search", "csv")}"'
                 )
             },
         )
 
     if output_format in ("md", "markdown"):
-        header = render_markdown_query_header(context_query)
+        header = render_markdown_query_header(context_query) if include_context else ""
 
         if header_meta:
             pretty_meta = json.dumps(header_meta, indent=2, ensure_ascii=False)
@@ -747,7 +748,7 @@ def format_search_response(
                 "```\n\n"
             )
 
-        if include_context and api_call:
+        if include_context and api_call and include_context:
             header += (
                 "## API Call\n\n"
                 "```text\n"
@@ -773,12 +774,12 @@ def format_search_response(
             stream,
             media_type="text/markdown; charset=utf-8",
             headers={
-                "Content-Disposition": f'attachment; filename="{filename or _default_filename("search", "md")}"'
+                "Content-Disposition": f'attachment; filename="{_default_filename(filename or "search", "md")}"'
             },
         )
 
     if output_format == "html":
-        header = render_html_query_header(context_query)
+        header = render_html_query_header(context_query) if include_context else ""
 
         if header_meta:
             pretty_meta = html.escape(json.dumps(header_meta, indent=2, ensure_ascii=False))
@@ -791,7 +792,7 @@ def format_search_response(
             pretty_aggs = html.escape(json.dumps(aggs, indent=2, ensure_ascii=False))
             header += f"<h2>Aggregations</h2><pre><code>{pretty_aggs}</code></pre>"
 
-        if include_context and api_call:
+        if include_context and api_call and include_context:
             header += f"<h2>API Call</h2><pre><code>{html.escape(api_call)}</code></pre>"
 
         body = render_html(
@@ -805,7 +806,7 @@ def format_search_response(
         content = (
             "<!doctype html>"
             "<html><head><meta charset='utf-8'>"
-            "<title>Search Results</title>"
+            f'<title>{_default_filename(filename or "search", "html").rstrip(".html")}</title>'
             "<style>"
             "body{font-family:system-ui,sans-serif;max-width:1000px;margin:40px auto;padding:0 20px;line-height:1.5;}"
             "pre{background:#f6f8fa;padding:12px;border-radius:8px;overflow:auto;}"
@@ -833,19 +834,49 @@ def format_search_response(
             io.BytesIO(content.encode("utf-8")),
             media_type="text/html; charset=utf-8",
             headers={
-                "Content-Disposition": f'inline; filename="{filename or _default_filename("search", "html")}"'
+                "Content-Disposition": f'inline; filename="{_default_filename(filename or "search", "html")}"'
             },
         )
 
     raise HTTPException(status_code=400, detail="Invalid format. Use: json, csv, md, html.")
 
 from enum import Enum
+from typing import Annotated
+
+from fastapi import Depends
 
 class OutputFormat(str, Enum):
     json = "json"
     csv = "csv"
     markdown = "markdown"
     html = "html"
+
+def resolve_format(
+    request: Request,
+    format: Annotated[
+        OutputFormat | None,
+        Query(
+            description=(
+                "Response format. "
+                "json: structured API response. "
+                "csv: flat table from hits.hits. "
+                "html: human-readable HTML document hits.hits. "
+                "md/markdown: human-readable document blocks from hits.hits."
+            )
+        ),
+    ] = None
+) -> OutputFormat:
+    if format is not None:
+        return format
+
+    accept = request.headers.get("accept", "").lower()
+
+    if "text/html" in accept:
+        return OutputFormat.html
+
+    return OutputFormat.json
+
+
 
 class AggType(str, Enum):
     terms = "terms"
@@ -927,15 +958,15 @@ def search_terms(
         description="Field to highlight. Defaults to the search field.",
     ),
     fragment_size: int = Query(
-        160,
+        500,
         ge=20,
-        le=500,
+        le=10000,
         description="Size of each highlight fragment.",
     ),
     fragments: int = Query(
-        2,
+        10,
         ge=0,
-        le=10,
+        le=100,
         description="Number of highlight fragments to return (0 disables fragments).",
     ),
 
@@ -985,26 +1016,25 @@ def search_terms(
     #     ),
     # ),
     out_header: OutputHeader = Depends(output_header_params),
-    format: OutputFormat = Query(
-        OutputFormat.json,
-        description=(
-            "Response format. "
-            "json: structured API response. "
-            "csv: flat table from hits.hits. "
-            "html: human-readable HTML document hits.hits. "
-            "md/markdown: human-readable document blocks from hits.hits."
-        ),
-    ),
+    format: OutputFormat = Depends(resolve_format),
+    # format: OutputFormat = Query(
+    #     OutputFormat.json,
+    #     description=(
+    #         "Response format. "
+    #         "json: structured API response. "
+    #         "csv: flat table from hits.hits. "
+    #         "html: human-readable HTML document hits.hits. "
+    #         "md/markdown: human-readable document blocks from hits.hits."
+    #     ),
+    # ),
 
     columns: Optional[str] = Query(
         None,
         description="Comma-separated list of fields to include from _source.",
     ),
     filters: KeywordFilter = Depends(keyword_filter_params),
-    context: bool = Query(
-        False,
-        description="Include generated OpenSearch query in the response.",
-    ),
+    context: bool = Query(True, description="Include query context in the response."),
+
 ):
     from .search import parse_csv, build_terms_should_queries, os_search, apply_paging, apply_keyword_filter
     api_call = str(request.url) 
@@ -1104,6 +1134,7 @@ def search_terms(
         output_format=format.value if hasattr(format, "value") else format,
         columns=render_columns,
         include_context=context,
+        filename=f"search_terms_{terms[0]}",
         flatten_meta=True,
         keep_meta=False,
         include_aggs=True,
@@ -1223,12 +1254,13 @@ def knn_by_id(
             "Response format. "
             "json: structured API response. "
             "csv: flat table from hits.hits. "
+            "html: human-readable document blocks from hits.hits. "
             "md/markdown: human-readable document blocks from hits.hits."
         ),
     ),    
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     out_header: OutputHeader = Depends(output_header_params),
-    context: bool = Query(False, description="Include context"),
+    context: bool = Query(True, description="Include query context in the response."),
 ):
     from .search import get_doc_vector, os_search, apply_paging, apply_keyword_filter
     api_call = str(request.url) 
@@ -1309,7 +1341,7 @@ def mlt_by_id(
     ),    
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     out_header: OutputHeader = Depends(output_header_params),
-    context: bool = Query(False, description="Include context"),
+    context: bool = Query(True, description="Include query context in the response."),
     
 ):
     from .search import os_search, apply_paging, apply_keyword_filter
@@ -1385,7 +1417,7 @@ def mlt_by_text(
     ),
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     out_header: OutputHeader = Depends(output_header_params),
-    context: bool = Query(False, description="Include context"),
+    context: bool = Query(True, description="Include query context in the response."),
 ):
     from .search import os_search, apply_paging, apply_keyword_filter
 
