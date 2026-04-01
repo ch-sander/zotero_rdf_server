@@ -1154,7 +1154,7 @@ class ResultAnalysisParams(BaseModel):
         description="Field from each hit used for per-document keyword extraction.",
     )
     analysis_mode: Literal["global", "local", "both"] = Field(
-        default="global",
+        default="both",
         description="TF-IDF mode: global, local, or both.",
     )
     analyze_top_terms: int = Field(
@@ -1173,8 +1173,37 @@ class ResultAnalysisParams(BaseModel):
         default=0,
         ge=0,
         le=5000,
-        description="Maximum number of tokens kept per document after tokenization.",
+        description="Maximum number of tokens kept per document after tokenization. 0 means unlimited.",
     )
+
+    cluster_enabled: bool = Field(
+        default=False,
+        description="If true, cluster hits based on analysis vectors.",
+    )
+    cluster_count: int = Field(
+        default=5,
+        ge=1,
+        le=50,
+        description="Requested number of clusters for KMeans.",
+    )
+    cluster_source: Literal["local", "global"] = Field(
+        default="local",
+        description="Which analysis branch to use for clustering.",
+    )
+    cluster_label_source: Literal["local", "global"] = Field(
+        default="local",
+        description="Which analysis branch to use for cluster labels.",
+    )
+    cluster_label_top_terms: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Number of terms used to build the cluster label.",
+    )
+
+from typing import Annotated, Literal, Optional
+from fastapi import Query
+
 
 def get_result_analysis_params(
     perform_analysis: Annotated[
@@ -1188,7 +1217,7 @@ def get_result_analysis_params(
     analysis_mode: Annotated[
         Literal["global", "local", "both"],
         Query(description="TF-IDF mode: global, local, or both."),
-    ] = "global",
+    ] = "both",
     analyze_top_terms: Annotated[
         int,
         Query(description="Number of top TF-IDF terms per hit.", ge=1, le=20),
@@ -1199,8 +1228,29 @@ def get_result_analysis_params(
     ] = 4,
     analyze_max_tokens_per_doc: Annotated[
         int,
-        Query(description="Maximum number of tokens per document.", ge=0, le=5000),
+        Query(description="Maximum number of tokens per document. 0 means unlimited.", ge=0, le=5000),
     ] = 0,
+
+    cluster_enabled: Annotated[
+        bool,
+        Query(description="Cluster hits based on analysis vectors."),
+    ] = False,
+    cluster_count: Annotated[
+        int,
+        Query(description="Requested number of clusters for KMeans.", ge=1, le=50),
+    ] = 5,
+    cluster_source: Annotated[
+        Literal["local", "global"],
+        Query(description="Which analysis branch to use for clustering."),
+    ] = "local",
+    cluster_label_source: Annotated[
+        Literal["local", "global"],
+        Query(description="Which analysis branch to use for cluster labels."),
+    ] = "local",
+    cluster_label_top_terms: Annotated[
+        int,
+        Query(description="Number of terms used for cluster labels.", ge=1, le=10),
+    ] = 3,
 ) -> ResultAnalysisParams:
     return ResultAnalysisParams(
         perform_analysis=perform_analysis,
@@ -1209,6 +1259,11 @@ def get_result_analysis_params(
         analyze_top_terms=analyze_top_terms,
         analyze_min_token_length=analyze_min_token_length,
         analyze_max_tokens_per_doc=analyze_max_tokens_per_doc,
+        cluster_enabled=cluster_enabled,
+        cluster_count=cluster_count,
+        cluster_source=cluster_source,
+        cluster_label_source=cluster_label_source,
+        cluster_label_top_terms=cluster_label_top_terms,
     )
 
 @open_router.get(
@@ -1328,7 +1383,7 @@ def search_terms(
     context: bool = Query(True, description="Include query context in the response."),
 
 ):
-    from .search import parse_csv, build_terms_should_queries, os_search, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter, enrich_hits_with_result_analysis, analysis_from_mtermvectors, os_mtermvectors
+    from .search import parse_csv, build_terms_should_queries, os_search, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter, analysis_from_mtermvectors, os_mtermvectors, cluster_hits_by_analysis, sort_hits_by_cluster_and_score
     api_call = str(request.url) 
     # --- Build query ---------------------------------------------------------
     if lucene:
@@ -1411,6 +1466,18 @@ def search_terms(
         if "snippet" not in render_cols:
             render_cols.insert(0, "snippet")
 
+    if analysis.cluster_enabled:
+        required_modes = {analysis.cluster_source, analysis.cluster_label_source}
+
+        if analysis.analysis_mode != "both":
+            if analysis.analysis_mode not in required_modes:
+                analysis.analysis_mode = "both"
+            elif len(required_modes) == 2:
+                analysis.analysis_mode = "both"
+        render_cols.append("analysis_cluster_label")
+        render_cols.append("analysis_cluster_id")
+
+
     if analysis.perform_analysis:
         # if source_cols and field and field not in source_cols:
         #     source_cols.append(field)
@@ -1424,8 +1491,6 @@ def search_terms(
 
     source_columns = _join_columns(source_cols)
     render_columns = _join_columns(render_cols)
-    logger.info("##############################")
-    logger.info(index)
 
     # --- Query ---------------------------------------------------------
     try:
@@ -1452,17 +1517,26 @@ def search_terms(
                     field=analysis_field,
                 )
 
-                resp["hits"]["hits"] = analysis_from_mtermvectors(
+                hits = analysis_from_mtermvectors(
                     hits=hits,
                     tv_resp=tv_resp,
                     analysis=analysis,
                     field_fallback=field,
                 )
+                if analysis.cluster_enabled:
+                    hits = sort_hits_by_cluster_and_score(cluster_hits_by_analysis(
+                        hits,
+                        analysis=analysis,
+                    ))
+
+
+                resp["hits"]["hits"] = hits
 
         if resp.get("hits", {}).get("hits"):
             h0 = resp["hits"]["hits"][0]
             logger.info("First hit keys: %s", list(h0.keys()))
             logger.debug("First hit highlight: %s", h0.get("highlight"))
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
     
@@ -1474,7 +1548,7 @@ def search_terms(
         output_format=format.value if hasattr(format, "value") else format,
         columns=render_columns,
         include_context=context,
-        filename=f"search_terms_{terms[0]}",
+        filename=f"search_terms_{terms[0] if not lucene else 'lucene_query'}",
         # flatten_dict=True,
         # keep_dict=False,
         include_aggs=True,
