@@ -810,14 +810,12 @@ def apply_ingest_ts_range_filter(body: dict, ingest_filter: IngestTsRangeFilter)
 
 # NLP
 
-
 from .endpoints import ResultAnalysisParams
 from .helpers import ensure_import
 from copy import deepcopy
 import math
 from collections import Counter, defaultdict
 from typing import Any, Dict, List, Tuple
-
 
 try:
     ensure_import("sklearn")
