@@ -393,6 +393,78 @@ def normalize_html_block(text: str) -> str:
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     return text.replace("\n", " ")
 
+def extract_buckets(aggs: dict, agg_name: str = "by_field"):
+    """
+    Normalizes aggregation response and returns buckets list.
+    Works with and without sampler.
+    """
+    if not aggs or agg_name not in aggs:
+        return []
+
+    node = aggs[agg_name]
+
+    # sampler case
+    if "values" in node:
+        return node["values"].get("buckets", [])
+
+    # normal case
+    return node.get("buckets", [])
+
+def is_significant(bucket: dict) -> bool:
+    return "score" in bucket
+
+def render_markdown_table(buckets: list[dict]) -> str:
+    if not buckets:
+        return "_No aggregation results_\n\n"
+
+    has_score = is_significant(buckets[0])
+
+    header = "| term | doc_count |"
+    if has_score:
+        header += " score | bg_count |"
+    header += "\n"
+
+    separator = "|------|-----------|"
+    if has_score:
+        separator += "-------|----------|"
+    separator += "\n"
+
+    rows = ""
+    for b in buckets:
+        rows += f"| {b.get('key')} | {b.get('doc_count')} |"
+        if has_score:
+            rows += f" {round(b.get('score', 0), 3)} | {b.get('bg_count')} |"
+        rows += "\n"
+
+    return header + separator + rows + "\n"
+import html
+
+def render_html_table(buckets: list[dict]) -> str:
+    if not buckets:
+        return "<p><em>No aggregation results</em></p>"
+
+    has_score = is_significant(buckets[0])
+
+    html_rows = ""
+
+    for b in buckets:
+        html_rows += "<tr>"
+        html_rows += f"<td>{html.escape(str(b.get('key')))}</td>"
+        html_rows += f"<td>{b.get('doc_count')}</td>"
+
+        if has_score:
+            html_rows += f"<td>{round(b.get('score', 0), 3)}</td>"
+            html_rows += f"<td>{b.get('bg_count')}</td>"
+
+        html_rows += "</tr>"
+
+    header = "<tr><th>term</th><th>doc_count</th>"
+    if has_score:
+        header += "<th>score</th><th>bg_count</th>"
+    header += "</tr>"
+
+    return f"<table><thead>{header}</thead><tbody>{html_rows}</tbody></table>"
+
 def render_markdown(
     rows: List[Dict[str, Any]],
     columns: List[str],

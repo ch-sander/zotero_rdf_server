@@ -664,6 +664,9 @@ def format_search_response(
         render_markdown_query_header,
         render_html,
         render_html_query_header,
+        extract_buckets,
+        render_markdown_table,
+        render_html_table,
     )
 
     normalized = normalize_hits(
@@ -739,14 +742,20 @@ def format_search_response(
         if header_md_extra:
             header += header_md_extra.rstrip() + "\n\n"
 
+        # if aggs is not None: # TODO as table
+        #     pretty_aggs = json.dumps(aggs, indent=2, ensure_ascii=False)
+        #     header += (
+        #         "## Aggregations\n\n"
+        #         "```json\n"
+        #         f"{pretty_aggs}\n"
+        #         "```\n\n"
+        #     )
+        
         if aggs is not None:
-            pretty_aggs = json.dumps(aggs, indent=2, ensure_ascii=False)
-            header += (
-                "## Aggregations\n\n"
-                "```json\n"
-                f"{pretty_aggs}\n"
-                "```\n\n"
-            )
+            buckets = extract_buckets(aggs)
+
+            header += "<h2>Aggregations</h2>"
+            header += render_html_table(buckets)
 
         if include_context and api_call and include_context:
             header += (
@@ -788,9 +797,15 @@ def format_search_response(
         if header_md_extra:
             header += f"<div>{header_md_extra.rstrip()}</div>"
 
+        # if aggs is not None:
+        #     pretty_aggs = html.escape(json.dumps(aggs, indent=2, ensure_ascii=False))
+        #     header += f"<h2>Aggregations</h2><pre><code>{pretty_aggs}</code></pre>"
+
         if aggs is not None:
-            pretty_aggs = html.escape(json.dumps(aggs, indent=2, ensure_ascii=False))
-            header += f"<h2>Aggregations</h2><pre><code>{pretty_aggs}</code></pre>"
+            buckets = extract_buckets(aggs)
+
+            header += "## Aggregations\n\n"
+            header += render_markdown_table(buckets)
 
         if include_context and api_call and include_context:
             header += f"<h2>API Call</h2><pre><code>{html.escape(api_call)}</code></pre>"
@@ -876,11 +891,230 @@ def resolve_format(
 
     return OutputFormat.json
 
+from enum import Enum
+from typing import Annotated, Literal, Optional
 
-
-class AggType(str, Enum):
+class AggMode(str, Enum):
     terms = "terms"
+    significant_text = "significant_text"
     composite = "composite"
+
+class AggregationParams(BaseModel):
+    agg_field: Optional[str] = Field(
+        default=None,
+        description=(
+            "Field to aggregate on. "
+            "For terms, keyword fields are usually best. "
+            "Text fields are allowed too, but on text fields terms aggregation "
+            "requires fielddata=true and aggregates analyzed tokens."
+        ),
+    )
+
+    agg_mode: AggMode = Field(
+        default=AggMode.terms,
+        description=(
+            "Aggregation mode. "
+            "'terms' returns the most frequent buckets. "
+            "'significant_text' returns statistically significant terms from text."
+        ),
+    )
+
+    agg_size: int = Field(
+        default=10,
+        ge=1,
+        le=1000,
+        description="Number of buckets/terms to return.",
+    )
+
+    agg_shard_size: Optional[int] = Field(
+        default=-1,
+        ge=1,
+        le=10000,
+        description=(
+            "Optional shard_size for the aggregation. "
+            "Supported for terms and significant_text."
+        ),
+    )
+
+    agg_min_doc_count: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=1000000,
+        description=(
+            "Optional min_doc_count for the aggregation. "
+            "Useful especially for significant_text."
+        ),
+    )
+
+    agg_shard_min_doc_count: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=1000000,
+        description=(
+            "Optional shard_min_doc_count for significant_text."
+        ),
+    )
+
+    agg_sampler_shard_size: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=100000,
+        description=(
+            "Optional sampler shard_size. "
+            "If set, wraps the aggregation in a sampler aggregation. "
+            "Usually useful for significant_text."
+        ),
+    )
+
+def get_aggregation_params(
+    agg_field: Annotated[
+        Optional[str],
+        Query(
+            None,
+            description=(
+                "Field to aggregate on. "
+                "For terms, keyword fields are usually best. "
+                "Text fields are allowed, but terms on text requires fielddata=true."
+            ),
+        ),
+    ] = None,
+    agg_mode: Annotated[
+        AggMode,
+        Query(
+            AggMode.terms,
+            description="Aggregation mode: terms or significant_text.",
+        ),
+    ] = AggMode.terms,
+    agg_size: Annotated[
+        int,
+        Query(
+            10,
+            ge=1,
+            le=1000,
+            description="Number of buckets/terms to return.",
+        ),
+    ] = 10,
+    agg_shard_size: Annotated[
+        Optional[int],
+        Query(
+            None,
+            ge=1,
+            le=10000,
+            description="Optional shard_size for terms/significant_text.",
+        ),
+    ] = None,
+    agg_min_doc_count: Annotated[
+        Optional[int],
+        Query(
+            None,
+            ge=1,
+            le=1000000,
+            description="Optional min_doc_count.",
+        ),
+    ] = None,
+    agg_shard_min_doc_count: Annotated[
+        Optional[int],
+        Query(
+            None,
+            ge=1,
+            le=1000000,
+            description="Optional shard_min_doc_count for significant_text.",
+        ),
+    ] = None,
+    agg_sampler_shard_size: Annotated[
+        Optional[int],
+        Query(
+            None,
+            ge=1,
+            le=100000,
+            description=(
+                "Optional sampler shard_size. "
+                "If set, wraps aggregation in sampler."
+            ),
+        ),
+    ] = None,
+) -> AggregationParams:
+    return AggregationParams(
+        agg_field=agg_field,
+        agg_mode=agg_mode,
+        agg_size=agg_size,
+        agg_shard_size=agg_shard_size,
+        agg_min_doc_count=agg_min_doc_count,
+        agg_shard_min_doc_count=agg_shard_min_doc_count,
+        agg_sampler_shard_size=agg_sampler_shard_size,
+    )
+
+def build_aggregation(agg: AggregationParams) -> Optional[dict]:
+    """
+    Build the OpenSearch aggs object.
+    Returns None if no aggregation was requested.
+    """
+    if not agg.agg_field:
+        return None
+
+    if agg.agg_mode == AggMode.terms:
+        inner = {
+            "terms": {
+                "field": agg.agg_field,
+                "size": agg.agg_size,
+            }
+        }
+
+        if agg.agg_shard_size is not None:
+            inner["terms"]["shard_size"] = agg.agg_shard_size
+
+        if agg.agg_min_doc_count is not None:
+            inner["terms"]["min_doc_count"] = agg.agg_min_doc_count
+
+        # sampler optional, though usually more relevant for significant_text
+        if agg.agg_sampler_shard_size is not None:
+            return {
+                "by_field": {
+                    "sampler": {
+                        "shard_size": agg.agg_sampler_shard_size
+                    },
+                    "aggs": {
+                        "values": inner
+                    },
+                }
+            }
+
+        return {"by_field": inner}
+
+    if agg.agg_mode == AggMode.significant_text:
+        inner = {
+            "significant_text": {
+                "field": agg.agg_field,
+                "size": agg.agg_size,
+            }
+        }
+
+        if agg.agg_shard_size is not None:
+            inner["significant_text"]["shard_size"] = agg.agg_shard_size
+
+        if agg.agg_min_doc_count is not None:
+            inner["significant_text"]["min_doc_count"] = agg.agg_min_doc_count
+
+        if agg.agg_shard_min_doc_count is not None:
+            inner["significant_text"]["shard_min_doc_count"] = (
+                agg.agg_shard_min_doc_count
+            )
+
+        if agg.agg_sampler_shard_size is not None:
+            return {
+                "by_field": {
+                    "sampler": {
+                        "shard_size": agg.agg_sampler_shard_size
+                    },
+                    "aggs": {
+                        "values": inner
+                    },
+                }
+            }
+
+        return {"by_field": inner}
+
+    raise HTTPException(status_code=400, detail=f"Unsupported agg_mode: {agg.agg_mode}")
 
 @open_router.get(
     "/search/terms",
@@ -985,49 +1219,9 @@ def search_terms(
         le=5000,
         description="If >0: truncate plain text when no highlight is present.",
     ),
-
-    agg_field: Optional[str] = Query(
-        None,
-        description=(
-            "If set, compute an aggregation over this field and return it under "
-            "'aggregations.by_field'. "
-            "Use a keyword field (e.g. meta.parent_key). "
-            "Aggregation does NOT group hits.hits."
-        ),
-    ),
-
-    agg_size: int = Query(
-        10,
-        ge=1,
-        le=1000,
-        description=(
-            "Number of aggregation buckets (groups) to return. "
-            "For agg_type=terms: top-N buckets by doc_count. "
-            "For agg_type=composite: buckets per page."
-        ),
-    ),
-
-    # agg_type: AggType = Query(
-    #     AggType.terms,
-    #     description=(
-    #         "Aggregation type. "
-    #         "'terms' returns top buckets sorted by doc_count. "
-    #         "'composite' supports bucket pagination (after_key handling not implemented here)."
-    #     ),
-    # ),
+    agg: AggregationParams = Depends(get_aggregation_params),
     out_header: OutputHeader = Depends(output_header_params),
     format: OutputFormat = Depends(resolve_format),
-    # format: OutputFormat = Query(
-    #     OutputFormat.json,
-    #     description=(
-    #         "Response format. "
-    #         "json: structured API response. "
-    #         "csv: flat table from hits.hits. "
-    #         "html: human-readable HTML document hits.hits. "
-    #         "md/markdown: human-readable document blocks from hits.hits."
-    #     ),
-    # ),
-
     columns: Optional[str] = Query(
         None,
         description="Comma-separated list of fields to include from _source.",
@@ -1087,24 +1281,9 @@ def search_terms(
         }
 
     # --- Aggregation ---------------------------------------------------------
-    if agg_field:
-        agg_type="terms" #  pinning parameter
-        if agg_type == AggType.terms:
-            body["aggs"] = {
-                "by_field": {
-                    "terms": {"field": agg_field, "size": agg_size}
-                }
-            }
-        else:
-            # composite for paging buckets; pass "after" separately for paging
-            body["aggs"] = {
-                "by_field": {
-                    "composite": {
-                        "size": agg_size,
-                        "sources": [{"v": {"terms": {"field": agg_field}}}],
-                    }
-                }
-            }
+    aggs = build_aggregation(agg)
+    if aggs:
+        body["aggs"] = aggs
 
     source_columns = columns
     render_columns = columns
@@ -1174,19 +1353,10 @@ def search_proximity(
     fuzzy_edits: int = Query(1, ge=0, le=2),
     size: int = Query(10, ge=1, le=1000),
     filters: KeywordFilter = Depends(keyword_filter_params),
-    format: OutputFormat = Query(
-        OutputFormat.json,
-        description=(
-            "Response format. "
-            "json: structured API response. "
-            "csv: flat table from hits.hits. "
-            "html: human-readable HTML document hits.hits. "
-            "md/markdown: human-readable document blocks from hits.hits."
-        ),
-    ),    
+    format: OutputFormat = Depends(resolve_format), 
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     out_header: OutputHeader = Depends(output_header_params),
-    verbose: bool = Query(False, description="Include context (JSON only)"),
+    context: bool = Query(False, description="Include context"),
 ):
     from .search import parse_csv, build_proximity_intervals_query, os_search, apply_paging, apply_keyword_filter
     api_call = str(request.url) 
@@ -1248,16 +1418,7 @@ def knn_by_id(
     ef_search: Optional[int] = Query(None, ge=1),
     exclude_self: bool = Query(True),
     filters: KeywordFilter = Depends(keyword_filter_params),
-    format: OutputFormat = Query(
-        OutputFormat.json,
-        description=(
-            "Response format. "
-            "json: structured API response. "
-            "csv: flat table from hits.hits. "
-            "html: human-readable document blocks from hits.hits. "
-            "md/markdown: human-readable document blocks from hits.hits."
-        ),
-    ),    
+    format: OutputFormat = Depends(resolve_format),   
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     out_header: OutputHeader = Depends(output_header_params),
     context: bool = Query(True, description="Include query context in the response."),
@@ -1329,16 +1490,7 @@ def mlt_by_id(
     size: int = Query(20, ge=1, le=1000),
     exclude_self: bool = Query(True),
     filters: KeywordFilter = Depends(keyword_filter_params),
-    format: OutputFormat = Query(
-        OutputFormat.json,
-        description=(
-            "Response format. "
-            "json: structured API response. "
-            "csv: flat table from hits.hits. "
-            "html: human-readable HTML document hits.hits. "
-            "md/markdown: human-readable document blocks from hits.hits."
-        ),
-    ),    
+    format: OutputFormat = Depends(resolve_format),   
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     out_header: OutputHeader = Depends(output_header_params),
     context: bool = Query(True, description="Include query context in the response."),
@@ -1405,16 +1557,7 @@ def mlt_by_text(
     minimum_should_match: str = Query("30%", description="e.g. '30%' or '2'"),
     size: int = Query(20, ge=1, le=1000),
     filters: KeywordFilter = Depends(keyword_filter_params),
-    format: OutputFormat = Query(
-        OutputFormat.json,
-        description=(
-            "Response format. "
-            "json: structured API response. "
-            "csv: flat table from hits.hits. "
-            "md/markdown: human-readable document blocks from hits.hits."
-            "html: human-readable HTML document hits.hits. "
-        ),
-    ),
+    format: OutputFormat = Depends(resolve_format),
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     out_header: OutputHeader = Depends(output_header_params),
     context: bool = Query(True, description="Include query context in the response."),
