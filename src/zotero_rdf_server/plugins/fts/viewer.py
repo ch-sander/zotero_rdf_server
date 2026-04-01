@@ -10,11 +10,10 @@ from .helpers import plugin_logger, resolve_config_path, safe_doc_id
 
 logger = plugin_logger()
 
-
 @lru_cache(maxsize=8)
 def get_viewer_config(config_path: Path) -> dict[str, Any]:
     from zotero_rdf_server.utils import load_dict_like
-    cfg = load_dict_like(config_path, label="Viewer Config", verbose=True)
+    cfg = load_dict_like(config_path, label="Viewer Config", verbose=False)
     if not isinstance(cfg, dict):
         logger.warning("Viewer config is not a dict, using empty config")
         return {}

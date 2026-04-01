@@ -98,8 +98,8 @@ open-search:
     hosts:
       - host: opensearch # see in docker-compose.yml
         port: 9200
-    retry_on_timeout: false
-    timeout: 5
+    retry_on_timeout: true
+    timeout: 300
     max_retries: 2
   meta:
     owner: "zotero-rdf-server"

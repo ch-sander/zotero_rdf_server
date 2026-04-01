@@ -640,8 +640,8 @@ def format_search_response(
     columns: Optional[str] = None,
     include_context: bool = False,
     filename: Optional[str] = None,
-    flatten_meta: bool = True,
-    keep_meta: bool = False,
+    flatten_dict: list = ["meta", "analysis"],
+    keep_dict: list = ["analysis"],
     include_aggs: bool = True,
     keep_highlight: bool = True,
     make_snippet: bool = False,
@@ -667,12 +667,13 @@ def format_search_response(
         extract_buckets,
         render_markdown_table,
         render_html_table,
+        normalize_output_column,
     )
 
     normalized = normalize_hits(
         resp,
-        flatten_meta=flatten_meta,
-        keep_meta=keep_meta,
+        flatten_dict=flatten_dict,
+        keep_dict=keep_dict,
         keep_highlight=keep_highlight,
         make_snippet=make_snippet,
         highlight_field=highlight_field,
@@ -680,24 +681,42 @@ def format_search_response(
         truncate_field=truncate_field,
     )
 
+    
+
     rows = normalized.get("hits", [])
     aggs = normalized.get("aggregations") if include_aggs else None
+
+    def is_analysis_col(col: str) -> bool:
+        return col.startswith("analysis.") or col.startswith("analysis_")
 
     default_cols = ["_id", "_score", "source", "page", "snippet", "ingest_ts", "meta_parent", "meta_parent_label"]
     default_cols_small = ["source", "page", "snippet"]
 
+    analysis_cols = []
     preferred_cols = []
-    if columns:
-        preferred_cols = [c.strip() for c in columns.split(",") if c.strip()]
 
-    combined_cols = list(dict.fromkeys(default_cols + preferred_cols)) if include_context else list(dict.fromkeys(preferred_cols + default_cols_small))
+    if columns:
+        for raw in columns.split(","):
+            c = normalize_output_column(raw.strip())
+            if not c:
+                continue
+            if is_analysis_col(c):
+                analysis_cols.append(c)
+            else:
+                preferred_cols.append(c)
+
+    base_defaults = default_cols if include_context else default_cols_small
+    combined_cols = list(dict.fromkeys(preferred_cols + base_defaults + analysis_cols))
+
 
     # cols = collect_columns(
     #     rows,
     #     preferred=combined_cols,
     # )
 
-    cols = [c for c in combined_cols if c in {k for r in rows for k in r.keys()}]
+    cols = combined_cols # [c for c in combined_cols if c in {k for r in rows for k in r.keys()}]
+    
+
     if output_format in ("md", "markdown", "html"):
         cols = [c for c in cols if c != "highlight"]
 
@@ -742,20 +761,11 @@ def format_search_response(
         if header_md_extra:
             header += header_md_extra.rstrip() + "\n\n"
 
-        # if aggs is not None: # TODO as table
-        #     pretty_aggs = json.dumps(aggs, indent=2, ensure_ascii=False)
-        #     header += (
-        #         "## Aggregations\n\n"
-        #         "```json\n"
-        #         f"{pretty_aggs}\n"
-        #         "```\n\n"
-        #     )
-        
         if aggs is not None:
             buckets = extract_buckets(aggs)
+            header += "## Aggregations\n\n"
+            header += render_markdown_table(buckets)        
 
-            header += "<h2>Aggregations</h2>"
-            header += render_html_table(buckets)
 
         if include_context and api_call and include_context:
             header += (
@@ -797,15 +807,10 @@ def format_search_response(
         if header_md_extra:
             header += f"<div>{header_md_extra.rstrip()}</div>"
 
-        # if aggs is not None:
-        #     pretty_aggs = html.escape(json.dumps(aggs, indent=2, ensure_ascii=False))
-        #     header += f"<h2>Aggregations</h2><pre><code>{pretty_aggs}</code></pre>"
-
         if aggs is not None:
             buckets = extract_buckets(aggs)
-
-            header += "## Aggregations\n\n"
-            header += render_markdown_table(buckets)
+            header += "<h2>Aggregations</h2>"
+            header += render_html_table(buckets)
 
         if include_context and api_call and include_context:
             header += f"<h2>API Call</h2><pre><code>{html.escape(api_call)}</code></pre>"
@@ -910,7 +915,7 @@ class AggregationParams(BaseModel):
         ),
     )
 
-    agg_mode: AggMode = Field(
+    agg_mode: AggMode | None = Field(
         default=AggMode.terms,
         description=(
             "Aggregation mode. "
@@ -970,7 +975,6 @@ def get_aggregation_params(
     agg_field: Annotated[
         Optional[str],
         Query(
-            None,
             description=(
                 "Field to aggregate on. "
                 "For terms, keyword fields are usually best. "
@@ -979,16 +983,14 @@ def get_aggregation_params(
         ),
     ] = None,
     agg_mode: Annotated[
-        AggMode,
+        AggMode | None,
         Query(
-            AggMode.terms,
             description="Aggregation mode: terms or significant_text.",
         ),
-    ] = AggMode.terms,
+    ] = None,
     agg_size: Annotated[
         int,
         Query(
-            10,
             ge=1,
             le=1000,
             description="Number of buckets/terms to return.",
@@ -997,7 +999,6 @@ def get_aggregation_params(
     agg_shard_size: Annotated[
         Optional[int],
         Query(
-            None,
             ge=1,
             le=10000,
             description="Optional shard_size for terms/significant_text.",
@@ -1006,7 +1007,6 @@ def get_aggregation_params(
     agg_min_doc_count: Annotated[
         Optional[int],
         Query(
-            None,
             ge=1,
             le=1000000,
             description="Optional min_doc_count.",
@@ -1015,7 +1015,6 @@ def get_aggregation_params(
     agg_shard_min_doc_count: Annotated[
         Optional[int],
         Query(
-            None,
             ge=1,
             le=1000000,
             description="Optional shard_min_doc_count for significant_text.",
@@ -1024,7 +1023,6 @@ def get_aggregation_params(
     agg_sampler_shard_size: Annotated[
         Optional[int],
         Query(
-            None,
             ge=1,
             le=100000,
             description=(
@@ -1066,7 +1064,6 @@ def build_aggregation(agg: AggregationParams) -> Optional[dict]:
         if agg.agg_min_doc_count is not None:
             inner["terms"]["min_doc_count"] = agg.agg_min_doc_count
 
-        # sampler optional, though usually more relevant for significant_text
         if agg.agg_sampler_shard_size is not None:
             return {
                 "by_field": {
@@ -1115,6 +1112,104 @@ def build_aggregation(agg: AggregationParams) -> Optional[dict]:
         return {"by_field": inner}
 
     raise HTTPException(status_code=400, detail=f"Unsupported agg_mode: {agg.agg_mode}")
+
+from datetime import datetime, timezone, date
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+class IngestTsRangeFilter(BaseModel):
+    ingest_from: Optional[datetime] = None
+    ingest_to: Optional[datetime] = None
+    ingest_field: str = "ingest_ts"
+
+def get_ingest_ts_range_filter(
+    ingest_from: Annotated[
+        Optional[datetime],
+        Query(description=(
+                "Lower bound for ingest_ts (inclusive), ISO-8601. "                
+            )),
+    ] = None,
+    ingest_to: Annotated[
+        Optional[datetime],
+        Query(description=("Upper bound for ingest_ts (inclusive), ISO-8601."
+                        f" Example: {now_iso()}")),
+    ] = None,
+):
+    return IngestTsRangeFilter(
+        ingest_from=ingest_from,
+        ingest_to=ingest_to,
+    )
+    
+
+# NLP
+
+class ResultAnalysisParams(BaseModel):
+    perform_analysis: bool = Field(
+        default=False,
+        description="If true, perform NLP analysis on hits.",
+    )
+    analyze_field: Optional[str] = Field(
+        default=None,
+        description="Field from each hit used for per-document keyword extraction.",
+    )
+    analysis_mode: Literal["global", "local", "both"] = Field(
+        default="global",
+        description="TF-IDF mode: global, local, or both.",
+    )
+    analyze_top_terms: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Number of top TF-IDF terms per hit.",
+    )
+    analyze_min_token_length: int = Field(
+        default=4,
+        ge=1,
+        le=50,
+        description="Minimum token length.",
+    )
+    analyze_max_tokens_per_doc: int = Field(
+        default=0,
+        ge=0,
+        le=5000,
+        description="Maximum number of tokens kept per document after tokenization.",
+    )
+
+def get_result_analysis_params(
+    perform_analysis: Annotated[
+        bool,
+        Query(description="Perform NLP analysis on hits."),
+    ] = False,
+    analyze_field: Annotated[
+        Optional[str],
+        Query(description="Field used for per-hit TF-IDF analysis."),
+    ] = None,
+    analysis_mode: Annotated[
+        Literal["global", "local", "both"],
+        Query(description="TF-IDF mode: global, local, or both."),
+    ] = "global",
+    analyze_top_terms: Annotated[
+        int,
+        Query(description="Number of top TF-IDF terms per hit.", ge=1, le=20),
+    ] = 5,
+    analyze_min_token_length: Annotated[
+        int,
+        Query(description="Minimum token length.", ge=1, le=50),
+    ] = 4,
+    analyze_max_tokens_per_doc: Annotated[
+        int,
+        Query(description="Maximum number of tokens per document.", ge=0, le=5000),
+    ] = 0,
+) -> ResultAnalysisParams:
+    return ResultAnalysisParams(
+        perform_analysis=perform_analysis,
+        analyze_field=analyze_field,
+        analysis_mode=analysis_mode,
+        analyze_top_terms=analyze_top_terms,
+        analyze_min_token_length=analyze_min_token_length,
+        analyze_max_tokens_per_doc=analyze_max_tokens_per_doc,
+    )
 
 @open_router.get(
     "/search/terms",
@@ -1227,10 +1322,13 @@ def search_terms(
         description="Comma-separated list of fields to include from _source.",
     ),
     filters: KeywordFilter = Depends(keyword_filter_params),
+    ingest_ts: IngestTsRangeFilter = Depends(get_ingest_ts_range_filter),
+    analysis: ResultAnalysisParams = Depends(get_result_analysis_params),
+
     context: bool = Query(True, description="Include query context in the response."),
 
 ):
-    from .search import parse_csv, build_terms_should_queries, os_search, apply_paging, apply_keyword_filter
+    from .search import parse_csv, build_terms_should_queries, os_search, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter, enrich_hits_with_result_analysis, analysis_from_mtermvectors, os_mtermvectors
     api_call = str(request.url) 
     # --- Build query ---------------------------------------------------------
     if lucene:
@@ -1261,9 +1359,24 @@ def search_terms(
             fuzzy=fuzzy,
         )
         body = {"query": {"bool": {"should": should, "minimum_should_match": 1}}}
-        
+    
+    apply_ingest_ts_range_filter(body,ingest_ts)
     apply_keyword_filter(body, filters)
     apply_paging(body, size=size, offset=offset)
+
+    def _split_columns(columns: Optional[str]) -> List[str]:
+        if not columns:
+            return []
+        return [c.strip() for c in columns.split(",") if c.strip()]
+
+    def _join_columns(cols: List[str]) -> Optional[str]:
+        seen = set()
+        out = []
+        for c in cols:
+            if c not in seen:
+                seen.add(c)
+                out.append(c)
+        return ",".join(out) if out else None
 
     # --- Highlight -----------------------------------------------------------
     if highlight:
@@ -1281,27 +1394,75 @@ def search_terms(
         }
 
     # --- Aggregation ---------------------------------------------------------
-    aggs = build_aggregation(agg)
-    if aggs:
-        body["aggs"] = aggs
+    if not agg.agg_field and agg.agg_mode == AggMode.significant_text:
+        agg.agg_field = field
+    if agg.agg_mode and agg.agg_field:
+        aggs = build_aggregation(agg)
+        if aggs:
+            body["aggs"] = aggs
 
-    source_columns = columns
-    render_columns = columns
+    # --- Columns ---------------------------------------------------------
+    base_columns = _split_columns(columns)
+
+    source_cols = list(base_columns)
+    render_cols = list(base_columns)
+
     if highlight or truncate_chars > 0:
-        if render_columns:
-            cols = [c.strip() for c in render_columns.split(",") if c.strip()]
-            if "snippet" not in cols:
-                cols.insert(0, "snippet")
-            render_columns = ",".join(cols)
-        else:
-            render_columns = None
+        if "snippet" not in render_cols:
+            render_cols.insert(0, "snippet")
 
+    if analysis.perform_analysis:
+        # if source_cols and field and field not in source_cols:
+        #     source_cols.append(field)
+        if analysis.analysis_mode == "both" or analysis.analysis_mode == "local": 
+            if "analysis_local_key_terms" not in render_cols:
+                render_cols.append("analysis_local_key_terms")
+
+        if analysis.analysis_mode == "both" or analysis.analysis_mode == "global": 
+            if "analysis_global_key_terms" not in render_cols:
+                render_cols.append("analysis_global_key_terms")
+
+    source_columns = _join_columns(source_cols)
+    render_columns = _join_columns(render_cols)
+    logger.info("##############################")
+    logger.info(index)
+
+    # --- Query ---------------------------------------------------------
     try:
         resp = os_search(index=index, body=body, columns=source_columns)
+
+        # if analysis.perform_analysis:
+        #     hits = resp["hits"]["hits"]
+        #     hits = enrich_hits_with_result_analysis(
+        #         hits,
+        #         analysis,
+        #         field_fallback=field,
+        #     )
+        #     resp["hits"]["hits"] = hits
+
+        if analysis.perform_analysis:
+            hits = resp.get("hits", {}).get("hits", [])
+            analysis_field = analysis.analyze_field or field
+            hit_ids = [h["_id"] for h in hits if h.get("_id")]
+
+            if hit_ids:
+                tv_resp = os_mtermvectors(
+                    index=index,
+                    doc_ids=hit_ids,
+                    field=analysis_field,
+                )
+
+                resp["hits"]["hits"] = analysis_from_mtermvectors(
+                    hits=hits,
+                    tv_resp=tv_resp,
+                    analysis=analysis,
+                    field_fallback=field,
+                )
+
         if resp.get("hits", {}).get("hits"):
             h0 = resp["hits"]["hits"][0]
             logger.info("First hit keys: %s", list(h0.keys()))
-            logger.info("First hit highlight: %s", h0.get("highlight"))
+            logger.debug("First hit highlight: %s", h0.get("highlight"))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
     
@@ -1314,8 +1475,8 @@ def search_terms(
         columns=render_columns,
         include_context=context,
         filename=f"search_terms_{terms[0]}",
-        flatten_meta=True,
-        keep_meta=False,
+        # flatten_dict=True,
+        # keep_dict=False,
         include_aggs=True,
         keep_highlight=True,
         make_snippet=highlight,
@@ -1353,12 +1514,13 @@ def search_proximity(
     fuzzy_edits: int = Query(1, ge=0, le=2),
     size: int = Query(10, ge=1, le=1000),
     filters: KeywordFilter = Depends(keyword_filter_params),
+    ingest_ts: IngestTsRangeFilter = Depends(get_ingest_ts_range_filter),
     format: OutputFormat = Depends(resolve_format), 
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     out_header: OutputHeader = Depends(output_header_params),
     context: bool = Query(False, description="Include context"),
 ):
-    from .search import parse_csv, build_proximity_intervals_query, os_search, apply_paging, apply_keyword_filter
+    from .search import parse_csv, build_proximity_intervals_query, os_search, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter
     api_call = str(request.url) 
     try:
         list_a = parse_csv(a)
@@ -1380,6 +1542,7 @@ def search_proximity(
         allow_fuzzy=allow_fuzzy,
         fuzzy_edits=fuzzy_edits,
     )
+    apply_ingest_ts_range_filter(body,ingest_ts)
     apply_keyword_filter(body, filters)
     apply_paging(body, size=size)
 
@@ -1418,12 +1581,13 @@ def knn_by_id(
     ef_search: Optional[int] = Query(None, ge=1),
     exclude_self: bool = Query(True),
     filters: KeywordFilter = Depends(keyword_filter_params),
+    ingest_ts: IngestTsRangeFilter = Depends(get_ingest_ts_range_filter),
     format: OutputFormat = Depends(resolve_format),   
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     out_header: OutputHeader = Depends(output_header_params),
     context: bool = Query(True, description="Include query context in the response."),
 ):
-    from .search import get_doc_vector, os_search, apply_paging, apply_keyword_filter
+    from .search import get_doc_vector, os_search, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter
     api_call = str(request.url) 
     try:
         query_vec = get_doc_vector(index=index, os_id=os_id, vector_field=vector_field)
@@ -1449,7 +1613,7 @@ def knn_by_id(
         query = knn_query
 
     body: Dict[str, Any] = {"query": query}
-
+    apply_ingest_ts_range_filter(body,ingest_ts)
     apply_keyword_filter(body, filters)
     apply_paging(body, size=size)
 
@@ -1490,13 +1654,14 @@ def mlt_by_id(
     size: int = Query(20, ge=1, le=1000),
     exclude_self: bool = Query(True),
     filters: KeywordFilter = Depends(keyword_filter_params),
+    ingest_ts: IngestTsRangeFilter = Depends(get_ingest_ts_range_filter),
     format: OutputFormat = Depends(resolve_format),   
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     out_header: OutputHeader = Depends(output_header_params),
     context: bool = Query(True, description="Include query context in the response."),
     
 ):
-    from .search import os_search, apply_paging, apply_keyword_filter
+    from .search import os_search, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter
     api_call = str(request.url) 
     field_list = [f.strip() for f in fields.split(",") if f.strip()]
     if not field_list:
@@ -1518,7 +1683,7 @@ def mlt_by_id(
     else:
         query = mlt_query
     body = {"query": query}
-
+    apply_ingest_ts_range_filter(body,ingest_ts)
     apply_keyword_filter(body, filters)
     apply_paging(body, size=size)
 
@@ -1557,12 +1722,13 @@ def mlt_by_text(
     minimum_should_match: str = Query("30%", description="e.g. '30%' or '2'"),
     size: int = Query(20, ge=1, le=1000),
     filters: KeywordFilter = Depends(keyword_filter_params),
+    ingest_ts: IngestTsRangeFilter = Depends(get_ingest_ts_range_filter),
     format: OutputFormat = Depends(resolve_format),
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     out_header: OutputHeader = Depends(output_header_params),
     context: bool = Query(True, description="Include query context in the response."),
 ):
-    from .search import os_search, apply_paging, apply_keyword_filter
+    from .search import os_search, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter
 
     api_call = str(request.url)
     field_list = [f.strip() for f in fields.split(",") if f.strip()]
@@ -1581,7 +1747,7 @@ def mlt_by_text(
             }
         }
     }
-
+    apply_ingest_ts_range_filter(body,ingest_ts)
     apply_keyword_filter(body, filters)
     apply_paging(body, size=size)
 
@@ -1693,3 +1859,4 @@ def view_page(os_doc_id: str):
         discover_url=discover_doc_url(original_os_doc_id),
     )
     return HTMLResponse(html)
+

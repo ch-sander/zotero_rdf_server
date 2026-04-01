@@ -1,5 +1,6 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Annotated
 import html
+from pydantic import BaseModel, Field
 
 # --- OpenSearch client --------------------------------------------------------
 
@@ -238,28 +239,6 @@ def build_proximity_intervals_query(
 
 import csv, io, datetime, json
 
-def flatten_meta_fields(row: Dict[str, Any], meta_key: str = "meta", prefix: str = "meta_") -> Dict[str, Any]:
-    """
-    Flatten row['meta'] dict into top-level keys like meta_<path>.
-    Example: meta = {"a": {"b": 1}, "x": "y"} -> meta_a_b=1, meta_x="y"
-    Keeps original 'meta' field (optional); you can drop it if you prefer.
-    """
-    meta = row.get(meta_key)
-    if not isinstance(meta, dict):
-        return row
-
-    def walk(d: Dict[str, Any], path: List[str], out: Dict[str, Any]) -> None:
-        for k, v in d.items():
-            new_path = path + [str(k)]
-            if isinstance(v, dict):
-                walk(v, new_path, out)
-            else:
-                out[prefix + "_".join(new_path)] = v
-
-    out = dict(row)
-    walk(meta, [], out)
-    return out
-
 def _all_highlight_fragments(
     h: Dict[str, Any],
     preferred_field: Optional[str] = None,
@@ -282,10 +261,44 @@ def _truncate_text(s: str, n: int) -> str:
         return s
     return s[: max(0, n - 1)] + "…"
 
+
+from typing import Dict, Any, List, Optional
+
+def flatten_dicts(
+    row: Dict[str, Any],
+    keys: List[str] = ("meta",),
+    prefix_map: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
+
+    def walk(d: Dict[str, Any], path: List[str], out: Dict[str, Any], prefix: str):
+        for k, v in d.items():
+            new_path = path + [str(k)]
+            if isinstance(v, dict):
+                walk(v, new_path, out, prefix)
+            else:
+                out[prefix + "_".join(new_path)] = v
+
+    out = dict(row)
+
+    for key in keys:
+        val = row.get(key)
+        if not isinstance(val, dict):
+            continue
+
+        prefix = (
+            prefix_map[key]
+            if prefix_map and key in prefix_map
+            else f"{key}_"
+        )
+
+        walk(val, [], out, prefix)
+
+    return out
+
 def normalize_hits(
     resp: Dict[str, Any],
-    flatten_meta: bool = True,
-    keep_meta: bool = False,
+    flatten_dict: Optional[List[str]] = None,
+    keep_dict: Optional[List[str]] = None,
     *,
     keep_highlight: bool = True,
     make_snippet: bool = True,
@@ -314,10 +327,11 @@ def normalize_hits(
                 if isinstance(txt, str) and txt:
                     row["snippet"] = _truncate_text(txt, truncate_chars)
 
-        if flatten_meta:
-            row = flatten_meta_fields(row)
-            if not keep_meta:
-                row.pop("meta", None)
+        if flatten_dict:
+            row = flatten_dicts(row, keys=flatten_dict)
+            for k in flatten_dict:
+                if k not in keep_dict:
+                    row.pop(k, None)
 
         rows.append(row)
 
@@ -571,7 +585,7 @@ def render_html(
         else:
             parts.append(f"<h2>Document {idx}</h2>")
 
-        for col in columns:
+        for col in columns:            
             if col not in row:
                 continue
 
@@ -636,26 +650,79 @@ def render_markdown_query_header(context_query: Dict[str, Any]) -> str:
         "```\n\n"
     )
 
+def normalize_output_column(
+    col: str,
+    flatten_keys: Optional[List[str]] = ["meta", "analysis"],
+) -> str:   
+    for key in flatten_keys:
+        prefix = f"{key}."
+        if col.startswith(prefix):
+            return col.replace(".", "_")
+    return col
+
 def apply_source_includes(body: Dict[str, Any], columns: Optional[str]) -> None:
     """Mutate body to include _source filtering based on columns."""
     if not columns:
         return
-    
+
     requested = [c.strip() for c in columns.split(",") if c.strip()]
-    # _id/_score are not in _source
-    includes = [c for c in requested if c not in ("_id", "_score")]
 
-    # meta_* columns are derived from meta.* (flatten step)
-    if any(c.startswith("meta_") for c in requested) and "meta.*" not in includes:
-        includes.append("meta.*")
+    def to_source_field(col: str) -> Optional[str]:
+        # not part of _source
+        if col in ("_id", "_score", "snippet", "highlight"):
+            return None
 
-    body["_source"] = {"includes": includes}
+        # already source-style path
+        if "." in col:
+            return col
+
+        # backward compatibility for flattened meta_* input
+        if col.startswith("meta_"):
+            return "meta." + col[len("meta_"):]
+
+        return col
+
+    includes = []
+    for col in requested:
+        source_field = to_source_field(col)
+        if source_field:
+            includes.append(source_field)
+
+    includes = list(dict.fromkeys(includes))
+
+    if includes:
+        body["_source"] = {"includes": includes}
 
 def os_search(index: str, body: Dict[str, Any], columns: Optional[str]) -> Dict[str, Any]:
     """Central OpenSearch search that applies _source includes if columns is set."""    
     apply_source_includes(body, columns)
     if not index: index = DEFAULT_ALIAS
     return client.search(index=index, body=body)
+
+def os_mtermvectors(
+    *,
+    index: str,
+    doc_ids: List[str],
+    field: str,
+) -> Dict[str, Any]:
+    if not doc_ids:
+        return {"docs": []}
+    
+    if not index: index = DEFAULT_ALIAS
+    return client.mtermvectors(
+        index=index,
+        body={
+            "ids": doc_ids,
+        },
+        params={
+            "fields": field,
+            "term_statistics": "true",
+            "field_statistics": "true",
+            "positions": "false",
+            "offsets": "false",
+            "payloads": "false",
+        },
+    )
 
 from .endpoints import KeywordFilter
 
@@ -685,3 +752,412 @@ def apply_keyword_filter(body: dict, filters: KeywordFilter):
                 "filter": [clause],
             }
         }
+
+from .endpoints import IngestTsRangeFilter
+
+def apply_ingest_ts_range_filter(body: dict, ingest_filter: IngestTsRangeFilter):
+    if not ingest_filter.ingest_from and not ingest_filter.ingest_to:
+        return
+
+    if "query" not in body:
+        body["query"] = {"match_all": {}}
+
+    base_query = body["query"]
+
+    range_spec = {}
+
+    if ingest_filter.ingest_from is not None:
+        range_spec["gte"] = ingest_filter.ingest_from.isoformat()
+
+    if ingest_filter.ingest_to is not None:
+        range_spec["lte"] = ingest_filter.ingest_to.isoformat()
+
+    clause = {
+        "range": {
+            ingest_filter.ingest_field: range_spec
+        }
+    }
+
+    if isinstance(base_query, dict) and "bool" in base_query:
+        base_query["bool"].setdefault("filter", []).append(clause)
+    else:
+        body["query"] = {
+            "bool": {
+                "must": [base_query],
+                "filter": [clause],
+            }
+        }
+
+# NLP
+
+import math
+import re
+from collections import Counter
+
+TOKEN_RE = re.compile(r"\b\w+\b", re.UNICODE)
+
+DEFAULT_STOPWORDS = {
+    "und", "oder", "der", "die", "das", "ein", "eine", "ist", "im", "in", "am",
+    "an", "zu", "mit", "von", "für", "auf", "den", "dem", "des",
+    "the", "and", "or", "is", "are", "to", "of", "in", "on", "for", "with",
+}
+
+
+def tokenize_text(
+    text: str,
+    *,
+    min_token_length: int = 4,
+    max_tokens: int = 200,
+    stopwords: set[str] | None = None,
+) -> list[str]:
+    if not text:
+        return []
+
+    stopwords = stopwords or DEFAULT_STOPWORDS
+
+    tokens = []
+    for m in TOKEN_RE.finditer(text.lower()):
+        token = m.group(0)
+        if len(token) < min_token_length:
+            continue
+        if token in stopwords:
+            continue
+        if token.isdigit():
+            continue
+        tokens.append(token)
+
+    return tokens[:max_tokens]
+
+import math
+from typing import Any, Dict, List
+from .endpoints import ResultAnalysisParams
+
+import math
+from collections import Counter
+from typing import Any, Dict, List
+
+
+def analysis_from_mtermvectors(
+    *,
+    hits: List[Dict[str, Any]],
+    tv_resp: Dict[str, Any],
+    analysis: ResultAnalysisParams,
+    field_fallback: str,
+) -> List[Dict[str, Any]]:
+    analysis_field = analysis.analyze_field or field_fallback
+    docs = tv_resp.get("docs", [])
+
+    tv_by_id: Dict[str, Dict[str, Any]] = {
+        d.get("_id"): d for d in docs if d.get("_id")
+    }
+
+    local_doc_freq = Counter()
+    local_n_docs = 0
+
+    for d in docs:
+        if not d.get("found"):
+            continue
+
+        local_n_docs += 1
+        field_data = d.get("term_vectors", {}).get(analysis_field, {})
+        terms = field_data.get("terms", {})
+
+        for term in terms.keys():
+            if len(term) < analysis.analyze_min_token_length:
+                continue
+            local_doc_freq[term] += 1
+
+    local_n_docs = max(local_n_docs, 1)
+
+    def wants_global() -> bool:
+        return analysis.analysis_mode in ("global", "both")
+
+    def wants_local() -> bool:
+        return analysis.analysis_mode in ("local", "both")
+
+    def build_scored_terms(
+        *,
+        filtered_items: List[tuple[str, Dict[str, Any]]],
+        n_docs: int,
+        use_global_doc_freq: bool,
+    ) -> List[Dict[str, Any]]:
+        total_terms = sum(stats.get("term_freq", 0) for _, stats in filtered_items) or 1
+
+        scored: List[Dict[str, Any]] = []
+        for term, stats in filtered_items:
+            term_freq = stats.get("term_freq", 0)
+            doc_freq = stats.get("doc_freq", 0) if use_global_doc_freq else local_doc_freq.get(term, 0)
+
+            tf_norm = term_freq / total_terms
+            idf = math.log((1 + n_docs) / (1 + doc_freq)) + 1.0
+            score = tf_norm * idf
+
+            scored.append(
+                {
+                    "term": term,
+                    "score": round(score, 6),
+                    "doc_freq": doc_freq,
+                    "term_freq": term_freq,
+                }
+            )
+
+        scored.sort(key=lambda x: x["score"], reverse=True)
+        return scored[:analysis.analyze_top_terms]
+
+    enriched: List[Dict[str, Any]] = []
+
+    for hit in hits:
+        hit_copy = dict(hit)
+        doc_id = hit.get("_id")
+        tv_doc = tv_by_id.get(doc_id)
+
+        derived: Dict[str, Any] = {
+            "field": analysis_field,
+            "mode": analysis.analysis_mode,
+            "top_terms": analysis.analyze_top_terms,
+            "min_token_length": analysis.analyze_min_token_length,
+            "max_tokens_per_doc": analysis.analyze_max_tokens_per_doc,
+            "terms_total": 0,
+        }
+
+        if tv_doc and tv_doc.get("found"):
+            field_data = tv_doc.get("term_vectors", {}).get(analysis_field, {})
+            terms = field_data.get("terms", {})
+            field_stats = field_data.get("field_statistics", {})
+
+            filtered_items = [
+                (term, stats)
+                for term, stats in terms.items()
+                if len(term) >= analysis.analyze_min_token_length
+            ]
+            if analysis.analyze_max_tokens_per_doc > 0:
+                filtered_items = sorted(
+                    filtered_items,
+                    key=lambda item: item[1].get("term_freq", 0),
+                    reverse=True,
+                )[:analysis.analyze_max_tokens_per_doc]
+
+            derived["terms_total"] = len(filtered_items)
+
+            if wants_global():
+                global_n_docs = field_stats.get("doc_count", 1) or 1
+                global_top = build_scored_terms(
+                    filtered_items=filtered_items,
+                    n_docs=global_n_docs,
+                    use_global_doc_freq=True,
+                )
+                derived["global"] = {
+                    "key_terms": [item["term"] for item in global_top],
+                    "key_terms_details": global_top,
+                }
+
+            if wants_local():
+                local_top = build_scored_terms(
+                    filtered_items=filtered_items,
+                    n_docs=local_n_docs,
+                    use_global_doc_freq=False,
+                )
+                derived["local"] = {
+                    "key_terms": [item["term"] for item in local_top],
+                    "key_terms_details": local_top,
+                }
+
+        hit_copy.setdefault("_source", {})
+        hit_copy["_source"].setdefault("analysis", {})
+        hit_copy["_source"]["analysis"].update(derived)
+        enriched.append(hit_copy)
+
+    return enriched
+
+
+def compute_tfidf_keywords(
+    texts: list[str],
+    *,
+    top_terms: int = 5,
+    min_token_length: int = 4,
+    max_tokens_per_doc: int = 200,
+    stopwords: set[str] | None = None,
+):
+    """
+    Returns:
+      doc_keywords: list[list[dict]]
+      doc_vectors: list[dict[str, float]]
+    """
+    tokenized_docs = [
+        tokenize_text(
+            t or "",
+            min_token_length=min_token_length,
+            max_tokens=max_tokens_per_doc,
+            stopwords=stopwords,
+        )
+        for t in texts
+    ]
+
+    n_docs = len(tokenized_docs)
+    if n_docs == 0:
+        return [], []
+
+    doc_freq = Counter()
+    term_freqs = []
+
+    for tokens in tokenized_docs:
+        tf = Counter(tokens)
+        term_freqs.append(tf)
+        for term in tf.keys():
+            doc_freq[term] += 1
+
+    doc_vectors = []
+    doc_keywords = []
+
+    for tf in term_freqs:
+        total_terms = sum(tf.values()) or 1
+        vector = {}
+
+        for term, freq in tf.items():
+            tf_norm = freq / total_terms
+            # smoothed IDF
+            idf = math.log((1 + n_docs) / (1 + doc_freq[term])) + 1.0
+            vector[term] = tf_norm * idf
+
+        doc_vectors.append(vector)
+
+        top = sorted(vector.items(), key=lambda x: x[1], reverse=True)[:top_terms]
+        doc_keywords.append(
+            [
+                {
+                    "term": term,
+                    "score": round(score, 6),
+                    "doc_freq": doc_freq[term],
+                    "term_freq": tf[term],
+                }
+                for term, score in top
+            ]
+        )
+
+    return doc_keywords, doc_vectors
+
+def cosine_similarity_sparse(a: dict[str, float], b: dict[str, float]) -> float:
+    if not a or not b:
+        return 0.0
+
+    if len(a) > len(b):
+        a, b = b, a
+
+    dot = sum(v * b.get(k, 0.0) for k, v in a.items())
+    norm_a = math.sqrt(sum(v * v for v in a.values()))
+    norm_b = math.sqrt(sum(v * v for v in b.values()))
+
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+
+    return dot / (norm_a * norm_b)
+
+def merge_sparse_vectors(vectors: list[dict[str, float]]) -> dict[str, float]:
+    merged = Counter()
+    for vec in vectors:
+        merged.update(vec)
+    count = max(len(vectors), 1)
+    return {k: v / count for k, v in merged.items()}
+
+def greedy_cluster_documents(
+    doc_vectors: list[dict[str, float]],
+    *,
+    threshold: float = 0.30,
+):
+    """
+    Returns cluster assignments and cluster centroids.
+    """
+    clusters = []
+    assignments = []
+
+    for vec in doc_vectors:
+        best_idx = None
+        best_score = -1.0
+
+        for i, cluster in enumerate(clusters):
+            sim = cosine_similarity_sparse(vec, cluster["centroid"])
+            if sim > best_score:
+                best_score = sim
+                best_idx = i
+
+        if best_idx is not None and best_score >= threshold:
+            clusters[best_idx]["members"].append(vec)
+            clusters[best_idx]["centroid"] = merge_sparse_vectors(clusters[best_idx]["members"])
+            assignments.append(best_idx)
+        else:
+            clusters.append({
+                "members": [vec],
+                "centroid": dict(vec),
+            })
+            assignments.append(len(clusters) - 1)
+
+    return assignments, clusters
+
+def label_cluster(centroid: dict[str, float], *, top_terms: int = 3) -> str:
+    top = sorted(centroid.items(), key=lambda x: x[1], reverse=True)[:top_terms]
+    return ", ".join(term for term, _ in top)
+
+def enrich_hits_with_result_analysis(
+    hits: list[dict],
+    analysis,
+    *,
+    field_fallback: str | None = None,
+) -> list[dict]:
+    field_name = analysis.analyze_field or field_fallback
+    if not field_name:
+        return hits
+
+    texts = [
+        (hit.get("_source") or {}).get(field_name, "")
+        for hit in hits
+    ]
+
+    keywords_per_doc, doc_vectors = compute_tfidf_keywords(
+        texts,
+        top_terms=analysis.analyze_top_terms,
+        min_token_length=analysis.analyze_min_token_length,
+        max_tokens_per_doc=analysis.analyze_max_tokens_per_doc,
+    )
+
+    # cluster_assignments = None
+    # cluster_labels = {}
+
+    # if analysis.analyze_enable_clustering:
+    #     cluster_assignments, clusters = greedy_cluster_documents(
+    #         doc_vectors,
+    #         threshold=analysis.analyze_cluster_threshold,
+    #     )
+    #     cluster_labels = {
+    #         idx: label_cluster(cluster["centroid"])
+    #         for idx, cluster in enumerate(clusters)
+    #     }
+
+    enriched = []
+    for i, hit in enumerate(hits):
+        hit_copy = dict(hit)
+        key_terms = [x["term"] for x in keywords_per_doc[i]]
+
+        derived = {
+            "key_terms": key_terms,
+            "key_terms_detail": keywords_per_doc[i],
+        }
+
+        # if cluster_assignments is not None:
+        #     cid = cluster_assignments[i]
+        #     derived["cluster_id"] = cid
+        #     derived["cluster_label"] = cluster_labels.get(cid)
+
+        hit_copy.setdefault("_source", {})
+        hit_copy["_source"]["analysis"] = derived
+        enriched.append(hit_copy)
+
+    return enriched
+
+def sort_hits_by_cluster_then_score(hits: list[dict]) -> list[dict]:
+    return sorted(
+        hits,
+        key=lambda h: (
+            (h.get("_analysis") or {}).get("cluster_id", 999999),
+            -float(h.get("_score", 0.0)),
+        ),
+    )
