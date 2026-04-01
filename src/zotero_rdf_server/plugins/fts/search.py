@@ -812,13 +812,21 @@ def apply_ingest_ts_range_filter(body: dict, ingest_filter: IngestTsRangeFilter)
 
 
 from .endpoints import ResultAnalysisParams
-
+from .helpers import ensure_import
+from copy import deepcopy
 import math
-from collections import Counter
+from collections import Counter, defaultdict
 from typing import Any, Dict, List, Tuple
 
-from sklearn.cluster import KMeans
-from sklearn.feature_extraction.text import TfidfVectorizer
+
+try:
+    ensure_import("sklearn")
+    ensure_import("rapidfuzz")
+    from rapidfuzz import fuzz
+    from sklearn.cluster import KMeans
+    from sklearn.feature_extraction.text import TfidfVectorizer
+except Exception as e:
+    logger.error(f"Failed to import ML packages: {e}")
 
 def _terms_from_tv_doc(
     tv_doc: Dict[str, Any],
@@ -916,15 +924,6 @@ def _build_local_tfidf_from_vectorizer(
     field: str,
     analysis: ResultAnalysisParams,
 ) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, Dict[str, float]]]:
-    """
-    Liefert für local mode:
-      - top terms pro doc
-      - dense/sparse-artige term->score Vektoren pro doc
-
-    WICHTIG:
-    - analyzer='word' hält sich am nächsten an dein altes Verhalten
-    - analyzer='char_wb' ist robuster gegen Varianten/OCR, aber Begriffe sind dann N-Gramme
-    """
     pseudo_docs: List[str] = []
     ordered_doc_ids: List[str] = []
 
@@ -947,12 +946,6 @@ def _build_local_tfidf_from_vectorizer(
     if not pseudo_docs:
         return {}, {}
 
-    # Analoger zu deinem alten Verhalten:
-    # - word: nutzt die OS-Tokens, die wir aus mtermvectors bekommen
-    # - lowercase=False, weil Terms aus OS schon normalisiert sind
-    #
-    # Optional robuster gegen OCR/Flexion:
-    # analyzer="char_wb", ngram_range=(3, 5)
     use_char_ngrams = getattr(analysis, "analyze_use_char_ngrams", True)
     char_ngram_range = getattr(analysis, "analyze_char_ngram_range", (3, 5))
 
@@ -1009,138 +1002,6 @@ def _build_local_tfidf_from_vectorizer(
         ]
 
     return doc_top_terms, doc_vectors
-
-def _analysis_from_mtermvectors(
-    *,
-    hits: List[Dict[str, Any]],
-    tv_resp: Dict[str, Any],
-    analysis: ResultAnalysisParams,
-    field_fallback: str,
-) -> List[Dict[str, Any]]:
-    analysis_field = analysis.analyze_field or field_fallback
-    docs = tv_resp.get("docs", [])
-
-    tv_by_id: Dict[str, Dict[str, Any]] = {
-        d.get("_id"): d for d in docs if d.get("_id")
-    }
-
-    local_doc_freq = Counter()
-    local_n_docs = 0
-
-    for d in docs:
-        if not d.get("found"):
-            continue
-
-        local_n_docs += 1
-        field_data = d.get("term_vectors", {}).get(analysis_field, {})
-        terms = field_data.get("terms", {})
-
-        for term in terms.keys():
-            if len(term) < analysis.analyze_min_token_length:
-                continue
-            local_doc_freq[term] += 1
-
-    local_n_docs = max(local_n_docs, 1)
-
-    def wants_global() -> bool:
-        return analysis.analysis_mode in ("global", "both")
-
-    def wants_local() -> bool:
-        return analysis.analysis_mode in ("local", "both")
-
-    def build_scored_terms(
-        *,
-        filtered_items: List[tuple[str, Dict[str, Any]]],
-        n_docs: int,
-        use_global_doc_freq: bool,
-    ) -> List[Dict[str, Any]]:
-        total_terms = sum(stats.get("term_freq", 0) for _, stats in filtered_items) or 1
-
-        scored: List[Dict[str, Any]] = []
-        for term, stats in filtered_items:
-            term_freq = stats.get("term_freq", 0)
-            doc_freq = stats.get("doc_freq", 0) if use_global_doc_freq else local_doc_freq.get(term, 0)
-
-            tf_norm = term_freq / total_terms
-            idf = math.log((1 + n_docs) / (1 + doc_freq)) + 1.0
-            score = tf_norm * idf
-
-            scored.append(
-                {
-                    "term": term,
-                    "score": round(score, 6),
-                    "doc_freq": doc_freq,
-                    "term_freq": term_freq,
-                }
-            )
-
-        scored.sort(key=lambda x: x["score"], reverse=True)
-        return scored[:analysis.analyze_top_terms]
-
-    enriched: List[Dict[str, Any]] = []
-
-    for hit in hits:
-        hit_copy = dict(hit)
-        doc_id = hit.get("_id")
-        tv_doc = tv_by_id.get(doc_id)
-
-        derived: Dict[str, Any] = {
-            "field": analysis_field,
-            "mode": analysis.analysis_mode,
-            "top_terms": analysis.analyze_top_terms,
-            "min_token_length": analysis.analyze_min_token_length,
-            "max_tokens_per_doc": analysis.analyze_max_tokens_per_doc,
-            "terms_total": 0,
-        }
-
-        if tv_doc and tv_doc.get("found"):
-            field_data = tv_doc.get("term_vectors", {}).get(analysis_field, {})
-            terms = field_data.get("terms", {})
-            field_stats = field_data.get("field_statistics", {})
-
-            filtered_items = [
-                (term, stats)
-                for term, stats in terms.items()
-                if len(term) >= analysis.analyze_min_token_length
-            ]
-            if analysis.analyze_max_tokens_per_doc > 0:
-                filtered_items = sorted(
-                    filtered_items,
-                    key=lambda item: item[1].get("term_freq", 0),
-                    reverse=True,
-                )[:analysis.analyze_max_tokens_per_doc]
-
-            derived["terms_total"] = len(filtered_items)
-
-            if wants_global():
-                global_n_docs = field_stats.get("doc_count", 1) or 1
-                global_top = build_scored_terms(
-                    filtered_items=filtered_items,
-                    n_docs=global_n_docs,
-                    use_global_doc_freq=True,
-                )
-                derived["global"] = {
-                    "key_terms": [item["term"] for item in global_top],
-                    "key_terms_details": global_top,
-                }
-
-            if wants_local():
-                local_top = build_scored_terms(
-                    filtered_items=filtered_items,
-                    n_docs=local_n_docs,
-                    use_global_doc_freq=False,
-                )
-                derived["local"] = {
-                    "key_terms": [item["term"] for item in local_top],
-                    "key_terms_details": local_top,
-                }
-
-        hit_copy.setdefault("_source", {})
-        hit_copy["_source"].setdefault("analysis", {})
-        hit_copy["_source"]["analysis"].update(derived)
-        enriched.append(hit_copy)
-
-    return enriched
 
 def analysis_from_mtermvectors(
     *,
@@ -1266,40 +1127,11 @@ def analysis_from_mtermvectors(
 
 ### Cluster
 
-from collections import Counter, defaultdict
-from copy import deepcopy
-from typing import Any, Dict, List, Tuple
-import math
-
 def _l2_normalize(vector: List[float]) -> List[float]:
     norm = math.sqrt(sum(v * v for v in vector))
     if norm == 0.0:
         return vector
     return [v / norm for v in vector]
-
-
-def _extract_term_scores_deprecated(
-    hit: Dict[str, Any],
-    *,
-    analysis_branch: str = "local",
-) -> Dict[str, float]:
-    source = hit.get("_source", {})
-    analysis = source.get("analysis", {})
-    branch = analysis.get(analysis_branch, {})
-
-    details = branch.get("key_terms_details") or []
-    if details:
-        out: Dict[str, float] = {}
-        for item in details:
-            term = item.get("term")
-            score = item.get("score", 0.0)
-            if not term:
-                continue
-            out[term] = float(score)
-        return out
-
-    key_terms = branch.get("key_terms") or []
-    return {term: 1.0 for term in key_terms if term}
 
 def _extract_term_scores(
     hit: Dict[str, Any],
@@ -1333,9 +1165,6 @@ def _extract_term_scores(
     vector = branch.get("vector") or {}
     return {str(term): float(score) for term, score in vector.items()}
 
-
-from rapidfuzz import fuzz
-
 def _canonical_term(group: List[Tuple[str, float]]) -> str:
     terms = [term for term, _ in group]
 
@@ -1352,7 +1181,6 @@ def _canonical_term(group: List[Tuple[str, float]]) -> str:
         )
     )
     return ranked[0][0]
-
 
 def _merge_similar_terms(
     term_scores: Dict[str, float],
@@ -1425,20 +1253,6 @@ def _build_cluster_label(
 
     label = ", ".join(top_terms) if top_terms else "unlabeled"
     return label, top_terms
-
-def _build_cluster_label_deprecated(
-    *,
-    cluster_term_scores: List[Dict[str, float]],
-    top_label_terms: int = 3,
-) -> Tuple[str, List[str]]:
-    aggregated = Counter()
-    for term_scores in cluster_term_scores:
-        aggregated.update(term_scores)
-
-    top_terms = [term for term, _ in aggregated.most_common(top_label_terms)]
-    label = ", ".join(top_terms) if top_terms else "unlabeled"
-    return label, top_terms
-
 
 def cluster_hits_by_analysis(
     hits: List[Dict[str, Any]],
@@ -1604,172 +1418,6 @@ def cluster_hits_by_analysis(
         hit["_source"]["analysis"]["cluster"] = cluster_meta[cluster_id]
 
     return hits_copy
-
-
-def cluster_hits_by_analysis_deprecated(
-    hits: List[Dict[str, Any]],
-    *,
-    analysis: ResultAnalysisParams,
-    random_state: int = 42,
-    normalize_vectors: bool = True,
-) -> List[Dict[str, Any]]:
-    if not hits or not analysis.cluster_enabled:
-        return hits
-
-    hits_copy = [deepcopy(hit) for hit in hits]
-
-    cluster_term_scores_per_hit: List[Dict[str, float]] = [
-        _extract_term_scores(
-            hit,
-            analysis_branch=analysis.cluster_source,
-            prefer_vector=True,   # Clustering
-        )
-        for hit in hits_copy
-    ]
-
-    label_term_scores_per_hit: List[Dict[str, float]] = [
-        _extract_term_scores(
-            hit,
-            analysis_branch=analysis.cluster_label_source,
-            prefer_vector=False,  # Labels
-        )
-        for hit in hits_copy
-    ]
-
-    usable_indices = [i for i, term_scores in enumerate(cluster_term_scores_per_hit) if term_scores]
-    usable_index_set = set(usable_indices)
-
-    if not usable_indices:
-        for hit in hits_copy:
-            hit.setdefault("_source", {})
-            hit["_source"].setdefault("analysis", {})
-            hit["_source"]["analysis"]["cluster"] = {
-                "id": None,
-                "label": "unclustered",
-                "label_terms": [],
-                "size": 0,
-                "source": analysis.cluster_source,
-                "label_source": analysis.cluster_label_source,
-            }
-        return hits_copy
-
-    vocabulary = sorted(
-        {
-            term
-            for i in usable_indices
-            for term in cluster_term_scores_per_hit[i].keys()
-        }
-    )
-    if not vocabulary:
-        for hit in hits_copy:
-            hit.setdefault("_source", {})
-            hit["_source"].setdefault("analysis", {})
-            hit["_source"]["analysis"]["cluster"] = {
-                "id": None,
-                "label": "unclustered",
-                "label_terms": [],
-                "size": 0,
-                "source": analysis.cluster_source,
-                "label_source": analysis.cluster_label_source,
-            }
-        return hits_copy
-
-    term_to_col = {term: idx for idx, term in enumerate(vocabulary)}
-
-    matrix: List[List[float]] = []
-    usable_hit_refs: List[int] = []
-
-    for i in usable_indices:
-        row = [0.0] * len(vocabulary)
-        for term, score in cluster_term_scores_per_hit[i].items():
-            row[term_to_col[term]] = float(score)
-        if normalize_vectors:
-            row = _l2_normalize(row)
-        matrix.append(row)
-        usable_hit_refs.append(i)
-
-    effective_k = max(1, min(analysis.cluster_count, len(matrix)))
-    hit_index_to_row = {hit_idx: row_idx for row_idx, hit_idx in enumerate(usable_hit_refs)}
-
-    if len(matrix) == 1:
-        only_idx = usable_hit_refs[0]
-        label, label_terms = _build_cluster_label(
-            cluster_term_scores=[label_term_scores_per_hit[only_idx]],
-            top_label_terms=analysis.cluster_label_top_terms,
-        )
-        for i, hit in enumerate(hits_copy):
-            hit.setdefault("_source", {})
-            hit["_source"].setdefault("analysis", {})
-            if i == only_idx:
-                hit["_source"]["analysis"]["cluster"] = {
-                    "id": 0,
-                    "label": label,
-                    "label_terms": label_terms,
-                    "size": 1,
-                    "source": analysis.cluster_source,
-                    "label_source": analysis.cluster_label_source,
-                }
-            else:
-                hit["_source"]["analysis"]["cluster"] = {
-                    "id": None,
-                    "label": "unclustered",
-                    "label_terms": [],
-                    "size": 0,
-                    "source": analysis.cluster_source,
-                    "label_source": analysis.cluster_label_source,
-                }
-        return hits_copy
-
-    kmeans = KMeans(
-        n_clusters=effective_k,
-        random_state=random_state,
-        n_init="auto",
-    )
-    labels = kmeans.fit_predict(matrix)
-
-    cluster_docs: Dict[int, List[int]] = defaultdict(list)
-    for row_idx, cluster_id in enumerate(labels):
-        hit_idx = usable_hit_refs[row_idx]
-        cluster_docs[int(cluster_id)].append(hit_idx)
-
-    cluster_meta: Dict[int, Dict[str, Any]] = {}
-    for cluster_id, hit_indices in cluster_docs.items():
-        cluster_label_scores = [label_term_scores_per_hit[i] for i in hit_indices]
-        label, label_terms = _build_cluster_label(
-            cluster_term_scores=cluster_label_scores,
-            top_label_terms=analysis.cluster_label_top_terms,
-        )
-        cluster_meta[cluster_id] = {
-            "id": cluster_id,
-            "label": label,
-            "label_terms": label_terms,
-            "size": len(hit_indices),
-            "source": analysis.cluster_source,
-            "label_source": analysis.cluster_label_source,
-        }
-
-    for i, hit in enumerate(hits_copy):
-        hit.setdefault("_source", {})
-        hit["_source"].setdefault("analysis", {})
-
-        if i not in usable_index_set:
-            hit["_source"]["analysis"]["cluster"] = {
-                "id": None,
-                "label": "unclustered",
-                "label_terms": [],
-                "size": 0,
-                "source": analysis.cluster_source,
-                "label_source": analysis.cluster_label_source,
-            }
-            continue
-
-        row_idx = hit_index_to_row[i]
-        cluster_id = int(labels[row_idx])
-        hit["_source"]["analysis"]["cluster"] = cluster_meta[cluster_id]
-
-    return hits_copy
-
-
 
 def sort_hits_by_cluster_and_score(hits):
     clusters = defaultdict(list)
