@@ -669,65 +669,71 @@ def format_search_response(
         render_html_table,
         normalize_output_column,
     )
-
-    normalized = normalize_hits(
-        resp,
-        flatten_dict=flatten_dict,
-        keep_dict=keep_dict,
-        keep_highlight=keep_highlight,
-        make_snippet=make_snippet,
-        highlight_field=highlight_field,
-        truncate_chars=truncate_chars,
-        truncate_field=truncate_field,
-    )
-
     
+    if not output_format == "json":
+        normalized = normalize_hits(
+            resp,
+            flatten_dict=flatten_dict,
+            keep_dict=keep_dict,
+            keep_highlight=keep_highlight,
+            make_snippet=make_snippet,
+            highlight_field=highlight_field,
+            truncate_chars=truncate_chars,
+            truncate_field=truncate_field,
+        )
 
-    rows = normalized.get("hits", [])
-    aggs = normalized.get("aggregations") if include_aggs else None
+        
 
-    def is_analysis_col(col: str) -> bool:
-        return col.startswith("analysis.") or col.startswith("analysis_")
+        rows = normalized.get("hits", [])
+        aggs = normalized.get("aggregations") if include_aggs else None
+        def is_analysis_col(col: str) -> bool:
+            return col.startswith("analysis.") or col.startswith("analysis_")
 
-    default_cols = ["_id", "_score", "source", "page", "snippet", "ingest_ts", "meta_parent", "meta_parent_label"]
-    default_cols_small = ["source", "page", "snippet"]
+        default_cols = ["_id", "_score", "source", "page", "snippet", "ingest_ts", "meta_parent", "meta_parent_label"]
+        default_cols_small = ["source", "page", "snippet"]
 
-    analysis_cols = []
-    preferred_cols = []
+        analysis_cols = []
+        preferred_cols = []
 
-    if columns:
-        for raw in columns.split(","):
-            c = normalize_output_column(raw.strip())
-            if not c:
-                continue
-            if is_analysis_col(c):
-                analysis_cols.append(c)
-            else:
-                preferred_cols.append(c)
+        if columns:
+            for raw in columns.split(","):
+                c = normalize_output_column(raw.strip())
+                if not c:
+                    continue
+                if is_analysis_col(c):
+                    analysis_cols.append(c)
+                else:
+                    preferred_cols.append(c)
 
-    base_defaults = default_cols if include_context else default_cols_small
-    combined_cols = list(dict.fromkeys(preferred_cols + base_defaults + analysis_cols))
+        base_defaults = default_cols if include_context else default_cols_small
+        combined_cols = list(dict.fromkeys(preferred_cols + base_defaults + analysis_cols))
 
 
-    # cols = collect_columns(
-    #     rows,
-    #     preferred=combined_cols,
-    # )
+        # cols = collect_columns(
+        #     rows,
+        #     preferred=combined_cols,
+        # )
 
-    cols = combined_cols # [c for c in combined_cols if c in {k for r in rows for k in r.keys()}]
+        cols = combined_cols # [c for c in combined_cols if c in {k for r in rows for k in r.keys()}]
     
 
     if output_format in ("md", "markdown", "html"):
         cols = [c for c in cols if c != "highlight"]
 
     if output_format == "json":
-        payload: Dict[str, Any] = {"total": normalized.get("total"), "hits": rows}
+        hits = resp.get("hits", {}).get("hits", [])
+        payload: Dict[str, Any] = {
+            "hits": {
+                "total": resp.get("hits", {}).get("total"),
+                "hits": hits,
+            }
+        }
         if header_meta:
             payload["meta"] = header_meta
         if include_context and api_call:
             payload["api_call"] = api_call
-        if aggs is not None:
-            payload["aggregations"] = aggs
+        if include_aggs:
+            payload["aggregations"] = resp.get("aggregations")
         if include_context:
             payload["context_query"] = context_query
         return JSONResponse(payload)
@@ -1496,15 +1502,6 @@ def search_terms(
     try:
         resp = os_search(index=index, body=body, columns=source_columns)
 
-        # if analysis.perform_analysis:
-        #     hits = resp["hits"]["hits"]
-        #     hits = enrich_hits_with_result_analysis(
-        #         hits,
-        #         analysis,
-        #         field_fallback=field,
-        #     )
-        #     resp["hits"]["hits"] = hits
-
         if analysis.perform_analysis:
             hits = resp.get("hits", {}).get("hits", [])
             analysis_field = analysis.analyze_field or field
@@ -1528,6 +1525,12 @@ def search_terms(
                         hits,
                         analysis=analysis,
                     ))
+                    # Use /explorer
+                    # from .viewer import write_analysis_explorer_html
+                    # from zotero_rdf_server.config import EXPORT_DIRECTORY
+                    # html_path = Path(EXPORT_DIRECTORY / "analysis_explorer.html")
+                    # write_analysis_explorer_html(hits, html_path)
+                    # logger.info(f"Analysis Explorer available at {html_path}")
 
 
                 resp["hits"]["hits"] = hits
@@ -1740,11 +1743,16 @@ def mlt_by_id(
     field_list = [f.strip() for f in fields.split(",") if f.strip()]
     if not field_list:
         raise HTTPException(status_code=400, detail="No fields provided.")
+    if not index: 
+        from .search import DEFAULT_ALIAS
+        mlt_index = DEFAULT_ALIAS
+    else:
+        mlt_index = index
 
     mlt_query: Dict[str, Any] = {
         "more_like_this": {
             "fields": field_list,
-            "like": [{"_index": index, "_id": os_id}],
+            "like": [{"_index": mlt_index, "_id": os_id}],
             "min_term_freq": min_term_freq,
             "min_doc_freq": min_doc_freq,
             "max_query_terms": max_query_terms,
@@ -1760,7 +1768,6 @@ def mlt_by_id(
     apply_ingest_ts_range_filter(body,ingest_ts)
     apply_keyword_filter(body, filters)
     apply_paging(body, size=size)
-
     try:
         resp = os_search(index=index, body=body, columns=columns)
     except Exception as e:
@@ -1934,3 +1941,20 @@ def view_page(os_doc_id: str):
     )
     return HTMLResponse(html)
 
+
+@open_router.get("/explorer",    
+    summary="Search Results and Clusters",
+    description="Query the index, cluster and explore results",
+    tags=["Viewer", "Search"])
+def explorer():
+    from .explorer import write_analysis_search_explorer_html
+    from zotero_rdf_server.main import app
+    path = write_analysis_search_explorer_html(
+        output_path="/tmp/analysis_search_explorer.html",
+        openapi_spec=app.openapi(),
+        endpoint_path="/plugin/fts/search/terms",
+        api_base_url="",
+        initial_hits=None,
+        title="FTS Analysis Explorer",
+    )
+    return FileResponse(path, media_type="text/html")

@@ -709,7 +709,10 @@ def apply_source_includes(body: Dict[str, Any], columns: Optional[str]) -> None:
 def os_search(index: str, body: Dict[str, Any], columns: Optional[str]) -> Dict[str, Any]:
     """Central OpenSearch search that applies _source includes if columns is set."""    
     apply_source_includes(body, columns)
-    if not index: index = DEFAULT_ALIAS
+    if not index: 
+        index = DEFAULT_ALIAS
+        logger.warning(f"index set to default: {index}")
+    logger.info(json.dumps(body,indent=4))    
     return client.search(index=index, body=body)
 
 def os_mtermvectors(
@@ -738,6 +741,7 @@ def os_mtermvectors(
     )
 
 from .endpoints import KeywordFilter
+from .endpoints import IngestTsRangeFilter
 
 def apply_keyword_filter(body: dict, filters: KeywordFilter):
     if not filters.filter_field:
@@ -765,8 +769,6 @@ def apply_keyword_filter(body: dict, filters: KeywordFilter):
                 "filter": [clause],
             }
         }
-
-from .endpoints import IngestTsRangeFilter
 
 def apply_ingest_ts_range_filter(body: dict, ingest_filter: IngestTsRangeFilter):
     if not ingest_filter.ingest_from and not ingest_filter.ingest_to:
@@ -801,7 +803,7 @@ def apply_ingest_ts_range_filter(body: dict, ingest_filter: IngestTsRangeFilter)
             }
         }
 
-# NLP
+# region NLP
 
 from .endpoints import ResultAnalysisParams
 from .helpers import ensure_import
@@ -1112,7 +1114,8 @@ def analysis_from_mtermvectors(
 
     return enriched
 
-### Cluster
+# endregion
+# region Cluster
 
 def _l2_normalize(vector: List[float]) -> List[float]:
     norm = math.sqrt(sum(v * v for v in vector))
@@ -1426,3 +1429,6 @@ def sort_hits_by_cluster_and_score(hits):
         sorted_hits.extend(docs_sorted)
 
     return sorted_hits
+
+# endregion
+
