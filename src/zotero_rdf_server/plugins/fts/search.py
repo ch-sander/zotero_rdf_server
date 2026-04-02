@@ -49,21 +49,15 @@ def apply_paging(
     return body
 
 def parse_csv(raw: str) -> List[str]:
-    """Parse comma-separated terms, trimming whitespace and dropping empties."""
     terms = [t.strip() for t in raw.split(",") if t.strip()]
     if not terms:
         raise ValueError("No terms provided.")
     return terms
 
 def maybe_guard_prefix(term: str, min_len: int = 3) -> bool:
-    """Return True if the term is long enough to use prefix matching."""
     return len(term) >= min_len
 
 def effective_fuzzy_edits(term: str, requested_edits: int) -> int:
-    """
-    Guard fuzzy expansions on short terms (common OCR scenario).
-    - Very short tokens explode combinatorially with fuzziness 2.
-    """
     if requested_edits <= 0:
         return 0
     if len(term) < 5:
@@ -71,7 +65,6 @@ def effective_fuzzy_edits(term: str, requested_edits: int) -> int:
     return min(requested_edits, 2)
 
 def get_doc_vector(index: str, os_id: str, vector_field: str = "vector") -> List[float]:
-    """Fetch a document and return its vector from _source."""
     if not index: index = DEFAULT_ALIAS
     doc = client.get(index=index, id=os_id)
     src = doc.get("_source", {})
@@ -852,10 +845,6 @@ def _terms_from_tv_doc(
     return items
 
 def _pseudo_doc_from_terms(term_items: List[Tuple[str, Dict[str, Any]]]) -> str:
-    """
-    Baut aus mtermvectors-Terms ein Pseudo-Dokument für TfidfVectorizer.
-    Jeder Term wird entsprechend seiner term_freq wiederholt.
-    """
     tokens: List[str] = []
     for term, stats in term_items:
         tf = int(stats.get("term_freq", 0) or 0)
@@ -951,7 +940,7 @@ def _build_local_tfidf_from_vectorizer(
         vectorizer = TfidfVectorizer(
             analyzer="char_wb",
             ngram_range=char_ngram_range,
-            lowercase=False,
+            lowercase=True,
             norm="l2",
             use_idf=True,
             smooth_idf=True,
@@ -961,7 +950,7 @@ def _build_local_tfidf_from_vectorizer(
         vectorizer = TfidfVectorizer(
             analyzer="word",
             token_pattern=r"(?u)\b\w+\b",
-            lowercase=False,
+            lowercase=True,
             norm="l2",
             use_idf=True,
             smooth_idf=True,
