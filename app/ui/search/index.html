@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Analysis Search Explorer</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #121933;
+      --panel-2: #182140;
+      --panel-3: #101936;
+      --text: #e8ecf8;
+      --muted: #9aa7c7;
+      --line: #2a3561;
+      --accent: #7aa2ff;
+      --accent-2: #8ef0c8;
+      --danger: #ff9b9b;
+      --warning: #ffd98f;
+      --badge: #24345f;
+      --badge-hover: #30457f;
+      --shadow: 0 8px 28px rgba(0,0,0,0.28);
+      --radius: 14px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+
+    body { min-height: 100vh; }
+    a { color: inherit; text-decoration: none; }
+    button { font: inherit; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+      max-width: 1600px;
+      margin: 0 auto;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      border-right: 1px solid var(--line);
+      background: linear-gradient(180deg, #0f1730 0%, #0d1430 100%);
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+      padding: 18px;
+    }
+
+    .main {
+      padding: 20px;
+      min-width: 0;
+    }
+
+    .panel,
+    .header-card,
+    .search-panel,
+    .cluster-section,
+    .doc-card {
+      min-width: 0;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .header-card { padding: 18px; margin-bottom: 18px; }
+    .header-card h1 { margin: 0 0 10px 0; font-size: 24px; }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .summary-item {
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .summary-item .label {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    .summary-item .value {
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1.5fr 1fr auto auto;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .input, .select, textarea.input {
+      width: 100%;
+      padding: 11px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: #0d1530;
+      color: var(--text);
+    }
+
+    .input:focus, .select:focus, textarea.input:focus {
+      outline: 2px solid rgba(122, 162, 255, 0.25);
+      border-color: var(--accent);
+    }
+
+    .btn {
+      padding: 11px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .btn:hover { background: #22315e; }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #09101f;
+      border-color: var(--accent);
+      font-weight: 700;
+    }
+
+    .btn-primary:hover { filter: brightness(1.03); }
+    .btn-secondary { background: var(--panel-2); }
+
+    .muted { color: var(--muted); }
+
+    .status-line {
+      margin-top: 10px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .status-line.error { color: var(--danger); }
+    .status-line.warning { color: var(--warning); }
+
+    .sidebar-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .sidebar-section { margin-bottom: 18px; }
+
+    .sidebar-cluster-link {
+      display: block;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid transparent;
+    }
+
+    .sidebar-cluster-link:hover {
+      border-color: var(--line);
+      background: rgba(255,255,255,0.06);
+    }
+
+    .sidebar-cluster-title {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .sidebar-cluster-meta {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 10px;
+    }
+
+    .term-cloud,
+    .cluster-terms-wrap,
+    .doc-chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .term-badge {
+      border: 1px solid var(--line);
+      background: var(--badge);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 6px 10px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: background 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease;
+    }
+
+    .term-badge:hover {
+      background: var(--badge-hover);
+      transform: translateY(-1px);
+    }
+
+    .term-badge.active-term {
+      background: var(--accent);
+      color: #081120;
+      border-color: var(--accent);
+      font-weight: 700;
+    }
+
+    .cluster-list-info {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 12px;
+    }
+
+    .search-panel {
+      padding: 18px;
+      margin-bottom: 18px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    .form-field {
+      display: grid;
+      gap: 6px;
+    }
+
+    .form-field > label {
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .checkbox-field {
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel-3);
+    }
+
+    .checkbox-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .required-pill {
+      display: inline-block;
+      margin-left: 6px;
+      font-size: 10px;
+      color: #081120;
+      background: var(--accent-2);
+      border-radius: 999px;
+      padding: 2px 7px;
+      vertical-align: middle;
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+
+    .cluster-section {
+      margin-bottom: 22px;
+      padding: 18px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .cluster-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+
+    .cluster-header h2 {
+      margin: 0;
+      font-size: 20px;
+      overflow-wrap: anywhere;
+    }
+
+    .cluster-meta {
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .cluster-docs {
+      display: grid;
+      gap: 14px;
+    }
+
+    .doc-card {
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+    }
+
+    .doc-card-header { margin-bottom: 10px; }
+
+    .doc-card-title {
+      font-size: 17px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      word-break: break-word;
+    }
+
+    .doc-card-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .doc-snippet {
+      color: #d7def5;
+      line-height: 1.45;
+      margin-bottom: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .chip-label {
+      font-size: 12px;
+      color: var(--muted);
+      min-width: 96px;
+    }
+
+    .details-block {
+      margin-top: 12px;
+      border-top: 1px solid var(--line);
+      padding-top: 12px;
+    }
+
+    .details-block summary {
+      cursor: pointer;
+      color: var(--accent-2);
+      margin-bottom: 10px;
+    }
+
+    .details-section { margin-top: 12px; }
+
+    .details-section h4 {
+      margin: 0 0 8px 0;
+      font-size: 14px;
+    }
+
+    .kv-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .kv-grid > div {
+      background: #101936;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+    }
+
+    .mini-table {
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .mini-table th,
+    .mini-table td {
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      padding: 8px 10px;
+      vertical-align: top;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .mini-table th {
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .mini-table tbody tr:nth-child(even) {
+      background: rgba(255,255,255,0.03);
+    }
+
+    .hidden { display: none !important; }
+
+    .result-info {
+      color: var(--muted);
+      margin: 8px 0 20px 0;
+    }
+
+    .footer-note {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 22px;
+    }
+
+    .raw-response-wrap { margin-top: 14px; }
+
+    .raw-response {
+      display: none;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: var(--panel-3);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      max-height: 360px;
+      overflow: auto;
+      font-size: 12px;
+    }
+
+    .raw-response.visible { display: block; }
+
+    .note-box {
+      margin-top: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel-3);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .pagination-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin-top: 18px;
+      padding: 14px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .pagination-info {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .pagination-spacer {
+      flex: 1 1 auto;
+    }
+
+    .page-indicator {
+      min-width: 110px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .search-panel details > summary {
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 18px;
+      margin-bottom: 12px;
+    }
+
+    .search-panel details[open] > summary {
+      margin-bottom: 16px;
+    }
+
+    .doc-snippet mark.search-hit,
+    .doc-snippet mark.search-hit.strong-hit {
+      background: rgba(122, 162, 255, 0.28);
+      color: #f3f6ff;
+      padding: 0 0.18em;
+      border-radius: 0.28em;
+      font-weight: 700;
+    }
+
+    .snippet-list {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .snippet-list li {
+      margin-bottom: 4px;
+    }
+
+    .request-url-block {
+      margin-top: 8px;
+      padding: 10px 12px;
+      background: var(--panel-3);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      font-size: 12px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    #aggregationsContainer .cluster-section {
+      margin-top: 18px;
+    }
+
+    @media (max-width: 1200px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: relative;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .controls {
+        grid-template-columns: 1fr;
+      }
+
+      .kv-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-title" id="sidebarTitle">Analysis Search Explorer</div>
+        <div class="cluster-list-info" id="sidebarClusterInfo">Ready</div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="section-title">Top Cluster Terms</div>
+        <div class="term-cloud" id="topClusterTerms"></div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="section-title">Clusters</div>
+        <div id="sidebarClusters"></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="panel search-panel">
+        <details open id="apiSearchDetails">
+          <summary>API Search</summary>
+
+          <div class="muted">Searches automatically enable analysis and clustering.</div>
+          <div class="note-box">
+            The API request automatically adds <code>perform_analysis=true</code> and
+            <code>cluster_enabled=true</code>.
+          </div>
+
+          <form id="apiSearchForm">
+            <div id="dynamicFormSections"></div>
+
+            <div class="form-actions">
+              <button id="submitApiSearchBtn" class="btn btn-primary" type="submit">Search</button>
+              <button id="resetApiFormBtn" class="btn btn-secondary" type="button">Reset form</button>
+            </div>
+
+            <div id="apiStatus" class="status-line">Ready</div>
+            <div id="requestUrlBox" class="status-line"><strong>Request URL:</strong></div>
+            <pre id="requestUrlPre" class="request-url-block hidden"></pre>
+
+            <div class="raw-response-wrap">
+              <button id="toggleRawResponseBtn" class="btn btn-secondary" type="button">Show raw response</button>
+              <pre id="rawResponse" class="raw-response"></pre>
+            </div>
+          </form>
+        </details>
+      </section>
+
+      <section class="panel header-card">
+        <h1 id="pageTitle">Analysis Search Explorer</h1>
+        <div class="muted" id="pageSubtitle">Interactive search, clustering, and analysis explorer.</div>
+
+        <div class="summary-grid">
+          <div class="summary-item">
+            <div class="label">Documents</div>
+            <div class="value" id="summaryDocuments">0</div>
+          </div>
+          <div class="summary-item">
+            <div class="label">Clusters</div>
+            <div class="value" id="summaryClusters">0</div>
+          </div>
+          <div class="summary-item">
+            <div class="label">Unclustered</div>
+            <div class="value" id="summaryUnclustered">0</div>
+          </div>
+          <div class="summary-item">
+            <div class="label">Cluster terms</div>
+            <div class="value" id="summaryClusterTerms">0</div>
+          </div>
+        </div>
+
+        <div id="aggregationsContainer"></div>
+
+        <div class="controls">
+          <input
+            id="clientSearchInput"
+            class="input"
+            type="text"
+            placeholder="Search title, snippet, ID, terms ..."
+          >
+          <select id="clientClusterSelect" class="select">
+            <option value="">All clusters</option>
+          </select>
+          <button id="resetClientFiltersBtn" class="btn btn-secondary" type="button">Reset filters</button>
+          <button id="expandAllBtn" class="btn btn-secondary" type="button">Toggle all details</button>
+        </div>
+
+        <div id="resultInfo" class="result-info"></div>
+      </section>
+
+      <div id="content"></div>
+
+      <div class="footer-note">Generated without external frontend dependencies.</div>
+    </main>
+  </div>
+
+  <script>
+    window.ANALYSIS_SEARCH_EXPLORER_CONFIG = {
+      title: "Analysis Search Explorer",
+      subtitle: "Interactive search, clustering, and analysis explorer.",
+      endpointPath: "/plugin/fts/search/terms",
+      openapiUrl: "/openapi.json",
+      apiBaseUrl: "",
+      initialHits: [],
+      maxTermBadgesPerSection: 20,
+      maxSourceFieldsPreview: 12,
+      preferredTitleFields: ["title", "name", "label", "headline", "subject", "_id"],
+      preferredSnippetFields: ["snippet", "summary", "description", "content", "text", "body"],
+      includeGlobalTerms: true,
+      includeLocalTerms: true,
+      includeClusterInfo: true,
+      pageSize: 25,
+      ui: {
+        lang: "en",
+        search: "Search",
+        searching: "Searching...",
+        loading_openapi: "Loading OpenAPI...",
+        reset_form: "Reset form",
+        reset_filters: "Reset filters",
+        toggle_all_details: "Toggle all details",
+        documents: "Documents",
+        clusters: "Clusters",
+        unclustered: "Unclustered",
+        cluster_terms_count: "Cluster terms",
+        top_cluster_terms: "Top Cluster Terms",
+        all_clusters: "All clusters",
+        search_placeholder: "Search title, snippet, ID, terms ...",
+        no_content: "No content",
+        no_clusters: "No clusters",
+        no_snippet: "No snippet",
+        no_details: "No details",
+        no_fields: "No fields",
+        cluster_terms: "Cluster terms",
+        local_terms: "Local terms",
+        global_terms: "Global terms",
+        analysis_details: "Analysis details",
+        cluster_info: "Cluster",
+        local_analysis: "Local analysis",
+        global_analysis: "Global analysis",
+        source_preview: "Source preview",
+        field: "field",
+        value: "value",
+        term: "term",
+        score: "score",
+        doc_freq: "doc_freq",
+        term_freq: "term_freq",
+        id: "ID",
+        cluster: "Cluster",
+        size: "size",
+        source: "source",
+        label_source: "label_source",
+        docs: "docs",
+        documents_visible: "documents visible",
+        clusters_visible: "clusters visible",
+        active_term: "active term",
+        api_search: "API Search",
+        search_options: "Search options",
+        analysis_options: "Analysis / cluster options",
+        request_url: "Request URL",
+        error: "Error",
+        status_ready: "Ready",
+        status_loaded_initial_hits: "Loaded initial hits",
+        status_no_initial_hits: "No initial hits loaded",
+        status_fetch_ok: "Search completed",
+        status_fetch_failed: "Search failed",
+        status_openapi_failed: "OpenAPI load failed",
+        show_raw_response: "Show raw response",
+        hide_raw_response: "Hide raw response",
+        required: "required",
+        advanced: "Advanced",
+        submit_hint: "Searches automatically enable analysis and clustering.",
+        generated_without_dependencies: "Generated without external frontend dependencies.",
+        page: "Page",
+        prev: "Previous",
+        next: "Next",
+        of: "of",
+        page_size: "Page size",
+        showing_results: "Showing results"
+      }
+    };
+  </script>
+  <script src="./analysis_search_explorer.js"></script>
+</body>
+</html>

@@ -21,10 +21,10 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
-      - name: Upload explorer folder
+      - name: Upload query builder folder
         uses: actions/upload-pages-artifact@v3
         with:
-          path: app/ui/explorer
+          path: app/ui/query
 
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
