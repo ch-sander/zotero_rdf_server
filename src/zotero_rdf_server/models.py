@@ -81,7 +81,7 @@ class ZoteroLibrary:
             else:
                 logger.info(f"{self.name}: Valid library config!") 
 
-    def fetch_paginated(self, endpoint: str) -> list:
+    def fetch_paginated_legacy(self, endpoint: str) -> list: # TODO delete
         results = []
         start = 0
         logger.info("Initialize session")
@@ -159,6 +159,118 @@ class ZoteroLibrary:
 
         return results
 
+    def fetch_paginated(self, endpoint: str) -> list:
+        results = []
+        logger.info("Initialize session")
+
+        retries = Retry(
+            total=5,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["GET"]
+        )
+        adapter = HTTPAdapter(max_retries=retries)
+
+        params = dict(self.api_query_params)
+        raw_filter_collection = params.pop("collection", None)
+
+        def normalize_collections(value) -> list[str]:
+            if value is None:
+                return []
+
+            if isinstance(value, str):
+                return [part.strip() for part in value.split(",") if part.strip()]
+
+            if isinstance(value, (list, tuple, set)):
+                collections = []
+                for item in value:
+                    if item is None:
+                        continue
+                    if isinstance(item, str):
+                        collections.extend(
+                            [part.strip() for part in item.split(",") if part.strip()]
+                        )
+                    else:
+                        collections.append(str(item).strip())
+                return [c for c in collections if c]
+
+            raise TypeError(
+                "Parameter 'collection' must be None, String, CSV-String or Liste/Tuple/Set."
+            )
+
+        collection_keys = normalize_collections(raw_filter_collection)
+
+        if endpoint == "items" and collection_keys:
+            endpoints_to_fetch = [f"collections/{key}/items" for key in collection_keys]
+        elif endpoint == "collections" and collection_keys:
+            endpoints_to_fetch = [f"collections/{key}" for key in collection_keys]
+        else:
+            endpoints_to_fetch = [endpoint]
+
+        with requests.Session() as session:
+            session.mount("https://", adapter)
+            session.mount("http://", adapter)
+
+            for current_endpoint in endpoints_to_fetch:
+                start = 0
+
+                while True:
+                    is_single = (
+                        current_endpoint.startswith("collections/")
+                        and "/items" not in current_endpoint
+                    )
+
+                    request_params = {"format": "json", **params}
+                    if not is_single:
+                        request_params.update({"limit": LIMIT, "start": start})
+
+                    req = requests.Request(
+                        method="GET",
+                        url=f"{self.base_api_url}/{current_endpoint}",
+                        headers=self.headers,
+                        params=request_params
+                    )
+                    prepared = req.prepare()
+
+                    logger.info(f"Sending API request: {prepared.method} {prepared.url}")
+                    for k, v in prepared.headers.items():
+                        logger.debug(f"Header: {k}: {v}")
+
+                    try:
+                        response = session.send(prepared, timeout=(5, 30))
+                        response.raise_for_status()
+                        data = response.json()
+                    except ReadTimeout:
+                        logger.error(f"Timeout after 30s at {prepared.url}")
+                        raise
+                    except RequestException as e:
+                        logger.error(f"Request error: {e}")
+                        raise
+
+                    if isinstance(data, dict):
+                        results.append(data)
+                        logger.info(
+                            f"Non-paginated response for endpoint '{current_endpoint}'; stopping pagination."
+                        )
+                        break
+
+                    if not data:
+                        logger.info(f"No more data for endpoint '{current_endpoint}' (start={start})")
+                        break
+
+                    results.extend(data)
+                    logger.info(
+                        f"Fetched {len(data)} items from '{current_endpoint}' (start={start})"
+                    )
+                    start += LIMIT
+
+                    if self.max_data and int(self.max_data) > 0 and len(results) >= int(self.max_data):
+                        logger.warning(f"Aborting pagination: max of {self.max_data} items reached.")
+                        return results[:int(self.max_data)]
+
+                    time.sleep(1)
+        return results
+    
     def fetch_items(self, json_path:str | Path = None) -> list:
         if self.load_mode == "manual_import":
             json_path = safe_path(json_path)
