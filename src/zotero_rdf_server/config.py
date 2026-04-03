@@ -136,6 +136,12 @@ EXPORT_DIRECTORY = safe_path(
     or "/app/exports"
 )
 
+STATIC_UI_DIRECTORY = safe_path(
+    os.getenv("STATIC_UI_DIRECTORY")
+    or server_cfg.get("static_ui_directory")
+    or "/app/ui"
+)
+
 IMPORT_DIRECTORY = safe_path(
     os.getenv("IMPORT_DIRECTORY")
     or server_cfg.get("import_directory")

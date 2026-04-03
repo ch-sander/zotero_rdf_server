@@ -8,4 +8,5 @@ server: # all values are overwritten by capititalized .env variables
   export_directory: "/app/exports"  
   import_directory: "/app/import"
   backup_directory: "/app/backup"
+  static_ui_directory: "/app/ui"
   log_level: "info"  # "debug", "info", "warning", "error"

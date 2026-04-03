@@ -18,6 +18,7 @@ services:
       - "${EXPORT_DIRECTORY_HOST:-./app/exports}:/app/exports"
       - "${IMPORT_DIRECTORY_HOST:-./app/exports}:/app/import"
       - "${BACKUP_DIRECTORY_HOST:-./app/backup}:/app/backup"
+      - "${STATIC_UI_DIRECTORY_HOST:-./app/ui}:/app/ui"
     restart: unless-stopped
 
   zotero-rdf-workers:
@@ -41,6 +42,7 @@ services:
       - "${EXPORT_DIRECTORY_HOST:-./app/exports}:/app/exports"
       - "${IMPORT_DIRECTORY_HOST:-./app/exports}:/app/import"
       - "${BACKUP_DIRECTORY_HOST:-./app/backup}:/app/backup"
+      - "${STATIC_UI_DIRECTORY_HOST:-./app/ui}:/app/ui"
     restart: unless-stopped
 
   oxigraph:

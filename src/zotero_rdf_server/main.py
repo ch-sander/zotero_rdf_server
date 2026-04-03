@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from .lifespan import app_lifespan
 from .api import router, include_plugins, open_router
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(lifespan=app_lifespan, docs_url="/")
 
@@ -12,8 +13,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from .config import STATIC_UI_DIRECTORY
 app.include_router(router)
 app.include_router(open_router)
 
+app.mount("/ui", StaticFiles(directory=STATIC_UI_DIRECTORY, html=True,check_dir=False), name="User Interfaces")
 
 include_plugins(app)
