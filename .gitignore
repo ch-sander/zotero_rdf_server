@@ -26,3 +26,5 @@ app/.sync_d71c4c954ce7.db
 docker-compose_scigma.yml
 app/.sync-exclude.lst
 src/zotero_rdf_server/plugins/fts/_explorer.py
+/app/opensearch/opensearch/nodes
+/app/opensearch/opensearch
