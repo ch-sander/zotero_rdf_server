@@ -1,0 +1,98 @@
+styles.css
+
+/* Google Font */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+
+body {
+  background-color: #fdfcfd;
+  color: #2c2c2c;
+  font-family: 'Inter', sans-serif;
+  line-height: 1.6;
+}
+
+/* Headings */
+h1, h2, h3 {
+  font-weight: 600;
+  color: #3c3c3c;
+}
+
+/* Links */
+a {
+  color: #e83e8c;
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+  color: #c72c7a;
+}
+
+/* Navbar */
+.navbar {
+  background-color: #f8d7f8 !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+.navbar-light .navbar-brand {
+  color: #e83e8c;
+  font-weight: 700;
+}
+.navbar-light .navbar-nav .nav-link {
+  color: #5a5a5a;
+}
+.navbar-light .navbar-nav .nav-link:hover {
+  color: #e83e8c;
+}
+
+/* Container Layout */
+.container {
+  background: #ffffff;
+  border-radius: 1rem;
+  padding: 2rem;
+  box-shadow: 0 1rem 2rem rgba(0,0,0,0.05);
+  margin-top: 2rem;
+}
+
+/* SPARQL Toggle Button */
+#sparql-toggle {
+  margin-top: 1.5rem;
+  background-color: #e83e8c;
+  border: none;
+  color: white;
+  font-weight: 600;
+  border-radius: 0.5rem;
+  padding: 0.6rem 1.2rem;
+  transition: background-color 0.2s ease;
+}
+#sparql-toggle:hover {
+  background-color: #c72c7a;
+}
+
+/* YASQE / YASR Styling */
+#yasqe, #yasr {
+  background: #f9f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+/* Sparnatural Customization */
+spar-natural {
+  display: block;
+  margin-top: 1rem;
+  --sparnatural-main-color: #e83e8c;
+  --sparnatural-border-radius: 0.5rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .navbar-brand {
+    font-size: 1.1rem;
+  }
+
+  .container {
+    padding: 1rem;
+  }
+
+  #sparql-toggle {
+    width: 100%;
+  }
+}

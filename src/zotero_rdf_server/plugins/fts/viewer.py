@@ -62,7 +62,7 @@ def ensure_router_mount(open_router) -> None:
     
     open_router.mount(
         mount_path,
-        StaticFiles(directory=str(image_root)),
+        StaticFiles(directory=str(image_root),check_dir=False),
         name="image-files",
     )
     logger.info(f"Mounted static image path at {mount_path} -> {image_root}")
