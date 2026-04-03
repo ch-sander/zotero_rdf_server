@@ -13,12 +13,8 @@ services:
       - ./src:/src # dev (no reloading, though)
       - "${CONFIG_FILE_HOST:-./app/config.yaml}:${CONFIG_FILE:-/app/config.yaml}"
       - "${ZOTERO_CONFIG_FILE_HOST:-./app/zotero.yaml}:${ZOTERO_CONFIG_FILE:-/app/zotero.yaml}"
-      - "${STORE_DIRECTORY_HOST:-./app/data}:/app/data"
-      - "${PLUGINS_DIRECTORY_HOST:-./app/plugins}:/app/plugins"
-      - "${EXPORT_DIRECTORY_HOST:-./app/exports}:/app/exports"
-      - "${IMPORT_DIRECTORY_HOST:-./app/exports}:/app/import"
-      - "${BACKUP_DIRECTORY_HOST:-./app/backup}:/app/backup"
-      - "${STATIC_UI_DIRECTORY_HOST:-./app/ui}:/app/ui"
+      - "${APP_DIRECTORY_HOST:-./app}:/app"
+
     restart: unless-stopped
 
   zotero-rdf-workers:
@@ -37,12 +33,8 @@ services:
     volumes:
       - "${CONFIG_FILE_HOST:-./app/config.yaml}:${CONFIG_FILE:-/app/config.yaml}"
       - "${ZOTERO_CONFIG_FILE_HOST:-./app/zotero.yaml}:${ZOTERO_CONFIG_FILE:-/app/zotero.yaml}"
-      - "${STORE_DIRECTORY_HOST:-./app/data}:/app/data"
-      - "${PLUGINS_DIRECTORY_HOST:-./app/plugins}:/app/plugins"
-      - "${EXPORT_DIRECTORY_HOST:-./app/exports}:/app/exports"
-      - "${IMPORT_DIRECTORY_HOST:-./app/exports}:/app/import"
-      - "${BACKUP_DIRECTORY_HOST:-./app/backup}:/app/backup"
-      - "${STATIC_UI_DIRECTORY_HOST:-./app/ui}:/app/ui"
+      - "${APP_DIRECTORY_HOST:-./app}:/app"
+      
     restart: unless-stopped
 
   oxigraph:
