@@ -1,6 +1,6 @@
 from __future__ import annotations
 from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Body, Depends
-from fastapi.responses import StreamingResponse, FileResponse, Response, JSONResponse, PlainTextResponse, HTMLResponse
+from fastapi.responses import StreamingResponse, FileResponse, Response, JSONResponse, PlainTextResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from typing import Literal, Any, Dict, Iterator, List, Optional, Union
 from pathlib import Path
@@ -1942,19 +1942,26 @@ def view_page(os_doc_id: str):
     return HTMLResponse(html)
 
 
-@open_router.get("/explorer",    
-    summary="Search Results and Clusters",
-    description="Query the index, cluster and explore results",
-    tags=["Viewer", "Search"])
-def explorer():
-    from .explorer import write_analysis_search_explorer_html
-    from zotero_rdf_server.main import app
-    path = write_analysis_search_explorer_html(
-        output_path="/tmp/analysis_search_explorer.html",
-        openapi_spec=app.openapi(),
-        endpoint_path="/plugin/fts/search/terms",
-        api_base_url="",
-        initial_hits=None,
-        title="FTS Analysis Explorer",
-    )
-    return FileResponse(path, media_type="text/html")
+# @open_router.get("/explorer",    
+#     summary="Search Results and Clusters",
+#     description="Query the index, cluster and explore results",
+#     tags=["Viewer", "Search"])
+# def explorer():
+#     from .explorer import write_analysis_search_explorer_html
+#     from zotero_rdf_server.main import app
+#     path = write_analysis_search_explorer_html(
+#         output_path="/tmp/analysis_search_explorer.html",
+#         openapi_spec=app.openapi(),
+#         endpoint_path="/plugin/fts/search/terms",
+#         api_base_url="",
+#         initial_hits=None,
+#         title="FTS Analysis Explorer",
+#     )
+#     return FileResponse(path, media_type="text/html")
+
+# from zotero_rdf_server.main import app
+# app.mount("/plugin/fts/query", StaticFiles(directory="/app/plugins/fts/query"), name="query")
+
+# @open_router.get("/analysis-explorer")
+# def analysis_explorer():
+#     return RedirectResponse(url="/plugin/fts/query/index.html")
