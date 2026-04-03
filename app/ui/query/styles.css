@@ -1,85 +1,160 @@
-styles.css
-
-/* Google Font */
+/* Font (bewusst neutral + technisch) */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
 
+:root {
+  --bg: #eef2f7;
+  --panel: #ffffff;
+  --panel-soft: #edf3ff;
+
+  --text: #111111;
+  --muted: #4f5f78;
+
+  --line: #4a86e8;
+  --accent: #4a86e8;
+  --accent-2: #ff9900;
+
+  --border: #9eb9ef;
+  --border-strong: #4a86e8;
+
+  --btn-blue: #4a86e8;
+  --btn-blue-hover: #3f78d6;
+
+  --btn-orange: #ff9900;
+  --btn-orange-hover: #e68a00;
+}
+
+/* Base */
 body {
-  background-color: #fdfcfd;
-  color: #2c2c2c;
-  font-family: 'Inter', sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', Tahoma, sans-serif;
   line-height: 1.6;
 }
 
 /* Headings */
 h1, h2, h3 {
   font-weight: 600;
-  color: #3c3c3c;
+  color: var(--accent);
 }
 
 /* Links */
 a {
-  color: #e83e8c;
+  color: var(--accent);
   text-decoration: none;
+  font-weight: 600;
 }
 a:hover {
   text-decoration: underline;
-  color: #c72c7a;
+  color: #2f5fb3;
 }
 
 /* Navbar */
 .navbar {
-  background-color: #f8d7f8 !important;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  background-color: #dfe9fb !important;
+  border-bottom: 2px solid var(--line);
+  box-shadow: none;
 }
+
 .navbar-light .navbar-brand {
-  color: #e83e8c;
+  color: var(--accent);
   font-weight: 700;
 }
+
 .navbar-light .navbar-nav .nav-link {
-  color: #5a5a5a;
+  color: #2c3e5f;
 }
+
 .navbar-light .navbar-nav .nav-link:hover {
-  color: #e83e8c;
+  color: var(--accent-2);
 }
 
 /* Container Layout */
 .container {
-  background: #ffffff;
-  border-radius: 1rem;
+  background: var(--panel);
+  border: 2px solid var(--line);
+  border-radius: 0;
   padding: 2rem;
-  box-shadow: 0 1rem 2rem rgba(0,0,0,0.05);
   margin-top: 2rem;
 }
 
-/* SPARQL Toggle Button */
+/* SPARQL Toggle Button (JETZT KLAR SICHTBAR) */
 #sparql-toggle {
   margin-top: 1.5rem;
-  background-color: #e83e8c;
-  border: none;
-  color: white;
-  font-weight: 600;
-  border-radius: 0.5rem;
+  background-color: var(--btn-blue);
+  border: 2px solid #2f5fb3;
+  color: #ffffff;
+  font-weight: 700;
+  border-radius: 0;
   padding: 0.6rem 1.2rem;
-  transition: background-color 0.2s ease;
-}
-#sparql-toggle:hover {
-  background-color: #c72c7a;
+  cursor: pointer;
 }
 
-/* YASQE / YASR Styling */
-#yasqe, #yasr {
-  background: #f9f9fa;
-  border: 1px solid #dee2e6;
-  border-radius: 0.75rem;
+#sparql-toggle:hover {
+  background-color: var(--btn-blue-hover);
+}
+
+/* Alternative Button (falls du mal orange willst) */
+.button-secondary {
+  background-color: var(--btn-orange);
+  border: 2px solid #cc7a00;
+  color: #111;
+  font-weight: 700;
+}
+
+.button-secondary:hover {
+  background-color: var(--btn-orange-hover);
+}
+
+/* YASQE / YASR */
+#yasqe,
+#yasr {
+  background: var(--panel-soft);
+  border: 2px solid var(--line);
+  border-radius: 0;
   padding: 1rem;
 }
 
-/* Sparnatural Customization */
+/* Sparnatural */
 spar-natural {
   display: block;
   margin-top: 1rem;
-  --sparnatural-main-color: #e83e8c;
-  --sparnatural-border-radius: 0.5rem;
+  --sparnatural-main-color: #4a86e8;
+  --sparnatural-border-radius: 0px;
+}
+
+/* Kleine UI-Elemente */
+.badge,
+.tag {
+  border: 2px solid var(--line);
+  background: #eaf2ff;
+  color: #244a8f;
+  border-radius: 0;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+/* Divider */
+hr,
+.divider {
+  border: none;
+  height: 2px;
+  background: var(--line);
+}
+
+/* Inputs (falls Bootstrap reinspielt) */
+input,
+select,
+textarea {
+  border-radius: 0 !important;
+  border: 2px solid var(--line);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent-2);
+  background: #fffaf2;
 }
 
 /* Responsive */
