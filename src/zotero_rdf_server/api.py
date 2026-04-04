@@ -409,7 +409,6 @@ async def purge(
         "facts in the mapping graph.\n\n"
         "If `only_redirect=true`, the old subject facts are kept and a `new owl:sameAs old` triple is added "
         "to the knowledge base graph. Otherwise, subject facts of `old` in the knowledge base graph are deleted.\n\n"
-        "By default this endpoint runs in dry-run mode (`execute=false`)."
     ),
     tags=["RDF", "Semantics"], dependencies=[Depends(require_writable)]
 )
