@@ -29,9 +29,6 @@ logger.debug(f"Loading config from {cfg_path}")
 cfg = get_viewer_config(cfg_path)
 logger.debug(f"Viewer config: {cfg}")
 
-DEFAULT_ALIAS = str(cfg.get("default_alias") or "ocr")
-logger.info(f"DEFAULT_ALIAS: {DEFAULT_ALIAS}")
-
 IMAGE_ROOT_STR = cfg.get("image_root") or ""
 TEXT_ROOT_STR = cfg.get("text_root") or ""
 IMAGE_EXT = str(cfg.get("image_ext") or "jpg").lstrip(".")

@@ -1203,7 +1203,7 @@ class ResultAnalysisParams(BaseModel):
     cluster_label_top_terms: int = Field(
         default=3,
         ge=1,
-        le=10,
+        le=100,
         description="Number of terms used to build the cluster label.",
     )
 
@@ -1255,7 +1255,7 @@ def get_result_analysis_params(
     ] = "local",
     cluster_label_top_terms: Annotated[
         int,
-        Query(description="Number of terms used for cluster labels.", ge=1, le=10),
+        Query(description="Number of terms used for cluster labels.", ge=1, le=100),
     ] = 3,
 ) -> ResultAnalysisParams:
     return ResultAnalysisParams(
