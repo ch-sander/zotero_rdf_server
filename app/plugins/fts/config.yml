@@ -194,7 +194,7 @@ open-search:
                 type: custom
                 char_filter: ["ocr_common_map", "ocr_dehyphenate_linebreak", "ocr_newlines_to_space", "ocr_dehyphenate_linebreak_not", "ocr_punctuation_soften"]
                 tokenizer: standard
-                filter: ["lowercase", "asciifolding"]
+                filter: ["lowercase", "asciifolding", "latin_stop_minimal", "latin_stop_file"] # be mindful if you exclude stopwords from index
               latin_ocr_search:
                 type: custom
                 char_filter: ["ocr_common_map", "ocr_dehyphenate_linebreak", "ocr_newlines_to_space", "ocr_search_extra_map", "ocr_punctuation_soften"]

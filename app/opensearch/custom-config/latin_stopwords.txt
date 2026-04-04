@@ -22,6 +22,9 @@ igitur
 ita
 sic
 ergo
+quia
+etiam
+illius
 
 # pronouns
 hic
