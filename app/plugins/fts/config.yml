@@ -12,8 +12,7 @@ viewer:
   text_root: "/app/exports/kraken/texts"
   image_ext: jpg
   text_ext: txt
-  dashboard_url: http://localhost:5601/app/discover#/doc/fe2dc870-1182-11f1-86a9-eb629f790cf7/zotero-ocr-vec-big?id=
-  default_alias: zotero-ocr-vec-big
+  dashboard_url: http://localhost:5601/app/discover#/doc/fe2dc870-1182-11f1-86a9-eb629f790cf7/ocr-scigma?id=
   base_url: "/plugin/fts/view"
 
 kraken:
@@ -103,7 +102,7 @@ open-search:
     max_retries: 2
   meta:
     owner: "zotero-rdf-server"
-    default_alias: zotero-ocr-vec-big
+    default_alias: ocr-scigma
     environment: "dev"
     # Minimum OpenSearch version this config is designed for
     opensearch_min_version: "2.0.0"
@@ -170,7 +169,7 @@ open-search:
                 stopwords: ["et", "in", "ad", "de", "ut"]
               latin_stop_file:
                 type: stop
-                stopwords_path: latin_stopwords.txt
+                stopwords_path: custom/latin_stopwords.txt
                 lenient: true
               latin_synonyms:
                 type: synonym_graph
@@ -186,7 +185,7 @@ open-search:
                   - "liber, book"
               latin_synonyms_file:
                 type: synonym_graph
-                synonyms_path: latin_synonyms.txt
+                synonyms_path: custom/latin_synonyms.txt
                 expand: true
                 lenient: true
 
@@ -256,7 +255,7 @@ open-search:
   index_templates:
   
     ocr_pages_template_v1:
-      index_patterns: ["zotero-ocr*"]
+      index_patterns: ["ocr*"]
       priority: 200
       composed_of:
         - ct_ocr_pages_v1

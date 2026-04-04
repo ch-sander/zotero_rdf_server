@@ -83,7 +83,8 @@ services:
       - "${OPENSEARCH_TRANSPORT_PORT:-9600}:9600"
 
     volumes:
-      - "${OPENSEARCH_DATA_DIR_HOST:-opensearch}:/usr/share/opensearch/data"
+      - "${OPENSEARCH_DATA_DIR_HOST:-opensearch}/data:/usr/share/opensearch/data"
+      - "${OPENSEARCH_DATA_DIR_HOST:-opensearch}/custom-config:/usr/share/opensearch/config/custom"
       - "${OPENSEARCH_DATA_DIR_HOST:-opensearch}/opensearch.yml:/usr/share/opensearch/config/opensearch.yml:ro"
       - "${OPENSEARCH_DATA_DIR_HOST:-opensearch}/snapshots:/usr/share/opensearch/snapshots"
 
