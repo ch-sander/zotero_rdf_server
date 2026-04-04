@@ -72,9 +72,9 @@ def ocr_url(
         description="Path to YAML config. If omitted: ENV FTS_CONFIG, otherwise ./config.yml",
     ),
 
-    framework: Literal["kraken", "tesseract", "transformer"] = Query(
+    framework: Literal["kraken", "tesseract", "transformer", "none"] = Query(
         "kraken",
-        description="OCR backend: kraken, tesseract, or transformer.",
+        description="OCR backend: kraken, tesseract, or transformer. Choose 'none' to skip ATR/OCR",
     ),
 
     domain: Optional[str] = Query(
@@ -280,9 +280,9 @@ def ingest_route(
     input: Optional[JsonBody] = Body(default=None, examples=[None]),
     targets: str | list = Query(default=None, description="Index or alias"),
     ocr: bool = Query(default=True, description="If true, run OCR pages ingest via pages_fn"),
-    framework: Literal["kraken", "tesseract", "transformer"] = Query(
+    framework: Literal["kraken", "tesseract", "transformer", "none"] = Query(
         default="kraken",
-        description="OCR backend: kraken, tesseract, or transformer.",
+        description="OCR backend: kraken, tesseract, or transformer. Choose 'none' to skip ATR/OCR",
     ),
     vector: bool = Query(default=True, description="If true, vectorizes text with sentence transformer (1024 dimensions)"),
     ingest: bool = Query(default=True, description="If true, ingest into Open Search"),
@@ -526,7 +526,7 @@ def ingest_route(
     
     result = {
         "status": "ok",
-        "run_ids": run_ids,
+        "run_ids": run_ids[:2],
         "targets": list(targets),
         "runs": len(run_ids),
     }    
@@ -536,6 +536,8 @@ def ingest_route(
             json.dump(result, f, ensure_ascii=False, indent=2)
     except Exception as e:
         logger.error(f"Couldn't save file: {e}")
+
+    result.pop('run_ids') # do not retun full data
 
     return result
 
@@ -689,8 +691,8 @@ def format_search_response(
         def is_analysis_col(col: str) -> bool:
             return col.startswith("analysis.") or col.startswith("analysis_")
 
-        default_cols = ["_id", "_score", "source", "page", "snippet", "ingest_ts", "meta_parent", "meta_parent_label"]
-        default_cols_small = ["source", "page", "snippet"]
+        default_cols = ["_id", "_score", "source", "page", "snippet", "ingest_ts", "meta_parent", "label"]
+        default_cols_small = ["source", "page", "snippet", "label"]
 
         analysis_cols = []
         preferred_cols = []
