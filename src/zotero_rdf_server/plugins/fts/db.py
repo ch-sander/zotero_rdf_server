@@ -409,7 +409,7 @@ def index_stream(
     run_id = run.get("run_id") or run.get("error") or "no id/error"
 
     logger.info(
-        "OS index_stream for run %s completed for %s...",
+        "from OCOS index_stream for run %s completed for %s...",
         run_id,
         doc_id,
     )

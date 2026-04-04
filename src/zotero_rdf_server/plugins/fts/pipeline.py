@@ -170,7 +170,7 @@ def ingest_pipeline(
                 if not input:
                     logger.error("ocr=true requires '_url' in each item")
                     continue
-                
+                logger.info(f"Ingest Pipeline from OCR input!")
                 digest = index_stream(
                         input=input,
                         doc_id=doc_id,
@@ -186,6 +186,7 @@ def ingest_pipeline(
                 digest["ingest"] = True
                 runs.append(digest)
             else:
+                logger.info(f"Ingest Pipeline from non-OCR input!")
                 d: Dict[str, Any] = {"ingest_ts": now, "meta": meta}
                 if input is not None:
                     d["input"] = input
