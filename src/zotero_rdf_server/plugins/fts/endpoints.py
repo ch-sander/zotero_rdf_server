@@ -2,7 +2,7 @@ from __future__ import annotations
 from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Body, Depends
 from fastapi.responses import StreamingResponse, FileResponse, Response, JSONResponse, PlainTextResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from typing import Literal, Any, Dict, Iterator, List, Optional, Union
+from typing import Literal, Any, Dict, Iterator, List, Optional, Union, Tuple
 from pathlib import Path
 import json, io, html
 from pydantic import BaseModel, Field
@@ -751,7 +751,33 @@ def format_search_response(
                 )
             },
         )
+    
+    if output_format == "csv-analysis":
+        from .search import collect_columns, add_vector_columns
+        normalized = normalize_hits(
+            resp,
+            flatten_dict=["meta"],
+            keep_dict=[],
+            keep_highlight=False,
+            make_snippet=False,
+        )
 
+        rows = [add_vector_columns(r) for r in normalized["hits"]]
+        exclude = {"text", "highlight"}
+        cols = [c for c in collect_columns(rows, preferred=["_id", "_score", "ingest_ts", "source", "page"]) if c not in exclude]
+        content = render_csv(rows, cols)
+        stream = io.BytesIO(content.encode("utf-8"))
+
+        return StreamingResponse(
+            stream,
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="{_default_filename(filename or "search", "csv")}"'
+                )
+            },
+        )
+    
     if output_format in ("md", "markdown"):
         header = render_markdown_query_header(context_query) if include_context else ""
 
@@ -874,6 +900,7 @@ from fastapi import Depends
 class OutputFormat(str, Enum):
     json = "json"
     csv = "csv"
+    csv_analysis = "csv-analysis"
     markdown = "markdown"
     html = "html"
 
@@ -1181,6 +1208,29 @@ class ResultAnalysisParams(BaseModel):
         le=5000,
         description="Maximum number of tokens kept per document after tokenization. 0 means unlimited.",
     )
+    analyze_use_char_ngrams: bool = Field(
+        default=True,
+        description="Use character n-grams instead of word tokens for TF-IDF.",
+    )
+    analyze_char_ngram_range: Tuple[int, int] = Field(
+        default=(3, 5),
+        description="Character n-gram range (min_n, max_n).",
+    )
+    analyze_tfidf_max_features: Optional[int] = Field(
+        default=None,
+        description="Maximum number of TF-IDF features.",
+    )
+    analyze_tfidf_min_df: int = Field(
+        default=1,
+        ge=1,
+        description="Minimum document frequency for TF-IDF.",
+    )
+    analyze_tfidf_max_df: float = Field(
+        default=1.0,
+        gt=0.0,
+        le=1.0,
+        description="Maximum document frequency for TF-IDF.",
+    )
 
     cluster_enabled: bool = Field(
         default=False,
@@ -1199,6 +1249,16 @@ class ResultAnalysisParams(BaseModel):
     cluster_label_source: Literal["local", "global"] = Field(
         default="local",
         description="Which analysis branch to use for cluster labels.",
+    )
+    cluster_use_svd: bool = Field(
+        default=True,
+        description="Apply TruncatedSVD before clustering.",
+    )
+    cluster_svd_components: int = Field(
+        default=100,
+        ge=1,
+        le=1000,
+        description="Number of SVD components.",
     )
     cluster_label_top_terms: int = Field(
         default=3,
@@ -1236,6 +1296,30 @@ def get_result_analysis_params(
         int,
         Query(description="Maximum number of tokens per document. 0 means unlimited.", ge=0, le=5000),
     ] = 0,
+    analyze_use_char_ngrams: Annotated[
+        bool,
+        Query(description="Use character n-grams instead of word tokens."),
+    ] = True,
+    analyze_char_ngram_min: Annotated[
+        int,
+        Query(description="Min n for char n-grams.", ge=1, le=10),
+    ] = 3,
+    analyze_char_ngram_max: Annotated[
+        int,
+        Query(description="Max n for char n-grams.", ge=1, le=10),
+    ] = 5,
+    analyze_tfidf_max_features: Annotated[
+        Optional[int],
+        Query(description="Max TF-IDF features.", ge=1),
+    ] = None,
+    analyze_tfidf_min_df: Annotated[
+        int,
+        Query(description="Min document frequency.", ge=1),
+    ] = 1,
+    analyze_tfidf_max_df: Annotated[
+        float,
+        Query(description="Max document frequency.", gt=0.0, le=1.0),
+    ] = 1.0,
 
     cluster_enabled: Annotated[
         bool,
@@ -1253,6 +1337,14 @@ def get_result_analysis_params(
         Literal["local", "global"],
         Query(description="Which analysis branch to use for cluster labels."),
     ] = "local",
+    cluster_use_svd: Annotated[
+        bool,
+        Query(description="Apply SVD before clustering."),
+    ] = True,
+    cluster_svd_components: Annotated[
+        int,
+        Query(description="Number of SVD components.", ge=1, le=1000),
+    ] = 100,
     cluster_label_top_terms: Annotated[
         int,
         Query(description="Number of terms used for cluster labels.", ge=1, le=100),
@@ -1265,11 +1357,18 @@ def get_result_analysis_params(
         analyze_top_terms=analyze_top_terms,
         analyze_min_token_length=analyze_min_token_length,
         analyze_max_tokens_per_doc=analyze_max_tokens_per_doc,
+        analyze_use_char_ngrams=analyze_use_char_ngrams,
+        analyze_char_ngram_range=(analyze_char_ngram_min, analyze_char_ngram_max),
+        analyze_tfidf_max_features=analyze_tfidf_max_features,
+        analyze_tfidf_min_df=analyze_tfidf_min_df,
+        analyze_tfidf_max_df=analyze_tfidf_max_df,
         cluster_enabled=cluster_enabled,
         cluster_count=cluster_count,
         cluster_source=cluster_source,
         cluster_label_source=cluster_label_source,
         cluster_label_top_terms=cluster_label_top_terms,
+        cluster_use_svd=cluster_use_svd,
+        cluster_svd_components=cluster_svd_components,        
     )
 
 @open_router.get(
@@ -1940,28 +2039,3 @@ def view_page(os_doc_id: str):
         discover_url=discover_doc_url(original_os_doc_id),
     )
     return HTMLResponse(html)
-
-
-# @open_router.get("/explorer",    
-#     summary="Search Results and Clusters",
-#     description="Query the index, cluster and explore results",
-#     tags=["Viewer", "Search"])
-# def explorer():
-#     from .explorer import write_analysis_search_explorer_html
-#     from zotero_rdf_server.main import app
-#     path = write_analysis_search_explorer_html(
-#         output_path="/tmp/analysis_search_explorer.html",
-#         openapi_spec=app.openapi(),
-#         endpoint_path="/plugin/fts/search/terms",
-#         api_base_url="",
-#         initial_hits=None,
-#         title="FTS Analysis Explorer",
-#     )
-#     return FileResponse(path, media_type="text/html")
-
-# from zotero_rdf_server.main import app
-# app.mount("/plugin/fts/query", StaticFiles(directory="/app/plugins/fts/query"), name="query")
-
-# @open_router.get("/analysis-explorer")
-# def analysis_explorer():
-#     return RedirectResponse(url="/plugin/fts/query/index.html")
