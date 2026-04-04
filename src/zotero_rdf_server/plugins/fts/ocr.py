@@ -895,7 +895,7 @@ def iter_pages(
     def _log_and_yield(page: PageItem, total:int=1):
         if page.kind=="text":
             preview = " ".join((page.data or "").split())[:60]
-            logger.debug(f"{doc_id}: {page.index}/{total}: {preview}")
+            logger.debug(f"\n{doc_id}: {page.index}/{total}: {preview}")
         return page
 
     if file_formats and not kind in file_formats:
@@ -1152,15 +1152,18 @@ def page_to_text(
             config=tesseract_config,
             binarize=binarize,
         )
-
-    return kraken_image_to_text(
-        item.data,
-        config_path=config_path,
-        domain=domain,
-        model_name=model_name,
-        segmenter=segmenter,
-        binarize=binarize,
-    )
+    
+    elif framework == "kraken":
+        return kraken_image_to_text(
+            item.data,
+            config_path=config_path,
+            domain=domain,
+            model_name=model_name,
+            segmenter=segmenter,
+            binarize=binarize,
+        )    
+    else:
+        return ""
 
 def iter_text_pages(
     input: str,
@@ -1169,7 +1172,7 @@ def iter_text_pages(
     iter_kwargs: Dict[str, Any],
     page_to_text_kwargs: Dict[str, Any],
     text_image_file_kwargs: Optional[Dict[str, Any]] = None,
-    framework: Literal["kraken", "tesseract", "transformer"] = "kraken",
+    framework: Literal["kraken", "tesseract", "transformer", "none"] = "kraken",
 ) -> Iterator[Tuple[int, str]]:
     
     iter_kwargs = dict(iter_kwargs or {})
@@ -1179,7 +1182,9 @@ def iter_text_pages(
     )
     cfg = text_image_file_kwargs or {}
     use_transformer = framework == "transformer"
+    no_ocr = framework == "none"
 
+    
     if use_transformer:
         try:
             logger.info("### Using Tranformer from medieval_ocr_pipeline ###")
@@ -1345,15 +1350,26 @@ def iter_text_pages(
             pass
 
     def _log_and_yield(page_no: int, txt: str, total: int=1):
-        preview = " ".join((txt or "").split())[:60]
-        logger.info(f"{_doc_id} {page_no}/{total}: {framework.upper()} result: {preview}...")
+        preview = (
+            (t[:60] + "..." if len(t) > 60 else t)
+            if (t := " ".join((txt or "").split()))
+            else "[no text]"
+        )
+        logger.info(f"\n{_doc_id} {page_no}/{total}: {framework.upper()} result: {preview}")
         return page_no, txt
     
     cached_page_set = _cached_pages()
 
     logger.info(f"{_doc_id}: Found {len(set(cached_page_set['text']))} text files and {len(set(cached_page_set['image']))} image files")
 
-
+    if no_ocr:
+        logger.info(f"{_doc_id}: framework='none' -> cache only")
+        if txt_dir is not None and any(txt_dir.glob(f"*.{txt_ext}")):
+            logger.info(f"{_doc_id}: Using {len(set(cached_page_set['text']))} cached text files in {txt_dir}")
+            yield from _yield_from_cache()
+        else:
+            logger.info(f"{_doc_id}: No cached text files found")
+        return
 
     # If text file found and not overwrite, use as result and skip download + OCR
     if (
@@ -1403,7 +1419,7 @@ def iter_text_pages(
                     else:
                         txt = page_to_text(
                             item,
-                            framework=framework if framework in {"kraken", "tesseract"} else "kraken",
+                            framework=framework if framework in {"kraken", "tesseract"} else "none",
                             **page_to_text_kwargs
                         )
                 except Exception as e:
@@ -1481,7 +1497,7 @@ def iter_text_pages(
             else:
                 txt = page_to_text(
                     item,
-                    framework=framework if framework in {"kraken", "tesseract"} else "kraken",
+                    framework=framework if framework in {"kraken", "tesseract"} else "none",
                     **page_to_text_kwargs
                 )
 
@@ -1506,3 +1522,5 @@ def iter_text_pages(
                         continue
 
         yield _log_and_yield(page_no, txt, total)
+
+# end
