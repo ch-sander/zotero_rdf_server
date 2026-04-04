@@ -980,8 +980,9 @@
       params.set(name, value);
     }
 
-    params.set("perform_analysis", "true");
-    params.set("cluster_enabled", "true");
+    // Set per Defaulta
+    // params.set("perform_analysis", "true");
+    // params.set("cluster_enabled", "true");
     params.set("format", "json");
 
     if (!params.get("analysis_mode")) params.set("analysis_mode", "both");

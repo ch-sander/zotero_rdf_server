@@ -1235,7 +1235,7 @@ class ResultAnalysisParams(BaseModel):
     )
 
     cluster_enabled: bool = Field(
-        default=False,
+        default=True,
         description="If true, cluster hits based on analysis vectors.",
     )
     cluster_count: int = Field(
