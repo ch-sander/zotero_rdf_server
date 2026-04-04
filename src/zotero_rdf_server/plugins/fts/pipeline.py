@@ -89,16 +89,18 @@ def ingest_pipeline(
         if not ingest:
             results: List[Dict[str, Any]] = []
             for i, obj in enumerate(items, start=1):
-                logger.info(f"[{i}/{total}] Loading {obj.get('_id')}")                
+                              
                 stats = {"pages_emitted": 0}
                 payload = dict(obj)
                 doc_id = payload.pop("_id", None)
                 input_ = payload.pop("_input", None) or payload.pop("_url", None)
+                label = payload.pop("_label", "no label")
                 meta = _meta_flat_strings(payload)
-
+                logger.info(f"\n\n[{i}/{total}] Loading {obj.get('_id')}\n{label}\n\n")  
                 if not input_:
                     results.append({
                         "doc_id": doc_id,
+                        "label": label,
                         "ocr": True,
                         "vector": vector,
                         "ingest": False,
@@ -123,6 +125,7 @@ def ingest_pipeline(
                 except Exception as e:
                     results.append({
                         "doc_id": doc_id,
+                        "label": label,
                         "input": input_,
                         "meta": meta,
                         "ocr": True,
@@ -134,6 +137,7 @@ def ingest_pipeline(
 
                 results.append({
                     "doc_id": doc_id,
+                    "label": label,
                     "input": input_,
                     "meta": meta,
                     "ocr": True,
@@ -152,8 +156,7 @@ def ingest_pipeline(
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc).isoformat()        
 
-        for i, obj in enumerate(items, start=1):
-            logger.info(f"[{i}/{total}] Loading {obj.get('_id')}") 
+        for i, obj in enumerate(items, start=1):            
             stats = {"pages_emitted": 0}
             payload = dict(obj)
             logger.debug(f"Ingest Pipeline payload: {payload}")
@@ -162,18 +165,19 @@ def ingest_pipeline(
             # iri = payload.pop("_iri", None)
             text = payload.pop("_text", "")
             sequence = payload.pop("_idx", 1)
-
+            label = payload.pop("_label", "no label")
             meta = _meta_flat_strings(payload)
-
+            logger.info(f"\n\n[{i}/{total}] Loading {obj.get('_id')}\n{label}\n\n")  
             logger.debug(f"Ingest Pipeline index_stream with OCR: {ocr}")
             if ocr:
                 if not input:
-                    logger.error("ocr=true requires '_url' in each item")
+                    logger.error("ocr=true requires '_input' in each item")
                     continue
                 logger.info(f"Ingest Pipeline from OCR input!")
                 digest = index_stream(
                         input=input,
                         doc_id=doc_id,
+                        label=label,
                         url_to_text_pages_fn=make_pages_fn(doc_id or "", stats),
                         targets=targets,
                         meta=meta,
@@ -196,6 +200,8 @@ def ingest_pipeline(
                     d["page"] = sequence
                 if text != "":
                     d["text"] = text
+                if label != "":
+                    d["label"] = label
                 if vector:
                     vector_doc = embed(clean_ocr(text))
                     d["vector"] = vector_doc

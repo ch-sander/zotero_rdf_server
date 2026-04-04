@@ -321,9 +321,12 @@
       const cluster = getCluster(hit);
       const local = getLocal(hit);
       const global = getGlobal(hit);
+      const source = getSource(hit);
 
       const hitId = safeStr(hit && hit._id ? hit._id : `hit-${idx}`);
       const score = hit && hit._score !== undefined ? hit._score : 0;
+      const label = safeStr(source.label || "");
+
       const title = pickTitle(hit);
       const snippet = pickSnippet(hit);
 
@@ -339,10 +342,11 @@
         raw: hit,
         idx,
         id: hitId,
+        label,
         score,
         title,
         snippet,
-        source: getSource(hit),
+        source,
         cluster,
         local,
         global,
@@ -631,7 +635,9 @@
             `<div class="doc-card-header">` +
               `<div class="doc-card-title">${escapeHtml(item.title)}</div>` +
               `<div class="doc-card-meta">` +
-                `<span><strong>${escapeHtml(UI_TEXT.id || "ID")}:</strong> ${escapeHtml(item.id)}</span>` +
+                `<span><strong>${escapeHtml(UI_TEXT.id || "ID")}:</strong> ${escapeHtml(item.id)}${
+                  item.label ? ` · <strong>${escapeHtml(UI_TEXT.label || "Label")}:</strong> ${escapeHtml(item.label)}` : ""
+                }</span>` +
                 `<span><strong>${escapeHtml(UI_TEXT.score || "score")}:</strong> ${escapeHtml(fmtScore(item.score))}</span>` +
                 `<span><strong>${escapeHtml(UI_TEXT.cluster || "Cluster")}:</strong> ${escapeHtml(item.clusterLabel)}</span>` +
               `</div>` +

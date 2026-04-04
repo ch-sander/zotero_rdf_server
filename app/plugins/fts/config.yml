@@ -205,6 +205,7 @@ open-search:
           dynamic: false
           properties:
             source: { type: keyword }
+            label: { type: keyword }
             doc_id: { type: keyword }
             page: { type: integer }
             ingest_ts: { type: date }

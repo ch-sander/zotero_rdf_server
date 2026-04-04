@@ -564,15 +564,14 @@ def render_html(
     parts.append(f"<p>Total documents shown: <strong>{len(rows)}</strong></p>")
 
     for idx, row in enumerate(rows, start=1):
-        doc_id = str(row.get("_id"))
+        doc_id = str(row.get("_id") or "").strip()
+        label = str(row.get("label") or "").strip()
 
         parts.append("<hr>")
-        if doc_id:
-            if verbose:
-                doc_value = f'<a href="{BASE_URL}/{doc_id}" target="_blank">{doc_id}</a>'
-            else:
-                doc_value = doc_id
 
+        if doc_id or label:
+            d_text = f"{label} ({doc_id})" if label and doc_id else (label or doc_id)
+            doc_value = f'<a href="{BASE_URL}/{doc_id}" target="_blank">{d_text}</a>' if verbose and doc_id else d_text
             parts.append(f"<h2>Document {idx} ({doc_value})</h2>")
         else:
             parts.append(f"<h2>Document {idx}</h2>")
@@ -1525,7 +1524,7 @@ def cluster_hits_by_analysis(
                 random_state=random_state,
             )
             clustering_matrix = svd.fit_transform(matrix)
-            logger.info(clustering_matrix)
+            # logger.info(clustering_matrix)
 
             if normalize_vectors:
                 clustering_matrix = sk_normalize(
@@ -1533,8 +1532,8 @@ def cluster_hits_by_analysis(
                     norm="l2",
                     copy=False,
                 )
-                # logger.info(clustering_matrix)
-
+    
+    logger.debug(clustering_matrix)
     kmeans = KMeans(
         n_clusters=effective_k,
         random_state=random_state,

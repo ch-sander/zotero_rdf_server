@@ -177,8 +177,9 @@ def page_docs(
     targets: Iterable[str],
     input: str,
     doc_id: str | None,
+    label: str | None,
     pages: Iterator[Tuple[int, str]],
-    meta: dict, 
+    meta: dict = {}, 
     vector: bool = False
 ) -> Iterator[Dict[str, Any]]:
     now = datetime.now(timezone.utc).isoformat()
@@ -187,6 +188,7 @@ def page_docs(
         from .helpers import clean_ocr        
 
     for sequence, text in pages:
+        label_s = f"{label}, p. {sequence}"
         vector_doc = None
         if vector:
             vector_doc = embed(clean_ocr(text))
@@ -194,6 +196,7 @@ def page_docs(
             source = {
                 "source": input,
                 "doc_id": doc_id,
+                "label": label_s,
                 "page": sequence,
                 "text": text,
                 "ingest_ts": now,
@@ -339,6 +342,7 @@ def index_stream(
     config_path: str | None = None,
     input: str | None = None,
     doc_id: str | None = None,
+    label: str | None = None,
     url_to_text_pages_fn: PagesFn | None = None,
     targets: str | Iterable[str],
     ocr_kwargs: dict | None = None,
@@ -383,6 +387,7 @@ def index_stream(
             targets=targets_list,
             input=input,
             doc_id=doc_id,
+            label=label,
             pages=pages_iter,
             meta=meta or {},
             vector=vector
