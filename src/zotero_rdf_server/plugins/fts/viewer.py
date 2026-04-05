@@ -894,24 +894,28 @@ def render_page(
 
     if editable and save_url:
         text_html = f"""
-        {ocr_controls_html}
-        <form method="post" action="{safe_save_url}">
-          <textarea id="page-text" name="text" class="editor">{safe_editor_text}</textarea>
-          <div class="editor-actions">
-            <button type="submit">Save</button>
-          </div>
-        </form>
+        <div class="text-content">
+          {ocr_controls_html}
+          <form method="post" action="{safe_save_url}" class="text-form">
+            <textarea id="page-text" name="text" class="editor">{safe_editor_text}</textarea>
+            <div class="editor-actions">
+              <button type="submit">Save</button>
+            </div>
+          </form>
+        </div>
         """
     else:
         text_html = f"""
-        {ocr_controls_html}
-        <div id="page-text-display" class="text">{safe_display_text}</div>
+        <div class="text-content">
+          {ocr_controls_html}
+          <div id="page-text-display" class="text">{safe_display_text}</div>
+        </div>
         """
 
     if image_url:
         viewer_html = '<div id="osd"></div>'
     else:
-        viewer_html = '<div class="text-panel">No image available.</div>'
+        viewer_html = '<div class="viewer-empty">No image available.</div>'
 
     osd_config = dict(OSD_CONFIG or {})
     osd_script_src = osd_config.pop(
@@ -930,42 +934,44 @@ def render_page(
     viewer_config_json = (json.dumps(viewer_config))
     safe_osd_script_src = escape(osd_script_src)
 
+    viewer_open_attr = " open" if image_url else ""
+
     return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{safe_os_doc_id}:{safe_page}</title>
-  <link rel="stylesheet" href="{static_url}/viewer.css">
-  <script src="{safe_osd_script_src}"></script>
-  <script id="viewer-config" type="application/json">{viewer_config_json}</script>
-  <script src="{static_url}/viewer.js" defer></script>
-</head>
-<body>
-  <div id="viewer-root">
-    <header>
-      <div><strong>{safe_os_doc_id}:{safe_page}</strong></div>
-      <nav>
-        {nav_html}
-        {"<label for='page-select'>Page</label>" if pages else ""}
-        {"<select id='page-select'>" + options_html + "</select>" if pages else ""}
-        {discover_html}
-      </nav>
-    </header>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>{safe_os_doc_id}:{safe_page}</title>
+      <link rel="stylesheet" href="{static_url}/viewer.css">
+      <script src="{safe_osd_script_src}"></script>
+      <script id="viewer-config" type="application/json">{viewer_config_json}</script>
+      <script src="{static_url}/viewer.js" defer></script>
+    </head>
+    <body>
+      <div id="viewer-root">
+        <header>
+          <div><strong>{safe_os_doc_id}:{safe_page}</strong></div>
+          <nav>
+            {nav_html}
+            {"<label for='page-select'>Page</label>" if pages else ""}
+            {"<select id='page-select'>" + options_html + "</select>" if pages else ""}
+            {discover_html}
+          </nav>
+        </header>
 
-    <div class="layout">
-      <details class="panel viewer-panel" open>
-        <summary>Viewer</summary>
-        {viewer_html}
-      </details>
+        <div class="layout">
+          <details class="panel viewer-panel"{viewer_open_attr}>
+            <summary>Viewer</summary>
+            {viewer_html}
+          </details>
 
-      <details class="panel text-panel" open>
-        <summary>Text</summary>
-        {text_html}
-      </details>
-    </div>
-  </div>
-</body>
-</html>
-"""
+          <details class="panel text-panel" open>
+            <summary>Text</summary>
+            {text_html}
+          </details>
+        </div>
+      </div>
+    </body>
+    </html>
+    """
 #  end
