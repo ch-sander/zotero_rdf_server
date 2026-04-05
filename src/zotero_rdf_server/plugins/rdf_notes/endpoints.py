@@ -64,7 +64,7 @@ async def znotes2rdf(
                         store.clear_graph(target_graph)
                     store.bulk_extend(input) # .quads_for_pattern(None, None, None, target_graph))
                 else:
-                    EXPORT_DIRECTORY.mkdir(parents=True,exist_ok=True)
+                    # EXPORT_DIRECTORY.mkdir(parents=True,exist_ok=True)
                     rdf_format = ensure_rdf_format(format=output_format) # RdfFormat.from_extension(output_format.lower())
                     if rdf_format is None:
                         raise ValueError(f"Unsupported RDF format: {output_format}")

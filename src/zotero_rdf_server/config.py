@@ -69,17 +69,19 @@ def load_config(source):
             logger.error(f"Could not inject .env into {source}: {e}")
     return config
 
-def safe_path(path_str: str | Path | None, base_dir: Path | str = WORKDIR) -> Path:
+def safe_path(path_str: str | Path | None, base_dir: Path | str = WORKDIR, create: bool = True) -> Path | None:
     if path_str:
-        p = Path(path_str) # if not isinstance(path_str, Path) else Path(path_str)
-        if base_dir:
-            base_dir = str(base_dir) if not isinstance(base_dir, Path) else Path(base_dir)
-        else:
-            base_dir = Path().resolve()
-            
-        return p if p.is_absolute() else (base_dir / p).resolve()
-    else:
-        return None
+        p = Path(path_str)
+        
+        base_dir = Path(base_dir) if base_dir else Path().resolve()
+        result = p if p.is_absolute() else (base_dir / p).resolve()
+        
+        if create:
+            result.mkdir(parents=True, exist_ok=True)
+        
+        return result
+    logger.warning(f"Path not valid: {path_str} in {base_dir}")
+    return None
 
 config_path = os.getenv("CONFIG_FILE", "config.yaml")
 zotero_config_path = os.getenv("ZOTERO_CONFIG_FILE", "zotero.yaml")

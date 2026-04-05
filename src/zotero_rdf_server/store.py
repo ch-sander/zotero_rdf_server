@@ -31,7 +31,7 @@ def initialize_store():
         store = Store()
         logger.warning(f"Store re-opened in memory. {len(store)} triples.")    
     elif STORE_MODE == "directory_rw":
-        STORE_DIRECTORY.mkdir(parents=True,exist_ok=True)
+        # STORE_DIRECTORY.mkdir(parents=True,exist_ok=True)
         try:
             store = Store(path=STORE_DIRECTORY)
         except Exception as e:
@@ -109,8 +109,8 @@ def refresh_store(force_reload:bool = False, remove_store:bool=True):
                 else:
                     if STORE_DIRECTORY.exists() and remove_store:
                         clear_directory(STORE_DIRECTORY)
-                    else:
-                        STORE_DIRECTORY.mkdir(parents=True,exist_ok=True)
+                    # else:
+                    #     STORE_DIRECTORY.mkdir(parents=True,exist_ok=True)
                     try:
                         store = Store(path=STORE_DIRECTORY)
                     except Exception as e:
