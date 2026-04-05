@@ -65,8 +65,8 @@ def include_plugins(app: FastAPI, plugins_pkg: str = "zotero_rdf_server.plugins"
                 logger.warning("Plugin %s has endpoints.py but no routers", plugin_name)
                 continue
 
+            prefix = getattr(mod, "PLUGIN_PREFIX", f"{base_prefix}/{plugin_name}")
             if prouter is not None:
-                prefix = getattr(mod, "PLUGIN_PREFIX", f"{base_prefix}/{plugin_name}")
                 app.include_router(prouter, prefix=prefix,
                                     tags=["Plugin", display_name], dependencies=[Depends(verify)])
                 
