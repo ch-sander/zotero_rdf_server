@@ -1,7 +1,10 @@
 # version: "3.8"
 services:
   zotero-rdf:
-    build: .
+    build:
+      context: .
+      args:
+        WITH_TESSERACT: ${WITH_TESSERACT:-false}
     container_name: ${ZOTERO_RDF_SERVER_CONTAINER}
     working_dir: /src
     command: uvicorn zotero_rdf_server.main:app --host 0.0.0.0 --port 8000
@@ -18,7 +21,10 @@ services:
     restart: unless-stopped
 
   zotero-rdf-workers:
-    build: .
+    build:
+      context: .
+      args:
+        WITH_TESSERACT: ${WITH_TESSERACT:-false}
     container_name: ${ZOTERO_RDF_WORKERS_CONTAINER:-zotero-rdf-workers}
     working_dir: /src
     profiles:
