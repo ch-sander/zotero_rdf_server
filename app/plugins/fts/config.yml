@@ -18,7 +18,7 @@ viewer:
   OpenSeadragon:
     src: "https://cdn.jsdelivr.net/npm/openseadragon@5.0.1/build/openseadragon/openseadragon.min.js"
     prefixUrl: "https://cdn.jsdelivr.net/npm/openseadragon@5.0.1/build/openseadragon/images/"
-    showNavigator: true
+    showNavigator: false
     maxZoomPixelRatio: 2
     visibilityRatio: 1
     constrainDuringPan: true

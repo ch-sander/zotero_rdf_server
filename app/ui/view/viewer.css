@@ -1,13 +1,27 @@
+:root {
+  --accent: #4a86e8;
+  --accent-2: #ff9900;
+  --bg: #e3e3e3;
+  --panel-bg: #f7f7f7;
+  --header-bg: #ffffff;
+  --border: #7a7a7a;
+  --border-light: #ffffff;
+  --text: #111111;
+}
+
 body {
-  font-family: sans-serif;
+  font-family: "MS Sans Serif", Tahoma, sans-serif;
   margin: 0;
+  background: var(--bg);
+  color: var(--text);
 }
 
 header {
   position: sticky;
   top: 0;
-  background: white;
-  border-bottom: 1px solid #ccc;
+  background: var(--header-bg);
+  border-bottom: 2px solid var(--border);
+  box-shadow: inset 1px 1px 0 var(--border-light);
   padding: 0.75rem 1rem;
   z-index: 10;
 }
@@ -28,9 +42,11 @@ nav {
 }
 
 .panel {
-  border: 1px solid #ccc;
-  background: #fafafa;
+  border: 2px solid;
+  border-color: var(--border-light) var(--border) var(--border) var(--border-light);
+  background: var(--panel-bg);
   min-height: 75vh;
+  box-shadow: inset 1px 1px 0 #fff;
 }
 
 .viewer-panel {
@@ -41,25 +57,41 @@ nav {
   width: 100%;
   height: 80vh;
   background: #111;
+  border-bottom: 3px solid var(--accent);
 }
 
 .text-panel {
   padding: 1rem;
+  border-top: 4px solid var(--accent-2);
 }
 
 .text {
   white-space: pre-wrap;
+  /* white-space: pre; */
   overflow-wrap: anywhere;
-  font-family: monospace;
+  font-family: "Courier New", monospace;
+  width: 100%;
+  min-height: 70vh;
+  max-height: 70vh;
+  box-sizing: border-box;
+  background: #fffdf7;
+  border: 2px inset #cfcfcf;
+  color: var(--text);
+  overflow: auto;
+  resize: both;
 }
 
 .editor {
   width: 100%;
   min-height: 70vh;
+  max-height: 70vh;
   box-sizing: border-box;
-  font-family: monospace;
+  font-family: "Courier New", monospace;
   font-size: 0.95rem;
   white-space: pre-wrap;
+  background: #fffdf7;
+  border: 2px inset #cfcfcf;
+  color: var(--text);
 }
 
 .editor-actions {
@@ -74,6 +106,8 @@ nav {
   align-items: center;
   flex-wrap: wrap;
   margin-bottom: 0.75rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 2px dotted var(--accent-2);
 }
 
 .ocr-status {
@@ -86,6 +120,33 @@ a,
 button,
 textarea {
   font: inherit;
+}
+
+button,
+select,
+a {
+  background: #efefef;
+  color: #000;
+  border: 2px solid;
+  border-color: var(--border-light) var(--border) var(--border) var(--border-light);
+  padding: 0.2rem 0.5rem;
+  text-decoration: none;
+}
+
+button:hover,
+a:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+button:active,
+a:active {
+  border-color: var(--border) var(--border-light) var(--border-light) var(--border);
+}
+
+::selection {
+  background: var(--accent-2);
+  color: #000;
 }
 
 @media (max-width: 900px) {
