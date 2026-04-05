@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Depends, status
-from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse, FileResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import secrets
 from typing import Any, Literal as TypingLiteral
@@ -91,7 +91,7 @@ async def export_graph(
             temp_store.bulk_extend(source_store.quads_for_pattern(None, None, None, graph))
         return temp_store
     
-    EXPORT_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    # EXPORT_DIRECTORY.mkdir(parents=True, exist_ok=True)
 
     rdf_format = ensure_rdf_format(format=format)
     if rdf_format is None:
@@ -232,6 +232,18 @@ async def optimize_store():
     store.optimize()
     return {"success":"Store optimized"}
 
+@open_router.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    try:
+        FAVICON = STATIC_UI_DIRECTORY / "favicon.ico"
+        if not FAVICON.exists():
+            from PIL import Image
+            img = Image.new("RGB", (64, 64), "#4a86e8")
+            img.save(FAVICON)
+        return FileResponse(FAVICON)
+    except:
+        return Response(status_code=204)
+    
 
 @open_router.get("/libs", summary="List of all libraries", description="Returns all available libraries with configuration.", tags=["Admin"])
 async def get_libs():
@@ -644,7 +656,7 @@ async def get_csv(
     from collections import defaultdict
     import csv
 
-    EXPORT_DIRECTORY.mkdir(parents=True,exist_ok=True)
+    # EXPORT_DIRECTORY.mkdir(parents=True,exist_ok=True)
     output_file = EXPORT_DIRECTORY / "export.csv"
     delimiter = " | "
 
