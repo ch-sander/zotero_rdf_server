@@ -934,6 +934,7 @@ def render_page(
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{safe_os_doc_id}:{safe_page}</title>
   <link rel="stylesheet" href="{static_url}/viewer.css">
   <script src="{safe_osd_script_src}"></script>
@@ -953,13 +954,15 @@ def render_page(
     </header>
 
     <div class="layout">
-      <div class="panel viewer-panel">
+      <details class="panel viewer-panel" open>
+        <summary>Viewer</summary>
         {viewer_html}
-      </div>
+      </details>
 
-      <div class="panel text-panel">
+      <details class="panel text-panel" open>
+        <summary>Text</summary>
         {text_html}
-      </div>
+      </details>
     </div>
   </div>
 </body>
