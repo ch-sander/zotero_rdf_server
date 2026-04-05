@@ -774,8 +774,10 @@ def fetch_pil_image(
         try:
             r = requests.get(url, timeout=timeout, headers=APP_USER)
             r.raise_for_status()
-            return Image.open(BytesIO(r.content))
-
+            # return Image.open(BytesIO(r.content))
+            with Image.open(BytesIO(r.content)) as img:
+                return img.convert("RGB").copy()
+            
         except Exception as e:
             last_exc = e
             status = getattr(getattr(e, "response", None), "status_code", None)
@@ -1044,7 +1046,7 @@ def ink_ratio(pil_img):
     ink = (a < thr).mean()
     return float(ink), float(bg), float(thr)
 
-def kraken_image_to_text(
+def kraken_image_to_text_legacy(
     im: Image.Image,
     *,
     config_path: str | None = None,
@@ -1123,6 +1125,94 @@ def kraken_image_to_text(
         logger.exception("Kraken OCR failed")
         return ""
 
+def kraken_image_to_text(
+    im: Image.Image,
+    *,
+    config_path: str | None = None,
+    domain: str | None = None,
+    model_name: str | None = None,
+    segmenter: str | None = None,
+    binarize: bool = False,
+    ink_ratio_range: list | None = None,  # [0, 1]
+    seg_blur_radius: float | None = None,
+) -> str:
+    try:
+        if ink_ratio_range:
+            r, bg, thr = ink_ratio(im)
+            logger.debug(f"Found page (blank), r={r:.5f}, bg={bg:.1f}, thr={thr:.1f}")
+            if r < ink_ratio_range[0]:
+                logger.warning(
+                    f"Skipping page (blank), r={r:.5f}, bg={bg:.1f}, thr={thr:.1f}"
+                )
+                return ""
+
+            if r > ink_ratio_range[1]:
+                logger.warning(
+                    f"Skipping page (too dark/ornament), r={r:.3f}, bg={bg:.1f}"
+                )
+                return ""
+
+        ensure_import("kraken")
+        try:
+            from kraken import binarization, blla, rpred
+            from kraken.lib import models
+            from PIL import ImageFilter
+            import warnings
+
+            warnings.filterwarnings(
+                "ignore",
+                message="Using legacy polygon extractor",
+                module="kraken.rpred",
+            )
+        except Exception:
+            logger.exception("Kraken import failed")
+            return ""
+
+        cfg_path = resolve_config_path(config_path)
+        dom = resolve_domain(config_path=cfg_path, domain=domain)
+        recog_name = resolve_recognition_model_name(
+            config_path=cfg_path,
+            domain=dom,
+            model_name=model_name,
+        )
+        seg_name = resolve_segmentation_name(config_path=cfg_path, segmenter=segmenter)
+
+        seg_key = (str(cfg_path), str(seg_name))
+        seg_model = _KRAKEN_SEG.get(seg_key)
+        if seg_model is None:
+            seg_model = load_segmentation_model(config_path=cfg_path, segmenter=segmenter)
+            _KRAKEN_SEG[seg_key] = seg_model
+
+        logger.debug(f"Kraken page recognition with {recog_name}...")
+
+        work = binarization.nlbin(im) if binarize else im
+
+        seg_work = work.copy()
+
+        if seg_blur_radius and seg_blur_radius > 0:
+            seg_work = seg_work.filter(ImageFilter.GaussianBlur(radius=seg_blur_radius))
+            logger.info(f"Applied Gaussian blur to segmentation image: radius={seg_blur_radius}")
+
+        bounds = blla.segment(seg_work, model=seg_model)
+
+        model_path = str(resolve_kraken_model_path(config_path=cfg_path, model_name=recog_name))
+        net_key = (str(cfg_path), model_path)
+        net = _KRAKEN_NET.get(net_key)
+        if net is None:
+            net = models.load_any(model_path)
+            _KRAKEN_NET[net_key] = net
+
+        preds = rpred.rpred(network=net, im=work, bounds=bounds)
+        ocr_page = "\n".join(p.prediction for p in preds)
+
+        logger.debug(ocr_page)
+        return ocr_page
+
+    except Exception:
+        logger.exception("Kraken OCR failed")
+        return ""
+    
+
 def page_to_text(
     item: PageItem,
     *,
@@ -1134,11 +1224,12 @@ def page_to_text(
     framework: Literal["kraken", "tesseract"] = "kraken",
     tesseract_lang: str | None = None,
     tesseract_config: str | None = None,
+    seg_blur_radius: float | None = None,
 ) -> str:
     if item.kind == "text":
         return item.data or ""
 
-    logger.debug(f"processing image {item.index} of {item.source}")
+    logger.debug(f"processing image {item.index} of {item.source} in framework {framework.upper()}")
     if item.data is None:
         logger.error(f"page_to_text got None image: page={item.index} source={item.source}")
         return ""
@@ -1161,7 +1252,15 @@ def page_to_text(
             model_name=model_name,
             segmenter=segmenter,
             binarize=binarize,
-        )    
+            seg_blur_radius=seg_blur_radius
+        )
+      
+    elif framework == "transformer":
+        from .medieval_ocr_pipeline.complete_ocr_pipeline import process_complete_image, setup_models  
+        MODELS = setup_models()
+        res = process_complete_image(item.data, verbose=False, cleanup_temp=True, models=MODELS)
+        return "" if res is None else res[0]
+        
     else:
         return ""
 
@@ -1197,8 +1296,8 @@ def iter_text_pages(
             except Exception:
                 logger.warning("Could not deactivate transformer logging")
             ensure_import("torch", requirements=requirements)
-            from .medieval_ocr_pipeline.complete_ocr_pipeline import process_complete_image, setup_models  
-            MODELS = setup_models()
+            # from .medieval_ocr_pipeline.complete_ocr_pipeline import process_complete_image, setup_models  
+            # MODELS = setup_models()
             # src\zotero_rdf_server\plugins\fts\medieval_ocr_pipeline\complete_ocr_pipeline.py
         except Exception as e:
             logger.exception("Transformer plugin import failed")
@@ -1411,17 +1510,12 @@ def iter_text_pages(
                 try:
                     with Image.open(img_path) as im:
                         pil = im.copy()
-                    item = PageItem(page_no, "image", pil, source=f"cache-image:{img_path}",total=total)
-                    if use_transformer:
-                        logger.debug("### Using Tranformer from medieval_ocr_pipeline ###")
-                        res = process_complete_image(item.data, verbose=False, cleanup_temp=True, models=MODELS)
-                        txt = "" if res is None else res[0]
-                    else:
-                        txt = page_to_text(
-                            item,
-                            framework=framework if framework in {"kraken", "tesseract"} else "none",
-                            **page_to_text_kwargs
-                        )
+                    item = PageItem(page_no, "image", pil, source=f"cache-image:{img_path}",total=total) 
+                    txt = page_to_text(
+                        item,
+                        framework=framework,
+                        **page_to_text_kwargs
+                    )
                 except Exception as e:
                     logger.error(f"{_doc_id}: Failed to load cached image for page {page_no} from {img_path}: {e}")
 
@@ -1490,16 +1584,11 @@ def iter_text_pages(
 
         # OCR / page_to_text
         try:
-            if use_transformer  and item.kind == "image":
-                logger.debug("### Using Tranformer from medieval_ocr_pipeline ###")
-                res = process_complete_image(item.data, verbose=False, cleanup_temp=True, models=MODELS)
-                txt = "" if res is None else res[0]
-            else:
-                txt = page_to_text(
-                    item,
-                    framework=framework if framework in {"kraken", "tesseract"} else "none",
-                    **page_to_text_kwargs
-                )
+            txt = page_to_text(
+                item,
+                framework=framework,
+                **page_to_text_kwargs
+            )
 
         except Exception as e:
             logger.error(f"{_doc_id}: iter_text_pages error on page {page_no}: {e}")
