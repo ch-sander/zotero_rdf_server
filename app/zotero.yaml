@@ -47,6 +47,7 @@ defaults:
           config_path: "/app/plugins/fts/config.yml"
           # save_images: "/app/plugins/fts/data" # creates folder per processed file
           # save_text: "/app/plugins/fts/data" # creates folder per processed file
+          # seg_blur_radius: 1.0
         ocr_kwargs:
           file_formats: ["pdf", "iiif"]
           iiif_max_width: 2000
