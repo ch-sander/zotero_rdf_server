@@ -934,7 +934,7 @@ def render_page(
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>{safe_os_doc_id} : {safe_page}</title>
+  <title>{safe_os_doc_id}:{safe_page}</title>
   <link rel="stylesheet" href="{static_url}/viewer.css">
   <script src="{safe_osd_script_src}"></script>
   <script id="viewer-config" type="application/json">{viewer_config_json}</script>
@@ -943,7 +943,7 @@ def render_page(
 <body>
   <div id="viewer-root">
     <header>
-      <div><strong>{safe_os_doc_id} : {safe_page}</strong></div>
+      <div><strong>{safe_os_doc_id}:{safe_page}</strong></div>
       <nav>
         {nav_html}
         {"<label for='page-select'>Page</label>" if pages else ""}
