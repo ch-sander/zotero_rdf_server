@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+import json
 
 from .helpers import plugin_logger, resolve_config_path, safe_doc_id
 
@@ -34,7 +35,10 @@ TEXT_ROOT_STR = cfg.get("text_root") or ""
 IMAGE_EXT = str(cfg.get("image_ext") or "jpg").lstrip(".")
 TEXT_EXT = str(cfg.get("text_ext") or "txt").lstrip(".")
 DASHBOARD_URL = cfg.get("dashboard_url") or None
-BASE_URL = str(cfg.get("base_url", "/plugin/fts/view")).rstrip("/")
+BASE_URL = str(cfg.get("base_url", "/plugin/fts")).rstrip("/")
+STATIC_URL = str(cfg.get("static_url", "/ui/view")).rstrip("/") 
+OSD_CONFIG = cfg.get("OpenSeadragon") or {}
+OCR_FRAMEWORKS = cfg.get("ocr_frameworks") or []
 
 mount_path = "/image-files"
 
@@ -133,7 +137,7 @@ def discover_doc_url(original_os_doc_id: str) -> str | None:
     encoded_doc_id = quote(original_os_doc_id, safe="")
     return f"{DASHBOARD_URL}{encoded_doc_id}"
 
-def render_page(
+def render_page_legacy(
     os_doc_id: str,
     page: str,
     pages: list[str],
@@ -283,3 +287,682 @@ def render_page(
 </body>
 </html>
 """
+from html import escape
+
+def render_page_legacy(
+    os_doc_id: str,
+    page: str,
+    pages: list[str],
+    image_url: str | None,
+    text: str,
+    prev_page: str | None,
+    next_page: str | None,
+    discover_url: str | None,
+    editable: bool = False,
+    save_url: str | None = None,
+    page_url_base: str | None = None,
+    edit_url: str | None = None,
+) -> str:
+    safe_os_doc_id = escape(os_doc_id)
+    safe_page = escape(page)
+    safe_text = escape(text or "")
+    safe_save_url = escape(save_url or "")
+    safe_page_url_base = escape((page_url_base or "/view").rstrip("/"))
+    safe_edit_url = escape(edit_url or "")
+
+    options = []
+    for p in pages:
+        selected = " selected" if p == page else ""
+        label = str(int(p)) if p.isdigit() else p
+        options.append(
+            f'<option value="{safe_page_url_base}/{safe_os_doc_id}:{escape(p)}"{selected}>{escape(label)}</option>'
+        )
+    options_html = "\n".join(options)
+
+    nav_parts = []
+    if prev_page:
+        nav_parts.append(
+            f'<a href="{safe_page_url_base}/{safe_os_doc_id}:{escape(prev_page)}">Previous</a>'
+        )
+    if next_page:
+        nav_parts.append(
+            f'<a href="{safe_page_url_base}/{safe_os_doc_id}:{escape(next_page)}">Next</a>'
+        )
+    if (not editable) and edit_url:
+        nav_parts.append(f'<a href="{safe_edit_url}">Edit</a>')
+
+    nav_html = "\n".join(nav_parts)
+
+    discover_html = ""
+    if discover_url:
+        discover_html = (
+            f'<a href="{escape(discover_url)}" target="_blank" '
+            f'rel="noopener noreferrer">Open in Discover</a>'
+        )
+
+    if image_url:
+        viewer_html = f"""
+        <div id="osd"></div>
+        <script src="https://cdn.jsdelivr.net/npm/openseadragon@5.0.1/build/openseadragon/openseadragon.min.js"></script>
+        <script>
+          OpenSeadragon({{
+            id: "osd",
+            prefixUrl: "https://cdn.jsdelivr.net/npm/openseadragon@5.0.1/build/openseadragon/images/",
+            tileSources: {{
+              type: "image",
+              url: "{escape(image_url)}"
+            }},
+            showNavigator: true,
+            maxZoomPixelRatio: 2,
+            visibilityRatio: 1,
+            constrainDuringPan: true
+          }});
+        </script>
+        """
+    else:
+        viewer_html = '<div class="text-panel">No image available.</div>'
+
+    if editable and save_url:
+        text_html = f"""
+        <form method="post" action="{safe_save_url}">
+          <textarea name="text" class="editor">{safe_text}</textarea>
+          <div class="editor-actions">
+            <button type="submit">Save</button>
+          </div>
+        </form>
+        """
+    else:
+        text_html = f'<div class="text">{safe_text if safe_text else "[no text on this page]"}</div>'
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{safe_os_doc_id} : {safe_page}</title>
+  <style>
+    body {{
+      font-family: sans-serif;
+      margin: 0;
+    }}
+    header {{
+      position: sticky;
+      top: 0;
+      background: white;
+      border-bottom: 1px solid #ccc;
+      padding: 0.75rem 1rem;
+      z-index: 10;
+    }}
+    nav {{
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 0.5rem;
+    }}
+    .layout {{
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 1rem;
+      padding: 1rem;
+    }}
+    .panel {{
+      border: 1px solid #ccc;
+      background: #fafafa;
+      min-height: 75vh;
+    }}
+    .viewer-panel {{
+      padding: 0;
+    }}
+    #osd {{
+      width: 100%;
+      height: 80vh;
+      background: #111;
+    }}
+    .text-panel {{
+      padding: 1rem;
+    }}
+    .text {{
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font-family: monospace;
+    }}
+    .editor {{
+      width: 100%;
+      min-height: 70vh;
+      box-sizing: border-box;
+      font-family: monospace;
+      font-size: 0.95rem;
+      white-space: pre-wrap;
+    }}
+    .editor-actions {{
+      margin-top: 0.75rem;
+      display: flex;
+      gap: 0.5rem;
+    }}
+    select, a, button, textarea {{
+      font: inherit;
+    }}
+    @media (max-width: 900px) {{
+      .layout {{
+        grid-template-columns: 1fr;
+      }}
+      #osd {{
+        height: 60vh;
+      }}
+    }}
+  </style>
+</head>
+<body>
+  <header>
+    <div><strong>{safe_os_doc_id} : {safe_page}</strong></div>
+    <nav>
+      {nav_html}
+      {"<label for='page-select'>Page</label>" if pages else ""}
+      {"<select id='page-select' onchange='window.location.href=this.value'>" + options_html + "</select>" if pages else ""}
+      {discover_html}
+    </nav>
+  </header>
+
+  <div class="layout">
+    <div class="panel viewer-panel">
+      {viewer_html}
+    </div>
+
+    <div class="panel text-panel">
+      {text_html}
+    </div>
+  </div>
+</body>
+</html>
+"""
+
+def render_page_dynamic(
+    os_doc_id: str,
+    page: str,
+    pages: list[str],
+    image_url: str | None,
+    text: str,
+    prev_page: str | None,
+    next_page: str | None,
+    discover_url: str | None,
+    editable: bool = False,
+    save_url: str | None = None,
+    page_url_base: str | None = None,
+    edit_url: str | None = None,
+    ocr_url: str | None = None,
+    current_framework: str = "kraken",
+) -> str:
+    raw_text = text or ""
+    has_real_text = bool(raw_text and raw_text != "[no text on this page]")
+
+    editor_text = raw_text if has_real_text else ""
+    display_text = raw_text if has_real_text else "[no text on this page]"
+
+    safe_os_doc_id = escape(os_doc_id)
+    safe_page = escape(page)
+    safe_editor_text = escape(editor_text)
+    safe_display_text = escape(display_text)
+    safe_save_url = escape(save_url or "")
+    safe_page_url_base = escape((page_url_base or f"{BASE_URL}/view").rstrip("/"))
+    safe_edit_url = escape(edit_url or "")
+    safe_current_framework = escape(current_framework)
+
+    options = []
+    for p in pages:
+        selected = " selected" if p == page else ""
+        label = str(int(p)) if p.isdigit() else p
+        options.append(
+            f'<option value="{safe_page_url_base}/{safe_os_doc_id}:{escape(p)}"{selected}>{escape(label)}</option>'
+        )
+    options_html = "\n".join(options)
+
+    nav_parts = []
+    if prev_page:
+        nav_parts.append(
+            f'<a href="{safe_page_url_base}/{safe_os_doc_id}:{escape(prev_page)}">Previous</a>'
+        )
+    if next_page:
+        nav_parts.append(
+            f'<a href="{safe_page_url_base}/{safe_os_doc_id}:{escape(next_page)}">Next</a>'
+        )
+    if (not editable) and edit_url:
+        nav_parts.append(f'<a href="{safe_edit_url}">Edit</a>')
+
+    nav_html = "\n".join(nav_parts)
+
+    discover_html = ""
+    if discover_url:
+        discover_html = (
+            f'<a href="{escape(discover_url)}" target="_blank" '
+            f'rel="noopener noreferrer">Open in Discover</a>'
+        )
+
+    if image_url:
+        osd = {
+            "id": "osd",
+            "prefixUrl": "https://cdn.jsdelivr.net/npm/openseadragon@5.0.1/build/openseadragon/images/",
+            "tileSources": {
+                "type": "image",
+                "url": image_url,
+            },
+            "showNavigator": True,
+            "maxZoomPixelRatio": 2,
+            "visibilityRatio": 1,
+            "constrainDuringPan": True,
+        }
+
+        if OSD_CONFIG:
+            osd.update(OSD_CONFIG)
+
+        osd_scr = osd.pop(
+            "src",
+            "https://cdn.jsdelivr.net/npm/openseadragon@5.0.1/build/openseadragon/openseadragon.min.js",
+        )
+
+        osd["tileSources"] = {
+            "type": "image",
+            "url": image_url,
+        }
+        osd["id"] = "osd"
+
+        viewer_html = f"""
+        <div id="osd"></div>
+        <script src="{escape(osd_scr)}"></script>
+        <script>
+          OpenSeadragon({json.dumps(osd)});
+        </script>
+        """
+    else:
+        viewer_html = '<div class="text-panel">No image available.</div>'
+
+    ocr_controls_html = ""
+    if image_url and ocr_url:
+        frameworks = OCR_FRAMEWORKS or [
+            {"value": "kraken", "label": "Kraken"},
+            {"value": "tesseract", "label": "Tesseract"},
+            {"value": "transformer", "label": "Transformer"},
+        ]
+        framework_options = []
+        for fw in frameworks:
+            value = str(fw.get("value", "")).strip()
+            label = str(fw.get("label", value)).strip()
+            if not value:
+                continue
+            selected = " selected" if value == current_framework else ""
+            framework_options.append(
+                f'<option value="{escape(value)}"{selected}>{escape(label)}</option>'
+            )
+
+        framework_options_html = "\n".join(framework_options)
+
+        ocr_controls_html = f"""
+        <div class="ocr-tools">
+          <label for="ocr-framework">OCR</label>
+          <select id="ocr-framework">
+            {framework_options_html}
+          </select>
+          <button type="button" id="rerun-ocr-btn" onclick="rerunOcr()">OCR</button>
+          <span id="ocr-status" class="ocr-status"></span>
+        </div>
+        """
+
+    if editable and save_url:
+        text_html = f"""
+        {ocr_controls_html}
+        <form method="post" action="{safe_save_url}">
+          <textarea id="page-text" name="text" class="editor">{safe_editor_text}</textarea>
+          <div class="editor-actions">
+            <button type="submit">Save</button>
+          </div>
+        </form>
+        """
+    else:
+        text_html = f"""
+        {ocr_controls_html}
+        <div id="page-text-display" class="text">{safe_display_text}</div>
+        """
+
+    script_html = ""
+    if image_url and ocr_url:
+        script_html = f"""
+        <script>
+          async function rerunOcr() {{
+            const frameworkEl = document.getElementById("ocr-framework");
+            const statusEl = document.getElementById("ocr-status");
+            const btnEl = document.getElementById("rerun-ocr-btn");
+            const framework = frameworkEl ? frameworkEl.value : "kraken";
+
+            statusEl.textContent = "Receiving OCR...";
+            btnEl.disabled = true;
+
+            try {{
+              const url = {json.dumps(ocr_url)} + "?framework=" + encodeURIComponent(framework);
+              const response = await fetch(url, {{
+                method: "GET",
+                headers: {{
+                  "Accept": "application/json"
+                }}
+              }});
+
+              if (!response.ok) {{
+                let detail = "OCR failed";
+                try {{
+                  const err = await response.json();
+                  if (err && err.detail) detail = err.detail;
+                }} catch (_e) {{}}
+                throw new Error(detail);
+              }}
+
+              const text = await response.text();
+
+              let data;
+              try {{
+                data = JSON.parse(text);
+              }} catch (e) {{
+                console.error("RAW RESPONSE:", text);
+                throw new Error("Server returned non-JSON response");
+              }}
+
+              const newText = data.text || "";
+              const textarea = document.getElementById("page-text");
+              const display = document.getElementById("page-text-display");
+
+              if (textarea) {{
+                textarea.value = newText;
+              }} else if (display) {{
+                display.textContent = newText || "[no text on this page]";
+              }}
+
+              statusEl.textContent = "OCR loaded, not saved yet!";
+            }} catch (err) {{
+              statusEl.textContent = err.message || "OCR failed";
+            }} finally {{
+              btnEl.disabled = false;
+            }}
+          }}
+        </script>
+        """
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{safe_os_doc_id} : {safe_page}</title>
+  <style>
+    body {{
+      font-family: sans-serif;
+      margin: 0;
+    }}
+    header {{
+      position: sticky;
+      top: 0;
+      background: white;
+      border-bottom: 1px solid #ccc;
+      padding: 0.75rem 1rem;
+      z-index: 10;
+    }}
+    nav {{
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 0.5rem;
+    }}
+    .layout {{
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 1rem;
+      padding: 1rem;
+    }}
+    .panel {{
+      border: 1px solid #ccc;
+      background: #fafafa;
+      min-height: 75vh;
+    }}
+    .viewer-panel {{
+      padding: 0;
+    }}
+    #osd {{
+      width: 100%;
+      height: 80vh;
+      background: #111;
+    }}
+    .text-panel {{
+      padding: 1rem;
+    }}
+    .text {{
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font-family: monospace;
+    }}
+    .editor {{
+      width: 100%;
+      min-height: 70vh;
+      box-sizing: border-box;
+      font-family: monospace;
+      font-size: 0.95rem;
+      white-space: pre-wrap;
+    }}
+    .editor-actions {{
+      margin-top: 0.75rem;
+      display: flex;
+      gap: 0.5rem;
+    }}
+    .ocr-tools {{
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 0.75rem;
+    }}
+    .ocr-status {{
+      color: #555;
+      font-size: 0.95rem;
+    }}
+    select, a, button, textarea {{
+      font: inherit;
+    }}
+    @media (max-width: 900px) {{
+      .layout {{
+        grid-template-columns: 1fr;
+      }}
+      #osd {{
+        height: 60vh;
+      }}
+    }}
+  </style>
+</head>
+<body>
+  <header>
+    <div><strong>{safe_os_doc_id} : {safe_page}</strong></div>
+    <nav>
+      {nav_html}
+      {"<label for='page-select'>Page</label>" if pages else ""}
+      {"<select id='page-select' onchange='window.location.href=this.value'>" + options_html + "</select>" if pages else ""}
+      {discover_html}
+    </nav>
+  </header>
+
+  <div class="layout">
+    <div class="panel viewer-panel">
+      {viewer_html}
+    </div>
+
+    <div class="panel text-panel">
+      {text_html}
+    </div>
+  </div>
+
+  {script_html}
+</body>
+</html>
+"""
+
+def render_page(
+    os_doc_id: str,
+    page: str,
+    pages: list[str],
+    image_url: str | None,
+    text: str,
+    prev_page: str | None,
+    next_page: str | None,
+    discover_url: str | None,
+    editable: bool = False,
+    save_url: str | None = None,
+    page_url_base: str | None = None,
+    edit_url: str | None = None,
+    ocr_url: str | None = None,
+    current_framework: str = "kraken",
+) -> str:
+    import json
+    from html import escape
+
+    raw_text = text or ""
+    has_real_text = bool(raw_text and raw_text != "[no text on this page]")
+
+    editor_text = raw_text if has_real_text else ""
+    display_text = raw_text if has_real_text else "[no text on this page]"
+
+    safe_os_doc_id = escape(os_doc_id)
+    safe_page = escape(page)
+    safe_editor_text = escape(editor_text)
+    safe_display_text = escape(display_text)
+    safe_save_url = escape(save_url or "")
+    safe_page_url_base = escape((page_url_base or f"{BASE_URL}/view").rstrip("/"))
+    safe_edit_url = escape(edit_url or "")
+    safe_discover_url = escape(discover_url or "")
+    static_url = STATIC_URL
+
+    options = []
+    for p in pages:
+        selected = " selected" if p == page else ""
+        label = str(int(p)) if p.isdigit() else p
+        options.append(
+            f'<option value="{safe_page_url_base}/{safe_os_doc_id}:{escape(p)}"{selected}>{escape(label)}</option>'
+        )
+    options_html = "\n".join(options)
+
+    nav_parts = []
+    if prev_page:
+        nav_parts.append(
+            f'<a href="{safe_page_url_base}/{safe_os_doc_id}:{escape(prev_page)}">Previous</a>'
+        )
+    if next_page:
+        nav_parts.append(
+            f'<a href="{safe_page_url_base}/{safe_os_doc_id}:{escape(next_page)}">Next</a>'
+        )
+    if (not editable) and edit_url:
+        nav_parts.append(f'<a href="{safe_edit_url}">Edit</a>')
+    nav_html = "\n".join(nav_parts)
+
+    discover_html = ""
+    if discover_url:
+        discover_html = (
+            f'<a href="{safe_discover_url}" target="_blank" '
+            f'rel="noopener noreferrer">Open in Discover</a>'
+        )
+
+    ocr_controls_html = ""
+    if image_url and ocr_url:
+        frameworks = OCR_FRAMEWORKS or [
+            {"value": "kraken", "label": "Kraken"},
+            {"value": "tesseract", "label": "Tesseract"},
+            {"value": "transformer", "label": "Transformer"},
+        ]
+        framework_options = []
+        for fw in frameworks:
+            value = str(fw.get("value", "")).strip()
+            label = str(fw.get("label", value)).strip()
+            if not value:
+                continue
+            selected = " selected" if value == current_framework else ""
+            framework_options.append(
+                f'<option value="{escape(value)}"{selected}>{escape(label)}</option>'
+            )
+        framework_options_html = "\n".join(framework_options)
+
+        ocr_controls_html = f"""
+        <div class="ocr-tools">
+          <label for="ocr-framework">OCR</label>
+          <select id="ocr-framework">
+            {framework_options_html}
+          </select>
+          <button type="button" id="rerun-ocr-btn">OCR</button>
+          <span id="ocr-status" class="ocr-status"></span>
+        </div>
+        """
+
+    if editable and save_url:
+        text_html = f"""
+        {ocr_controls_html}
+        <form method="post" action="{safe_save_url}">
+          <textarea id="page-text" name="text" class="editor">{safe_editor_text}</textarea>
+          <div class="editor-actions">
+            <button type="submit">Save</button>
+          </div>
+        </form>
+        """
+    else:
+        text_html = f"""
+        {ocr_controls_html}
+        <div id="page-text-display" class="text">{safe_display_text}</div>
+        """
+
+    if image_url:
+        viewer_html = '<div id="osd"></div>'
+    else:
+        viewer_html = '<div class="text-panel">No image available.</div>'
+
+    osd_config = dict(OSD_CONFIG or {})
+    osd_script_src = osd_config.pop(
+        "src",
+        "https://cdn.jsdelivr.net/npm/openseadragon@5.0.1/build/openseadragon/openseadragon.min.js",
+    )
+
+    viewer_config = {
+        "editable": editable,
+        "imageUrl": image_url or "",
+        "ocrUrl": ocr_url or "",
+        "currentFramework": current_framework,
+        "osdConfig": osd_config,
+    }
+
+    viewer_config_json = (json.dumps(viewer_config))
+    safe_osd_script_src = escape(osd_script_src)
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{safe_os_doc_id} : {safe_page}</title>
+  <link rel="stylesheet" href="{static_url}/viewer.css">
+  <script src="{safe_osd_script_src}"></script>
+  <script id="viewer-config" type="application/json">{viewer_config_json}</script>
+  <script src="{static_url}/viewer.js" defer></script>
+</head>
+<body>
+  <div id="viewer-root">
+    <header>
+      <div><strong>{safe_os_doc_id} : {safe_page}</strong></div>
+      <nav>
+        {nav_html}
+        {"<label for='page-select'>Page</label>" if pages else ""}
+        {"<select id='page-select'>" + options_html + "</select>" if pages else ""}
+        {discover_html}
+      </nav>
+    </header>
+
+    <div class="layout">
+      <div class="panel viewer-panel">
+        {viewer_html}
+      </div>
+
+      <div class="panel text-panel">
+        {text_html}
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+"""
+#  end

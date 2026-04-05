@@ -1,0 +1,99 @@
+body {
+  font-family: sans-serif;
+  margin: 0;
+}
+
+header {
+  position: sticky;
+  top: 0;
+  background: white;
+  border-bottom: 1px solid #ccc;
+  padding: 0.75rem 1rem;
+  z-index: 10;
+}
+
+nav {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.panel {
+  border: 1px solid #ccc;
+  background: #fafafa;
+  min-height: 75vh;
+}
+
+.viewer-panel {
+  padding: 0;
+}
+
+#osd {
+  width: 100%;
+  height: 80vh;
+  background: #111;
+}
+
+.text-panel {
+  padding: 1rem;
+}
+
+.text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: monospace;
+}
+
+.editor {
+  width: 100%;
+  min-height: 70vh;
+  box-sizing: border-box;
+  font-family: monospace;
+  font-size: 0.95rem;
+  white-space: pre-wrap;
+}
+
+.editor-actions {
+  margin-top: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.ocr-tools {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.ocr-status {
+  color: #555;
+  font-size: 0.95rem;
+}
+
+select,
+a,
+button,
+textarea {
+  font: inherit;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  #osd {
+    height: 60vh;
+  }
+}

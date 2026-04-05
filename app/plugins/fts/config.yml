@@ -13,7 +13,22 @@ viewer:
   image_ext: jpg
   text_ext: txt
   dashboard_url: http://localhost:5601/app/discover#/doc/fe2dc870-1182-11f1-86a9-eb629f790cf7/ocr-scigma?id=
-  base_url: "/plugin/fts/view"
+  base_url: "/plugin/fts"
+  static_url: "/ui/view"
+  OpenSeadragon:
+    src: "https://cdn.jsdelivr.net/npm/openseadragon@5.0.1/build/openseadragon/openseadragon.min.js"
+    prefixUrl: "https://cdn.jsdelivr.net/npm/openseadragon@5.0.1/build/openseadragon/images/"
+    showNavigator: true
+    maxZoomPixelRatio: 2
+    visibilityRatio: 1
+    constrainDuringPan: true
+  ocr_frameworks:
+    - value: kraken
+      label: Kraken
+    - value: tesseract
+      label: Tesseract
+    - value: transformer
+      label: Transformer
 
 kraken:
   models_dir: "/app/plugins/fts/models"

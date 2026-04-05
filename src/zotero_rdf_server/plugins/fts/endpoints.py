@@ -1952,6 +1952,7 @@ def mlt_by_text(
     )
 
 # VIEWER
+from fastapi import Form
 
 @open_router.get(
     "/image/{os_doc_id:path}",
@@ -1988,21 +1989,115 @@ def get_text(os_doc_id: str):
 
     return FileResponse(txt_path)
 
+# @open_router.get(
+#     "/view/{os_doc_id:path}",
+#     summary="View image page and OCR",
+#     description="Indicate root directories and file extensions in configuration under 'viewer'.",
+#     tags=["Viewer"]
+# )
+# def view_page(os_doc_id: str):
+#     from .viewer import render_page, split_doc_id, image_file, text_file, list_pages, discover_doc_url, IMAGE_EXT
+
+#     original_os_doc_id = (os_doc_id or "").strip()
+#     doc_key, page = split_doc_id(original_os_doc_id)
+
+#     img_path = image_file(doc_key, page)
+#     txt_path = text_file(doc_key, page)
+
+#     pages = list_pages(doc_key)
+
+#     if not pages and not img_path.exists() and not txt_path.exists():
+#         raise HTTPException(status_code=404, detail="Document not found")
+
+#     image_url = None
+#     if img_path.exists():
+#         image_url = f"/image-files/{doc_key}/{page}.{IMAGE_EXT}"
+
+#     if txt_path.exists():
+#         try:
+#             text = txt_path.read_text(encoding="utf-8", errors="replace")
+#         except Exception as exc:
+#             logger.warning(f"Could not read text file {txt_path}: {exc}")
+#             text = "[error reading text]"
+#     else:
+#         text = "[no text on this page]"
+
+#     prev_page = None
+#     next_page = None
+#     if page in pages:
+#         idx = pages.index(page)
+#         if idx > 0:
+#             prev_page = pages[idx - 1]
+#         if idx < len(pages) - 1:
+#             next_page = pages[idx + 1]
+
+#     html = render_page(
+#         os_doc_id=original_os_doc_id.rsplit(":", 1)[0],
+#         page=page,
+#         pages=pages,
+#         image_url=image_url,
+#         text=text,
+#         prev_page=prev_page,
+#         next_page=next_page,
+#         discover_url=discover_doc_url(original_os_doc_id),
+#     )
+#     return HTMLResponse(html)
+
 @open_router.get(
     "/view/{os_doc_id:path}",
     summary="View image page and OCR",
     description="Indicate root directories and file extensions in configuration under 'viewer'.",
-    tags=["Viewer"]
+    tags=["Viewer"],
 )
 def view_page(os_doc_id: str):
-    from .viewer import render_page, split_doc_id, image_file, text_file, list_pages, discover_doc_url, IMAGE_EXT
+    return build_view_response(os_doc_id, editable=False)
+
+@router.get("/edit-view/{os_doc_id:path}")
+def edit_page(os_doc_id: str):
+    return build_view_response(os_doc_id, editable=True)
+
+@router.post(
+    "/save-view/{os_doc_id:path}",
+    summary="Save OCR text",
+    tags=["Viewer"],
+)
+def save_page(os_doc_id: str, text: str = Form(...)):
+    from .viewer import split_doc_id, text_file, BASE_URL
 
     original_os_doc_id = (os_doc_id or "").strip()
     doc_key, page = split_doc_id(original_os_doc_id)
+    txt_path = text_file(doc_key, page)
+
+    try:
+        txt_path.parent.mkdir(parents=True, exist_ok=True)
+        txt_path.write_text(text, encoding="utf-8")
+    except Exception as exc:
+        logger.exception(f"Could not write text file {txt_path}: {exc}")
+        raise HTTPException(status_code=500, detail="Could not save text")
+
+    return RedirectResponse(
+        url=f"{BASE_URL}/edit-view/{original_os_doc_id}",
+        status_code=303,
+    )
+
+def build_view_response(original_os_doc_id: str, editable: bool = False) -> HTMLResponse:
+    from .viewer import (
+        render_page,
+        split_doc_id,
+        image_file,
+        text_file,
+        list_pages,
+        discover_doc_url,
+        IMAGE_EXT,
+        BASE_URL,
+    )
+
+    original_os_doc_id = (original_os_doc_id or "").strip()
+    doc_key, page = split_doc_id(original_os_doc_id)
+    doc_id_only = original_os_doc_id.rsplit(":", 1)[0]
 
     img_path = image_file(doc_key, page)
     txt_path = text_file(doc_key, page)
-
     pages = list_pages(doc_key)
 
     if not pages and not img_path.exists() and not txt_path.exists():
@@ -2031,7 +2126,7 @@ def view_page(os_doc_id: str):
             next_page = pages[idx + 1]
 
     html = render_page(
-        os_doc_id=original_os_doc_id.rsplit(":", 1)[0],
+        os_doc_id=doc_id_only,
         page=page,
         pages=pages,
         image_url=image_url,
@@ -2039,5 +2134,106 @@ def view_page(os_doc_id: str):
         prev_page=prev_page,
         next_page=next_page,
         discover_url=discover_doc_url(original_os_doc_id),
+        editable=editable,
+        save_url=f"{BASE_URL}/save-view/{doc_id_only}:{page}" if editable else None,
+        page_url_base=f"{BASE_URL}/view",
+        edit_url=f"{BASE_URL}/edit-view/{doc_id_only}:{page}" if not editable else None,
+        ocr_url=f"{BASE_URL}/ocr-view/{doc_id_only}:{page}",
+        current_framework="kraken",
     )
     return HTMLResponse(html)
+
+
+
+
+@open_router.get(
+    "/ocr-view/{os_doc_id:path}",
+    summary="Run OCR again for page image",
+    tags=["Viewer"],
+)
+def rerun_ocr(
+    os_doc_id: str,
+    framework: Literal["kraken", "tesseract", "transformer"] = Query("kraken"),
+):
+    from .viewer import split_doc_id
+    from .ocr import page_to_text, PageItem
+
+    def build_local_page_item(
+        doc_key: str,
+        page: str,
+        *,
+        crop_box: tuple[int, int, int, int] | None = None,
+        blur_radius: float | None = None,
+    ) -> PageItem:
+        from .viewer import image_file
+        from PIL import Image, ImageFilter
+
+        img_path = image_file(doc_key, page)
+        if not img_path.exists():
+            raise FileNotFoundError(img_path)
+
+        with Image.open(img_path) as img:
+            pil_img = img.convert("RGB")
+
+            # optional crop
+            if crop_box:
+                w, h = pil_img.size
+
+                # crop_box = (left%, top%, right%, bottom%)
+                left_p, top_p, right_p, bottom_p = crop_box
+
+                left   = int(w * left_p)
+                top    = int(h * top_p)
+                right  = int(w * (1 - right_p))
+                bottom = int(h * (1 - bottom_p))
+
+                pil_img = pil_img.crop((left, top, right, bottom))
+
+            # optional blur
+            if blur_radius and blur_radius > 0:
+                pil_img = pil_img.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+
+            pil_img = pil_img.copy()
+
+        return PageItem(
+            index=int(page) if str(page).isdigit() else 0,
+            kind="image",
+            data=pil_img,
+            source=str(img_path),
+            total=1,
+        )
+    
+    original_os_doc_id = (os_doc_id or "").strip()
+    doc_key, page = split_doc_id(original_os_doc_id)
+
+    try:
+        page_item = build_local_page_item(
+            doc_key, page, 
+            # crop_box = (0.0, 0.0, 0.0, 0.13),
+            # blur_radius=1
+            )
+    
+        logger.info(f"Built image from {doc_key}, {page}")
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Page image not found")
+    except Exception as exc:
+        logger.exception(f"Could not load page image for OCR: {exc}")
+        raise HTTPException(status_code=500, detail="Could not load page image")
+
+    if page_item.kind != "image":
+        return JSONResponse({"text": page_item.data or "", "framework": framework})
+
+    try:
+        logger.info(f"Getting OCR: {framework}")
+        text = page_to_text(page_item, framework=framework, seg_blur_radius=1)
+        logger.info(f"OCR: {text}")
+    except Exception as exc:
+        logger.exception(f"OCR failed for {original_os_doc_id} with {framework}: {exc}")
+        raise HTTPException(status_code=500, detail="Could not run OCR")
+
+    return JSONResponse({
+        "text": text or "",
+        "framework": framework,
+    })
+
+# end

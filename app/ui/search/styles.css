@@ -38,6 +38,16 @@ a {
   text-decoration: none;
 }
 
+.doc-card-title a {
+  color: #173d7a;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.doc-card-title a:hover {
+  text-decoration: none;
+}
+
 button {
   font: inherit;
 }

@@ -4,24 +4,32 @@
   const CONFIG = window.ANALYSIS_SEARCH_EXPLORER_CONFIG || {};
   const UI_TEXT = CONFIG.ui || {};
 
-  const EXPLORER_CONFIG = {
-    endpointPath: CONFIG.endpointPath || "/plugin/fts/search/terms",
-    openapiUrl: CONFIG.openapiUrl || "/openapi.json",
-    apiBaseUrl: CONFIG.apiBaseUrl || "",
-    initialHits: Array.isArray(CONFIG.initialHits) ? CONFIG.initialHits : [],
-    maxTermBadgesPerSection: Number(CONFIG.maxTermBadgesPerSection || 20),
-    maxSourceFieldsPreview: Number(CONFIG.maxSourceFieldsPreview || 12),
-    includeGlobalTerms: CONFIG.includeGlobalTerms !== false,
-    includeLocalTerms: CONFIG.includeLocalTerms !== false,
-    includeClusterInfo: CONFIG.includeClusterInfo !== false,
-    pageSize: Number(CONFIG.pageSize || 25),
-    preferredTitleFields: Array.isArray(CONFIG.preferredTitleFields)
-      ? CONFIG.preferredTitleFields
-      : ["title", "name", "label", "headline", "subject", "_id"],
-    preferredSnippetFields: Array.isArray(CONFIG.preferredSnippetFields)
-      ? CONFIG.preferredSnippetFields
-      : ["snippet", "summary", "description", "content", "text", "body"]
-  };
+const EXPLORER_CONFIG = {
+  endpointPath: CONFIG.endpointPath || "/plugin/fts/search/terms",
+  openapiUrl: CONFIG.openapiUrl || "/openapi.json",
+  apiBaseUrl: CONFIG.apiBaseUrl || "",
+  initialHits: Array.isArray(CONFIG.initialHits) ? CONFIG.initialHits : [],
+  maxTermBadgesPerSection: Number(CONFIG.maxTermBadgesPerSection || 20),
+  maxSourceFieldsPreview: Number(CONFIG.maxSourceFieldsPreview || 12),
+  includeGlobalTerms: CONFIG.includeGlobalTerms !== false,
+  includeLocalTerms: CONFIG.includeLocalTerms !== false,
+  includeClusterInfo: CONFIG.includeClusterInfo !== false,
+  pageSize: Number(CONFIG.pageSize || 25),
+  preferredTitleFields: Array.isArray(CONFIG.preferredTitleFields)
+    ? CONFIG.preferredTitleFields
+    : ["title", "name", "label", "headline", "subject", "_id"],
+  preferredSnippetFields: Array.isArray(CONFIG.preferredSnippetFields)
+    ? CONFIG.preferredSnippetFields
+    : ["snippet", "summary", "description", "content", "text", "body"],
+  links: {
+    doc: {
+      template: CONFIG.docLinkTemplate || "/plugin/fts/view/{os_doc_id}",
+      map: (item) => ({
+        os_doc_id: item.id
+      })
+    }
+  }
+};
 
   let ENDPOINT_PARAMETERS = [];
   let allPreparedHits = [];
@@ -55,6 +63,19 @@
   const summaryClustersEl = document.getElementById("summaryClusters");
   const summaryUnclusteredEl = document.getElementById("summaryUnclustered");
   const summaryClusterTermsEl = document.getElementById("summaryClusterTerms");
+
+
+  function buildUrl(type, item) {
+    const cfg = EXPLORER_CONFIG.links?.[type];
+    if (!cfg) return "";
+
+    const vars = cfg.map ? cfg.map(item) : item;
+
+    const result = cfg.template.replace(/\{(\w+)\}/g, (_, key) =>
+      encodeURIComponent(vars[key] ?? "")
+    );
+    return result;
+  }
 
   function initStaticTexts() {
     document.documentElement.lang = UI_TEXT.lang || "en";
@@ -629,15 +650,27 @@
             renderTermDetails(extractKeyTermDetails(item.global)) +
           `</section>`
         ) : "";
+        const url = buildUrl("doc", item);
+
+        const titleHtml = url
+          ? `<a href="${escapeHtml(url)}" target="_blank">${escapeHtml(item.title)}</a>`
+          : escapeHtml(item.title);
+
+        const metaLabelHtml = item.label
+          ? (url
+              ? `<a href="${escapeHtml(url)}" target="_blank">${escapeHtml(item.label)}</a>`
+              : escapeHtml(item.label))
+          : "";
 
         return (
           `<article class="doc-card" id="doc-${escapeHtml(item.id)}">` +
             `<div class="doc-card-header">` +
-              `<div class="doc-card-title">${escapeHtml(item.title)}</div>` +
+              `<div class="doc-card-title">${titleHtml}</div>` +
               `<div class="doc-card-meta">` +
-                `<span><strong>${escapeHtml(UI_TEXT.id || "ID")}:</strong> ${escapeHtml(item.id)}${
-                  item.label ? ` · <strong>${escapeHtml(UI_TEXT.label || "Label")}:</strong> ${escapeHtml(item.label)}` : ""
-                }</span>` +
+                `<span><strong>${escapeHtml(UI_TEXT.id || "ID")}:</strong> ${escapeHtml(item.id)}</span>` +
+                (metaLabelHtml
+                  ? `<span><strong>${escapeHtml(UI_TEXT.label || "Label")}:</strong> ${metaLabelHtml}</span>`
+                  : "") +
                 `<span><strong>${escapeHtml(UI_TEXT.score || "score")}:</strong> ${escapeHtml(fmtScore(item.score))}</span>` +
                 `<span><strong>${escapeHtml(UI_TEXT.cluster || "Cluster")}:</strong> ${escapeHtml(item.clusterLabel)}</span>` +
               `</div>` +
