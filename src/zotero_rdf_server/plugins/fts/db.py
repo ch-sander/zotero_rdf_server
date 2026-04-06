@@ -180,9 +180,11 @@ def page_docs(
     label: str | None,
     pages: Iterator[Tuple[int, str]],
     meta: dict = {}, 
-    vector: bool = False
+    vector_kwargs: dict | None = None,
+    config_path: str | None = None,
 ) -> Iterator[Dict[str, Any]]:
     now = datetime.now(timezone.utc).isoformat()
+    vector = isinstance(vector_kwargs, dict) and vector_kwargs.get('framework')
     if vector:
         from .vector import embed
         from .helpers import clean_ocr        
@@ -191,7 +193,7 @@ def page_docs(
         label_s = f"{label}, p. {sequence}"
         vector_doc = None
         if vector:
-            vector_doc = embed(clean_ocr(text))
+            vector_doc = embed(clean_ocr(text),**vector_kwargs)
         for index_name in targets:            
             source = {
                 "source": input,
@@ -348,7 +350,7 @@ def index_stream(
     ocr_kwargs: dict | None = None,
     meta: dict | None = None,
     doc: Any | None = None,
-    vector: bool = False
+    vector_kwargs: dict | None = None
 ) -> dict:
     logger.debug(f"OS index_stream started...")
     cfg_path = resolve_config_path(config_path)
@@ -390,7 +392,8 @@ def index_stream(
             label=label,
             pages=pages_iter,
             meta=meta or {},
-            vector=vector
+            vector_kwargs=vector_kwargs,
+            config_path=cfg_path,
         )
 
     # IMPORTANT: index=None so per-action _index is respected

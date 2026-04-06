@@ -35,6 +35,9 @@ defaults:
         ingest_into_graph: "" # whether the logging store shall be stored in the main store in a named graph by this IRI
       query: "/app/plugins/fts/fts.sparql" # SPARQL query to retrieve URLs for OCR/ingesting
       ocr: true
+      vector:
+        framework: null # "SentenceTransformer" or null or "FastText"
+        config_path: "/app/plugins/fts/config.yml"
       open-search:
         targets: ["zotero-ocr"] # indices to target        
         config_path: "/app/plugins/fts/config.yml" # fallback FTS_CONFIG in ENV

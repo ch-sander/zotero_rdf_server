@@ -20,7 +20,7 @@ def ingest_pipeline(
     targets: str | list = [],
     ocr: bool = False,
     framework: TypeLiteral["kraken", "tesseract", "transformer"] = "kraken",
-    vector: bool = True,
+    vector_kwargs: dict | None = None,
     ingest: bool = True,
     iter_pages_kwargs: dict = {},
     page_to_text_kwargs: dict = {},
@@ -36,6 +36,8 @@ def ingest_pipeline(
     logger.info(f"Ingest Pipeline started with {len(items)} items using framework={framework}...")
 
     page_to_text_kwargs['config_path'] = config_path if (not page_to_text_kwargs.get('config_path') and config_path) else page_to_text_kwargs.get('config_path')
+    vector_kwargs['config_path'] = config_path if (not vector_kwargs.get('config_path') and config_path) else vector_kwargs.get('config_path')
+
 
     logger.info(
         "Pipeline configuration:\n"
@@ -49,13 +51,10 @@ def ingest_pipeline(
 
     if not ocr and not ingest:
         return([{"error":"nothing to do here: no ocr, no ingest!"}])
-    
+    vector = isinstance(vector_kwargs, dict) and vector_kwargs.get('framework')
     if vector:
-        logger.info("####### Loading Sentence Transformer Model for Vectors #######")
         from .vector import embed
-        from .helpers import clean_ocr
-
-    
+        from .helpers import clean_ocr    
 
     if ocr:
         from .ocr import iter_text_pages, PdfTextPolicy, IiifOcrPolicy     
@@ -116,7 +115,7 @@ def ingest_pipeline(
                             "text": text,
                         }
                         if vector:
-                            vector_doc = embed(clean_ocr(text))
+                            vector_doc = embed(clean_ocr(text),**vector_kwargs)
                             logger.debug(vector_doc)
                             item["vector"] = vector_doc
 
@@ -182,7 +181,7 @@ def ingest_pipeline(
                         targets=targets,
                         meta=meta,
                         config_path=config_path,
-                        vector=vector
+                        vector_kwargs=vector
                     )         
                 digest["ocr"] = True
                 digest["framework"] = framework     
@@ -203,7 +202,7 @@ def ingest_pipeline(
                 if label != "":
                     d["label"] = label
                 if vector:
-                    vector_doc = embed(clean_ocr(text))
+                    vector_doc = embed(clean_ocr(text),**vector_kwargs)
                     d["vector"] = vector_doc
 
                 digest = index_stream(

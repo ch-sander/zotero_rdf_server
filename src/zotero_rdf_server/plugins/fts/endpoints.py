@@ -268,9 +268,11 @@ class OpenSearchDocRequest(BaseModel):
 
 
 def _default_filename(prefix: str, ext: str) -> str:
-    import datetime
-    ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S")
-    return f"{prefix}-{ts}.{ext}"
+    from zotero_rdf_server.utils import default_filename
+    return default_filename(prefix=prefix,ext=ext)
+    # import datetime
+    # ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S")
+    # return f"{prefix}-{ts}.{ext}"
 
 JsonObj = Dict[str, Any]
 JsonBody = Union[JsonObj, List[JsonObj]]
@@ -284,7 +286,6 @@ def ingest_route(
         default="kraken",
         description="OCR backend: kraken, tesseract, or transformer. Choose 'none' to skip ATR/OCR",
     ),
-    vector: bool = Query(default=True, description="If true, vectorizes text with sentence transformer (1024 dimensions)"),
     ingest: bool = Query(default=True, description="If true, ingest into Open Search"),
     query: Optional[str] = Query(default=None, description="SPARQL SELECT query or path to file with query code (used when body is null)"),
     graph: str | None = Query(default=None, description="Named graph IRI containing the attachments or documents (optional)"),
@@ -297,6 +298,7 @@ def ingest_route(
     ocr_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for OCR Config", examples=[None]),
     model_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for OCR Backend Config", examples=[None]),
     file_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for File Output", examples=[{'img_out':'kraken/images','txt_out':'kraken/texts','save_text':'active','save_image':'skip'}]),
+    vector_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for embedding Backend Config", examples=[None]),
 ):
     from .pipeline import ingest_pipeline
     import csv
@@ -393,7 +395,7 @@ def ingest_route(
                         
                         framework_x = framework  if framework is not None else ncfg.get("framework", "kraken")
                         ingest_x = ingest if ingest is not None else ncfg.get("ingest", True)
-                        vector_x = vector if vector is not None else ncfg.get("vector", True)
+                        vector_x = vector_kwargs if vector_kwargs is not None else ncfg.get("vector")
 
                         iter_pages_kwargs = ocr_kwargs if ocr_kwargs is not None else dict(kraken_cfg.get("ocr_kwargs") or {})
                         page_to_text_kwargs = model_kwargs if model_kwargs is not None else dict(kraken_cfg.get("model_kwargs") or {})
@@ -431,7 +433,7 @@ def ingest_route(
                                                 targets=targets_x, 
                                                 ocr=ocr_x,
                                                 framework=framework_x,
-                                                vector=vector_x,
+                                                vector_kwargs=vector_x,
                                                 ingest=ingest_x,
                                                 iter_pages_kwargs=iter_pages_kwargs,
                                                 page_to_text_kwargs=page_to_text_kwargs, text_image_file_kwargs=text_image_file_kwargs,
@@ -480,7 +482,7 @@ def ingest_route(
                                             targets=targets, 
                                             ocr=ocr,
                                             framework=framework,
-                                            vector=vector,
+                                            vector_kwargs=vector_kwargs,
                                             ingest=ingest,
                                             iter_pages_kwargs=ocr_kwargs,
                                             page_to_text_kwargs=model_kwargs,
@@ -517,7 +519,7 @@ def ingest_route(
                                         targets=targets, 
                                         ocr=ocr,
                                         framework=framework,
-                                        vector=vector,
+                                        vector_kwargs=vector_kwargs,
                                         ingest=ingest,
                                         iter_pages_kwargs=ocr_kwargs,
                                         page_to_text_kwargs=model_kwargs,

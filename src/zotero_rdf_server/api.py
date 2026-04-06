@@ -78,20 +78,16 @@ def include_plugins(app: FastAPI, plugins_pkg: str = "zotero_rdf_server.plugins"
         except Exception:
             logger.exception("Failed to load plugin %s (%s)", plugin_name, endpoints_mod)
 
-@router.get("/export", summary="Create export", tags=["Data"])
-async def export_graph(
-    format: str = Query("trig"),
-    graph: list[str] | None = Query(default=None, description="Named graph IRIs (repeat parameter)")
-):
+from io import BytesIO
+
+def build_subset_store(source_store, graphs):
+    temp_store = Store()
+    for graph in graphs:
+        temp_store.bulk_extend(source_store.quads_for_pattern(None, None, None, graph))
+    return temp_store
+
+def prepare_export(format: str, graph: list[str] | None, ts_filename: bool = False):
     from .store import store
-    
-    def build_subset_store(source_store, graphs):
-        temp_store = Store()
-        for graph in graphs:
-            temp_store.bulk_extend(source_store.quads_for_pattern(None, None, None, graph))
-        return temp_store
-    
-    # EXPORT_DIRECTORY.mkdir(parents=True, exist_ok=True)
 
     rdf_format = ensure_rdf_format(format=format)
     if rdf_format is None:
@@ -116,18 +112,21 @@ async def export_graph(
     else:
         filename_base = "zotero_store" if not checked_graphs else "graph_subset"
 
-    path = EXPORT_DIRECTORY / f"{filename_base}.{extension}"
-    len_store = 0
-    logger.info(f"Create {path}")
-    logger.info(f"Checked graphs: {checked_graphs!r}")
+    filename = default_filename(filename_base, extension) if ts_filename else f"{filename_base}.{extension}"
+    path = EXPORT_DIRECTORY / filename
+    return store, rdf_format, checked_graphs, path
+
+
+def dump_export(store, rdf_format, checked_graphs, output=None):
+    data = None
 
     if not checked_graphs:
         len_store = len(store)
         if rdf_format.supports_datasets:
-            store.dump(output=path, format=rdf_format, prefixes=PREFIXES)            
+            data = store.dump(output=output, format=rdf_format, prefixes=PREFIXES)
         else:
-            store.dump(
-                output=path,
+            data = store.dump(
+                output=output,
                 format=rdf_format,
                 prefixes=PREFIXES,
                 from_graph=DefaultGraph(),
@@ -135,8 +134,8 @@ async def export_graph(
     elif len(checked_graphs) == 1:
         len_store = len(store)
         g = checked_graphs[0]
-        store.dump(
-            output=path,
+        data = store.dump(
+            output=output,
             format=rdf_format,
             prefixes=PREFIXES,
             from_graph=g,
@@ -144,9 +143,120 @@ async def export_graph(
         )
     else:
         subset_store = build_subset_store(store, checked_graphs)
-        subset_store.dump(output=path, format=rdf_format, prefixes=PREFIXES)
+        data = subset_store.dump(output=output, format=rdf_format, prefixes=PREFIXES)
         len_store = len(subset_store)
-    return {"success": f"Exported {[str(g) for g in checked_graphs] or [str(g) for g in store.named_graphs()]}", "len": len_store, "path":path}
+
+    return len_store, data
+
+
+@open_router.get("/export", summary="Create export", tags=["Data"])
+async def export_graph(
+    format: str = Query("trig"),
+    graph: list[str] | None = Query(default=None, description="Named graph IRIs (repeat parameter)")
+):
+    store, rdf_format, checked_graphs, path = prepare_export(format, graph, True)
+
+    len_store, data = dump_export(store, rdf_format, checked_graphs)
+
+    return StreamingResponse(
+        BytesIO(data),
+        media_type=getattr(rdf_format, "media_type", "application/octet-stream"),
+        headers={
+            "Content-Disposition": f'attachment; filename="{path.name}"',
+            "X-Export-Length": str(len_store),
+        },
+    )
+
+
+@router.get("/export/file", summary="Create export file", tags=["Data"])
+async def export_graph_file(
+    format: str = Query("trig"),
+    graph: list[str] | None = Query(default=None, description="Named graph IRIs (repeat parameter)"),
+    timestamp: bool | None = Query(default=False, description="Add Timestamp to filename")
+):
+    store, rdf_format, checked_graphs, path = prepare_export(format, graph, timestamp)
+
+    # EXPORT_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Create {path}")
+    logger.info(f"Checked graphs: {checked_graphs!r}")
+
+    len_store, _ = dump_export(store, rdf_format, checked_graphs, path)
+
+    return {
+        "success": f"Exported {[str(g) for g in checked_graphs] or [str(g) for g in store.named_graphs()]}",
+        "len": len_store,
+        "path": path,
+    }
+
+# @router.get("/export", summary="Create export", tags=["Data"])
+# async def export_graph(
+#     format: str = Query("trig"),
+#     graph: list[str] | None = Query(default=None, description="Named graph IRIs (repeat parameter)")
+# ):
+#     from .store import store
+    
+#     def build_subset_store(source_store, graphs):
+#         temp_store = Store()
+#         for graph in graphs:
+#             temp_store.bulk_extend(source_store.quads_for_pattern(None, None, None, graph))
+#         return temp_store
+    
+#     # EXPORT_DIRECTORY.mkdir(parents=True, exist_ok=True)
+
+#     rdf_format = ensure_rdf_format(format=format)
+#     if rdf_format is None:
+#         raise HTTPException(status_code=400, detail=f"Unsupported RDF format: {format}")
+
+#     checked_graphs = []
+#     all_graphs = None
+
+#     if graph:
+#         for g in graph:
+#             checked_graph, all_graphs = get_graph(g)
+#             if not checked_graph:
+#                 raise HTTPException(
+#                     status_code=400,
+#                     detail=f"Invalid graph IRI: {g}. Use one of these or None: {all_graphs}"
+#                 )
+#             checked_graphs.append(checked_graph)
+
+#     extension = rdf_format.file_extension
+#     if len(checked_graphs) == 1:
+#         filename_base = iri_to_filename(graph[0])
+#     else:
+#         filename_base = "zotero_store" if not checked_graphs else "graph_subset"
+
+#     path = EXPORT_DIRECTORY / f"{filename_base}.{extension}"
+#     len_store = 0
+#     logger.info(f"Create {path}")
+#     logger.info(f"Checked graphs: {checked_graphs!r}")
+
+#     if not checked_graphs:
+#         len_store = len(store)
+#         if rdf_format.supports_datasets:
+#             store.dump(output=path, format=rdf_format, prefixes=PREFIXES)            
+#         else:
+#             store.dump(
+#                 output=path,
+#                 format=rdf_format,
+#                 prefixes=PREFIXES,
+#                 from_graph=DefaultGraph(),
+#             )
+#     elif len(checked_graphs) == 1:
+#         len_store = len(store)
+#         g = checked_graphs[0]
+#         store.dump(
+#             output=path,
+#             format=rdf_format,
+#             prefixes=PREFIXES,
+#             from_graph=g,
+#             base_iri=str(g.value).rstrip("/") + "/" if getattr(g, "value", None) else None,
+#         )
+#     else:
+#         subset_store = build_subset_store(store, checked_graphs)
+#         subset_store.dump(output=path, format=rdf_format, prefixes=PREFIXES)
+#         len_store = len(subset_store)
+#     return {"success": f"Exported {[str(g) for g in checked_graphs] or [str(g) for g in store.named_graphs()]}", "len": len_store, "path":path}
 
 @router.get("/backup", summary="Create backup", description=f"Creates a complete backup of the store to {BACKUP_DIRECTORY}", tags=["Data"])
 async def backup_store():

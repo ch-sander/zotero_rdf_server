@@ -7,6 +7,19 @@ logging: # not implemented yet
     open-search:
       trig: ""
 
+vector:
+  embed:
+    SentenceTransformer:
+      model: "intfloat/multilingual-e5-large"
+    FastText:
+      model: "model.bin"
+  train:
+    FastText:
+      model: "model.bin"
+      source_dir:
+      source_file_ext: "txt"
+      train_kwargs:
+
 viewer:
   image_root: "/app/exports/kraken/images"
   text_root: "/app/exports/kraken/texts"
@@ -231,7 +244,7 @@ open-search:
               search_analyzer: latin_ocr_search
             vector:
               type: knn_vector
-              dimension: 1024
+              dimension: 1024 # adjust
               method:
                 name: hnsw
                 space_type: cosinesimil

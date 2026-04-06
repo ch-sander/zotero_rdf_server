@@ -294,7 +294,11 @@ def load_dict_like(
             
     except Exception as _:
         return _return(_fallback("unexpected error"))
-
+    
+def default_filename(prefix: str, ext: str) -> str:
+    import datetime
+    ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return f"{prefix}-{ts}.{ext}"
 
 def load_text_like(
     raw: str | Path | None,
