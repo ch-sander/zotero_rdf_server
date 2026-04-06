@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-WORKDIR /app
+# WORKDIR /app
 
 ARG WITH_TESSERACT=false
 

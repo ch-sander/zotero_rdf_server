@@ -48,7 +48,8 @@ load_dotenv()
 
 setup_logging("INFO")
 try:
-    WORKDIR = Path(os.getenv("WORKDIR", Path())).resolve()
+    WORKDIR = Path(os.getenv("WORKDIR") or Path.cwd().parent).resolve()
+    logger.info(f"WORKDIR in ENV: {os.getenv('WORKDIR')}")
     logger.info(f"WORKDIR set to {WORKDIR}")    
 except Exception as e:
     logger.critical(f"Failed to set WORKDIR!")
@@ -73,7 +74,7 @@ def safe_path(path_str: str | Path | None, base_dir: Path | str = WORKDIR, creat
     if path_str:
         p = Path(path_str)
         
-        base_dir = Path(base_dir) if base_dir else Path().resolve()
+        base_dir = Path(base_dir) if base_dir else Path.cwd().parent # Path().resolve()
         result = p if p.is_absolute() else (base_dir / p).resolve()
         
         if create:
