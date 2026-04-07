@@ -2227,7 +2227,7 @@ def rerun_ocr(
 
     try:
         logger.info(f"Getting OCR: {framework}")
-        text = page_to_text(page_item, framework=framework, seg_blur_radius=1)
+        text = page_to_text(page_item, framework=framework)
         logger.info(f"OCR: {text}")
     except Exception as exc:
         logger.exception(f"OCR failed for {original_os_doc_id} with {framework}: {exc}")

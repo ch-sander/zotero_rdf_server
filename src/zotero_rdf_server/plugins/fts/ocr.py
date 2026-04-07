@@ -168,7 +168,7 @@ class KrakenModelSpec:
 @lru_cache(maxsize=8)
 def get_ocr_cfg(config_path: Path) -> dict[str, Any]:
     from zotero_rdf_server.utils import load_dict_like
-    return load_dict_like(config_path, label="OCR Config") or {}  
+    return load_dict_like(config_path, label="OCR Config", verbose=True) or {}  
  
 @lru_cache(maxsize=8)
 def get_kraken_cfg(config_path: Path) -> dict[str, Any]:

@@ -5,6 +5,9 @@ FROM python:3.11-slim
 ARG WITH_TESSERACT=false
 
 COPY requirements.txt .
+
+# RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
 RUN pip install --no-cache-dir -r requirements.txt
 
 RUN if [ "$WITH_TESSERACT" = "true" ]; then \
