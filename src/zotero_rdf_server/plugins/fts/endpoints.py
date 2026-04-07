@@ -781,7 +781,7 @@ def format_search_response(
                 )
             },
         )
-    if output_format == "json-analysis":
+    if output_format in {"json-analysis", "atlas"}:
         from .search import add_analysis_columns     
 
         normalized = normalize_hits(
@@ -819,9 +819,17 @@ def format_search_response(
             ensure_ascii=False,
             separators=(",", ":"),
         )
-        from .viewer import export_atlas_folder
-        _input = list(cleaned_rows)
-        export_atlas_folder(_input)
+        if output_format == "atlas":
+            try:                
+                from .viewer import export_atlas_folder, ATLAS_URL
+                _input = list(cleaned_rows)
+                logger.warning(f"Redirect to {ATLAS_URL}")
+                export_atlas_folder(_input)
+                return RedirectResponse(ATLAS_URL)
+            except Exception as e:
+                logger.error(e)
+                pass
+
         stream = io.BytesIO(content.encode("utf-8"))
 
         return StreamingResponse(
@@ -960,6 +968,7 @@ class OutputFormat(str, Enum):
     json_analysis = "json-analysis"
     markdown = "markdown"
     html = "html"
+    atlas = "atlas"
 
 def resolve_format(
     request: Request,
@@ -1639,7 +1648,7 @@ def search_terms(
         if "snippet" not in render_cols:
             render_cols.insert(0, "snippet")
 
-    return_analysis = format in {OutputFormat.csv_analysis, OutputFormat.json_analysis}
+    return_analysis = format in {OutputFormat.csv_analysis, OutputFormat.json_analysis, OutputFormat.atlas}
 
     if return_analysis:
         analysis.perform_analysis=True

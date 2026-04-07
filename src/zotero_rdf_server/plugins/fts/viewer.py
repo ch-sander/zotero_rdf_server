@@ -37,6 +37,7 @@ TEXT_EXT = str(cfg.get("text_ext") or "txt").lstrip(".")
 DASHBOARD_URL = cfg.get("dashboard_url") or None
 BASE_URL = str(cfg.get("base_url", "/plugin/fts")).rstrip("/")
 STATIC_URL = str(cfg.get("static_url", "/ui/view")).rstrip("/") 
+ATLAS_URL = str(cfg.get("atlas_url", "/ui/atlas")).rstrip("/") 
 OSD_CONFIG = cfg.get("OpenSeadragon") or {}
 OCR_FRAMEWORKS = cfg.get("ocr_frameworks") or []
 
@@ -989,8 +990,13 @@ def export_atlas_folder(
     stop_words: str | None = None,    
     export_metadata: dict | None = None,
 ):
-    from .helpers import ensure_import
-    ensure_import("embedding-atlas==0.20.0", requirements=None)
+    try:
+        import embedding_atlas
+        logger.info("Imported embedding_atlas")
+    except ImportError:
+        from .helpers import ensure_import
+        ensure_import("embedding-atlas==0.20.0", requirements=None)
+        
     import embedding_atlas
     from embedding_atlas import __version__
     from embedding_atlas.data_source import DataSource
