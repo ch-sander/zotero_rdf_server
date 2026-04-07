@@ -1000,13 +1000,36 @@ def export_atlas_folder(
     from embedding_atlas.cache import sha256_hexdigest    
     import pandas as pd
 
+    def make_labels_from_clusters(
+        df: pd.DataFrame,
+        cluster_col: str = "cluster_id",
+        x_col: str = "projection_x",
+        y_col: str = "projection_y",
+        terms_col: str = "cluster_label_terms",
+    ) -> list[dict]:
+        labels = []
+
+        for cluster_id, group in df.groupby(cluster_col, sort=False):
+            terms = group.iloc[0][terms_col]
+            if not isinstance(terms, list):
+                terms = [str(terms)] if terms is not None else []
+
+            labels.append({
+                "x": float(group[x_col].mean()),
+                "y": float(group[y_col].mean()),
+                "text": ", ".join(str(t) for t in terms if t) or f"Cluster {cluster_id}",
+                "priority": int(len(group)),
+            })
+
+        return labels
+    
     df = pd.DataFrame(inputs)
     id_column = find_column_name(df.columns, "__row_index__")
     df[id_column] = range(df.shape[0])
 
     stop_words_resolved = None
     if stop_words is not None:
-        stop_words_df = load_pandas_data(stop_words)
+        stop_words_df = pd.DataFrame(stop_words)
         stop_words_resolved = stop_words_df["word"].to_list()
 
     props = make_embedding_atlas_props(
@@ -1016,8 +1039,8 @@ def export_atlas_folder(
         neighbors=neighbors_column,
         text=text,
         point_size=point_size,
-        stop_words=stop_words_resolved,
-        labels=None,
+        stop_words=["est","non","ut"],
+        labels=make_labels_from_clusters(df),
     )
 
     metadata = {"props": props}
