@@ -4,32 +4,32 @@
   const CONFIG = window.ANALYSIS_SEARCH_EXPLORER_CONFIG || {};
   const UI_TEXT = CONFIG.ui || {};
 
-const EXPLORER_CONFIG = {
-  endpointPath: CONFIG.endpointPath || "/plugin/fts/search/terms",
-  openapiUrl: CONFIG.openapiUrl || "/openapi.json",
-  apiBaseUrl: CONFIG.apiBaseUrl || "",
-  initialHits: Array.isArray(CONFIG.initialHits) ? CONFIG.initialHits : [],
-  maxTermBadgesPerSection: Number(CONFIG.maxTermBadgesPerSection || 20),
-  maxSourceFieldsPreview: Number(CONFIG.maxSourceFieldsPreview || 12),
-  includeGlobalTerms: CONFIG.includeGlobalTerms !== false,
-  includeLocalTerms: CONFIG.includeLocalTerms !== false,
-  includeClusterInfo: CONFIG.includeClusterInfo !== false,
-  pageSize: Number(CONFIG.pageSize || 25),
-  preferredTitleFields: Array.isArray(CONFIG.preferredTitleFields)
-    ? CONFIG.preferredTitleFields
-    : ["title", "name", "label", "headline", "subject", "_id"],
-  preferredSnippetFields: Array.isArray(CONFIG.preferredSnippetFields)
-    ? CONFIG.preferredSnippetFields
-    : ["snippet", "summary", "description", "content", "text", "body"],
-  links: {
-    doc: {
-      template: CONFIG.docLinkTemplate || "/plugin/fts/view/{os_doc_id}",
-      map: (item) => ({
-        os_doc_id: item.id
-      })
+  const EXPLORER_CONFIG = {
+    endpointPath: CONFIG.endpointPath || "/plugin/fts/search/terms",
+    openapiUrl: CONFIG.openapiUrl || "/openapi.json",
+    apiBaseUrl: CONFIG.apiBaseUrl || "",
+    initialHits: Array.isArray(CONFIG.initialHits) ? CONFIG.initialHits : [],
+    maxTermBadgesPerSection: Number(CONFIG.maxTermBadgesPerSection || 20),
+    maxSourceFieldsPreview: Number(CONFIG.maxSourceFieldsPreview || 12),
+    includeGlobalTerms: CONFIG.includeGlobalTerms !== false,
+    includeLocalTerms: CONFIG.includeLocalTerms !== false,
+    includeClusterInfo: CONFIG.includeClusterInfo !== false,
+    pageSize: Number(CONFIG.pageSize || 25),
+    preferredTitleFields: Array.isArray(CONFIG.preferredTitleFields)
+      ? CONFIG.preferredTitleFields
+      : ["title", "name", "label", "headline", "subject", "_id"],
+    preferredSnippetFields: Array.isArray(CONFIG.preferredSnippetFields)
+      ? CONFIG.preferredSnippetFields
+      : ["snippet", "summary", "description", "content", "text", "body"],
+    links: {
+      doc: {
+        template: CONFIG.docLinkTemplate || "/plugin/fts/view/{os_doc_id}",
+        map: (item) => ({
+          os_doc_id: item.id
+        })
+      }
     }
-  }
-};
+  };
 
   let ENDPOINT_PARAMETERS = [];
   let allPreparedHits = [];
@@ -63,7 +63,6 @@ const EXPLORER_CONFIG = {
   const summaryClustersEl = document.getElementById("summaryClusters");
   const summaryUnclusteredEl = document.getElementById("summaryUnclustered");
   const summaryClusterTermsEl = document.getElementById("summaryClusterTerms");
-
 
   function buildUrl(type, item) {
     const cfg = EXPLORER_CONFIG.links?.[type];
@@ -337,6 +336,66 @@ const EXPLORER_CONFIG = {
       .trim();
   }
 
+  function isPrimitiveFacetValue(value) {
+    return value === null || value === undefined ||
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean";
+  }
+
+  function normalizeFacetValue(value) {
+    if (value === null || value === undefined) return "";
+    return String(value).trim();
+  }
+
+  function extractMetaFacets(meta, allowedKeys) {
+    const out = {};
+
+    function isAllowed(relativePath) {
+      if (!allowedKeys || !allowedKeys.length) return true;
+      return allowedKeys.includes(relativePath);
+    }
+
+    function addValue(absPath, value) {
+      const v = normalizeFacetValue(value);
+      if (!v) return;
+      if (!out[absPath]) out[absPath] = [];
+      if (!out[absPath].includes(v)) out[absPath].push(v);
+    }
+
+    function walk(value, relativePath, absolutePath) {
+      if (Array.isArray(value)) {
+        if (!isAllowed(relativePath)) return;
+
+        for (const item of value) {
+          if (isPrimitiveFacetValue(item)) {
+            addValue(absolutePath, item);
+          } else if (item && typeof item === "object") {
+            walk(item, relativePath, absolutePath);
+          }
+        }
+        return;
+      }
+
+      if (isPrimitiveFacetValue(value)) {
+        if (!isAllowed(relativePath)) return;
+        addValue(absolutePath, value);
+        return;
+      }
+
+      if (value && typeof value === "object") {
+        for (const [key, child] of Object.entries(value)) {
+          const nextRelative = relativePath ? `${relativePath}.${key}` : key;
+          const nextAbsolute = absolutePath ? `${absolutePath}.${key}` : key;
+          walk(child, nextRelative, nextAbsolute);
+        }
+      }
+    }
+
+    walk(meta || {}, "", "meta");
+    return out;
+  }
+
   function prepareHits(hits) {
     return (hits || []).map((hit, idx) => {
       const cluster = getCluster(hit);
@@ -358,6 +417,11 @@ const EXPLORER_CONFIG = {
       const globalTerms = extractKeyTerms(global);
       const searchableTerms = uniqueTerms([...clusterLabelTerms, ...localTerms, ...globalTerms]);
       const snippetSearchText = snippetToSearchText(snippet);
+      const metaFacetConfig = (window.ANALYSIS_SEARCH_EXPLORER_CONFIG && window.ANALYSIS_SEARCH_EXPLORER_CONFIG.metaFacets) || {};
+      const allowedMetaFacetKeys = Array.isArray(metaFacetConfig.keys)
+        ? metaFacetConfig.keys.map(s => safeStr(s).trim()).filter(Boolean)
+        : [];
+      const metaFacets = extractMetaFacets(source.meta || {}, allowedMetaFacetKeys);
 
       return {
         raw: hit,
@@ -371,6 +435,7 @@ const EXPLORER_CONFIG = {
         cluster,
         local,
         global,
+        metaFacets,
         clusterId,
         clusterLabel,
         clusterLabelTerms,
@@ -420,6 +485,12 @@ const EXPLORER_CONFIG = {
     const search = normalize(clientSearchInput.value);
     const selectedCluster = normalize(clientClusterSelect.value);
 
+    const metaFacetState =
+      window.ANALYSIS_SEARCH_EXPLORER_META_STATE &&
+      typeof window.ANALYSIS_SEARCH_EXPLORER_META_STATE.matchesPreparedHit === "function"
+        ? window.ANALYSIS_SEARCH_EXPLORER_META_STATE
+        : null;
+
     return preparedHits.filter(item => {
       const clusterOk = !selectedCluster || normalize(item.clusterId) === selectedCluster;
       const searchOk = !search || item.searchBlob.includes(search);
@@ -431,8 +502,9 @@ const EXPLORER_CONFIG = {
       ].join(" "));
 
       const termOk = !activeTerm || termSpace.includes(activeTerm);
+      const metaOk = !metaFacetState || metaFacetState.matchesPreparedHit(item);
 
-      return clusterOk && searchOk && termOk;
+      return clusterOk && searchOk && termOk && metaOk;
     });
   }
 
@@ -588,9 +660,8 @@ const EXPLORER_CONFIG = {
     const items = snippet.fragments.map(fragment => {
       if (snippet.isHighlighted) {
         return `<li>${sanitizeHighlightHtml(fragment)}</li>`;
-      } else {
-        return `<li>${escapeHtml(fragment)}</li>`;
       }
+      return `<li>${escapeHtml(fragment)}</li>`;
     }).join("");
 
     return `<ul class="snippet-list">${items}</ul>`;
@@ -650,6 +721,7 @@ const EXPLORER_CONFIG = {
             renderTermDetails(extractKeyTermDetails(item.global)) +
           `</section>`
         ) : "";
+
         const url = buildUrl("doc", item);
 
         const titleHtml = url
@@ -752,9 +824,9 @@ const EXPLORER_CONFIG = {
   }
 
   function syncActiveTermUI() {
-    const buttons = Array.from(document.querySelectorAll(".term-badge"));
+    const buttons = Array.from(document.querySelectorAll(".term-badge[data-term]"));
     buttons.forEach(btn => {
-      const term = normalize(btn.dataset.term || btn.textContent || "");
+      const term = normalize(btn.dataset.term || "");
       btn.classList.toggle("active-term", !!activeTerm && term === activeTerm);
     });
   }
@@ -768,7 +840,17 @@ const EXPLORER_CONFIG = {
 
     rebuildClientClusterSelect(searchOnlyHits);
 
-    const filteredHits = filterPreparedHits(allPreparedHits);
+    const baseFilteredHits = filterPreparedHits(allPreparedHits);
+
+    const externalFacetFilter =
+      typeof window.ANALYSIS_SEARCH_EXPLORER_META_FACET_FILTER === "function"
+        ? window.ANALYSIS_SEARCH_EXPLORER_META_FACET_FILTER
+        : null;
+
+    const filteredHits = externalFacetFilter
+      ? baseFilteredHits.filter(item => externalFacetFilter(item.raw))
+      : baseFilteredHits;
+
     const filteredClusters = groupPreparedHits(filteredHits);
 
     renderSidebar(filteredClusters, filteredHits);
@@ -1013,9 +1095,6 @@ const EXPLORER_CONFIG = {
       params.set(name, value);
     }
 
-    // Set per Defaulta
-    // params.set("perform_analysis", "true");
-    // params.set("cluster_enabled", "true");
     params.set("format", "json");
 
     if (!params.get("analysis_mode")) params.set("analysis_mode", "both");
@@ -1046,6 +1125,15 @@ const EXPLORER_CONFIG = {
   function setHits(hits) {
     allPreparedHits = prepareHits(hits);
     currentPage = 1;
+
+    window.ANALYSIS_SEARCH_EXPLORER_HITS = hits.slice();
+    window.ANALYSIS_SEARCH_EXPLORER_PREPARED_HITS = allPreparedHits.slice();
+
+    window.dispatchEvent(new CustomEvent("analysis-explorer:hits-updated", {
+      detail: { hits: hits.slice() }
+    }));
+    window.dispatchEvent(new CustomEvent("analysis-explorer:prepared-hits-updated"));
+
     refreshView();
   }
 
@@ -1204,11 +1292,22 @@ const EXPLORER_CONFIG = {
     }, 120);
   }
 
+  function isMetaFacetBadge(buttonEl) {
+    if (!buttonEl) return false;
+    return buttonEl.classList.contains("meta-facet-badge") ||
+           buttonEl.classList.contains("meta-active-filter");
+  }
+
   document.addEventListener("click", function (event) {
     const btn = event.target.closest(".term-badge");
     if (!btn) return;
 
-    const clickedTerm = normalize(btn.dataset.term || btn.textContent || "");
+    if (isMetaFacetBadge(btn)) return;
+
+    const rawTerm = safeStr(btn.dataset.term || "").trim();
+    if (!rawTerm) return;
+
+    const clickedTerm = normalize(rawTerm);
     if (!clickedTerm) return;
 
     if (activeTerm === clickedTerm) {
@@ -1264,6 +1363,11 @@ const EXPLORER_CONFIG = {
     setHits([]);
     setApiStatus(UI_TEXT.status_no_initial_hits || "No initial hits loaded", "warning");
   }
+
+  window.ANALYSIS_SEARCH_EXPLORER_REFRESH = function () {
+    currentPage = 1;
+    refreshView();
+  };
 
   loadOpenApiAndBuildForm();
 })();

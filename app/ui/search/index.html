@@ -56,9 +56,12 @@
         </details>
       </section>
 
-      <section class="panel header-card">
-        <h1 id="pageTitle">Analysis Search Explorer</h1>
-        <div class="muted" id="pageSubtitle">Interactive search, clustering, and analysis explorer.</div>
+    <section class="panel header-card">
+      <div class="header-card-stack">
+        <div class="page-head">
+          <h1 id="pageTitle">Analysis Search Explorer</h1>
+          <div class="muted" id="pageSubtitle">Interactive search, clustering, and analysis explorer.</div>
+        </div>
 
         <div class="summary-grid">
           <div class="summary-item">
@@ -94,9 +97,31 @@
           <button id="resetClientFiltersBtn" class="btn btn-secondary" type="button">Reset filters</button>
           <button id="expandAllBtn" class="btn btn-secondary" type="button">Toggle all details</button>
         </div>
+        <br><br>
+        <section class="meta-facets-box" aria-labelledby="metaFacetsTitle">
+          <div class="meta-facets-head">
+            <div>
+              <h2 id="metaFacetsTitle" class="meta-facets-title">Meta facets</h2>
+              <div class="muted">Filter documents by metadata.</div>
+            </div>
+
+            <div class="meta-facets-actions">
+              <button id="toggleAllMetaFacetsBtn" class="btn btn-secondary" type="button">
+                Toggle all meta facets
+              </button>
+              <button id="resetMetaFacetsBtn" class="btn btn-secondary" type="button">
+                Reset meta facets
+              </button>
+            </div>
+          </div>
+
+          <div id="activeMetaFacets" class="active-meta-facets"></div>
+          <div id="metaFacets" class="meta-facets-wrap"></div>
+        </section>
 
         <div id="resultInfo" class="result-info"></div>
-      </section>
+      </div>
+    </section>
 
       <div id="content"></div>
 
@@ -120,6 +145,20 @@
       includeLocalTerms: true,
       includeClusterInfo: true,
       pageSize: 25,
+
+      metaFacets: {
+      enabled: true,
+      openByDefault: false,
+      keys: [
+        "date",
+        "link_type",
+        "parent_creators",
+        "parent_tags",
+        "file_label",
+        "library_label"
+      ]
+    },
+
       ui: {
         lang: "en",
         search: "Search",
@@ -189,6 +228,7 @@
       }
     };
   </script>
-  <script src="./analysis_search_explorer.js"></script>
+    <script src="./analysis_search_explorer.js"></script>
+    <script src="./meta_facets_addon.js"></script>
 </body>
 </html>

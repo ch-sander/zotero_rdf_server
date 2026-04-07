@@ -258,6 +258,64 @@ textarea.input:focus {
   font-weight: 700;
 }
 
+.meta-facets-box {
+  margin-top: 4px;
+  padding: 18px;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  background: #fcfcfd;
+}
+
+.meta-facets-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.meta-facets-title {
+  margin: 0 0 4px 0;
+  font-size: 1.1rem;
+  line-height: 1.2;
+}
+
+.meta-facets-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.active-meta-facets {
+  min-height: 36px;
+  margin-bottom: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.meta-facets-wrap {
+  display: grid;
+  gap: 12px;
+}
+
+.meta-facet-group {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+  padding: 10px 12px;
+}
+
+.meta-facet-group summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .term-cloud,
 .cluster-terms-wrap,
 .doc-chip-row {
