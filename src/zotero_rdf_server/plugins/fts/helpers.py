@@ -54,8 +54,11 @@ def ensure_import(module, attr=None, requirements=requirements):
                     sys.executable, "-m", "pip",
                     "install", module,
                 ])
-
-            mod = importlib.import_module(modname)
+            try:
+                mod = importlib.import_module(modname)
+            except ImportError as e:
+                plugin_logger().error(e)
+                return
 
         except Exception as e:
             plugin_logger().error(e, exc_info=True)
