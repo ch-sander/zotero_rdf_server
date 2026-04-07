@@ -974,4 +974,57 @@ def render_page(
     </body>
     </html>
     """
+
+from zotero_rdf_server.config import STATIC_UI_DIRECTORY
+
+def export_atlas_folder(
+    inputs,
+    output_dir: str = STATIC_UI_DIRECTORY / "atlas" ,
+    *,
+    text: str | None = "text",
+    x_column: str | None = "projection_x",
+    y_column: str | None = "projection_y",
+    neighbors_column: str | None = None,
+    point_size: float | None = None,
+    stop_words: str | None = None,    
+    export_metadata: dict | None = None,
+):
+    from .helpers import ensure_import
+    ensure_import("embedding-atlas==0.20.0", requirements=None)
+    import embedding_atlas
+    from embedding_atlas import __version__
+    from embedding_atlas.data_source import DataSource
+    from embedding_atlas.cli import find_column_name
+    from embedding_atlas.options import make_embedding_atlas_props
+    from embedding_atlas.utils import load_pandas_data
+    from embedding_atlas.cache import sha256_hexdigest    
+    import pandas as pd
+
+    df = pd.DataFrame(inputs)
+    id_column = find_column_name(df.columns, "__row_index__")
+    df[id_column] = range(df.shape[0])
+
+    stop_words_resolved = None
+    if stop_words is not None:
+        stop_words_df = load_pandas_data(stop_words)
+        stop_words_resolved = stop_words_df["word"].to_list()
+
+    props = make_embedding_atlas_props(
+        row_id=id_column,
+        x=x_column,
+        y=y_column,
+        neighbors=neighbors_column,
+        text=text,
+        point_size=point_size,
+        stop_words=stop_words_resolved,
+        labels=None,
+    )
+
+    metadata = {"props": props}
+
+    identifier = sha256_hexdigest([__version__, inputs, metadata], scope="DataSource")
+    dataset = DataSource(identifier, df, metadata)
+    static = Path(embedding_atlas.__file__).resolve().parent / "static"
+    dataset.export_to_folder(str(static), str(output_dir), export_metadata)
+
 #  end

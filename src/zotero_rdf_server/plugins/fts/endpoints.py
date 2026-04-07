@@ -556,7 +556,7 @@ def ingest_opensearch(req: OpenSearchDocRequest = Body(...)):
     )
     return run #{"status": "ok", "run_id": run_id}
 
-MAX_SIZE = 2000
+MAX_SIZE = 2000000
 
 class OutputHeader(BaseModel):
     header_json: Optional[Dict[str, Any]] = None
@@ -757,7 +757,7 @@ def format_search_response(
         )
     
     if output_format == "csv-analysis":
-        from .search import collect_columns, add_vector_columns
+        from .search import collect_columns, add_analysis_columns
         normalized = normalize_hits(
             resp,
             flatten_dict=["meta"],
@@ -766,7 +766,7 @@ def format_search_response(
             make_snippet=False,
         )
 
-        rows = [add_vector_columns(r) for r in normalized["hits"]]
+        rows = [add_analysis_columns(r) for r in normalized["hits"]]
         exclude = {"text", "highlight"}
         cols = [c for c in collect_columns(rows, preferred=["_id", "_score", "ingest_ts", "source", "page"]) if c not in exclude]
         content = render_csv(rows, cols)
@@ -778,6 +778,58 @@ def format_search_response(
             headers={
                 "Content-Disposition": (
                     f'attachment; filename="{_default_filename(filename or "search", "csv")}"'
+                )
+            },
+        )
+    if output_format == "json-analysis":
+        from .search import add_analysis_columns     
+
+        normalized = normalize_hits(
+            resp,
+            flatten_dict=["meta"],
+            keep_dict=[],
+            keep_highlight=False,
+            make_snippet=False,
+        )
+
+        rows = [add_analysis_columns(r) for r in normalized["hits"]]
+        exclude = {"highlight"}
+
+        def _is_scalar_list(v):
+            return isinstance(v, list) and all(isinstance(x, (str, int, float)) for x in v)
+
+        def _clean_row(row):
+            out = {}
+            for k, v in row.items():
+                if k in exclude:
+                    continue
+                if isinstance(v, dict):
+                    continue
+                if isinstance(v, list):
+                    if _is_scalar_list(v):
+                        out[k] = v
+                    continue
+                out[k] = v
+            return out
+
+        cleaned_rows = [_clean_row(r) for r in rows]
+
+        content = json.dumps(
+            cleaned_rows,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        from .viewer import export_atlas_folder
+        _input = list(cleaned_rows)
+        export_atlas_folder(_input)
+        stream = io.BytesIO(content.encode("utf-8"))
+
+        return StreamingResponse(
+            stream,
+            media_type="application/json; charset=utf-8",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="{_default_filename(filename or "search", "json")}"'
                 )
             },
         )
@@ -905,6 +957,7 @@ class OutputFormat(str, Enum):
     json = "json"
     csv = "csv"
     csv_analysis = "csv-analysis"
+    json_analysis = "json-analysis"
     markdown = "markdown"
     html = "html"
 
@@ -1391,7 +1444,7 @@ def search_terms(
         description="Name of the OpenSearch index to query. Default alias can be set in cofiguration.",
     ),
     q: str = Query(
-        ...,
+        "*",
         description="Search query. Comma-separated expressions unless lucene=true.",
     ),
     field: str = Query(
@@ -1495,7 +1548,18 @@ def search_terms(
     from .search import parse_csv, build_terms_should_queries, os_search, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter, analysis_from_mtermvectors, os_mtermvectors, cluster_hits_by_analysis, sort_hits_by_cluster_and_score
     api_call = str(request.url) 
     # --- Build query ---------------------------------------------------------
-    if lucene:
+    terms=[]
+    match_all = q == "*" or q == ""
+    if match_all:
+        body = {
+            "query": {"match_all": {}},
+            "sort": [
+                {"doc_id": "asc"},
+                {"page": "asc"}
+            ]
+        }
+
+    elif lucene:
         # TODO safer for end-user input would be simple_query_string
         body: Dict[str, Any] = {
             "query": {
@@ -1575,6 +1639,12 @@ def search_terms(
         if "snippet" not in render_cols:
             render_cols.insert(0, "snippet")
 
+    return_analysis = format in {OutputFormat.csv_analysis, OutputFormat.json_analysis}
+
+    if return_analysis:
+        analysis.perform_analysis=True
+        analysis.cluster_enabled=True
+
     if analysis.cluster_enabled:
         required_modes = {analysis.cluster_source, analysis.cluster_label_source}
 
@@ -1602,41 +1672,96 @@ def search_terms(
     render_columns = _join_columns(render_cols)
 
     # --- Query ---------------------------------------------------------
-    try:
-        resp = os_search(index=index, body=body, columns=source_columns)
+    try:        
+        if return_analysis and match_all and size > 10000:
+            from .search import os_search_all_scroll
+            resp = os_search_all_scroll(
+                index=index,
+                body=body,
+                columns=source_columns,
+                batch_size=1000,
+                scroll_ttl="2m",
+            )
 
-        if analysis.perform_analysis:
-            hits = resp.get("hits", {}).get("hits", [])
+            all_hits = resp.get("hits", {}).get("hits", [])
+            logger.info("Got all scroll hits!")
             analysis_field = analysis.analyze_field or field
-            hit_ids = [h["_id"] for h in hits if h.get("_id")]
+            hit_ids = [h["_id"] for h in all_hits if h.get("_id")]
 
             if hit_ids:
-                tv_resp = os_mtermvectors(
-                    index=index,
-                    doc_ids=hit_ids,
-                    field=analysis_field,
-                )
+                tv_docs = []
+                tv_batch_size = 200
 
-                hits = analysis_from_mtermvectors(
-                    hits=hits,
-                    tv_resp=tv_resp,
+                for i in range(0, len(hit_ids), tv_batch_size):
+                    batch_ids = hit_ids[i:i + tv_batch_size]
+                    logger.info(f"Getting term vectors for batch {i}")
+                    tv_resp = os_mtermvectors(
+                        index=index,
+                        doc_ids=batch_ids,
+                        field=analysis_field,
+                    )
+                    tv_docs.extend(tv_resp.get("docs", []))
+
+                merged_tv_resp = {"docs": tv_docs}
+                logger.info("Got all term vectors!")
+
+                all_hits, cluster_vectors_by_id = analysis_from_mtermvectors(
+                    hits=all_hits,
+                    tv_resp=merged_tv_resp,
                     analysis=analysis,
                     field_fallback=field,
                 )
-                if analysis.cluster_enabled:
-                    hits = sort_hits_by_cluster_and_score(cluster_hits_by_analysis(
-                        hits,
+
+                logger.info("Got all analyses!")
+                
+                all_hits = sort_hits_by_cluster_and_score(
+                    cluster_hits_by_analysis(
+                        all_hits,
                         analysis=analysis,
-                    ))
-                    # Use /explorer
-                    # from .viewer import write_analysis_explorer_html
-                    # from zotero_rdf_server.config import EXPORT_DIRECTORY
-                    # html_path = Path(EXPORT_DIRECTORY / "analysis_explorer.html")
-                    # write_analysis_explorer_html(hits, html_path)
-                    # logger.info(f"Analysis Explorer available at {html_path}")
+                        # return_vector=return_analysis,
+                        return_projection=return_analysis,
+                        cluster_vectors_by_id=cluster_vectors_by_id
+                    )
+                )
+                logger.info("Got all cluster!")
+                resp["hits"]["hits"] = all_hits
+                resp["hits"]["total"] = {"value": len(all_hits), "relation": "eq"}
+
+#############################
+
+        else:            
+            resp = os_search(index=index, body=body, columns=source_columns)
+
+            if analysis.perform_analysis:
+                hits = resp.get("hits", {}).get("hits", [])
+                analysis_field = analysis.analyze_field or field
+                hit_ids = [h["_id"] for h in hits if h.get("_id")]
+
+                if hit_ids:
+                    tv_resp = os_mtermvectors(
+                        index=index,
+                        doc_ids=hit_ids,
+                        field=analysis_field,
+                    )
+
+                    hits, cluster_vectors_by_id  = analysis_from_mtermvectors(
+                        hits=hits,
+                        tv_resp=tv_resp,
+                        analysis=analysis,
+                        field_fallback=field,
+                    )
+                    if analysis.cluster_enabled:    
+                        hits = sort_hits_by_cluster_and_score(cluster_hits_by_analysis(
+                            hits,
+                            analysis=analysis,
+                            # return_vector = return_analysis,
+                            return_projection=return_analysis,
+                            cluster_vectors_by_id=cluster_vectors_by_id
+                        ))
 
 
-                resp["hits"]["hits"] = hits
+
+                    resp["hits"]["hits"] = hits
 
         if resp.get("hits", {}).get("hits"):
             h0 = resp["hits"]["hits"][0]
@@ -1654,7 +1779,7 @@ def search_terms(
         output_format=format.value if hasattr(format, "value") else format,
         columns=render_columns,
         include_context=context,
-        filename=f"search_terms_{terms[0] if not lucene else 'lucene_query'}",
+        filename=f"search_terms_{terms[0] if terms and not lucene else 'query'}",
         # flatten_dict=True,
         # keep_dict=False,
         include_aggs=True,
