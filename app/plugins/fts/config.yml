@@ -131,6 +131,7 @@ open-search:
   meta:
     owner: "zotero-rdf-server"
     default_alias: ocr-scigma
+    max_size: 10000
     environment: "dev"
     # Minimum OpenSearch version this config is designed for
     opensearch_min_version: "2.0.0"
