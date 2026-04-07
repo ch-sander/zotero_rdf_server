@@ -14,13 +14,17 @@ oscfg = get_os_config(cfg_path)
 logger.debug(f"{oscfg}")
 client = make_client(oscfg)
 logger.info(f"Client config loaded from {cfg_path}")
-DEFAULT_ALIAS = oscfg.get("meta", {}).get("default_alias", "ocr")
+OS_META = oscfg.get("meta", {})
+DEFAULT_ALIAS = OS_META.get("default_alias", "ocr")
+
+from .endpoints import MAX_SIZE
+
+MAX_SIZE = OS_META.get("max_size", MAX_SIZE)
 logger.info(f"DEFAULT_ALIAS: {DEFAULT_ALIAS}")
 
 # --- Helpers -----------------------------------------------------------------
 
 DEFAULT_SIZE = 10
-from .endpoints import MAX_SIZE
 
 def apply_paging(
     body: Dict[str, Any],
@@ -713,6 +717,91 @@ def os_search(index: str, body: Dict[str, Any], columns: Optional[str]) -> Dict[
     logger.info(json.dumps(body,indent=4))    
     return client.search(index=index, body=body)
 
+def build_scroll_body(
+    body: Dict[str, Any],
+    *,
+    batch_size: int = 1000,
+    drop_sort: bool = True,
+) -> Dict[str, Any]:
+    scroll_body = deepcopy(body)
+
+    scroll_body.pop("from", None)
+
+    scroll_body["size"] = batch_size
+
+    if drop_sort:
+        scroll_body.pop("sort", None)
+
+    return scroll_body
+
+def os_search_all_scroll(
+    index: str,
+    body: Dict[str, Any],
+    columns: Optional[str],
+    batch_size: int = 1000,
+    scroll_ttl: str = "2m",
+) -> Dict[str, Any]:
+    """Fetch all hits via OpenSearch scroll and return one combined response."""
+    scroll_body = build_scroll_body(body, batch_size=batch_size, drop_sort=True)
+
+    apply_source_includes(scroll_body, columns)
+
+    if not index:
+        index = DEFAULT_ALIAS
+        logger.warning(f"index set to default: {index}")
+
+    search_body = dict(scroll_body)
+    search_body["size"] = batch_size
+
+    logger.info("Initial scroll search:\n%s", json.dumps(search_body, indent=4))
+
+    resp = client.search(
+        index=index,
+        body=search_body,
+        scroll=scroll_ttl,
+    )
+
+    all_hits: List[Dict[str, Any]] = []
+    scroll_id = resp.get("_scroll_id")
+    batch = 0
+    try:
+        while True:
+            batch += 1
+            hits = resp.get("hits", {}).get("hits", [])
+            if not hits:
+                break
+
+            all_hits.extend(hits)
+
+            if not scroll_id:
+                break
+
+            resp = client.scroll(
+                body={
+                    "scroll": scroll_ttl,
+                    "scroll_id": scroll_id,
+                }
+            )
+            logger.info("Following scroll search:%s", batch)
+
+            # Always keep the latest scroll_id
+            scroll_id = resp.get("_scroll_id", scroll_id)
+
+    finally:
+        if scroll_id:
+            try:
+                client.clear_scroll(body={"scroll_id": [scroll_id]})
+                logger.info("Cleared scroll search:\n%s", scroll_id)
+            except Exception as clear_err:
+                logger.warning("Failed to clear scroll: %s", clear_err)
+
+    return {
+        "hits": {
+            "total": {"value": len(all_hits), "relation": "eq"},
+            "hits": all_hits,
+        }
+    }
+
 def os_mtermvectors(
     *,
     index: str,
@@ -1019,92 +1108,6 @@ def _build_local_tfidf_from_vectorizer(
 
     return doc_top_terms, doc_vectors
 
-def _build_local_tfidf_from_vectorizer_legacy(
-    *,
-    doc_ids: List[str],
-    tv_by_id: Dict[str, Dict[str, Any]],
-    field: str,
-    analysis: ResultAnalysisParams,
-) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, Dict[str, float]]]:
-    pseudo_docs: List[str] = []
-    ordered_doc_ids: List[str] = []
-
-    for doc_id in doc_ids:
-        tv_doc = tv_by_id.get(doc_id)
-        if not tv_doc or not tv_doc.get("found"):
-            continue
-
-        term_items = _terms_from_tv_doc(
-            tv_doc,
-            field=field,
-            min_token_length=analysis.analyze_min_token_length,
-            max_tokens_per_doc=analysis.analyze_max_tokens_per_doc,
-        )
-
-        pseudo_doc = _pseudo_doc_from_terms(term_items)
-        ordered_doc_ids.append(doc_id)
-        pseudo_docs.append(pseudo_doc)
-
-    if not pseudo_docs:
-        return {}, {}
-
-    use_char_ngrams = getattr(analysis, "analyze_use_char_ngrams", True)
-    char_ngram_range = getattr(analysis, "analyze_char_ngram_range", (3, 5))
-
-    if use_char_ngrams:
-        vectorizer = TfidfVectorizer(
-            analyzer="char_wb",
-            ngram_range=char_ngram_range,
-            lowercase=True,
-            norm="l2",
-            use_idf=True,
-            smooth_idf=True,
-            sublinear_tf=False,
-        )
-    else:
-        vectorizer = TfidfVectorizer(
-            analyzer="word",
-            token_pattern=r"(?u)\b\w+\b",
-            lowercase=True,
-            norm="l2",
-            use_idf=True,
-            smooth_idf=True,
-            sublinear_tf=False,
-        )
-
-    matrix = vectorizer.fit_transform(pseudo_docs)
-    features = vectorizer.get_feature_names_out()
-
-    doc_top_terms: Dict[str, List[Dict[str, Any]]] = {}
-    doc_vectors: Dict[str, Dict[str, float]] = {}
-
-    for row_idx, doc_id in enumerate(ordered_doc_ids):
-        row = matrix.getrow(row_idx)
-        indices = row.indices
-        data = row.data
-
-        vector = {
-            features[col_idx]: round(float(score), 6)
-            for col_idx, score in zip(indices, data)
-        }
-        doc_vectors[doc_id] = vector
-
-        top = sorted(
-            vector.items(),
-            key=lambda x: x[1],
-            reverse=True,
-        )[:analysis.analyze_top_terms]
-
-        doc_top_terms[doc_id] = [
-            {
-                "term": term,
-                "score": score,
-            }
-            for term, score in top
-        ]
-
-    return doc_top_terms, doc_vectors
-
 def analysis_from_mtermvectors(
     *,
     hits: List[Dict[str, Any]],
@@ -1217,7 +1220,7 @@ def analysis_from_mtermvectors(
                 derived["local"] = {
                     "key_terms": [item["term"] for item in local_top],
                     "key_terms_details": local_top,
-                    "vector": local_vectors_by_id.get(doc_id, {}),
+                    # "vector": local_vectors_by_id.get(doc_id, {}),
                 }
                 # include_vector = getattr(analysis, "analyze_include_vector", False)
                 # if include_vector:
@@ -1228,23 +1231,56 @@ def analysis_from_mtermvectors(
         hit_copy["_source"]["analysis"].update(derived)
         enriched.append(hit_copy)
 
-    return enriched
+    return enriched, local_vectors_by_id
 
 # endregion
 # region Cluster
 
-def _l2_normalize(vector: List[float]) -> List[float]:
-    norm = math.sqrt(sum(v * v for v in vector))
-    if norm == 0.0:
-        return vector
-    return [v / norm for v in vector]
+def _extract_term_scores_legacy(
+    hit: Dict[str, Any],
+    *,
+    analysis_branch: str,
+    prefer_vector: bool = False,
+) -> Dict[str, float]:
+    source = hit.get("_source", {})
+    analysis = source.get("analysis", {})
+    branch = analysis.get(analysis_branch, {})
+
+    if prefer_vector:
+        vector = branch.get("vector") or {}
+        if vector:
+            return {str(term): float(score) for term, score in vector.items()}
+
+    details = branch.get("key_terms_details") or []
+    if details:
+        out: Dict[str, float] = {}
+        for item in details:
+            term = item.get("term")
+            score = item.get("score", 0.0)
+            if term:
+                out[str(term)] = float(score)
+        return out
+
+    key_terms = branch.get("key_terms") or []
+    if key_terms:
+        return {str(term): 1.0 for term in key_terms if term}
+
+    vector = branch.get("vector") or {}
+    return {str(term): float(score) for term, score in vector.items()}
 
 def _extract_term_scores(
     hit: Dict[str, Any],
     *,
     analysis_branch: str,
     prefer_vector: bool = False,
+    cluster_vectors_by_id: Dict[str, Dict[str, float]] | None = None,
 ) -> Dict[str, float]:
+    if prefer_vector and cluster_vectors_by_id:
+        doc_id = hit.get("_id")
+        external_vector = cluster_vectors_by_id.get(doc_id) if doc_id else None
+        if external_vector:
+            return {str(term): float(score) for term, score in external_vector.items()}
+
     source = hit.get("_source", {})
     analysis = source.get("analysis", {})
     branch = analysis.get(analysis_branch, {})
@@ -1361,15 +1397,87 @@ def _build_cluster_label(
     return label, top_terms
 
 
+def _compute_projection_2d(
+    clustering_matrix,
+    method: str = "pca",
+    random_state: int | None = None,
+) -> tuple[list[list[float]], str]:
+    import numpy as np
+
+    if clustering_matrix is None:
+        return [], method
+
+    if hasattr(clustering_matrix, "toarray"):
+        projection_input = clustering_matrix.toarray()
+    else:
+        projection_input = np.asarray(clustering_matrix)
+
+    n_samples = projection_input.shape[0]
+
+    if n_samples == 0:
+        return [], method
+
+    if n_samples == 1:
+        return [[0.0, 0.0]], method
+
+    method = (method or "pca").lower()
+
+    if method == "pca":
+        from sklearn.decomposition import PCA
+
+        model = PCA(n_components=2, random_state=random_state)
+        projection = model.fit_transform(projection_input)
+
+    elif method == "tsne":
+        from sklearn.manifold import TSNE
+
+        perplexity = min(30, max(1, n_samples - 1))
+
+        model = TSNE(
+            n_components=2,
+            random_state=random_state,
+            init="pca",
+            learning_rate="auto",
+            perplexity=perplexity,
+        )
+        projection = model.fit_transform(projection_input)
+
+    elif method == "umap":
+        ensure_import("umap-learn", requirements=None)
+        import umap
+
+        n_neighbors = min(15, max(2, n_samples - 1))
+
+        model = umap.UMAP(
+            n_components=2,
+            random_state=random_state,
+            n_neighbors=n_neighbors,
+        )
+        projection = model.fit_transform(projection_input)
+
+    else:
+        raise ValueError(f"Unsupported projection method: {method}")
+
+    projection = np.asarray(projection, dtype=float)
+
+    return projection.tolist(), method
+
+
 def cluster_hits_by_analysis(
     hits: List[Dict[str, Any]],
     *,
     analysis: ResultAnalysisParams,
     random_state: int = 42,
-    normalize_vectors: bool = True,
+    normalize_vectors: bool = None,
+    return_vector: bool = False,
+    return_projection: bool = None,
+    cluster_vectors_by_id: Dict[str, Dict[str, float]] | None = None,
 ) -> List[Dict[str, Any]]:
     if not hits or not analysis.cluster_enabled:
         return hits
+    
+    normalize_vectors = normalize_vectors if normalize_vectors is not None else bool(getattr(analysis, "cluster_normalize_vectors", True))
+    return_projection = return_projection if return_projection is not None else bool(getattr(analysis, "analysis_return_projection", True))
 
     hits_copy = [deepcopy(hit) for hit in hits]
 
@@ -1389,7 +1497,8 @@ def cluster_hits_by_analysis(
         _extract_term_scores(
             hit,
             analysis_branch=analysis.cluster_source,
-            prefer_vector=True,   # Clustering
+            prefer_vector=True,   # Clustering,
+            cluster_vectors_by_id=cluster_vectors_by_id,
         )
         for hit in hits_copy
     ]
@@ -1464,7 +1573,6 @@ def cluster_hits_by_analysis(
         dtype=float,
     )
 
-    # Falls einzelne usable_indices am Ende doch nur Nullzeilen geworden sind:
     nonzero_row_mask = matrix.getnnz(axis=1) > 0
     if not nonzero_row_mask.any():
         for hit in hits_copy:
@@ -1563,6 +1671,14 @@ def cluster_hits_by_analysis(
             "label_source": analysis.cluster_label_source,
         }
 
+    if return_projection:
+        projection_2d, projection_method = _compute_projection_2d(
+            clustering_matrix=clustering_matrix,
+            method=getattr(analysis, "cluster_projection_method", "umap"),
+            random_state=random_state,
+        )
+
+
     for i, hit in enumerate(hits_copy):
         hit.setdefault("_source", {})
         hit["_source"].setdefault("analysis", {})
@@ -1573,172 +1689,29 @@ def cluster_hits_by_analysis(
 
         row_idx = hit_index_to_row[i]
         cluster_id = int(labels[row_idx])
-        hit["_source"]["analysis"]["cluster"] = cluster_meta[cluster_id]
+        if return_vector:
+            row_vector = clustering_matrix[row_idx]
 
-    return hits_copy
-
-def cluster_hits_by_analysis_legacy(
-    hits: List[Dict[str, Any]],
-    *,
-    analysis: ResultAnalysisParams,
-    random_state: int = 42,
-    normalize_vectors: bool = True,
-) -> List[Dict[str, Any]]:
-    if not hits or not analysis.cluster_enabled:
-        return hits
-
-    hits_copy = [deepcopy(hit) for hit in hits]
-
-    cluster_term_scores_per_hit: List[Dict[str, float]] = [
-        _extract_term_scores(
-            hit,
-            analysis_branch=analysis.cluster_source,
-            prefer_vector=True,   # Clustering
-        )
-        for hit in hits_copy
-    ]
-
-    label_term_scores_per_hit: List[Dict[str, float]] = [
-        _extract_term_scores(
-            hit,
-            analysis_branch=analysis.cluster_label_source,
-            prefer_vector=False,  # Labels
-        )
-        for hit in hits_copy
-    ]
-
-    usable_indices = [i for i, term_scores in enumerate(cluster_term_scores_per_hit) if term_scores]
-    usable_index_set = set(usable_indices)
-
-    if not usable_indices:
-        for hit in hits_copy:
-            hit.setdefault("_source", {})
-            hit["_source"].setdefault("analysis", {})
-            hit["_source"]["analysis"]["cluster"] = {
-                "id": None,
-                "label": "unclustered",
-                "label_terms": [],
-                "size": 0,
-                "source": analysis.cluster_source,
-                "label_source": analysis.cluster_label_source,
+            if hasattr(row_vector, "toarray"):  # sparse row
+                row_vector = row_vector.toarray().ravel()
+            else:  # ndarray row
+                row_vector = row_vector.ravel()
+            
+            cluster_result = {
+                **cluster_meta[cluster_id],
+                "vector": row_vector.tolist(),
             }
-        return hits_copy
+        else:
+            cluster_result = cluster_meta[cluster_id]
 
-    vocabulary = sorted(
-        {
-            term
-            for i in usable_indices
-            for term in cluster_term_scores_per_hit[i].keys()
-        }
-    )
-    if not vocabulary:
-        for hit in hits_copy:
-            hit.setdefault("_source", {})
-            hit["_source"].setdefault("analysis", {})
-            hit["_source"]["analysis"]["cluster"] = {
-                "id": None,
-                "label": "unclustered",
-                "label_terms": [],
-                "size": 0,
-                "source": analysis.cluster_source,
-                "label_source": analysis.cluster_label_source,
-            }
-        return hits_copy
-
-    term_to_col = {term: idx for idx, term in enumerate(vocabulary)}
-
-    matrix: List[List[float]] = []
-    usable_hit_refs: List[int] = []
-
-    for i in usable_indices:
-        row = [0.0] * len(vocabulary)
-        for term, score in cluster_term_scores_per_hit[i].items():
-            row[term_to_col[term]] = float(score)
-        if normalize_vectors:
-            row = _l2_normalize(row)
-        matrix.append(row)
-        usable_hit_refs.append(i)
-
-    effective_k = max(1, min(analysis.cluster_count, len(matrix)))
-    hit_index_to_row = {hit_idx: row_idx for row_idx, hit_idx in enumerate(usable_hit_refs)}
-
-    if len(matrix) == 1:
-        only_idx = usable_hit_refs[0]
-        label, label_terms = _build_cluster_label(
-            cluster_term_scores=[label_term_scores_per_hit[only_idx]],
-            all_term_scores=label_term_scores_per_hit,
-            top_label_terms=analysis.cluster_label_top_terms,
-        )
-        for i, hit in enumerate(hits_copy):
-            hit.setdefault("_source", {})
-            hit["_source"].setdefault("analysis", {})
-            if i == only_idx:
-                hit["_source"]["analysis"]["cluster"] = {
-                    "id": 0,
-                    "label": label,
-                    "label_terms": label_terms,
-                    "size": 1,
-                    "source": analysis.cluster_source,
-                    "label_source": analysis.cluster_label_source,
+        if return_projection:
+                hit["_source"]["analysis"]["projection"] = {
+                    "x": float(projection_2d[row_idx][0]),
+                    "y": float(projection_2d[row_idx][1]),
+                    "method": projection_method,
                 }
-            else:
-                hit["_source"]["analysis"]["cluster"] = {
-                    "id": None,
-                    "label": "unclustered",
-                    "label_terms": [],
-                    "size": 0,
-                    "source": analysis.cluster_source,
-                    "label_source": analysis.cluster_label_source,
-                }
-        return hits_copy
 
-    kmeans = KMeans(
-        n_clusters=effective_k,
-        random_state=random_state,
-        n_init="auto",
-    )
-    labels = kmeans.fit_predict(matrix)
-
-    cluster_docs: Dict[int, List[int]] = defaultdict(list)
-    for row_idx, cluster_id in enumerate(labels):
-        hit_idx = usable_hit_refs[row_idx]
-        cluster_docs[int(cluster_id)].append(hit_idx)
-
-    cluster_meta: Dict[int, Dict[str, Any]] = {}
-    for cluster_id, hit_indices in cluster_docs.items():
-        cluster_label_scores = [label_term_scores_per_hit[i] for i in hit_indices]
-        label, label_terms = _build_cluster_label(
-            cluster_term_scores=cluster_label_scores,
-            all_term_scores=label_term_scores_per_hit,
-            top_label_terms=analysis.cluster_label_top_terms,
-        )
-        cluster_meta[cluster_id] = {
-            "id": cluster_id,
-            "label": label,
-            "label_terms": label_terms,
-            "size": len(hit_indices),
-            "source": analysis.cluster_source,
-            "label_source": analysis.cluster_label_source,
-        }
-
-    for i, hit in enumerate(hits_copy):
-        hit.setdefault("_source", {})
-        hit["_source"].setdefault("analysis", {})
-
-        if i not in usable_index_set:
-            hit["_source"]["analysis"]["cluster"] = {
-                "id": None,
-                "label": "unclustered",
-                "label_terms": [],
-                "size": 0,
-                "source": analysis.cluster_source,
-                "label_source": analysis.cluster_label_source,
-            }
-            continue
-
-        row_idx = hit_index_to_row[i]
-        cluster_id = int(labels[row_idx])
-        hit["_source"]["analysis"]["cluster"] = cluster_meta[cluster_id]
+        hit["_source"]["analysis"]["cluster"] = cluster_result
 
     return hits_copy
 
@@ -1751,37 +1724,67 @@ def sort_hits_by_cluster_and_score(hits):
 
     cluster_order = sorted(
         clusters.keys(),
-        key=lambda cid: max(h.get("_score", 0) for h in clusters[cid]) if cid is not None else -1,
+        key=lambda cid: max((h.get("_score") or 0) for h in clusters[cid]) if cid is not None else -1,
         reverse=True,
     )
 
     sorted_hits = []
     for cid in cluster_order:
         docs = clusters[cid]
-        docs_sorted = sorted(docs, key=lambda h: h.get("_score", 0), reverse=True)
+        docs_sorted = sorted(docs, key=lambda h: h.get("_score") or 0, reverse=True)
         sorted_hits.extend(docs_sorted)
 
     return sorted_hits
 
-def add_vector_columns(
+def add_analysis_columns(
     row: Dict[str, Any],
     *,
     analysis_key: str = "analysis",
-    vector_prefix: str = "vector_",
+    d_prefix: str = "vector_",
+    p_prefix: str = "projection_",
+    p_cluster: str = "cluster_",
 ) -> Dict[str, Any]:
     out = dict(row)
 
-    vector = (
-        (row.get(analysis_key) or {})
-        .get("local", {})
-        .get("vector", {})
-    )
+    analysis = row.get(analysis_key) or {}
+
+    # --- CLUSTER ---
+    cluster = analysis.get("cluster") or {}
+
+    if isinstance(cluster, dict):
+        for k, v in cluster.items():
+            if k in {"vector", "source"}:
+                continue
+            out[f"{p_cluster}{k}"] = v
+
+    # --- VECTOR ---
+    vector = cluster.get("vector")
 
     if isinstance(vector, dict):
         for k, v in vector.items():
-            out[f"{vector_prefix}{k}"] = v
+            out[f"{d_prefix}{k}"] = v
+    elif isinstance(vector, list):
+        for i, v in enumerate(vector):
+            out[f"{d_prefix}{i}"] = v
+
+    # --- CLUSTER TERMS ---
+    # cluster_terms = cluster.get("label_terms")
+    # if isinstance(cluster_terms, list) and all(isinstance(x, str) for x in cluster_terms):
+    #     for i, v in enumerate(cluster_terms):
+    #         out[f"{p_cluster}term_{i}"] = v
+    # --- PROJECTION ---
+    projection = analysis.get("projection")
+
+    if isinstance(projection, dict):
+        for k, v in projection.items():
+            if k in {"method__"}:
+                continue
+            out[f"{p_prefix}{k}"] = v
+
 
     out.pop(analysis_key, None)
     return out
 
 # endregion
+
+# end
