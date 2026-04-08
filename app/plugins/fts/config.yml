@@ -270,6 +270,11 @@ open-search:
             separator: "\\s*;\\s*"
             ignore_missing: true
 
+        - split:
+            field: "meta.parent_creators"
+            separator: "\\s*;\\s*"
+            ignore_missing: true
+
         # remove leading '*' from each tag value (works on arrays too)
         - gsub:
             field: "meta.parent_tags"
