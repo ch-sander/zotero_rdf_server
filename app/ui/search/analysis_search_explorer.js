@@ -52,6 +52,7 @@
   const apiSearchForm = document.getElementById("apiSearchForm");
   const dynamicFormSections = document.getElementById("dynamicFormSections");
   const submitApiSearchBtn = document.getElementById("submitApiSearchBtn");
+  const atlasSearchBtn = document.getElementById("atlasSearchBtn");
   const resetApiFormBtn = document.getElementById("resetApiFormBtn");
   const apiStatusEl = document.getElementById("apiStatus");
   const requestUrlBoxEl = document.getElementById("requestUrlBox");
@@ -92,6 +93,7 @@
       clientSearchInput.placeholder = UI_TEXT.search_placeholder || "Search title, snippet, ID, terms ...";
     }
     if (submitApiSearchBtn) submitApiSearchBtn.textContent = UI_TEXT.search || "Search";
+    if (atlasSearchBtn) atlasSearchBtn.textContent = UI_TEXT.atlas || "Atlas";
     if (resetApiFormBtn) resetApiFormBtn.textContent = UI_TEXT.reset_form || "Reset form";
     if (resetClientFiltersBtn) resetClientFiltersBtn.textContent = UI_TEXT.reset_filters || "Reset filters";
     if (expandAllBtn) expandAllBtn.textContent = UI_TEXT.toggle_all_details || "Toggle all details";
@@ -1252,7 +1254,35 @@
       submitApiSearchBtn.disabled = false;
     }
   }
+  function runAtlasSearch(event) {
+    if (event) event.preventDefault();
 
+    let params;
+    try {
+      params = collectFormValues();
+    } catch (err) {
+      setApiStatus(`${UI_TEXT.error || "Error"}: ${err.message}`, "error");
+      return;
+    }
+
+    // wichtig: überschreibt json
+    params.set("format", "atlas");
+
+    const url = `${EXPLORER_CONFIG.apiBaseUrl || ""}${EXPLORER_CONFIG.endpointPath}?${params.toString()}`;
+
+    requestUrlBoxEl.innerHTML = `<strong>${escapeHtml(UI_TEXT.request_url || "Request URL")}:</strong>`;
+    requestUrlPreEl.textContent = url;
+    requestUrlPreEl.classList.remove("hidden");
+
+    const popup = window.open(url, "_blank", "noopener,noreferrer");
+
+    if (!popup) {
+      setApiStatus("Popup blocked – please allow popups", "error");
+      return;
+    }
+
+    setApiStatus("Opening Atlas...");
+  }
   async function loadOpenApiAndBuildForm() {
     setApiStatus(UI_TEXT.loading_openapi || "Loading OpenAPI...");
     submitApiSearchBtn.disabled = true;
@@ -1339,7 +1369,10 @@
   });
 
   apiSearchForm.addEventListener("submit", runApiSearch);
-
+  if (atlasSearchBtn) {
+    atlasSearchBtn.addEventListener("click", runAtlasSearch);
+  }
+  
   resetApiFormBtn.addEventListener("click", function () {
     resetApiForm();
     setApiStatus(UI_TEXT.status_ready || "Ready");
