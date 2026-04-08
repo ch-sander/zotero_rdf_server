@@ -1757,6 +1757,17 @@ def add_analysis_columns(
                 continue
             out[f"{p_cluster}{k}"] = v
 
+
+    # --- GLOBAL KEY TERMS ---
+    global_terms = (analysis.get("global") or {}).get("key_terms")
+    if isinstance(global_terms, list):
+        out["global_key_terms"] = global_terms
+
+    # --- LOCAL KEY TERMS ---
+    local_terms = (analysis.get("local") or {}).get("key_terms")
+    if isinstance(local_terms, list):
+        out["local_key_terms"] = local_terms
+
     # --- VECTOR ---
     vector = cluster.get("vector")
 
