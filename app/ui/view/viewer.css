@@ -311,3 +311,19 @@ a:active {
     height: 60vh;
   }
 }
+
+.jump-to-page {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+#page-input {
+  width: 280px;
+  padding: 0.4rem 0.5rem;
+  font-family: monospace;
+}
+
+#page-go-btn {
+  padding: 0.4rem 0.8rem;
+}

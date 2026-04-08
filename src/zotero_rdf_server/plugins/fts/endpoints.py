@@ -2180,6 +2180,14 @@ def get_text(os_doc_id: str):
 #     return HTMLResponse(html)
 
 @open_router.get(
+    "/view",
+    summary="Viewer start page",
+    tags=["Viewer"],
+)
+def view_root():
+    return build_view_response(None, editable=False)
+
+@open_router.get(
     "/view/{os_doc_id:path}",
     summary="View image page and OCR",
     description="Indicate root directories and file extensions in configuration under 'viewer'.",
@@ -2216,7 +2224,90 @@ def save_page(os_doc_id: str, text: str = Form(...)):
         status_code=303,
     )
 
-def build_view_response(original_os_doc_id: str, editable: bool = False) -> HTMLResponse:
+def build_view_response(original_os_doc_id: str | None, editable: bool = False) -> HTMLResponse:
+    from .viewer import (
+        render_page,
+        split_doc_id,
+        image_file,
+        text_file,
+        list_pages,
+        discover_doc_url,
+        IMAGE_EXT,
+        BASE_URL,
+    )
+
+    raw_os_doc_id = (original_os_doc_id or "").strip()
+
+    if not raw_os_doc_id:
+        html = render_page(
+            os_doc_id="",
+            page="",
+            pages=[],
+            image_url=None,
+            text="[no text selected]",
+            prev_page=None,
+            next_page=None,
+            discover_url=None,
+            editable=editable,
+            save_url=None,
+            page_url_base=f"{BASE_URL}/view",
+            edit_url=None,
+            ocr_url=None,
+            current_framework="kraken",
+        )
+        return HTMLResponse(html)
+
+    doc_key, page = split_doc_id(raw_os_doc_id)
+    doc_id_only = raw_os_doc_id.rsplit(":", 1)[0]
+
+    img_path = image_file(doc_key, page)
+    txt_path = text_file(doc_key, page)
+    pages = list_pages(doc_key)
+
+    if not pages and not img_path.exists() and not txt_path.exists():
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    image_url = None
+    if img_path.exists():
+        image_url = f"/image-files/{doc_key}/{page}.{IMAGE_EXT}"
+
+    if txt_path.exists():
+        try:
+            text = txt_path.read_text(encoding="utf-8", errors="replace")
+        except Exception as exc:
+            logger.warning(f"Could not read text file {txt_path}: {exc}")
+            text = "[error reading text]"
+    else:
+        text = "[no text on this page]"
+
+    prev_page = None
+    next_page = None
+    if page in pages:
+        idx = pages.index(page)
+        if idx > 0:
+            prev_page = pages[idx - 1]
+        if idx < len(pages) - 1:
+            next_page = pages[idx + 1]
+
+    html = render_page(
+        os_doc_id=doc_id_only,
+        page=page,
+        pages=pages,
+        image_url=image_url,
+        text=text,
+        prev_page=prev_page,
+        next_page=next_page,
+        discover_url=discover_doc_url(raw_os_doc_id),
+        editable=editable,
+        save_url=f"{BASE_URL}/save-view/{doc_id_only}:{page}" if editable else None,
+        page_url_base=f"{BASE_URL}/view",
+        edit_url=f"{BASE_URL}/edit-view/{doc_id_only}:{page}" if not editable else None,
+        ocr_url=f"{BASE_URL}/ocr-view/{doc_id_only}:{page}",
+        current_framework="kraken",
+    )
+    return HTMLResponse(html)
+
+def build_view_response_legacy(original_os_doc_id: str, editable: bool = False) -> HTMLResponse:
     from .viewer import (
         render_page,
         split_doc_id,
@@ -2278,9 +2369,6 @@ def build_view_response(original_os_doc_id: str, editable: bool = False) -> HTML
         current_framework="kraken",
     )
     return HTMLResponse(html)
-
-
-
 
 @open_router.get(
     "/ocr-view/{os_doc_id:path}",

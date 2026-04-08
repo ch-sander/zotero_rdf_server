@@ -37,6 +37,66 @@ document.addEventListener("DOMContentLoaded", () => {
     frameworkEl.value = currentFramework;
   }
 
+  const pageInput = document.getElementById("page-input");
+  const pageGoBtn = document.getElementById("page-go-btn");
+
+
+  function navigate(docId, page) {
+    const base = config.pageUrlBase;
+    window.location.href = `${base}/${docId}:${page}`;
+  }
+
+  function goToPage() {
+    if (!pageInput) return;
+
+    const input = pageInput.value.trim();
+    if (!input) return;
+
+    const currentDocId = config.currentDocId;
+    const prefix = config.docPrefix;
+
+    if (/^\d+$/.test(input)) {
+      navigate(currentDocId, input);
+      return;
+    }
+
+    // 4929619:26WV4HVJ:22
+    if (/^.+:.+:\d+$/.test(input)) {
+      const i = input.lastIndexOf(":");
+      const docId = input.slice(0, i);
+      const page = input.slice(i + 1);
+      navigate(docId, page);
+      return;
+    }
+
+    // 26WV4HVJ:22
+    const rel = input.match(/^([^:]+):(\d+)$/);
+    if (rel) {
+      const [, suffix, page] = rel;
+      navigate(`${prefix}:${suffix}`, page);
+      return;
+    }
+
+    // 4929619:26WV4HVJ
+    if (input.includes(":")) {
+      navigate(input, "1");
+      return;
+    }
+
+    // 26WV4HVJ
+    navigate(`${prefix}:${input}`, "1");
+  }
+
+  const form = document.getElementById("page-jump-form");
+
+  if (form) {
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      goToPage();
+    });
+  }
+
+
   if (imageUrl) {
     if (!window.OpenSeadragon) {
       console.error("OpenSeadragon is not available");

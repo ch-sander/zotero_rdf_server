@@ -138,344 +138,7 @@ def discover_doc_url(original_os_doc_id: str) -> str | None:
     encoded_doc_id = quote(original_os_doc_id, safe="")
     return f"{DASHBOARD_URL}{encoded_doc_id}"
 
-def render_page_legacy(
-    os_doc_id: str,
-    page: str,
-    pages: list[str],
-    image_url: str | None,
-    text: str,
-    prev_page: str | None,
-    next_page: str | None,
-    discover_url: str | None,
-) -> str:
-    safe_os_doc_id = escape(os_doc_id)
-    safe_page = escape(page)
-    safe_text = escape(text or "")
-    options = []
-    for p in pages:
-        selected = " selected" if p == page else ""
-        label = str(int(p)) if p.isdigit() else p
-        options.append(
-            f'<option value="{BASE_URL}/{safe_os_doc_id}:{escape(p)}"{selected}>{escape(label)}</option>'
-        )
-    options_html = "\n".join(options)
-
-    nav_parts = []
-    if prev_page:
-        nav_parts.append(
-            f'<a href="{BASE_URL}/{safe_os_doc_id}:{escape(prev_page)}">Previous</a>'
-        )
-    if next_page:
-        nav_parts.append(
-            f'<a href="{BASE_URL}/{safe_os_doc_id}:{escape(next_page)}">Next</a>'
-        )
-    nav_html = "\n".join(nav_parts)
-
-    discover_html = ""
-    if discover_url:
-        discover_html = (
-            f'<a href="{escape(discover_url)}" target="_blank" '
-            f'rel="noopener noreferrer">Open in Discover</a>'
-        )
-
-    if image_url:
-        viewer_html = f"""
-        <div id="osd"></div>
-        <script src="https://cdn.jsdelivr.net/npm/openseadragon@5.0.1/build/openseadragon/openseadragon.min.js"></script>
-        <script>
-          OpenSeadragon({{
-            id: "osd",
-            prefixUrl: "https://cdn.jsdelivr.net/npm/openseadragon@5.0.1/build/openseadragon/images/",
-            tileSources: {{
-              type: "image",
-              url: "{escape(image_url)}"
-            }},
-            showNavigator: true,
-            maxZoomPixelRatio: 2,
-            visibilityRatio: 1,
-            constrainDuringPan: true
-          }});
-        </script>
-        """
-    else:
-        viewer_html = '<div class="text-panel">No image available.</div>'
-
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>{safe_os_doc_id} : {safe_page}</title>
-  <style>
-    body {{
-      font-family: sans-serif;
-      margin: 0;
-    }}
-    header {{
-      position: sticky;
-      top: 0;
-      background: white;
-      border-bottom: 1px solid #ccc;
-      padding: 0.75rem 1rem;
-      z-index: 10;
-    }}
-    nav {{
-      display: flex;
-      gap: 0.75rem;
-      align-items: center;
-      flex-wrap: wrap;
-      margin-top: 0.5rem;
-    }}
-    .layout {{
-      display: grid;
-      grid-template-columns: 1.2fr 0.8fr;
-      gap: 1rem;
-      padding: 1rem;
-    }}
-    .panel {{
-      border: 1px solid #ccc;
-      background: #fafafa;
-      min-height: 75vh;
-    }}
-    .viewer-panel {{
-      padding: 0;
-    }}
-    #osd {{
-      width: 100%;
-      height: 80vh;
-      background: #111;
-    }}
-    .text-panel {{
-      padding: 1rem;
-    }}
-    .text {{
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-      font-family: monospace;
-    }}
-    select, a {{
-      font: inherit;
-    }}
-    @media (max-width: 900px) {{
-      .layout {{
-        grid-template-columns: 1fr;
-      }}
-      #osd {{
-        height: 60vh;
-      }}
-    }}
-  </style>
-</head>
-<body>
-  <header>
-    <div><strong>{safe_os_doc_id} : {safe_page}</strong></div>
-    <nav>
-      {nav_html}
-      {"<label for='page-select'>Page</label>" if pages else ""}
-      {"<select id='page-select' onchange='window.location.href=this.value'>" + options_html + "</select>" if pages else ""}
-      {discover_html}
-    </nav>
-  </header>
-
-  <div class="layout">
-    <div class="panel viewer-panel">
-      {viewer_html}
-    </div>
-
-    <div class="panel text-panel">
-      <div class="text">{safe_text if safe_text else "[no text on this page]"}</div>
-    </div>
-  </div>
-</body>
-</html>
-"""
 from html import escape
-
-def render_page_legacy(
-    os_doc_id: str,
-    page: str,
-    pages: list[str],
-    image_url: str | None,
-    text: str,
-    prev_page: str | None,
-    next_page: str | None,
-    discover_url: str | None,
-    editable: bool = False,
-    save_url: str | None = None,
-    page_url_base: str | None = None,
-    edit_url: str | None = None,
-) -> str:
-    safe_os_doc_id = escape(os_doc_id)
-    safe_page = escape(page)
-    safe_text = escape(text or "")
-    safe_save_url = escape(save_url or "")
-    safe_page_url_base = escape((page_url_base or "/view").rstrip("/"))
-    safe_edit_url = escape(edit_url or "")
-
-    options = []
-    for p in pages:
-        selected = " selected" if p == page else ""
-        label = str(int(p)) if p.isdigit() else p
-        options.append(
-            f'<option value="{safe_page_url_base}/{safe_os_doc_id}:{escape(p)}"{selected}>{escape(label)}</option>'
-        )
-    options_html = "\n".join(options)
-
-    nav_parts = []
-    if prev_page:
-        nav_parts.append(
-            f'<a href="{safe_page_url_base}/{safe_os_doc_id}:{escape(prev_page)}">Previous</a>'
-        )
-    if next_page:
-        nav_parts.append(
-            f'<a href="{safe_page_url_base}/{safe_os_doc_id}:{escape(next_page)}">Next</a>'
-        )
-    if (not editable) and edit_url:
-        nav_parts.append(f'<a href="{safe_edit_url}">Edit</a>')
-
-    nav_html = "\n".join(nav_parts)
-
-    discover_html = ""
-    if discover_url:
-        discover_html = (
-            f'<a href="{escape(discover_url)}" target="_blank" '
-            f'rel="noopener noreferrer">Open in Discover</a>'
-        )
-
-    if image_url:
-        viewer_html = f"""
-        <div id="osd"></div>
-        <script src="https://cdn.jsdelivr.net/npm/openseadragon@5.0.1/build/openseadragon/openseadragon.min.js"></script>
-        <script>
-          OpenSeadragon({{
-            id: "osd",
-            prefixUrl: "https://cdn.jsdelivr.net/npm/openseadragon@5.0.1/build/openseadragon/images/",
-            tileSources: {{
-              type: "image",
-              url: "{escape(image_url)}"
-            }},
-            showNavigator: true,
-            maxZoomPixelRatio: 2,
-            visibilityRatio: 1,
-            constrainDuringPan: true
-          }});
-        </script>
-        """
-    else:
-        viewer_html = '<div class="text-panel">No image available.</div>'
-
-    if editable and save_url:
-        text_html = f"""
-        <form method="post" action="{safe_save_url}">
-          <textarea name="text" class="editor">{safe_text}</textarea>
-          <div class="editor-actions">
-            <button type="submit">Save</button>
-          </div>
-        </form>
-        """
-    else:
-        text_html = f'<div class="text">{safe_text if safe_text else "[no text on this page]"}</div>'
-
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>{safe_os_doc_id} : {safe_page}</title>
-  <style>
-    body {{
-      font-family: sans-serif;
-      margin: 0;
-    }}
-    header {{
-      position: sticky;
-      top: 0;
-      background: white;
-      border-bottom: 1px solid #ccc;
-      padding: 0.75rem 1rem;
-      z-index: 10;
-    }}
-    nav {{
-      display: flex;
-      gap: 0.75rem;
-      align-items: center;
-      flex-wrap: wrap;
-      margin-top: 0.5rem;
-    }}
-    .layout {{
-      display: grid;
-      grid-template-columns: 1.2fr 0.8fr;
-      gap: 1rem;
-      padding: 1rem;
-    }}
-    .panel {{
-      border: 1px solid #ccc;
-      background: #fafafa;
-      min-height: 75vh;
-    }}
-    .viewer-panel {{
-      padding: 0;
-    }}
-    #osd {{
-      width: 100%;
-      height: 80vh;
-      background: #111;
-    }}
-    .text-panel {{
-      padding: 1rem;
-    }}
-    .text {{
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-      font-family: monospace;
-    }}
-    .editor {{
-      width: 100%;
-      min-height: 70vh;
-      box-sizing: border-box;
-      font-family: monospace;
-      font-size: 0.95rem;
-      white-space: pre-wrap;
-    }}
-    .editor-actions {{
-      margin-top: 0.75rem;
-      display: flex;
-      gap: 0.5rem;
-    }}
-    select, a, button, textarea {{
-      font: inherit;
-    }}
-    @media (max-width: 900px) {{
-      .layout {{
-        grid-template-columns: 1fr;
-      }}
-      #osd {{
-        height: 60vh;
-      }}
-    }}
-  </style>
-</head>
-<body>
-  <header>
-    <div><strong>{safe_os_doc_id} : {safe_page}</strong></div>
-    <nav>
-      {nav_html}
-      {"<label for='page-select'>Page</label>" if pages else ""}
-      {"<select id='page-select' onchange='window.location.href=this.value'>" + options_html + "</select>" if pages else ""}
-      {discover_html}
-    </nav>
-  </header>
-
-  <div class="layout">
-    <div class="panel viewer-panel">
-      {viewer_html}
-    </div>
-
-    <div class="panel text-panel">
-      {text_html}
-    </div>
-  </div>
-</body>
-</html>
-"""
 
 def render_page_dynamic(
     os_doc_id: str,
@@ -923,6 +586,8 @@ def render_page(
         "src",
         "https://cdn.jsdelivr.net/npm/openseadragon@5.0.1/build/openseadragon/openseadragon.min.js",
     )
+    parts = os_doc_id.split(":", 1)
+    doc_prefix = parts[0]
 
     viewer_config = {
         "editable": editable,
@@ -930,19 +595,24 @@ def render_page(
         "ocrUrl": ocr_url or "",
         "currentFramework": current_framework,
         "osdConfig": osd_config,
+        "pageUrlBase": (page_url_base or f"{BASE_URL}/view").rstrip("/"),
+        "currentDocId": os_doc_id,
+        "currentPage": page,
+        "docPrefix": doc_prefix,
     }
-
+    
     viewer_config_json = (json.dumps(viewer_config))
     safe_osd_script_src = escape(osd_script_src)
 
     viewer_open_attr = " open" if image_url else ""
+    title = f"{safe_os_doc_id}:{safe_page}" if safe_os_doc_id and safe_page else "Viewer"
 
     return f"""<!doctype html>
     <html lang="en">
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1">
-      <title>{safe_os_doc_id}:{safe_page}</title>
+      <title>{title}</title>
       <link rel="stylesheet" href="{static_url}/viewer.css">
       <script src="{safe_osd_script_src}"></script>
       <script id="viewer-config" type="application/json">{viewer_config_json}</script>
@@ -951,11 +621,27 @@ def render_page(
     <body>
       <div id="viewer-root">
         <header>
-          <div><strong>{safe_os_doc_id}:{safe_page}</strong></div>
+          <div><strong>{title}</strong></div>
           <nav>
-            {nav_html}
+            <form id="page-jump-form" class="jump-to-page">
+            <input
+              type="text"
+              id="page-input"
+              placeholder="Enter page or doc ID"
+              title="Enter:
+          - page (e.g. 22)
+          - suffix (e.g. 26WV4HVJ)
+          - suffix:page (e.g. 26WV4HVJ:22)
+          - full doc (e.g. 4929619:26WV4HVJ)
+          - full doc:page (e.g. 4929619:26WV4HVJ:22)"
+            />
+            <button type="submit" id="page-go-btn">Go</button>
+          </form>
             {"<label for='page-select'>Page</label>" if pages else ""}
             {"<select id='page-select'>" + options_html + "</select>" if pages else ""}
+            {nav_html}
+
+
             {discover_html}
           </nav>
         </header>
