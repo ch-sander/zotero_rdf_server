@@ -181,7 +181,7 @@ def page_docs(
     pages: Iterator[Tuple[int, str]],
     meta: dict = {}, 
     vector_kwargs: dict | None = None,
-    config_path: str | None = None,
+    # config_path: str | None = None,
 ) -> Iterator[Dict[str, Any]]:
     now = datetime.now(timezone.utc).isoformat()
     vector = isinstance(vector_kwargs, dict) and vector_kwargs.get('framework')
@@ -190,7 +190,7 @@ def page_docs(
         from .helpers import clean_ocr        
 
     for sequence, text in pages:
-        label_s = f"{label}, p. {sequence}"
+        label_s = f"{label}: {sequence}"
         vector_doc = None
         if vector:
             vector_doc = embed(clean_ocr(text),**vector_kwargs)
@@ -393,7 +393,7 @@ def index_stream(
             pages=pages_iter,
             meta=meta or {},
             vector_kwargs=vector_kwargs,
-            config_path=cfg_path,
+            # config_path=cfg_path,
         )
 
     # IMPORTANT: index=None so per-action _index is respected

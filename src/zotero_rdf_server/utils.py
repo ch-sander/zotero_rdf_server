@@ -300,6 +300,37 @@ def default_filename(prefix: str, ext: str) -> str:
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S")
     return f"{prefix}-{ts}.{ext}"
 
+def html_to_string(text: str) -> str:
+    if not text:
+        return ""
+
+    try:
+        from lxml import html
+        return html.fromstring(text).text_content().strip()
+    except ImportError:
+        pass
+    except Exception:
+        return ""
+
+    try:
+        from html.parser import HTMLParser
+        from html import unescape
+
+        class P(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.t = []
+
+            def handle_data(self, d):
+                self.t.append(d)
+
+        p = P()
+        p.feed(text)
+        p.close()
+        return unescape(''.join(p.t)).strip()
+    except Exception:
+        return ""
+
 def load_text_like(
     raw: str | Path | None,
     default: str | None = None,

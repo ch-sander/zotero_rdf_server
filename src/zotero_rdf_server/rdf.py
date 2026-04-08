@@ -832,9 +832,13 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
             node_uri = None
             try:
                 item_data = item.get("data", {})
-                
+                item_bib = item.get("bib")
+                item_citation = item.get("citation")
+                item_meta = item.get("meta", {})
+                item_creatorSummary = item_meta.get("creatorSummary")
+                item_parsedDate = item_meta.get("parsedDate")
                 creators = item_data.get("creators") or []
-                if creators:
+                if not item_creatorSummary and creators:
                     if "lastName" in creators[0]:
                         first_creator = creators[0].get("lastName") 
                     elif "name" in creators[0]:
@@ -842,19 +846,19 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
                     else:
                         first_creator = "NO CREATOR"
                 else:
-                        first_creator = str(item_data.get("itemType", "Zotero item")).upper()
+                        first_creator = str(item_creatorSummary) or str(item_data.get("itemType", "Zotero item")).upper()
 
                 title = item_data.get("title")
                 if not title:
                     title = item_data.get("key","NO KEY")
-                date = item_data.get("date")
+                date = item_parsedDate or item_data.get("date")
                 volume = item_data.get("volume")
-                label = (
+                label = html_to_string(item_bib or item_citation) or (
                             f"{first_creator}: {title}"
                             f"{f' vol. {volume}' if volume else ''}"
                             f"{f' ({date})' if date else ''}"
                         ).strip()
-
+                
                 language = item_data.get("language")
                 key = item_data.get("key",uuid4())            
                 node_uri = NamedNode(f"{lib.base_url}/items/{key}")
@@ -884,6 +888,9 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
 
                     if label:
                         store.add(Quad(node_uri, NamedNode(RDFS_LABEL), Literal(label), graph_name=GRAPH_URI))
+
+                    if item_bib:
+                        store.add(Quad(node_uri, safeNamedNode(f"{ZOT_NS}bib"), Literal(item_bib), graph_name=GRAPH_URI))
 
                     apply_rdf_types(store, node_uri, item_data, item_type_fields, "item", lib.base_url, ZOT_NS)
 
