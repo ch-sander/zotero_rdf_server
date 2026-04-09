@@ -408,7 +408,7 @@
       const hitId = safeStr(hit && hit._id ? hit._id : `hit-${idx}`);
       const score = hit && hit._score !== undefined ? hit._score : 0;
       const label = safeStr(source.label || "");
-
+      const page = safeStr(source.page ?? hit.page ?? "");
       const title = pickTitle(hit);
       const snippet = pickSnippet(hit);
 
@@ -431,6 +431,7 @@
         id: hitId,
         label,
         score,
+        page,
         title,
         snippet,
         source,
@@ -742,6 +743,7 @@
               `<div class="doc-card-title">${titleHtml}</div>` +
               `<div class="doc-card-meta">` +
                 `<span><strong>${escapeHtml(UI_TEXT.id || "ID")}:</strong> ${escapeHtml(item.id)}</span>` +
+                `<span><strong>${escapeHtml(UI_TEXT.page || "Page")}:</strong> ${escapeHtml(safeStr(item.page ?? ""))}</span>` +
                 (metaLabelHtml
                   ? `<span><strong>${escapeHtml(UI_TEXT.label || "Label")}:</strong> ${metaLabelHtml}</span>`
                   : "") +
