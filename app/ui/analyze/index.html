@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Analysis Search Explorer</title>
+ <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-title" id="sidebarTitle">Analysis Search Explorer</div>
+        <div class="cluster-list-info" id="sidebarClusterInfo">Ready</div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="section-title">Top Cluster Terms</div>
+        <div class="term-cloud" id="topClusterTerms"></div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="section-title">Clusters</div>
+        <div id="sidebarClusters"></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="panel search-panel">
+        <details open id="apiSearchDetails">
+          <summary>API Search</summary>
+
+          <div class="muted">Searches automatically enable analysis and clustering.</div>
+          <div class="note-box">
+            The API request automatically adds <code>perform_analysis=true</code> and
+            <code>cluster_enabled=true</code>.
+          </div>
+
+          <form id="apiSearchForm">
+            <div id="dynamicFormSections"></div>
+
+            <div class="form-actions">
+              <button id="submitApiSearchBtn" class="btn btn-primary" type="submit">Search</button>
+              <button id="atlasSearchBtn" class="btn btn-primary" type="button">Atlas</button>
+              <button id="resetApiFormBtn" class="btn btn-secondary" type="button">Reset form</button>
+            </div>
+
+            <div id="apiStatus" class="status-line">Ready</div>
+            <div id="requestUrlBox" class="status-line"><strong>Request URL:</strong></div>
+            <pre id="requestUrlPre" class="request-url-block hidden"></pre>
+
+            <div class="raw-response-wrap">
+              <button id="toggleRawResponseBtn" class="btn btn-secondary" type="button">Show raw response</button>
+              <pre id="rawResponse" class="raw-response"></pre>
+            </div>
+          </form>
+        </details>
+      </section>
+
+    <section class="panel header-card">
+      <div class="header-card-stack">
+        <div class="page-head">
+          <h1 id="pageTitle">Analysis Search Explorer</h1>
+          <div class="muted" id="pageSubtitle">Interactive search, clustering, and analysis explorer.</div>
+        </div>
+
+        <div class="summary-grid">
+          <div class="summary-item">
+            <div class="label">Documents</div>
+            <div class="value" id="summaryDocuments">0</div>
+          </div>
+          <div class="summary-item">
+            <div class="label">Clusters</div>
+            <div class="value" id="summaryClusters">0</div>
+          </div>
+          <div class="summary-item">
+            <div class="label">Unclustered</div>
+            <div class="value" id="summaryUnclustered">0</div>
+          </div>
+          <div class="summary-item">
+            <div class="label">Cluster terms</div>
+            <div class="value" id="summaryClusterTerms">0</div>
+          </div>
+        </div>
+
+        <div id="aggregationsContainer"></div>
+
+        <div class="controls">
+          <input
+            id="clientSearchInput"
+            class="input"
+            type="text"
+            placeholder="Search title, snippet, ID, terms ..."
+          >
+          <select id="clientClusterSelect" class="select">
+            <option value="">All clusters</option>
+          </select>
+          <button id="resetClientFiltersBtn" class="btn btn-secondary" type="button">Reset filters</button>
+          <button id="expandAllBtn" class="btn btn-secondary" type="button">Toggle all details</button>
+        </div>
+        <br><br>
+        <section class="meta-facets-box" aria-labelledby="metaFacetsTitle">
+          <div class="meta-facets-head">
+            <div>
+              <h2 id="metaFacetsTitle" class="meta-facets-title">Meta facets</h2>
+              <div class="muted">Filter documents by metadata.</div>
+            </div>
+
+            <div class="meta-facets-actions">
+              <button id="toggleAllMetaFacetsBtn" class="btn btn-secondary" type="button">
+                Toggle all meta facets
+              </button>
+              <button id="resetMetaFacetsBtn" class="btn btn-secondary" type="button">
+                Reset meta facets
+              </button>
+            </div>
+          </div>
+
+          <div id="activeMetaFacets" class="active-meta-facets"></div>
+          <div id="metaFacets" class="meta-facets-wrap"></div>
+        </section>
+
+        <div id="resultInfo" class="result-info"></div>
+      </div>
+    </section>
+
+      <div id="content"></div>
+
+      <div class="footer-note">Generated without external frontend dependencies.</div>
+    </main>
+  </div>
+
+  <script>
+    window.ANALYSIS_SEARCH_EXPLORER_CONFIG = {
+      title: "Analysis Search Explorer",
+      subtitle: "Interactive search, clustering, and analysis explorer.",
+      endpointPath: "/plugin/fts/search/terms",
+      openapiUrl: "/openapi.json",
+      apiBaseUrl: "",
+      initialHits: [],
+      maxTermBadgesPerSection: 20,
+      maxSourceFieldsPreview: 12,
+      preferredTitleFields: ["title", "name", "label", "headline", "subject", "_id"],
+      preferredSnippetFields: ["snippet", "summary", "description", "content", "text", "body"],
+      includeGlobalTerms: true,
+      includeLocalTerms: true,
+      includeClusterInfo: true,
+      pageSize: 25,
+
+      metaFacets: {
+      enabled: true,
+      openByDefault: false,
+      keys: [
+        "date",
+        "link_type",
+        "parent_creators",
+        "parent_tags",
+        "file_label",
+        "library_label"
+      ]
+    },
+
+      ui: {
+        lang: "en",
+        search: "Search",
+        searching: "Searching...",
+        loading_openapi: "Loading OpenAPI...",
+        reset_form: "Reset form",
+        reset_filters: "Reset filters",
+        toggle_all_details: "Toggle all details",
+        documents: "Documents",
+        clusters: "Clusters",
+        unclustered: "Unclustered",
+        cluster_terms_count: "Cluster terms",
+        top_cluster_terms: "Top Cluster Terms",
+        all_clusters: "All clusters",
+        search_placeholder: "Search title, snippet, ID, terms ...",
+        no_content: "No content",
+        no_clusters: "No clusters",
+        no_snippet: "No snippet",
+        no_details: "No details",
+        no_fields: "No fields",
+        cluster_terms: "Cluster terms",
+        local_terms: "Local terms",
+        global_terms: "Global terms",
+        analysis_details: "Analysis details",
+        cluster_info: "Cluster",
+        local_analysis: "Local analysis",
+        global_analysis: "Global analysis",
+        source_preview: "Source preview",
+        field: "field",
+        value: "value",
+        term: "term",
+        score: "score",
+        doc_freq: "doc_freq",
+        term_freq: "term_freq",
+        id: "ID",
+        cluster: "Cluster",
+        size: "size",
+        source: "source",
+        label_source: "label_source",
+        docs: "docs",
+        documents_visible: "documents visible",
+        clusters_visible: "clusters visible",
+        active_term: "active term",
+        api_search: "API Search",
+        search_options: "Search options",
+        analysis_options: "Analysis / cluster options",
+        request_url: "Request URL",
+        error: "Error",
+        status_ready: "Ready",
+        status_loaded_initial_hits: "Loaded initial hits",
+        status_no_initial_hits: "No initial hits loaded",
+        status_fetch_ok: "Search completed",
+        status_fetch_failed: "Search failed",
+        status_openapi_failed: "OpenAPI load failed",
+        show_raw_response: "Show raw response",
+        hide_raw_response: "Hide raw response",
+        required: "required",
+        advanced: "Advanced",
+        submit_hint: "Searches automatically enable analysis and clustering.",
+        generated_without_dependencies: "Generated without external frontend dependencies.",
+        page: "Page",
+        prev: "Previous",
+        next: "Next",
+        of: "of",
+        page_size: "Page size",
+        showing_results: "Showing results"
+      }
+    };
+  </script>
+    <script src="./analysis_search_explorer.js"></script>
+    <script src="./meta_facets_addon.js"></script>
+</body>
+</html>

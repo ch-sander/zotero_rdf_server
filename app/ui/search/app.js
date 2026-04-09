@@ -1,34 +1,34 @@
 const OPENSEARCH_HOST = "http://localhost:8000/plugin/fts/search-proxy";
 const INDEX_NAME = "ocr-scigma";
 
-// const SEARCH_ATTRIBUTES = [
-//   { field: "text", weight: 5 },
-//   { field: "label", weight: 3 },
-//   { field: "meta.file_label", weight: 3 },
-//   { field: "meta.parent_creators", weight: 2 },
-//   { field: "meta.parent_tags", weight: 2 },
-//   { field: "meta.library_label", weight: 2 },
-//   { field: "meta.file", weight: 1 }
-// ];
+const SEARCH_ATTRIBUTES_OLD = [
+  { field: "text", weight: 5 },
+  { field: "label", weight: 3 },
+  { field: "meta.file_label", weight: 3 },
+  { field: "meta.parent_creators", weight: 2 },
+  { field: "meta.parent_tags", weight: 2 },
+  { field: "meta.library_label", weight: 2 },
+  { field: "meta.file", weight: 1 }
+];
 
-// const RESULT_ATTRIBUTES = [
-//   "doc_id",
-//   "label",
-//   "source",
-//   "page",
-//   "text",
-//   "ingest_ts",
-//   "meta.file",
-//   "meta.file_label",
-//   "meta.library",
-//   "meta.library_label",
-//   "meta.link_type",
-//   "meta.parent",
-//   "meta.parent_creators",
-//   "meta.parent_key",
-//   "meta.parent_tags",
-//   "meta.date"
-// ];
+const RESULT_ATTRIBUTES_OLD = [
+  "doc_id",
+  "label",
+  "source",
+  "page",
+  "text",
+  "ingest_ts",
+  "meta.file",
+  "meta.file_label",
+  "meta.library",
+  "meta.library_label",
+  "meta.link_type",
+  "meta.parent",
+  "meta.parent_creators",
+  "meta.parent_key",
+  "meta.parent_tags",
+  "meta.date"
+];
 
 const HIGHLIGHT_ATTRIBUTES = ["label", "text"];
 const SNIPPET_ATTRIBUTES = ["text"];
@@ -44,7 +44,7 @@ const FACET_BLACKLIST = new Set([
   "text",
   "source",
   "ingest_ts",
-  "meta.file",
+  "meta.file"
 ]);
 
 const FACET_PRIORITY = [
@@ -110,7 +110,7 @@ function prettyLabel(field) {
     .split(".")
     .slice(-1)[0]
     .replace(/_/g, " ")
-    .replace(/\b\w/g, c => c.toUpperCase());
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function fieldPriority(field) {
@@ -126,9 +126,9 @@ function shouldUseAsFacet(fieldInfo) {
 }
 
 function buildFacetAttributes(fields) {
-  const selected = fields
+  return fields
     .filter(shouldUseAsFacet)
-    .map(f => ({
+    .map((f) => ({
       attribute: toAttributeName(f.field),
       field: f.field,
       type: f.type === "keyword" ? "string" : "numeric",
@@ -141,8 +141,6 @@ function buildFacetAttributes(fields) {
       if (pa !== pb) return pa - pb;
       return a.field.localeCompare(b.field);
     });
-
-  return selected;
 }
 
 async function loadMapping() {
@@ -210,7 +208,6 @@ function buildHitsWidget() {
         return html`<div>No results for <strong>${results.query}</strong>.</div>`;
       },
       item(hit, { html, components }) {
-        // console.log(hit);
         const label = hit.label || hit.meta?.file_label || hit.meta?.file || "Untitled";
         const source = hit.source || "-";
         const page = hit.page ?? "-";
@@ -233,19 +230,14 @@ function buildHitsWidget() {
               <span class="badge">Tags: ${escapeHtml(tags)}</span>
             </div>
 
-            <div class="hit">
-
             <div class="snippet">
-                ${snippet}
+              ${snippet}
             </div>
 
             <details>
-                <summary>Show more</summary>
-                <div class="snippet more">
-                ${raw}
-                </div>
+              <summary>Show more</summary>
+              <div class="snippet more">${raw}</div>
             </details>
-            </div>
           </div>
         `;
       }
@@ -266,6 +258,7 @@ async function init() {
     const flatFields = flattenProperties(properties);
     const dynamicFacets = buildFacetAttributes(flatFields);
     const dynamicResultAttributes = buildResultAttributes(flatFields);
+
     createFacetContainers(dynamicFacets);
 
     const sk = new Searchkit({
@@ -273,136 +266,77 @@ async function init() {
         host: OPENSEARCH_HOST
       },
       search_settings: {
-        // search_attributes: SEARCH_ATTRIBUTES,
         result_attributes: dynamicResultAttributes,
         highlight_attributes: HIGHLIGHT_ATTRIBUTES,
         snippet_attributes: SNIPPET_ATTRIBUTES,
-        facet_attributes: dynamicFacets.map(f => ({
+        facet_attributes: dynamicFacets.map((f) => ({
           attribute: f.attribute,
           field: f.field,
           type: f.type
         }))
       }
     });
-    
-/*     const searchClient = SearchkitInstantsearchClient(sk, {
-    getQuery(query, search_attributes) {
-        const fields = search_attributes.map((attr) =>
-        typeof attr === "string"
-            ? attr
-            : `${attr.field}${attr.weight ? `^${attr.weight}` : ""}`
-        );
 
-        return {
-        simple_query_string: {
-            query,
-            fields,
-            default_operator: "and"
-        }
-        };
-    }
-    }); */
-
-    
     const searchClient = SearchkitInstantsearchClient(sk, {
-    getQuery(query) {
+      getQuery(query) {
         const q = (query || "").trim();
         if (!q) return false;
 
         const parts = q
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-        // return [
-        // {
-        //     bool: {
-        //     should: parts.flatMap((part) => [
-        //         {
-        //         match_phrase: {
-        //             text: {
-        //             query: part,
-        //             slop: 2,
-        //             boost: 4
-        //             }
-        //         }
-        //         },
-        //         {
-        //         match_phrase_prefix: {
-        //             text: {
-        //             query: part,
-        //             max_expansions: 50,
-        //             boost: 2
-        //             }
-        //         }
-        //         },
-        //         {
-        //         match: {
-        //             text: {
-        //             query: part,
-        //             fuzziness: 2,
-        //             prefix_length: 1,
-        //             max_expansions: 50,
-        //             boost: 1
-        //             }
-        //         }
-        //         }
-        //     ]),
-        //     minimum_should_match: 1
-        //     }
-        // }
-        // ];
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+
         return [
-        {
+          {
             bool: {
-            must: parts.map((part) => ({
-                bool: {
-                should: [
-                    {
-                    match_phrase: {
-                        text: {
-                        query: part,
-                        slop: 2,
-                        boost: 4
+              must: parts.map((part) => {
+                return {
+                  bool: {
+                    should: [
+                      {
+                        match_phrase: {
+                          text: {
+                            query: part,
+                            slop: 2,
+                            boost: 4
+                          }
                         }
-                    }
-                    },
-                    {
-                    match_phrase_prefix: {
-                        text: {
-                        query: part,
-                        // max_expansions: 50,
-                        boost: 2
+                      },
+                      {
+                        match_phrase_prefix: {
+                          text: {
+                            query: part,
+                            boost: 2
+                          }
                         }
-                    }
-                    },
-                    {
-                    match: {
-                        text: {
-                        query: part,
-                        fuzziness: 2,
-                        // fuzziness: "AUTO",
-                        prefix_length: 1,
-                        max_expansions: 50,
-                        boost: 1
+                      },
+                      {
+                        match: {
+                          text: {
+                            query: part,
+                            fuzziness: 2,
+                            prefix_length: 1,
+                            max_expansions: 50,
+                            boost: 1
+                          }
                         }
-                    }
-                    }
-                ],
-                minimum_should_match: 1
-                }
-            }))
+                      }
+                    ],
+                    minimum_should_match: 1
+                  }
+                };
+              })
             }
-        }
+          }
         ];
-    }
+      }
     });
 
     const search = instantsearch({
-    indexName: INDEX_NAME,
-    searchClient
+      indexName: INDEX_NAME,
+      searchClient
     });
-
-
 
     search.addWidgets([
       instantsearch.widgets.searchBox({
@@ -451,3 +385,60 @@ async function init() {
 }
 
 init();
+
+/*     const searchClient = SearchkitInstantsearchClient(sk, {
+    getQuery(query, search_attributes) {
+        const fields = search_attributes.map((attr) =>
+        typeof attr === "string"
+            ? attr
+            : `${attr.field}${attr.weight ? `^${attr.weight}` : ""}`
+        );
+
+        return {
+        simple_query_string: {
+            query,
+            fields,
+            default_operator: "and"
+        }
+        };
+    }
+    }); */
+
+            // return [
+        // {
+        //     bool: {
+        //     should: parts.flatMap((part) => [
+        //         {
+        //         match_phrase: {
+        //             text: {
+        //             query: part,
+        //             slop: 2,
+        //             boost: 4
+        //             }
+        //         }
+        //         },
+        //         {
+        //         match_phrase_prefix: {
+        //             text: {
+        //             query: part,
+        //             max_expansions: 50,
+        //             boost: 2
+        //             }
+        //         }
+        //         },
+        //         {
+        //         match: {
+        //             text: {
+        //             query: part,
+        //             fuzziness: 2,
+        //             prefix_length: 1,
+        //             max_expansions: 50,
+        //             boost: 1
+        //             }
+        //         }
+        //         }
+        //     ]),
+        //     minimum_should_match: 1
+        //     }
+        // }
+        // ];
