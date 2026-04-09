@@ -53,7 +53,7 @@ def apply_paging(
     return body
 
 def parse_csv(raw: str) -> List[str]:
-    terms = [t.strip() for t in raw.split(",") if t.strip()]
+    terms = [t.strip() for t in re.split(r"[;,]", raw) if t.strip()]
     if not terms:
         raise ValueError("No terms provided.")
     return terms
