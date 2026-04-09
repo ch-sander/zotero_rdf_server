@@ -282,54 +282,97 @@ async function init() {
         const q = (query || "").trim();
         if (!q) return false;
 
-        const parts = q
-          .split(",")
-          .map((s) => s.trim())
+        const hasComma = query.includes(",");
+
+        const parts = query
+          .split(hasComma ? "," : " ")
+          .map(s => s.trim())
           .filter(Boolean);
+
+        if (hasComma) {
+          return [
+            {
+              bool: {
+                should: parts.flatMap((part) => [
+                  {
+                    match_phrase: {
+                      text: {
+                        query: part,
+                        slop: 2,
+                        boost: 4
+                      }
+                    }
+                  },
+                  {
+                    match_phrase_prefix: {
+                      text: {
+                        query: part,
+                        max_expansions: 50,
+                        boost: 2
+                      }
+                    }
+                  },
+                  {
+                    match: {
+                      text: {
+                        query: part,
+                        fuzziness: 2,
+                        prefix_length: 1,
+                        max_expansions: 50,
+                        boost: 1
+                      }
+                    }
+                  }
+                ]),
+                minimum_should_match: 1
+              }
+            }
+          ];
+        }
 
         return [
           {
             bool: {
-              must: parts.map((part) => {
-                return {
-                  bool: {
-                    should: [
-                      {
-                        match_phrase: {
-                          text: {
-                            query: part,
-                            slop: 2,
-                            boost: 4
-                          }
-                        }
-                      },
-                      {
-                        match_phrase_prefix: {
-                          text: {
-                            query: part,
-                            boost: 2
-                          }
-                        }
-                      },
-                      {
-                        match: {
-                          text: {
-                            query: part,
-                            fuzziness: 2,
-                            prefix_length: 1,
-                            max_expansions: 50,
-                            boost: 1
-                          }
+              must: parts.map((part) => ({
+                bool: {
+                  should: [
+                    {
+                      match_phrase: {
+                        text: {
+                          query: part,
+                          slop: 2,
+                          boost: 4
                         }
                       }
-                    ],
-                    minimum_should_match: 1
-                  }
-                };
-              })
+                    },
+                    {
+                      match_phrase_prefix: {
+                        text: {
+                          query: part,
+                          max_expansions: 50,
+                          boost: 2
+                        }
+                      }
+                    },
+                    {
+                      match: {
+                        text: {
+                          query: part,
+                          fuzziness: 2,
+                          prefix_length: 1,
+                          max_expansions: 50,
+                          boost: 1
+                        }
+                      }
+                    }
+                  ],
+                  minimum_should_match: 1
+                }
+              }))
             }
           }
         ];
+
       }
     });
 
