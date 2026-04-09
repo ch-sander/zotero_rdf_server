@@ -35,7 +35,7 @@ TEXT_ROOT_STR = cfg.get("text_root") or ""
 IMAGE_EXT = str(cfg.get("image_ext") or "jpg").lstrip(".")
 TEXT_EXT = str(cfg.get("text_ext") or "txt").lstrip(".")
 DASHBOARD_URL = cfg.get("dashboard_url") or None
-BASE_URL = str(cfg.get("base_url", "/plugin/fts/view")).rstrip("/")
+BASE_URL = str(cfg.get("base_url", "/plugin/fts")).rstrip("/")
 STATIC_URL = str(cfg.get("static_url", "/ui/view")).rstrip("/") 
 ATLAS_URL = str(cfg.get("atlas_url", "/ui/atlas")).rstrip("/") 
 OSD_CONFIG = cfg.get("OpenSeadragon") or {}
@@ -138,14 +138,6 @@ def discover_doc_url(original_os_doc_id: str) -> str | None:
     encoded_doc_id = quote(original_os_doc_id, safe="")
     return f"{DASHBOARD_URL}{encoded_doc_id}"
 
-def add_viewer_url(hits: list) -> list:
-    for h in hits:
-        _id = h.get("_id")
-        src = h.get("_source")
-        if _id and src:
-            src['viewer'] = f"{BASE_URL}/{_id}"
-    return hits
-
 from html import escape
 
 def render_page_dynamic(
@@ -175,7 +167,7 @@ def render_page_dynamic(
     safe_editor_text = escape(editor_text)
     safe_display_text = escape(display_text)
     safe_save_url = escape(save_url or "")
-    safe_page_url_base = escape((page_url_base or f"{BASE_URL}").rstrip("/"))
+    safe_page_url_base = escape((page_url_base or f"{BASE_URL}/view").rstrip("/"))
     safe_edit_url = escape(edit_url or "")
     safe_current_framework = escape(current_framework)
 
@@ -500,7 +492,7 @@ def render_page(
     safe_editor_text = escape(editor_text)
     safe_display_text = escape(display_text)
     safe_save_url = escape(save_url or "")
-    safe_page_url_base = escape((page_url_base or f"{BASE_URL}").rstrip("/"))
+    safe_page_url_base = escape((page_url_base or f"{BASE_URL}/view").rstrip("/"))
     safe_edit_url = escape(edit_url or "")
     safe_discover_url = escape(discover_url or "")
     static_url = STATIC_URL
@@ -603,7 +595,7 @@ def render_page(
         "ocrUrl": ocr_url or "",
         "currentFramework": current_framework,
         "osdConfig": osd_config,
-        "pageUrlBase": (page_url_base or f"{BASE_URL}").rstrip("/"),
+        "pageUrlBase": (page_url_base or f"{BASE_URL}/view").rstrip("/"),
         "currentDocId": os_doc_id,
         "currentPage": page,
         "docPrefix": doc_prefix,
