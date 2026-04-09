@@ -6,6 +6,8 @@ SELECT ?file
        (SAMPLE(?date) AS ?date)
        (SAMPLE(?parent) AS ?parent)
        (SAMPLE(?parent_label) AS ?_label) # _label variable is optional
+       (SAMPLE(?parent_label) AS ?parent_label)
+       (SAMPLE(?parent_title) AS ?parent_title)
        (SAMPLE(?url) AS ?_input) # _input variable is required
        (GROUP_CONCAT(DISTINCT ?text_1724_9; SEPARATOR = "; ") AS ?parent_creators)
        (SAMPLE(?library) AS ?library)
@@ -27,6 +29,7 @@ VALUES ?link_type { "linked_url" "imported_url" }. # filter on attachment types
     
 OPTIONAL { ?parent rdfs:label ?parent_label }
 OPTIONAL { ?parent zot:date ?date }
+OPTIONAL { ?parent zot:title ?parent_title }
 OPTIONAL { ?parent zot:key ?parent_key }
 
 OPTIONAL {
