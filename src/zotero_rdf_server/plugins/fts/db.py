@@ -21,7 +21,7 @@ def get_os_config(config_path: Path) -> dict[str, Any]:
     # import yaml
     from zotero_rdf_server.utils import load_dict_like
     cfg = load_dict_like(config_path,label="Open Search Config",verbose=False)
-    path = Path(config_path).expanduser().resolve()
+    # path = Path(config_path).expanduser().resolve()
     # with path.open("r", encoding="utf-8") as f:
     #     cfg = yaml.safe_load(f) or {}
     # cfg = load_dict_like(path, "Open Search YAML")

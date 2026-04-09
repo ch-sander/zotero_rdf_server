@@ -725,7 +725,7 @@ def format_search_response(
 
     if output_format in ("md", "markdown", "html"):
         cols = [c for c in cols if c != "highlight"] 
-        
+
     if output_format == "json":
         hits = resp.get("hits", {}).get("hits", [])
         payload: Dict[str, Any] = {
@@ -2509,5 +2509,33 @@ def rerun_ocr(
         "text": text or "",
         "framework": framework,
     })
+
+##Proxy
+
+@open_router.get("/search-proxy/{index}/_mapping")
+async def get_mapping(index: str):
+    from .db import make_client, get_os_config
+    from .helpers import resolve_config_path
+    cfg_path = resolve_config_path()
+    oscfg = get_os_config(cfg_path)
+    client = make_client(oscfg)
+
+    return client.indices.get_mapping(index=index)
+
+@open_router.post("/search-proxy/_msearch")
+async def msearch(request: Request):
+    body = await request.body()
+    from .db import make_client, get_os_config
+    from .helpers import resolve_config_path
+    cfg_path = resolve_config_path()
+    oscfg = get_os_config(cfg_path)
+    client = make_client(oscfg)
+    resp = client.transport.perform_request(
+        method="POST",
+        url="/_msearch",
+        body=body,
+        headers={"content-type": "application/x-ndjson"},
+    )
+    return resp
 
 # end

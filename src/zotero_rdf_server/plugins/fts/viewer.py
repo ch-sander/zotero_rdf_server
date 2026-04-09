@@ -72,6 +72,14 @@ def ensure_router_mount(open_router) -> None:
 from zotero_rdf_server.main import app
 ensure_router_mount(app)
 
+def add_viewer_url(hits: list) -> list:
+    for h in hits:
+        _id = h.get("_id")
+        src = h.get("_source")
+        if _id and src:
+            src['viewer'] = f"{BASE_URL}/{_id}"
+    return hits
+
 def split_doc_id(os_doc_id: str) -> tuple[str, str]:
     """
     Input format: <doc_id>:<page>
