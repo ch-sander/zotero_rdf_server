@@ -190,7 +190,7 @@ def page_docs(
         from .helpers import clean_ocr        
 
     for sequence, text in pages:
-        label_s = f"{label}: {sequence}"
+        label_s = f"{label.rstrip(',.:')}: {sequence}"
         vector_doc = None
         if vector:
             vector_doc = embed(clean_ocr(text),**vector_kwargs)
