@@ -724,15 +724,8 @@ def format_search_response(
     
 
     if output_format in ("md", "markdown", "html"):
-        cols = [c for c in cols if c != "highlight"]
-    else:
-        try:
-            from .viewer import BASE_URL
-        except:
-            BASE_URL = "/plugin/fts/view"
+        cols = [c for c in cols if c != "highlight"] 
         
-
-
     if output_format == "json":
         hits = resp.get("hits", {}).get("hits", [])
         payload: Dict[str, Any] = {
@@ -1710,7 +1703,7 @@ def search_terms(
         hits = resp.get("hits", {}).get("hits", [])
 
         add_viewer_url(hits)
-        
+
         hits = enrich_hits_with_analysis(
             hits,
             index=index,
