@@ -1108,6 +1108,47 @@ def _build_local_tfidf_from_vectorizer(
 
     return doc_top_terms, doc_vectors
 
+def enrich_hits_with_analysis(hits, *, index, analysis, field, return_analysis, batch_size=200):
+    if not analysis.perform_analysis:
+        return hits
+
+    analysis_field = analysis.analyze_field or field
+    hit_ids = [h["_id"] for h in hits if h.get("_id")]
+    if not hit_ids:
+        return hits
+
+    tv_docs = []
+    for i in range(0, len(hit_ids), batch_size):
+        batch_ids = hit_ids[i:i + batch_size]
+        logger.info("Getting term vectors for batch %s", i)
+        tv_resp = os_mtermvectors(
+            index=index,
+            doc_ids=batch_ids,
+            field=analysis_field,
+        )
+        tv_docs.extend(tv_resp.get("docs", []))
+
+    hits, cluster_vectors_by_id = analysis_from_mtermvectors(
+        hits=hits,
+        tv_resp={"docs": tv_docs},
+        analysis=analysis,
+        field_fallback=field,
+    )
+    logger.info("Got all analyses!")
+
+    if analysis.cluster_enabled:
+        hits = sort_hits_by_cluster_and_score(
+            cluster_hits_by_analysis(
+                hits,
+                analysis=analysis,
+                return_projection=return_analysis,
+                cluster_vectors_by_id=cluster_vectors_by_id,
+            )
+        )
+        logger.info("Got all clusters!")
+
+    return hits
+
 def analysis_from_mtermvectors(
     *,
     hits: List[Dict[str, Any]],

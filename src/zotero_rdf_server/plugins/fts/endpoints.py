@@ -426,8 +426,6 @@ def ingest_route(
                         except Exception as e:
                             logger.error(f"Query failed: {e}")
                             items = []
-                        del store
-
                         
                         run_ids.extend(ingest_pipeline(items=items,
                                                 targets=targets_x, 
@@ -445,6 +443,10 @@ def ingest_route(
                     logger.warning(f"{graph} not yet supported but defined via config")
 
             targets=list(set(targets_set))
+            if isinstance(store, Store):
+                del store
+            else:
+                logger.warning("Store not found, maybe check!")
 
         elif graph is None and query: # query directly
             if not targets:
@@ -723,6 +725,13 @@ def format_search_response(
 
     if output_format in ("md", "markdown", "html"):
         cols = [c for c in cols if c != "highlight"]
+    else:
+        try:
+            from .viewer import BASE_URL
+        except:
+            BASE_URL = "/plugin/fts/view"
+        
+
 
     if output_format == "json":
         hits = resp.get("hits", {}).get("hits", [])
@@ -1681,9 +1690,11 @@ def search_terms(
     render_columns = _join_columns(render_cols)
 
     # --- Query ---------------------------------------------------------
-    try:        
+    try:
+        from .search import os_search_all_scroll, enrich_hits_with_analysis
+        from .viewer import add_viewer_url
+
         if return_analysis and match_all and size > 10000:
-            from .search import os_search_all_scroll
             resp = os_search_all_scroll(
                 index=index,
                 body=body,
@@ -1691,91 +1702,137 @@ def search_terms(
                 batch_size=1000,
                 scroll_ttl="2m",
             )
-
-            all_hits = resp.get("hits", {}).get("hits", [])
             logger.info("Got all scroll hits!")
-            analysis_field = analysis.analyze_field or field
-            hit_ids = [h["_id"] for h in all_hits if h.get("_id")]
+        else:
+            resp = os_search(index=index, body=body, columns=source_columns)
+        
+        
+        hits = resp.get("hits", {}).get("hits", [])
 
-            if hit_ids:
-                tv_docs = []
-                tv_batch_size = 200
+        add_viewer_url(hits)
+        
+        hits = enrich_hits_with_analysis(
+            hits,
+            index=index,
+            analysis=analysis,
+            field=field,
+            return_analysis=return_analysis,
+        )
 
-                for i in range(0, len(hit_ids), tv_batch_size):
-                    batch_ids = hit_ids[i:i + tv_batch_size]
-                    logger.info(f"Getting term vectors for batch {i}")
-                    tv_resp = os_mtermvectors(
-                        index=index,
-                        doc_ids=batch_ids,
-                        field=analysis_field,
-                    )
-                    tv_docs.extend(tv_resp.get("docs", []))
+        resp["hits"]["hits"] = hits
 
-                merged_tv_resp = {"docs": tv_docs}
-                logger.info("Got all term vectors!")
+        if return_analysis and match_all and size > 10000:
+            resp["hits"]["total"] = {"value": len(hits), "relation": "eq"}
 
-                all_hits, cluster_vectors_by_id = analysis_from_mtermvectors(
-                    hits=all_hits,
-                    tv_resp=merged_tv_resp,
-                    analysis=analysis,
-                    field_fallback=field,
-                )
+        if hits:
+            h0 = hits[0]
+            logger.info("First hit keys: %s", list(h0.keys()))
+            logger.debug("First hit highlight: %s", h0.get("highlight"))
 
-                logger.info("Got all analyses!")
+    # try:      
+    #     from .viewer import add_viewer_url
+
+    #     if return_analysis and match_all and size > 10000:
+    #         from .search import os_search_all_scroll
+    #         resp = os_search_all_scroll(
+    #             index=index,
+    #             body=body,
+    #             columns=source_columns,
+    #             batch_size=1000,
+    #             scroll_ttl="2m",
+    #         )
+
+    #         all_hits = resp.get("hits", {}).get("hits", [])
+
+    #         add_viewer_url(all_hits) # TODO
+
+    #         logger.info("Got all scroll hits!")
+    #         analysis_field = analysis.analyze_field or field
+    #         hit_ids = [h["_id"] for h in all_hits if h.get("_id")]
+
+    #         if hit_ids:
+    #             tv_docs = []
+    #             tv_batch_size = 200
+
+    #             for i in range(0, len(hit_ids), tv_batch_size):
+    #                 batch_ids = hit_ids[i:i + tv_batch_size]
+    #                 logger.info(f"Getting term vectors for batch {i}")
+    #                 tv_resp = os_mtermvectors(
+    #                     index=index,
+    #                     doc_ids=batch_ids,
+    #                     field=analysis_field,
+    #                 )
+    #                 tv_docs.extend(tv_resp.get("docs", []))
+
+    #             merged_tv_resp = {"docs": tv_docs}
+    #             logger.info("Got all term vectors!")
+
+    #             all_hits, cluster_vectors_by_id = analysis_from_mtermvectors(
+    #                 hits=all_hits,
+    #                 tv_resp=merged_tv_resp,
+    #                 analysis=analysis,
+    #                 field_fallback=field,
+    #             )
+
+    #             logger.info("Got all analyses!")
                 
-                all_hits = sort_hits_by_cluster_and_score(
-                    cluster_hits_by_analysis(
-                        all_hits,
-                        analysis=analysis,
-                        # return_vector=return_analysis,
-                        return_projection=return_analysis,
-                        cluster_vectors_by_id=cluster_vectors_by_id
-                    )
-                )
-                logger.info("Got all cluster!")
-                resp["hits"]["hits"] = all_hits
-                resp["hits"]["total"] = {"value": len(all_hits), "relation": "eq"}
+    #             all_hits = sort_hits_by_cluster_and_score(
+    #                 cluster_hits_by_analysis(
+    #                     all_hits,
+    #                     analysis=analysis,
+    #                     # return_vector=return_analysis,
+    #                     return_projection=return_analysis,
+    #                     cluster_vectors_by_id=cluster_vectors_by_id
+    #                 )
+    #             )
+    #             logger.info("Got all cluster!")
+    #             resp["hits"]["hits"] = all_hits
+    #             resp["hits"]["total"] = {"value": len(all_hits), "relation": "eq"}
 
 #############################
 
-        else:            
-            resp = os_search(index=index, body=body, columns=source_columns)
+        # else:            
+        #     resp = os_search(index=index, body=body, columns=source_columns)
 
-            if analysis.perform_analysis:
-                hits = resp.get("hits", {}).get("hits", [])
-                analysis_field = analysis.analyze_field or field
-                hit_ids = [h["_id"] for h in hits if h.get("_id")]
+        #     if analysis.perform_analysis:
+                
+        #         hits = resp.get("hits", {}).get("hits", [])
 
-                if hit_ids:
-                    tv_resp = os_mtermvectors(
-                        index=index,
-                        doc_ids=hit_ids,
-                        field=analysis_field,
-                    )
+        #         add_viewer_url(hits) # TODO
 
-                    hits, cluster_vectors_by_id  = analysis_from_mtermvectors(
-                        hits=hits,
-                        tv_resp=tv_resp,
-                        analysis=analysis,
-                        field_fallback=field,
-                    )
-                    if analysis.cluster_enabled:    
-                        hits = sort_hits_by_cluster_and_score(cluster_hits_by_analysis(
-                            hits,
-                            analysis=analysis,
-                            # return_vector = return_analysis,
-                            return_projection=return_analysis,
-                            cluster_vectors_by_id=cluster_vectors_by_id
-                        ))
+        #         analysis_field = analysis.analyze_field or field
+        #         hit_ids = [h["_id"] for h in hits if h.get("_id")]
+
+        #         if hit_ids:
+        #             tv_resp = os_mtermvectors(
+        #                 index=index,
+        #                 doc_ids=hit_ids,
+        #                 field=analysis_field,
+        #             )
+
+        #             hits, cluster_vectors_by_id  = analysis_from_mtermvectors(
+        #                 hits=hits,
+        #                 tv_resp=tv_resp,
+        #                 analysis=analysis,
+        #                 field_fallback=field,
+        #             )
+        #             if analysis.cluster_enabled:    
+        #                 hits = sort_hits_by_cluster_and_score(cluster_hits_by_analysis(
+        #                     hits,
+        #                     analysis=analysis,
+        #                     # return_vector = return_analysis,
+        #                     return_projection=return_analysis,
+        #                     cluster_vectors_by_id=cluster_vectors_by_id
+        #                 ))
 
 
 
-                    resp["hits"]["hits"] = hits
+        #             resp["hits"]["hits"] = hits
 
-        if resp.get("hits", {}).get("hits"):
-            h0 = resp["hits"]["hits"][0]
-            logger.info("First hit keys: %s", list(h0.keys()))
-            logger.debug("First hit highlight: %s", h0.get("highlight"))
+        # if resp.get("hits", {}).get("hits"):
+        #     h0 = resp["hits"]["hits"][0]
+        #     logger.info("First hit keys: %s", list(h0.keys()))
+        #     logger.debug("First hit highlight: %s", h0.get("highlight"))
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
