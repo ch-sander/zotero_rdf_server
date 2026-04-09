@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'app/ui/**'
+      - 'explorer/**'
 
 jobs:
   deploy:
@@ -24,7 +24,7 @@ jobs:
       - name: Upload query builder folder
         uses: actions/upload-pages-artifact@v3
         with:
-          path: app/ui/query
+          path: explorer
 
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
