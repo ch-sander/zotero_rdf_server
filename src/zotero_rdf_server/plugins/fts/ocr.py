@@ -1503,7 +1503,7 @@ def iter_text_pages(
             logger.warning(f"{_doc_id}: Using {len(set(cached_page_set['image']))} image files in {img_dir}; no remote download")
             for page_no, img_path in cached_imgs:
                 tp = _text_path(page_no)
-                if save_text == "active" and save_text != "overwrite" and tp and tp.exists():
+                if save_text == "active" and tp and tp.exists():
                     yield _log_and_yield(page_no, tp.read_text(encoding="utf-8"), total, True)
                     # yield page_no, tp.read_text(encoding="utf-8")
                     continue
