@@ -997,9 +997,6 @@ def resolve_format(
 
     return OutputFormat.json
 
-from enum import Enum
-from typing import Annotated, Literal, Optional
-
 class AggMode(str, Enum):
     terms = "terms"
     significant_text = "significant_text"
