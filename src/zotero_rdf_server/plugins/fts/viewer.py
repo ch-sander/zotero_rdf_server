@@ -77,7 +77,7 @@ def add_viewer_url(hits: list) -> list:
         _id = h.get("_id")
         src = h.get("_source")
         if _id and src:
-            src['viewer'] = f"{BASE_URL}/{_id}"
+            src['viewer'] = f"{BASE_URL}/view/{_id}"
     return hits
 
 def split_doc_id(os_doc_id: str) -> tuple[str, str]:
@@ -699,6 +699,8 @@ def export_atlas_folder(
     from embedding_atlas.utils import load_pandas_data
     from embedding_atlas.cache import sha256_hexdigest    
     import pandas as pd
+
+    logger.info("Creating Embedding Atlas")
 
     def make_labels_from_clusters(
         df: pd.DataFrame,

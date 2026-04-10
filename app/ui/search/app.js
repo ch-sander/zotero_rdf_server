@@ -1,4 +1,4 @@
-const OPENSEARCH_HOST = "http://localhost:8000/plugin/fts/search-proxy";
+const OPENSEARCH_HOST = "/plugin/fts/search-proxy";
 const INDEX_NAME = "ocr-scigma";
 
 const SEARCH_ATTRIBUTES_OLD = [
