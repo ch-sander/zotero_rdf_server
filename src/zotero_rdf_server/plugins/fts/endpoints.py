@@ -443,9 +443,9 @@ def ingest_route(
                     logger.warning(f"{graph} not yet supported but defined via config")
 
             targets=list(set(targets_set))
-            if store and isinstance(store, Store):
+            try:
                 del store
-            else:
+            except:
                 logger.warning("Store not found, maybe check!")
 
         elif graph is None and query: # query directly
@@ -477,7 +477,10 @@ def ingest_route(
                     detail="Query failed",
                 )
 
-            del store
+            try:
+                del store
+            except:
+                logger.warning("Store not found, maybe check!")
             ocr = True if ocr is True else False
 
             run_ids.extend(ingest_pipeline(items=items,
