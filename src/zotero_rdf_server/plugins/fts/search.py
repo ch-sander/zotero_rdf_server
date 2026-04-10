@@ -900,9 +900,9 @@ from collections import Counter, defaultdict
 from typing import Any, Dict, List, Tuple
 
 try:
-    ensure_import("sklearn")
-    ensure_import("rapidfuzz")
-    ensure_import("scipy")
+    ensure_import("scikit-learn>=1.6", requirements=None)
+    ensure_import("rapidfuzz", requirements=None)
+    ensure_import("scipy", requirements=None)
     from rapidfuzz import fuzz
     from sklearn.cluster import KMeans
     from sklearn.feature_extraction.text import TfidfVectorizer
