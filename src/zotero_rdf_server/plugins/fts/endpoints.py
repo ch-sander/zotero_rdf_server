@@ -337,7 +337,7 @@ def ingest_route(
                 from pyoxigraph import Store, NamedNode
                 store = Store.read_only(store_path)
             else:
-                from zotero_rdf_server.store import store, NamedNode
+                from zotero_rdf_server.store import store, NamedNode, Store
                 from zotero_rdf_server.utils import load_text_like
                 logger.warning(f"Reading from main store")
         except Exception as e:
@@ -443,7 +443,7 @@ def ingest_route(
                     logger.warning(f"{graph} not yet supported but defined via config")
 
             targets=list(set(targets_set))
-            if isinstance(store, Store):
+            if store and isinstance(store, Store):
                 del store
             else:
                 logger.warning("Store not found, maybe check!")
