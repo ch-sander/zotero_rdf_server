@@ -301,6 +301,7 @@ def ingest_route(
     vector_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for embedding Backend Config", examples=[None]),
 ):
     from .pipeline import ingest_pipeline
+    from .helpers import convert_bindings
     import csv
     run_ids = []
 
@@ -411,13 +412,8 @@ def ingest_route(
                                 use_default_graph_as_union=False,
                                 default_graph=[NamedNode(lib.base_url), NamedNode(lib.knowledge_base_graph)]
                                 )
-                            var_names = [v.value for v in bindings.variables]
-                            logger.info(f"SPARQL returned columns: {var_names}")
-                            for sol in bindings:
-                                items.append({
-                                    name: (sol[name].value if sol[name] is not None else None)
-                                    for name in var_names
-                                })                            
+                            items, var_names = convert_bindings(bindings)
+                            logger.info(f"SPARQL returned columns: {var_names}")              
                             logger.info(f"{len(items)} results (store LEN: {len(store)})")  
 
                             # Save as CSV
@@ -460,14 +456,8 @@ def ingest_route(
                 sparql_query=load_text_like(query,label="Ingest Pipeline SPARQL Query")
                 logger.debug(f"{sparql_query}")
                 bindings = store.query(sparql_query, use_default_graph_as_union=True)
-                var_names = [v.value for v in bindings.variables]
-                logger.info(f"{var_names}")
-                items = []
-                for sol in bindings:
-                    items.append({
-                        name: (sol[name].value if sol[name] is not None else None)
-                        for name in var_names
-                    })
+                items, var_names = convert_bindings(bindings)
+                logger.info(f"SPARQL returned columns: {var_names}")
                 logger.debug(f"{items} results")
                 save_query_to_file(items=items,var_names=var_names)
             except Exception as e:
@@ -511,12 +501,20 @@ def ingest_route(
         if isinstance(input, str):
             from zotero_rdf_server.utils import load_dict_like
             input = load_dict_like(input,label="Ingest Pipeline Input") # TODO not proper, yet, for lists (CSV should work)!
-        if isinstance(input, dict):
-            items = [input]
+        
+        if (
+            isinstance(input, dict)
+            and "head" in input
+            and "vars" in input["head"]
+            and "results" in input
+            and "bindings" in input["results"]
+        ):
+            items, var_names = convert_bindings(input)
         elif isinstance(input, list) and all(isinstance(x, dict) for x in input):
-            items = input
+            items, var_names = convert_bindings(input)
         else:
-            raise HTTPException(status_code=400, detail="Body must be a JSON object, a list of JSON objects, or null")
+            raise HTTPException(status_code=400, detail="Body must be a SPARQL-JSON object, a list of JSON objects, or null")
+        
         ocr = True if ocr is True else False
         save_query_to_file(items=items,var_names=var_names, json_mode=False)
 

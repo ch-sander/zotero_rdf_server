@@ -103,18 +103,74 @@ def _hash_file(path: Path, algo: str) -> str:
             h.update(chunk)
     return h.hexdigest()
 
-# def _download(url: str, dest: Path) -> None:
-#     import requests
-#     dest.parent.mkdir(parents=True, exist_ok=True)
-#     with requests.get(url, stream=True, timeout=60) as r:
-#         r.raise_for_status()
-#         tmp = dest.with_suffix(dest.suffix + ".part")
-#         with open(tmp, "wb") as f:
-#             for chunk in r.iter_content(chunk_size=1024 * 1024):
-#                 if chunk:
-#                     f.write(chunk)
-#         tmp.replace(dest)
+def convert_bindings(bindings):
+    def parse_number_if_exact(val):
+        try:
+            i = int(val)
+            if str(i) == val:
+                return i
+        except (ValueError, TypeError):
+            pass
 
+        try:
+            f = float(val)
+            if str(f) == val:
+                return f
+        except (ValueError, TypeError):
+            pass
+
+        return None
+
+    if isinstance(bindings, dict):
+        plugin_logger().info("Found SPARQL JSON as bindings!")
+        # SPARQL-JSON
+        var_names = bindings["head"]["vars"]
+        rows = bindings["results"]["bindings"]
+
+        def get_value(sol, name):
+            entry = sol.get(name)
+            return None if entry is None else entry.get("value")
+
+    elif isinstance(bindings, list):
+        plugin_logger().info("Found JSON list as bindings!")
+        rows = bindings
+        var_names = list({k for row in rows for k in row.keys()})
+
+        def get_value(sol, name):
+            return sol.get(name)
+
+    else:
+        plugin_logger().info("Found QueryResult as bindings!")
+        var_names = [v.value for v in bindings.variables]
+        rows = list(bindings)
+
+        def get_value(sol, name):
+            entry = sol[name]
+            return None if entry is None else entry.value
+
+    numeric_fields = set()
+    for name in var_names:
+        values = [
+            get_value(sol, name)
+            for sol in rows
+            if get_value(sol, name) is not None
+        ]
+
+        if values and all(parse_number_if_exact(v) is not None for v in values):
+            numeric_fields.add(name)
+
+    items = []
+    for sol in rows:
+        items.append({
+            name: (
+                None if get_value(sol, name) is None
+                else parse_number_if_exact(get_value(sol, name)) if name in numeric_fields
+                else get_value(sol, name)
+            )
+            for name in var_names
+        })
+
+    return items, var_names
 
 def _download(url: str, dest: Path) -> None:
     import requests
