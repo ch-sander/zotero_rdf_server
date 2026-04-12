@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from .config import STATIC_UI_DIRECTORY, ROOT_PATH
 
-app = FastAPI(lifespan=app_lifespan, docs_url="/", root_path=ROOT_PATH)
+app = FastAPI(lifespan=app_lifespan, docs_url="/", root_path=ROOT_PATH if ROOT_PATH else None)
 
 app.add_middleware(
     CORSMiddleware,

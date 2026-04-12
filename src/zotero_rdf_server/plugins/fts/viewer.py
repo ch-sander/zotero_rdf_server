@@ -504,8 +504,8 @@ def render_page(
     safe_page_url_base = escape((page_url_base or f"{BASE_URL}/view").rstrip("/"))
     safe_edit_url = escape(edit_url or "")
     safe_discover_url = escape(discover_url or "")
-    safe_static_url = f"{root_path}/{STATIC_URL.lstrip('/')}"
-    safe_image_url = f"{root_path}/{image_url.lstrip('/')}"
+    safe_static_url = f"{root_path}/{STATIC_URL.lstrip('/')}" if STATIC_URL and root_path else STATIC_URL
+    safe_image_url = f"{root_path}/{image_url.lstrip('/')}" if image_url and root_path else image_url
 
     options = []
     for p in pages:

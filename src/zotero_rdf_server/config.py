@@ -167,7 +167,7 @@ ROOT_PATH = os.getenv(
     server_cfg.get("root_path", "")
 )
 
-ROOT_PATH = f"/{ROOT_PATH.lstrip('/').rstrip('/')}"
+ROOT_PATH = f"/{ROOT_PATH.lstrip('/').rstrip('/')}" if ROOT_PATH else None
 
 if STORE_MODE not in {"memory", "directory_rw", "directory_ro"}:
     STORE_MODE = "directory_rw"

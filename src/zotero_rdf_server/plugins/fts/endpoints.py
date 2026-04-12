@@ -840,7 +840,7 @@ def format_search_response(
         if output_format == "atlas":
             try:                
                 from .viewer import export_atlas_folder, ATLAS_URL
-                safe_atlas_url = f"{root_path}/{ATLAS_URL.lstrip('/')}"
+                safe_atlas_url = f"{root_path}/{ATLAS_URL.lstrip('/')}" if root_path and ATLAS_URL else ATLAS_URL
                 _input = list(cleaned_rows)
                 logger.warning(f"Redirect to {safe_atlas_url}")
                 export_atlas_folder(_input)
