@@ -544,22 +544,39 @@ def library_href(library_meta: dict):
     )
 
 def ensure_import(module, attr=None, requirements=None):
+    modname = re.split(r"(?:==|!=|<=|>=|<|>|~=)", module, 1)[0]
+
     try:
-        mod = importlib.import_module(module)
+        mod = importlib.import_module(modname)
+
     except ImportError:
-        if requirements is None:
+        try:
+            logger.warning(
+                f"{modname} not found. Installing dependencies ({module})..."
+            )
+
+            if requirements:
+                subprocess.check_call([
+                    sys.executable, "-m", "pip",
+                    "install", "-r", str(requirements),
+                ])
+            else:
+                subprocess.check_call([
+                    sys.executable, "-m", "pip",
+                    "install", module,
+                ])
+            try:
+                mod = importlib.import_module(modname)
+            except ImportError as e:
+                logger.error(e)
+                return
+
+        except Exception as e:
+            logger.error(e, exc_info=True)
             raise
 
-        logger.warning("%s not found. Installing dependencies...", module)
-        subprocess.check_call([
-            sys.executable,
-            "-m", "pip",
-            "install",
-            "-r", str(requirements),
-        ])
-        mod = importlib.import_module(module)
-
     return getattr(mod, attr) if attr else mod
+
 
 def require_symbol(module_name: str, symbol: str, *, hint:str = None):
     if importlib.util.find_spec(module_name) is None:

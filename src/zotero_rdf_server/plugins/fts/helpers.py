@@ -7,6 +7,7 @@ import subprocess, importlib, sys, os
 from typing import Optional
 from pathlib import Path
 import hashlib
+import datetime
 from functools import lru_cache
 
 here = Path(__file__).resolve().parent
@@ -33,38 +34,9 @@ def plugin_logger(new:bool=False):
         return logger_z
 
 def ensure_import(module, attr=None, requirements=requirements):
-    modname = re.split(r"(?:==|!=|<=|>=|<|>|~=)", module, 1)[0]
+    from zotero_rdf_server import utils
+    utils.ensure_import(module=module,attr=attr,requirements=requirements)
 
-    try:
-        mod = importlib.import_module(modname)
-
-    except ImportError:
-        try:
-            plugin_logger().warning(
-                f"{modname} not found. Installing dependencies ({module})..."
-            )
-
-            if requirements:
-                subprocess.check_call([
-                    sys.executable, "-m", "pip",
-                    "install", "-r", str(requirements),
-                ])
-            else:
-                subprocess.check_call([
-                    sys.executable, "-m", "pip",
-                    "install", module,
-                ])
-            try:
-                mod = importlib.import_module(modname)
-            except ImportError as e:
-                plugin_logger().error(e)
-                return
-
-        except Exception as e:
-            plugin_logger().error(e, exc_info=True)
-            raise
-
-    return getattr(mod, attr) if attr else mod
 
 @lru_cache(maxsize=1)
 def resolve_config_path(config_path: Optional[str] = None) -> Path:
@@ -96,12 +68,24 @@ def resolve_config_path(config_path: Optional[str] = None) -> Path:
     plugin_logger().info(f"Loading config from fallback: {str(fallback)}")
     return fallback
 
+def ISO_ts():
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+
 def _hash_file(path: Path, algo: str) -> str:
     h = hashlib.new(algo)
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+def make_json_safe(obj):
+    if isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    if isinstance(obj, dict):
+        return {k: make_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [make_json_safe(v) for v in obj]
+    return str(obj)  # fallback
 
 def convert_bindings(bindings):
     def parse_number_if_exact(val):
