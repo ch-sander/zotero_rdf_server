@@ -69,7 +69,8 @@
     },
     "IGNORE": {
         "xpath": [
-            "//pre"
+            "//pre",
+            "//img"
         ],
         "regex": [
             "#"
