@@ -84,6 +84,12 @@ def safe_path(path_str: str | Path | None, base_dir: Path | str = WORKDIR, creat
     logger.warning(f"Path not valid: {path_str} in {base_dir}")
     return None
 
+def env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
 config_path = os.getenv("CONFIG_FILE", "config.yaml")
 zotero_config_path = os.getenv("ZOTERO_CONFIG_FILE", "zotero.yaml")
 
@@ -157,22 +163,27 @@ API_UI_URL = (
 
 FASTAPI_META = server_cfg.get("fastapi", {})
 
+FASTAPI_APP_NAME = os.getenv("FASTAPI_APP_NAME")
+
+if FASTAPI_APP_NAME:
+    FASTAPI_META['title'] = FASTAPI_APP_NAME
+
 STATIC_UI_PREFIX = f"/{STATIC_UI_PREFIX.lstrip('/').rstrip('/')}" if STATIC_UI_PREFIX else None
 
-INCLUDE_CLOSED_ROUTER = (
-    os.getenv("INCLUDE_CLOSED_ROUTER")
-    or server_cfg.get("include_closed_router", True)    
-    )
+INCLUDE_CLOSED_ROUTER = env_bool(
+    "INCLUDE_CLOSED_ROUTER",
+    server_cfg.get("include_closed_router", True),
+)
 
-INCLUDE_OPEN_ROUTER = (
-    os.getenv("INCLUDE_OPEN_ROUTER")
-    or server_cfg.get("include_open_router", True)    
-    )
+INCLUDE_OPEN_ROUTER = env_bool(
+    "INCLUDE_OPEN_ROUTER",
+    server_cfg.get("include_open_router", True),
+)
 
-INCLUDE_PLUGINS = (
-    os.getenv("INCLUDE_PLUGINS")
-    or server_cfg.get("include_plugins", True)    
-    )
+INCLUDE_PLUGINS = env_bool(
+    "INCLUDE_PLUGINS",
+    server_cfg.get("include_plugins", True),
+)
 
 IMPORT_DIRECTORY = safe_path(
     os.getenv("IMPORT_DIRECTORY")

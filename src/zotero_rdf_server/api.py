@@ -16,7 +16,6 @@ import pkgutil
 from importlib import import_module
 from importlib.util import find_spec
 
-app = FastAPI()
 security = HTTPBasic()
 
 def verify(credentials: HTTPBasicCredentials = Depends(security)):
@@ -356,7 +355,7 @@ def favicon():
         return Response(status_code=204)
     
 
-@open_router.get("/libs", summary="List of all libraries", description="Returns all available libraries with configuration.", tags=["Admin"])
+@router.get("/libs", summary="List of all libraries", description="Returns all available libraries with configuration.", tags=["Admin"])
 async def get_libs():
     result = [ZoteroLibrary(cfg) for cfg in ZOTERO_LIBRARIES_CONFIGS]
     return {"success": result}
