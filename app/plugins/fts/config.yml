@@ -123,7 +123,7 @@ tesseract:
 open-search:
   client:
     hosts:
-      - host: opensearch # see in docker-compose.yml
+      - host: 172.17.0.1 # opensearch # see in docker-compose.yml
         port: 9200
     retry_on_timeout: true
     timeout: 300
