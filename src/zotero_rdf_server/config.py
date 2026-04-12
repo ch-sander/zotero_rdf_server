@@ -145,6 +145,35 @@ STATIC_UI_DIRECTORY = safe_path(
     or "/app/ui"
 )
 
+STATIC_UI_PREFIX = (
+    os.getenv("STATIC_UI_PREFIX")
+    or server_cfg.get("static_ui_prefix", "/ui")
+    )
+
+API_UI_URL = (
+    os.getenv("API_UI_URL")
+    or server_cfg.get("api_ui_url", "/")
+    )
+
+FASTAPI_META = server_cfg.get("fastapi", {})
+
+STATIC_UI_PREFIX = f"/{STATIC_UI_PREFIX.lstrip('/').rstrip('/')}" if STATIC_UI_PREFIX else None
+
+INCLUDE_CLOSED_ROUTER = (
+    os.getenv("INCLUDE_CLOSED_ROUTER")
+    or server_cfg.get("include_closed_router", True)    
+    )
+
+INCLUDE_OPEN_ROUTER = (
+    os.getenv("INCLUDE_OPEN_ROUTER")
+    or server_cfg.get("include_open_router", True)    
+    )
+
+INCLUDE_PLUGINS = (
+    os.getenv("INCLUDE_PLUGINS")
+    or server_cfg.get("include_plugins", True)    
+    )
+
 IMPORT_DIRECTORY = safe_path(
     os.getenv("IMPORT_DIRECTORY")
     or server_cfg.get("import_directory")

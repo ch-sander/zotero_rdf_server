@@ -2162,6 +2162,7 @@ from fastapi import Form
 @open_router.get(
     "/image/{os_doc_id:path}",
     summary="Return image for one page",
+    name = "image",
     tags=["Viewer"])
 def get_image(os_doc_id: str):
     from .viewer import split_doc_id, image_file
@@ -2179,6 +2180,7 @@ def get_image(os_doc_id: str):
 @open_router.get(
     "/text/{os_doc_id:path}",
     summary="Return text for one page",
+    name = "text",
     tags=["Viewer"])
 def get_text(os_doc_id: str):
     from .viewer import split_doc_id, text_file
@@ -2194,21 +2196,225 @@ def get_text(os_doc_id: str):
 
     return FileResponse(txt_path)
 
-# @open_router.get(
-#     "/view/{os_doc_id:path}",
-#     summary="View image page and OCR",
-#     description="Indicate root directories and file extensions in configuration under 'viewer'.",
-#     tags=["Viewer"]
-# )
-# def view_page(os_doc_id: str):
-#     from .viewer import render_page, split_doc_id, image_file, text_file, list_pages, discover_doc_url, IMAGE_EXT
+@open_router.get(
+    "/view",
+    summary="Viewer start page",
+    name="view-root",
+    tags=["Viewer"],
+)
+def view_root(request: Request):
+    return build_view_response(request, None, editable=False)
 
-#     original_os_doc_id = (os_doc_id or "").strip()
-#     doc_key, page = split_doc_id(original_os_doc_id)
+@open_router.get(
+    "/view/{os_doc_id:path}",
+    summary="View image page and OCR",
+    name = "view",
+    description="Indicate root directories and file extensions in configuration under 'viewer'.",
+    tags=["Viewer"],
+)
+def view_page(request: Request, os_doc_id: str):
+    return build_view_response(request, os_doc_id, editable=False)
+
+@router.get("/edit-view/{os_doc_id:path}",
+            name = "edit-view",
+            tags=["Viewer"])
+def edit_page(request: Request, os_doc_id: str):
+    return build_view_response(request, os_doc_id, editable=True)
+
+@router.post(
+    "/save-view/{os_doc_id:path}",
+    summary="Save OCR text",
+    name = "save-view",
+    tags=["Viewer"],
+)
+def save_page(request: Request, os_doc_id: str, text: str = Form(...)):
+    from .viewer import split_doc_id, text_file
+
+    original_os_doc_id = (os_doc_id or "").strip()
+    doc_key, page = split_doc_id(original_os_doc_id)
+    txt_path = text_file(doc_key, page)
+
+    try:
+        txt_path.parent.mkdir(parents=True, exist_ok=True)
+        txt_path.write_text(text, encoding="utf-8")
+    except Exception as exc:
+        logger.exception(f"Could not write text file {txt_path}: {exc}")
+        raise HTTPException(status_code=500, detail="Could not save text")
+
+    redirect_url = str(
+        router.url_for("edit-view", os_doc_id=original_os_doc_id)
+    )
+
+    return RedirectResponse(
+        url=redirect_url,
+        status_code=303,
+    )
+
+def build_view_response(
+    request: Request,
+    original_os_doc_id: str | None,
+    editable: bool = False
+) -> HTMLResponse:
+    from .viewer import (
+        render_page,
+        split_doc_id,
+        image_file,
+        text_file,
+        list_pages,
+        discover_doc_url,
+        IMAGE_EXT,
+    )
+
+    def url_for_path(name: str, **params) -> str:
+        try:
+            return str(request.app.url_path_for(name, **params))
+        except:
+            return ""
+
+    raw_os_doc_id = (original_os_doc_id or "").strip()
+
+    root_path = request.scope.get("root_path", "")
+
+    
+
+    if not raw_os_doc_id:
+        view_root_url = url_for_path("view-root")
+        view_base_url = url_for_path("view", os_doc_id="__ID__").removesuffix("/__ID__")
+        edit_base_url = url_for_path("edit-view", os_doc_id="__ID__").removesuffix("/__ID__")
+        ocr_base_url = url_for_path("ocr-view", os_doc_id="__ID__").removesuffix("/__ID__")
+
+        html = render_page(
+            os_doc_id="",
+            page="",
+            pages=[],
+            image_url=None,
+            text="[no text selected]",
+            prev_page=None,
+            next_page=None,
+            discover_url=None,
+            editable=editable,
+            save_url=None,
+            page_url_base=view_base_url,
+            edit_url=None,
+            ocr_url=None,
+            current_framework="kraken",
+            root_path=root_path,
+        )
+        logger.info(f"Building: {view_root_url} for {raw_os_doc_id}")
+        return HTMLResponse(html)
+
+    doc_key, page = split_doc_id(raw_os_doc_id)
+    doc_id_only = raw_os_doc_id.rsplit(":", 1)[0]
+
+    img_path = image_file(doc_key, page)
+    txt_path = text_file(doc_key, page)
+    pages = list_pages(doc_key)
+
+    if not pages and not img_path.exists() and not txt_path.exists():
+        raise HTTPException(status_code=404, detail=f"Image {img_path} and text {txt_path} not found")
+
+    image_url = None
+    from urllib.parse import quote
+
+    if img_path.exists():
+        from .viewer import image_root       
+
+        image_rel_path = quote(f"{doc_key}/{page}.{IMAGE_EXT}", safe="/")
+        image_url = request.app.url_path_for("image-files", path=f"/{image_rel_path}")
+        logger.debug(f"img_path: {img_path}")
+        logger.debug(f"image_root: {image_root}")
+        logger.debug(f"image_rel_path: {image_rel_path}")
+        logger.debug(f"image_url: {image_url}")
+
+
+    if txt_path.exists():
+        try:
+            text = txt_path.read_text(encoding="utf-8", errors="replace")
+        except Exception as exc:
+            logger.warning(f"Could not read text file {txt_path}: {exc}")
+            text = "[error reading text]"
+    else:
+        text = "[no text on this page]"
+
+    prev_page = None
+    next_page = None
+    if page in pages:
+        idx = pages.index(page)
+        if idx > 0:
+            prev_page = pages[idx - 1]
+        if idx < len(pages) - 1:
+            next_page = pages[idx + 1]
+
+    view_url = url_for_path("view", os_doc_id=f"{doc_id_only}:{page}")
+    edit_url = url_for_path("edit-view", os_doc_id=f"{doc_id_only}:{page}")
+    save_url = url_for_path("save-view", os_doc_id=f"{doc_id_only}:{page}")
+    ocr_url = url_for_path("ocr-view", os_doc_id=f"{doc_id_only}:{page}")
+    view_base_url = url_for_path("view", os_doc_id="__ID__").removesuffix("/__ID__")
+
+    logger.info(f"Building: {view_url} for {raw_os_doc_id}")
+
+    html = render_page(
+        os_doc_id=doc_id_only,
+        page=page,
+        pages=pages,
+        image_url=image_url,
+        text=text,
+        prev_page=prev_page,
+        next_page=next_page,
+        discover_url=discover_doc_url(raw_os_doc_id),
+        editable=editable,
+        save_url=save_url if editable else None,
+        page_url_base=view_base_url,
+        edit_url=edit_url if not editable else None,
+        ocr_url=ocr_url,
+        current_framework="kraken",
+        root_path=root_path,
+    )
+    return HTMLResponse(html)
+
+# def build_view_response_legacy(
+#     request: Request,
+#     original_os_doc_id: str | None,
+#     editable: bool = False
+# ) -> HTMLResponse:
+#     from .viewer import (
+#         render_page,
+#         split_doc_id,
+#         image_file,
+#         text_file,
+#         list_pages,
+#         discover_doc_url,
+#         IMAGE_EXT,
+#         VIEW_URLS,
+#     )
+
+#     raw_os_doc_id = (original_os_doc_id or "").strip()
+
+#     if not raw_os_doc_id:
+#         html = render_page(
+#             os_doc_id="",
+#             page="",
+#             pages=[],
+#             image_url=None,
+#             text="[no text selected]",
+#             prev_page=None,
+#             next_page=None,
+#             discover_url=None,
+#             editable=editable,
+#             save_url=None,
+#             page_url_base=VIEW_URLS['view'],
+#             edit_url=None,
+#             ocr_url=None,
+#             current_framework="kraken",
+#             root_path=request.scope.get("root_path", "")
+#         )
+#         return HTMLResponse(html)
+
+#     doc_key, page = split_doc_id(raw_os_doc_id)
+#     doc_id_only = raw_os_doc_id.rsplit(":", 1)[0]
 
 #     img_path = image_file(doc_key, page)
 #     txt_path = text_file(doc_key, page)
-
 #     pages = list_pages(doc_key)
 
 #     if not pages and not img_path.exists() and not txt_path.exists():
@@ -2237,153 +2443,27 @@ def get_text(os_doc_id: str):
 #             next_page = pages[idx + 1]
 
 #     html = render_page(
-#         os_doc_id=original_os_doc_id.rsplit(":", 1)[0],
+#         os_doc_id=doc_id_only,
 #         page=page,
 #         pages=pages,
 #         image_url=image_url,
 #         text=text,
 #         prev_page=prev_page,
 #         next_page=next_page,
-#         discover_url=discover_doc_url(original_os_doc_id),
+#         discover_url=discover_doc_url(raw_os_doc_id),
+#         editable=editable,
+#         save_url=f"{VIEW_URLS['save-view']}/{doc_id_only}:{page}" if editable else None,
+#         page_url_base=f"{VIEW_URLS['view']}",
+#         edit_url=f"{VIEW_URLS['view']}/edit-view/{doc_id_only}:{page}" if not editable else None,
+#         ocr_url=f"{VIEW_URLS['ocr-view']}/{doc_id_only}:{page}",
+#         current_framework="kraken",
+#         root_path=request.scope.get("root_path", "")
 #     )
 #     return HTMLResponse(html)
 
 @open_router.get(
-    "/view",
-    summary="Viewer start page",
-    tags=["Viewer"],
-)
-def view_root(request: Request):
-    return build_view_response(request, None, editable=False)
-
-@open_router.get(
-    "/view/{os_doc_id:path}",
-    summary="View image page and OCR",
-    description="Indicate root directories and file extensions in configuration under 'viewer'.",
-    tags=["Viewer"],
-)
-def view_page(request: Request, os_doc_id: str):
-    return build_view_response(request, os_doc_id, editable=False)
-
-@router.get("/edit-view/{os_doc_id:path}")
-def edit_page(request: Request, os_doc_id: str):
-    return build_view_response(request, os_doc_id, editable=True)
-
-@router.post(
-    "/save-view/{os_doc_id:path}",
-    summary="Save OCR text",
-    tags=["Viewer"],
-)
-def save_page(os_doc_id: str, text: str = Form(...)):
-    from .viewer import split_doc_id, text_file, BASE_URL
-
-    original_os_doc_id = (os_doc_id or "").strip()
-    doc_key, page = split_doc_id(original_os_doc_id)
-    txt_path = text_file(doc_key, page)
-
-    try:
-        txt_path.parent.mkdir(parents=True, exist_ok=True)
-        txt_path.write_text(text, encoding="utf-8")
-    except Exception as exc:
-        logger.exception(f"Could not write text file {txt_path}: {exc}")
-        raise HTTPException(status_code=500, detail="Could not save text")
-
-    return RedirectResponse(
-        url=f"{BASE_URL}/edit-view/{original_os_doc_id}",
-        status_code=303,
-    )
-
-def build_view_response(
-    request: Request,
-    original_os_doc_id: str | None,
-    editable: bool = False
-) -> HTMLResponse:
-    from .viewer import (
-        render_page,
-        split_doc_id,
-        image_file,
-        text_file,
-        list_pages,
-        discover_doc_url,
-        IMAGE_EXT,
-        BASE_URL,
-    )
-
-    raw_os_doc_id = (original_os_doc_id or "").strip()
-
-    if not raw_os_doc_id:
-        html = render_page(
-            os_doc_id="",
-            page="",
-            pages=[],
-            image_url=None,
-            text="[no text selected]",
-            prev_page=None,
-            next_page=None,
-            discover_url=None,
-            editable=editable,
-            save_url=None,
-            page_url_base=f"{BASE_URL}/view",
-            edit_url=None,
-            ocr_url=None,
-            current_framework="kraken",
-            root_path=request.scope.get("root_path", "")
-        )
-        return HTMLResponse(html)
-
-    doc_key, page = split_doc_id(raw_os_doc_id)
-    doc_id_only = raw_os_doc_id.rsplit(":", 1)[0]
-
-    img_path = image_file(doc_key, page)
-    txt_path = text_file(doc_key, page)
-    pages = list_pages(doc_key)
-
-    if not pages and not img_path.exists() and not txt_path.exists():
-        raise HTTPException(status_code=404, detail="Document not found")
-
-    image_url = None
-    if img_path.exists():
-        image_url = f"/image-files/{doc_key}/{page}.{IMAGE_EXT}"
-
-    if txt_path.exists():
-        try:
-            text = txt_path.read_text(encoding="utf-8", errors="replace")
-        except Exception as exc:
-            logger.warning(f"Could not read text file {txt_path}: {exc}")
-            text = "[error reading text]"
-    else:
-        text = "[no text on this page]"
-
-    prev_page = None
-    next_page = None
-    if page in pages:
-        idx = pages.index(page)
-        if idx > 0:
-            prev_page = pages[idx - 1]
-        if idx < len(pages) - 1:
-            next_page = pages[idx + 1]
-
-    html = render_page(
-        os_doc_id=doc_id_only,
-        page=page,
-        pages=pages,
-        image_url=image_url,
-        text=text,
-        prev_page=prev_page,
-        next_page=next_page,
-        discover_url=discover_doc_url(raw_os_doc_id),
-        editable=editable,
-        save_url=f"{BASE_URL}/save-view/{doc_id_only}:{page}" if editable else None,
-        page_url_base=f"{BASE_URL}/view",
-        edit_url=f"{BASE_URL}/edit-view/{doc_id_only}:{page}" if not editable else None,
-        ocr_url=f"{BASE_URL}/ocr-view/{doc_id_only}:{page}",
-        current_framework="kraken",
-        root_path=request.scope.get("root_path", "")
-    )
-    return HTMLResponse(html)
-
-@open_router.get(
     "/ocr-view/{os_doc_id:path}",
+    name = "ocr-view",
     summary="Run OCR again for page image",
     tags=["Viewer"],
 )

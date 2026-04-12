@@ -486,10 +486,9 @@ def render_markdown(
     verbose: bool = True,
 ) -> str:
     
-    try:
-        from .viewer import BASE_URL
-    except:
-        BASE_URL = "/plugin/fts/view"
+    
+    from .viewer import app
+
 
     lines: List[str] = []
     rows = rows[:max_rows]
@@ -505,7 +504,7 @@ def render_markdown(
         lines.append("---")
         if doc_id:
             if verbose:
-                doc_value = f"[{doc_id}]({BASE_URL}/{doc_id})"
+                doc_value = f"[{doc_id}]({app.url_path_for("view", os_doc_id=doc_id)})"
             else:
                 doc_value = doc_id
             lines.append(f"## Document {idx} ({doc_value})")
@@ -522,9 +521,6 @@ def render_markdown(
             value = flatten_value(raw_value)
             if value == "" or col == "_id":
                 continue
-
-            # if col == "_id" and verbose:
-            #     value = f"[{doc_id}]({BASE_URL}/{value})"
 
             if str(raw_value).startswith("http"):
                 safe_url = html.escape(raw_value)
@@ -559,10 +555,8 @@ def render_html(
     parts: List[str] = []
     rows = rows[:max_rows]
 
-    try:
-        from .viewer import BASE_URL
-    except:
-        BASE_URL = "/plugin/fts/view"
+    from .viewer import app
+
 
     parts.append(f"<h1>{html.escape(title)}</h1>")
     parts.append(f"<p>Total documents shown: <strong>{len(rows)}</strong></p>")
@@ -575,7 +569,7 @@ def render_html(
 
         if doc_id or label:
             d_text = f"{label} ({doc_id})" if label and doc_id else (label or doc_id)
-            doc_value = f'<a href="{BASE_URL}/{doc_id}" target="_blank">{d_text}</a>' if verbose and doc_id else d_text
+            doc_value = f'<a href="{app.url_path_for("view", os_doc_id=doc_id)}" target="_blank">{d_text}</a>' if verbose and doc_id else d_text
             parts.append(f"<h2>Document {idx} ({doc_value})</h2>")
         else:
             parts.append(f"<h2>Document {idx}</h2>")

@@ -5,8 +5,9 @@ from typing import Any
 from fastapi import HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-
+from zotero_rdf_server.config import STATIC_UI_PREFIX
 from .helpers import plugin_logger, resolve_config_path, safe_doc_id
+from zotero_rdf_server.main import app
 logger = plugin_logger()
 
 @lru_cache(maxsize=8)
@@ -33,14 +34,22 @@ TEXT_ROOT_STR = cfg.get("text_root") or ""
 IMAGE_EXT = str(cfg.get("image_ext") or "jpg").lstrip(".")
 TEXT_EXT = str(cfg.get("text_ext") or "txt").lstrip(".")
 DASHBOARD_URL = cfg.get("dashboard_url") or None
-BASE_URL = str(cfg.get("base_url", "/plugin/fts")).rstrip("/")
+# VIEW_URLS = cfg.get("viewer_urls") or {
+#               'view': app.url_path_for("view", os_doc_id="doc_id") or "/plugin/fts/view",
+#               # 'edit-view': router.url_path_for("edit-view"),
+#               # 'save-view': router.url_path_for("save-view"),
+#               # 'ocr-view': open_router.url_path_for("ocr-view"),
+#               # 'text': open_router.url_path_for("save-view"),
+#               # 'image': open_router.url_path_for("save-view"),
+#              } 
+# BASE_URL = str(cfg.get("base_url", "/plugin/fts")).rstrip("/")
 # BASE_URL = f"{ROOT_PATH}/{BASE_URL.lstrip(str(ROOT_PATH))}"
-STATIC_URL = str(cfg.get("static_url", "/ui/view")).rstrip("/") 
+STATIC_URL = str(cfg.get("static_url", f"{STATIC_UI_PREFIX}/view")).rstrip("/") 
 ATLAS_URL = str(cfg.get("atlas_url", "/ui/atlas")).rstrip("/") 
 OSD_CONFIG = cfg.get("OpenSeadragon") or {}
 OCR_FRAMEWORKS = cfg.get("ocr_frameworks") or []
 
-mount_path = "/image-files"
+MOUNT_PATH = "/image-files"
 
 if not IMAGE_ROOT_STR:
     logger.warning("viewer.image_root is not configured")
@@ -51,32 +60,34 @@ image_root = Path(IMAGE_ROOT_STR) if IMAGE_ROOT_STR else Path(".")
 text_root = Path(TEXT_ROOT_STR) if TEXT_ROOT_STR else Path(".")
 
 
-def ensure_router_mount(open_router) -> None:
+def ensure_router_mount(app, mount_path = MOUNT_PATH) -> None:
     """
     Mount static files once.
     Call this during router/app setup, not inside the route handler.
     """
-    
-    for route in getattr(open_router, "routes", []):
+    for route in getattr(app, "routes", []):
         if getattr(route, "path", None) == mount_path:
             return
     
-    open_router.mount(
+    app.mount(
         mount_path,
         StaticFiles(directory=str(image_root),check_dir=False),
         name="image-files",
     )
     logger.info(f"Mounted static image path at {mount_path} -> {image_root}")
 
-from zotero_rdf_server.main import app
+
 ensure_router_mount(app)
+
+for route in app.routes:
+    logger.info(f"name={getattr(route, 'name', None)} path={getattr(route, 'path', None)}")
 
 def add_viewer_url(hits: list) -> list:
     for h in hits:
         _id = h.get("_id")
         src = h.get("_source")
         if _id and src:
-            src['viewer'] = f"{BASE_URL}/view/{_id}"
+            src['viewer'] = app.url_path_for("view", os_doc_id=_id)
     return hits
 
 def split_doc_id(os_doc_id: str) -> tuple[str, str]:
@@ -496,12 +507,13 @@ def render_page(
     editor_text = raw_text if has_real_text else ""
     display_text = raw_text if has_real_text else "[no text on this page]"
 
+    
     safe_os_doc_id = escape(os_doc_id)
     safe_page = escape(page)
     safe_editor_text = escape(editor_text)
     safe_display_text = escape(display_text)
     safe_save_url = escape(save_url or "")
-    safe_page_url_base = escape((page_url_base or f"{BASE_URL}/view").rstrip("/"))
+    safe_page_url_base = escape((page_url_base).rstrip("/"))
     safe_edit_url = escape(edit_url or "")
     safe_discover_url = escape(discover_url or "")
     safe_static_url = f"{root_path}/{STATIC_URL.lstrip('/')}" if STATIC_URL and root_path else STATIC_URL
@@ -606,7 +618,7 @@ def render_page(
         "ocrUrl": ocr_url or "",
         "currentFramework": current_framework,
         "osdConfig": osd_config,
-        "pageUrlBase": (page_url_base or f"{BASE_URL}/view").rstrip("/"),
+        "pageUrlBase": safe_page_url_base,
         "currentDocId": os_doc_id,
         "currentPage": page,
         "docPrefix": doc_prefix,

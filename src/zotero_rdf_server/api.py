@@ -43,6 +43,7 @@ def require_writable():
         )
     
 def include_plugins(app: FastAPI, plugins_pkg: str = "zotero_rdf_server.plugins", base_prefix: str = "/plugin") -> None:
+    from .config import INCLUDE_CLOSED_ROUTER, INCLUDE_OPEN_ROUTER
     pkg = import_module(plugins_pkg)
 
     for m in pkgutil.iter_modules(pkg.__path__, prefix=pkg.__name__ + "."):
@@ -66,11 +67,11 @@ def include_plugins(app: FastAPI, plugins_pkg: str = "zotero_rdf_server.plugins"
                 continue
 
             prefix = getattr(mod, "PLUGIN_PREFIX", f"{base_prefix}/{plugin_name}")
-            if prouter is not None:
+            if prouter is not None and INCLUDE_CLOSED_ROUTER:
                 app.include_router(prouter, prefix=prefix,
                                     tags=["Plugin", display_name], dependencies=[Depends(verify)])
                 
-            if open_router is not None:
+            if open_router is not None and INCLUDE_OPEN_ROUTER:
                 app.include_router(open_router, prefix=prefix,
                                     tags=["Plugin", display_name, "Open Endpoint"])
 
