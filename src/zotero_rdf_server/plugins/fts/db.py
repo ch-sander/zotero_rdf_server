@@ -347,7 +347,7 @@ def index_stream(
     label: str | None = None,
     url_to_text_pages_fn: PagesFn | None = None,
     targets: str | Iterable[str],
-    ocr_kwargs: dict | None = None,
+    source_kwargs: dict | None = None,
     meta: dict | None = None,
     doc: Any | None = None,
     vector_kwargs: dict | None = None
@@ -383,7 +383,7 @@ def index_stream(
         if url_to_text_pages_fn is None:
             raise ValueError("url_to_text_pages_fn is required when doc is None")
 
-        pages_iter = url_to_text_pages_fn(input, **(ocr_kwargs or {}))
+        pages_iter = url_to_text_pages_fn(input, **(source_kwargs or {}))
 
         actions = page_docs(
             targets=targets_list,
