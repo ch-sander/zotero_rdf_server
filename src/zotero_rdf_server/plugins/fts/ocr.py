@@ -1678,7 +1678,7 @@ def iter_text_pages(
     # Download
     total = 0
     _report = _cache_discrepancy_report()
-    
+
     if save_text == "overwrite":
         skip_pages = set()
     elif save_image in {"active", "overwrite", "smart"}:
