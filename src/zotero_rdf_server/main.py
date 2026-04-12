@@ -3,8 +3,9 @@ from .lifespan import app_lifespan
 from .api import router, include_plugins, open_router
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from .config import STATIC_UI_DIRECTORY, ROOT_PATH
 
-app = FastAPI(lifespan=app_lifespan, docs_url="/")
+app = FastAPI(lifespan=app_lifespan, docs_url="/", root_path=ROOT_PATH)
 
 app.add_middleware(
     CORSMiddleware,
@@ -13,7 +14,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from .config import STATIC_UI_DIRECTORY
+
 app.include_router(router)
 app.include_router(open_router)
 

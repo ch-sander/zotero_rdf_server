@@ -162,6 +162,13 @@ STORE_MODE = os.getenv(
     server_cfg.get("store_mode", "directory_rw")
 ).strip().lower()
 
+ROOT_PATH = os.getenv(
+    "ROOT_PATH",
+    server_cfg.get("root_path", "")
+)
+
+ROOT_PATH = f"/{ROOT_PATH.lstrip('/').rstrip('/')}"
+
 if STORE_MODE not in {"memory", "directory_rw", "directory_ro"}:
     STORE_MODE = "directory_rw"
 
