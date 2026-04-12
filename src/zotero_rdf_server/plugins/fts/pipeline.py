@@ -18,8 +18,8 @@ def _meta_flat_strings(d: Dict[str, Any]) -> Dict[str, str]:
 def ingest_pipeline(
     items: list = [],
     targets: str | list = [],
-    ocr: bool = False,
-    framework: TypeLiteral["kraken", "tesseract", "transformer"] = "kraken",
+    from_source: bool = True,
+    framework: TypeLiteral["kraken", "tesseract", "transformer", "source", "none"] = "kraken",
     vector_kwargs: dict | None = None,
     ingest: bool = True,
     iter_pages_kwargs: dict = {},
@@ -33,6 +33,8 @@ def ingest_pipeline(
     targets = targets or []
     iter_pages_kwargs = dict(iter_pages_kwargs or {})
     page_to_text_kwargs = dict(page_to_text_kwargs or {})
+    vector_kwargs = dict(vector_kwargs or {})
+    text_image_file_kwargs = dict(text_image_file_kwargs or {})
     logger.info(f"Ingest Pipeline started with {len(items)} items using framework={framework}...")
 
     page_to_text_kwargs['config_path'] = config_path if (not page_to_text_kwargs.get('config_path') and config_path) else page_to_text_kwargs.get('config_path')
@@ -49,14 +51,14 @@ def ingest_pipeline(
         json.dumps(text_image_file_kwargs, indent=2, sort_keys=True, ensure_ascii=False),
     )
 
-    if not ocr and not ingest:
-        return([{"error":"nothing to do here: no ocr, no ingest!"}])
+    if not from_source and not ingest:
+        return([{"error":"nothing to do here: no from_source, no ingest!"}])
     vector = isinstance(vector_kwargs, dict) and vector_kwargs.get('framework')
     if vector:
         from .vector import embed
         from .helpers import clean_ocr    
 
-    if ocr:
+    if from_source:
         from .ocr import iter_text_pages, PdfTextPolicy, IiifOcrPolicy     
 
         ptp = iter_pages_kwargs.get("pdf_text_policy")
@@ -77,6 +79,7 @@ def ingest_pipeline(
                         page_to_text_kwargs=page_to_text_kwargs,
                         text_image_file_kwargs=text_image_file_kwargs,
                         framework=framework,
+                        yield_result=ingest
                     ):
                         stats["pages_emitted"] += 1
                         yield page
@@ -100,10 +103,10 @@ def ingest_pipeline(
                     results.append({
                         "doc_id": doc_id,
                         "label": label,
-                        "ocr": True,
+                        "from_source": True,
                         "vector": vector,
                         "ingest": False,
-                        "error": "ocr=true requires '_input' in each item",
+                        "error": "from_source=true requires '_input' in each item",
                     })
                     continue
 
@@ -127,7 +130,7 @@ def ingest_pipeline(
                         "label": label,
                         "input": input_,
                         "meta": meta,
-                        "ocr": True,
+                        "from_source": True,
                         "vector": vector,
                         "ingest": False,
                         "error": str(e),
@@ -139,14 +142,14 @@ def ingest_pipeline(
                     "label": label,
                     "input": input_,
                     "meta": meta,
-                    "ocr": True,
+                    "from_source": True,
                     "framework": framework,
                     "vector": vector,
                     "ocr_pages": len(pages),
                     "ingest": False,
                     "targets": targets,
                 })
-            logger.info(f"OCR Pipeline finsihed with {len(results)} results!")
+            logger.info(f"Pipeline finsihed with {len(results)} results!")
 
             return results  
           
@@ -167,12 +170,12 @@ def ingest_pipeline(
             label = payload.pop("_label", "no label")
             meta = _meta_flat_strings(payload)
             logger.info(f"\n\n[{i}/{total}] Loading {obj.get('_id')}\n{label}\n\n")  
-            logger.debug(f"Ingest Pipeline index_stream with OCR: {ocr}")
-            if ocr:
+            logger.debug(f"Ingest Pipeline index_stream from source: {from_source}")
+            if from_source:
                 if not input:
-                    logger.error("ocr=true requires '_input' in each item")
+                    logger.error("from_source=true requires '_input' in each item")
                     continue
-                logger.info(f"Ingest Pipeline from OCR input!")
+                logger.info(f"Ingest Pipeline with input from source!")
                 digest = index_stream(
                         input=input,
                         doc_id=doc_id,
@@ -183,13 +186,13 @@ def ingest_pipeline(
                         config_path=config_path,
                         vector_kwargs=vector
                     )         
-                digest["ocr"] = True
+                digest["from_source"] = True
                 digest["framework"] = framework     
                 digest["ocr_pages"] = stats["pages_emitted"]
                 digest["ingest"] = True
                 runs.append(digest)
             else:
-                logger.info(f"Ingest Pipeline from non-OCR input!")
+                logger.info(f"Ingest Pipeline with no input from source!")
                 d: Dict[str, Any] = {"ingest_ts": now, "meta": meta}
                 if input is not None:
                     d["input"] = input
@@ -212,7 +215,7 @@ def ingest_pipeline(
                         config_path=config_path
                     )
                 
-                digest["ocr"] = False
+                digest["from_source"] = False
                 digest["framework"] = framework
                 digest["ingest"] = True
                 runs.append(digest)

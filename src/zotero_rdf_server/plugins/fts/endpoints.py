@@ -72,7 +72,7 @@ def ocr_url(
         description="Path to YAML config. If omitted: ENV FTS_CONFIG, otherwise ./config.yml",
     ),
 
-    framework: Literal["kraken", "tesseract", "transformer", "none"] = Query(
+    framework: Literal["kraken", "tesseract", "transformer", "source", "none"] = Query(
         "kraken",
         description="OCR backend: kraken, tesseract, or transformer. Choose 'none' to skip ATR/OCR",
     ),
@@ -133,6 +133,10 @@ def ocr_url(
         None,
         description="Relative directory (under EXPORT_DIRECTORY) to store page texts.",
     ),
+    meta_out: Optional[str] = Query(
+        None,
+        description="Relative directory (under EXPORT_DIRECTORY) to store metadata report as JSON.",
+    ),
     img_ext: str = Query(
         "jpg",
         description="Image file extension (jpg, png, webp, ...).",
@@ -145,7 +149,7 @@ def ocr_url(
         "skip",
         description="What to do if text file already exists.",
     ),
-    save_image: Literal["skip", "overwrite", "active"] = Query(
+    save_image: Literal["skip", "cache", "overwrite", "active", "smart", "sniff"] = Query(
         "skip",
         description="What to do if image file already exists.",
     ),
@@ -159,6 +163,7 @@ def ocr_url(
     text_image_file_kwargs = {
         "img_out": img_out,
         "txt_out": txt_out,
+        "meta_out": meta_out,
         "img_ext": img_ext,
         "txt_ext": txt_ext,
         "save_text": save_text,
@@ -192,6 +197,7 @@ def ocr_url(
             ),
             text_image_file_kwargs=text_image_file_kwargs,
             framework=framework,
+            yield_result=True
         ):
             yield {"index": page_no, "text": text}
 
@@ -279,14 +285,14 @@ JsonBody = Union[JsonObj, List[JsonObj]]
 
 @router.post("/pipeline")
 def ingest_route(
-    input: Optional[JsonBody] = Body(default=None, examples=[None]),
+    input: Optional[JsonBody] = Body(default=None, examples=[None],description="Provide JSON List or SPARQL query result bindings. If none, runs query to get input from results."),
     targets: str | list = Query(default=None, description="Index or alias"),
-    ocr: bool = Query(default=True, description="If true, run OCR pages ingest via pages_fn"),
-    framework: Literal["kraken", "tesseract", "transformer", "none"] = Query(
-        default="kraken",
+    from_source: bool = Query(default=True, description="If true, generates input from external source (either produced via OCR or read from cache). If false, you must provide input directly."),
+    framework: Literal["kraken", "tesseract", "transformer", "source", "none"] = Query(
+        default=None,
         description="OCR backend: kraken, tesseract, or transformer. Choose 'none' to skip ATR/OCR",
     ),
-    ingest: bool = Query(default=True, description="If true, ingest into Open Search"),
+    ingest: bool = Query(default=None, description="If true, ingest into Open Search"),
     query: Optional[str] = Query(default=None, description="SPARQL SELECT query or path to file with query code (used when body is null)"),
     graph: str | None = Query(default=None, description="Named graph IRI containing the attachments or documents (optional)"),
     config_path: Optional[str] = Query(
@@ -295,9 +301,9 @@ def ingest_route(
     ),
     store_path: Optional[str] = Query(default=None, description="Oxigraph store path (defaults to main store)"),
     open_search_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for Open Search Config", examples=[None]),
-    ocr_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for OCR Config", examples=[None]),
-    model_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for OCR Backend Config", examples=[None]),
-    file_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for File Output", examples=[{'img_out':'kraken/images','txt_out':'kraken/texts','save_text':'active','save_image':'skip'}]),
+    source_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for OCR Config", examples=[None]),
+    framework_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for OCR Backend Config", examples=[None]),
+    file_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for File Output", examples=[{'img_out':'kraken/images','txt_out':'kraken/texts','meta_out':'kraken/meta','save_text':'active','save_image':'skip'}]),
     vector_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for embedding Backend Config", examples=[None]),
 ):
     from .pipeline import ingest_pipeline
@@ -367,20 +373,28 @@ def ingest_route(
                         logger.warning(f"Running {len(cfg)} FTS configuration for library {lib.base_url}")
                     # if not cfg:
                     #     raise HTTPException(status_code=400, detail=f"No FTS config for library {lib.base_url}")
-                    for ncfg in cfg: # allow multiple runs per library
+                    for n, ncfg in enumerate(cfg, start=1): # allow multiple runs per library
+                        name = ncfg.get('name','n/a')
+                        if ncfg.get("deactivated", False):
+                            logger.info(f"\n\n{n}/{len(cfg)}: Skipping deactivated pipeline {name}\n\n")
+                            continue
+                        
+                        logger.info(f"\n\n{n}/{len(cfg)}: Deploying pipeline {name}\n\n")
 
                         os_cfg = open_search_kwargs if open_search_kwargs is not None else (ncfg.get("open-search") or {})
-                        kraken_cfg = (ncfg.get("kraken") or {})
-                        targets_x = targets or os_cfg.get("targets")
+                        pipeline_cfg = (ncfg.get("pipeline") or {})
+                        targets_x = targets if targets is not None else os_cfg.get("targets")
                         if isinstance(targets_x, list):
                             targets_set.extend(targets_x)
                         else:
                             targets_set.append(targets_x)
 
-                        if not targets_x:
+                        ingest_x = ingest if ingest is not None else ncfg.get("ingest", True)
+
+                        if not targets_x and ingest_x==True:
                             raise HTTPException(
                                 status_code=400,
-                                detail="Missing target indices/index",
+                                detail=f"Missing target indices/index in library {lib.library_id}, {ingest_x}",
                             )
                         
                         config_path_x = config_path or os_cfg.get("config_path")
@@ -392,15 +406,14 @@ def ingest_route(
                                 detail="With no input, you must provide 'query' parameter",
                             )
                         
-                        ocr_x = ocr if ocr is not None else ncfg.get("ocr", True)
+                        from_source_x = from_source if from_source is not None else ncfg.get("from_source", True)
                         
                         framework_x = framework  if framework is not None else ncfg.get("framework", "kraken")
-                        ingest_x = ingest if ingest is not None else ncfg.get("ingest", True)
                         vector_x = vector_kwargs if vector_kwargs is not None else ncfg.get("vector")
 
-                        iter_pages_kwargs = ocr_kwargs if ocr_kwargs is not None else dict(kraken_cfg.get("ocr_kwargs") or {})
-                        page_to_text_kwargs = model_kwargs if model_kwargs is not None else dict(kraken_cfg.get("model_kwargs") or {})
-                        text_image_file_kwargs = file_kwargs if file_kwargs is not None else dict(kraken_cfg.get("file_kwargs") or {})
+                        iter_pages_kwargs = source_kwargs if source_kwargs is not None else dict(pipeline_cfg.get("source_kwargs") or {})
+                        page_to_text_kwargs = framework_kwargs if framework_kwargs is not None else dict(pipeline_cfg.get("framework_kwargs") or {})
+                        text_image_file_kwargs = file_kwargs if file_kwargs is not None else dict(pipeline_cfg.get("file_kwargs") or {})
                         
                         items = [] 
 
@@ -425,7 +438,7 @@ def ingest_route(
                         
                         run_ids.extend(ingest_pipeline(items=items,
                                                 targets=targets_x, 
-                                                ocr=ocr_x,
+                                                from_source=from_source_x,
                                                 framework=framework_x,
                                                 vector_kwargs=vector_x,
                                                 ingest=ingest_x,
@@ -445,10 +458,10 @@ def ingest_route(
                 logger.warning("Store not found, maybe check!")
 
         elif graph is None and query: # query directly
-            if not targets:
+            if not targets and ingest==True:
                 raise HTTPException(
                     status_code=400,
-                    detail="Missing target indices/index",
+                    detail=f"Missing target indices/index for query",
                 )
             logger.info("Starting FTS pipeline for entire store with query...")
             try:
@@ -471,16 +484,16 @@ def ingest_route(
                 del store
             except:
                 logger.warning("Store not found, maybe check!")
-            ocr = True if ocr is True else False
+            from_source = True if from_source is True else False
 
             run_ids.extend(ingest_pipeline(items=items,
                                             targets=targets, 
-                                            ocr=ocr,
+                                            from_source=from_source,
                                             framework=framework,
                                             vector_kwargs=vector_kwargs,
                                             ingest=ingest,
-                                            iter_pages_kwargs=ocr_kwargs,
-                                            page_to_text_kwargs=model_kwargs,
+                                            iter_pages_kwargs=source_kwargs,
+                                            page_to_text_kwargs=framework_kwargs,
                                             text_image_file_kwargs=file_kwargs,
                                             config_path=config_path))
         else:
@@ -491,10 +504,10 @@ def ingest_route(
 
     else:
         logger.warning(f"Input {input}")  # use given bindings
-        if not targets:
+        if not targets and ingest==True:
             raise HTTPException(
                 status_code=400,
-                detail="Missing target indices/index",
+                detail="Missing target indices/index for bindings",
             )
         items = []
 
@@ -515,17 +528,17 @@ def ingest_route(
         else:
             raise HTTPException(status_code=400, detail="Body must be a SPARQL-JSON object, a list of JSON objects, or null")
         
-        ocr = True if ocr is True else False
+        from_source = True if from_source is True else False
         save_query_to_file(items=items,var_names=var_names, json_mode=False)
 
         run_ids.extend(ingest_pipeline( items=items,
                                         targets=targets, 
-                                        ocr=ocr,
+                                        from_source=from_source,
                                         framework=framework,
                                         vector_kwargs=vector_kwargs,
                                         ingest=ingest,
-                                        iter_pages_kwargs=ocr_kwargs,
-                                        page_to_text_kwargs=model_kwargs,
+                                        iter_pages_kwargs=source_kwargs,
+                                        page_to_text_kwargs=framework_kwargs,
                                         text_image_file_kwargs=file_kwargs,
                                         config_path=config_path))
     
@@ -662,6 +675,7 @@ def format_search_response(
     api_call: Optional[str] = None,
     header_meta: Optional[Dict[str, Any]] = None,
     header_md_extra: Optional[str] = None,
+    root_path: str = ""
 ):
     from .search import (
         normalize_hits,
@@ -822,13 +836,15 @@ def format_search_response(
             ensure_ascii=False,
             separators=(",", ":"),
         )
+        
         if output_format == "atlas":
             try:                
                 from .viewer import export_atlas_folder, ATLAS_URL
+                safe_atlas_url = f"{root_path}/{ATLAS_URL.lstrip('/')}"
                 _input = list(cleaned_rows)
-                logger.warning(f"Redirect to {ATLAS_URL}")
+                logger.warning(f"Redirect to {safe_atlas_url}")
                 export_atlas_folder(_input)
-                return RedirectResponse(ATLAS_URL)
+                return RedirectResponse(safe_atlas_url)
             except Exception as e:
                 logger.error(e)
                 pass
@@ -1851,6 +1867,7 @@ def search_terms(
         api_call=api_call,
         header_meta=meta or None,
         header_md_extra=out_header.header_md,
+        root_path=request.scope.get("root_path", "")
     )
 
 @open_router.get(
@@ -1925,6 +1942,7 @@ def search_proximity(
         api_call=api_call,
         header_meta=meta or None,
         header_md_extra=out_header.header_md,
+        root_path=request.scope.get("root_path", "")
     )
 
 @open_router.get(
@@ -1996,6 +2014,7 @@ def knn_by_id(
         api_call=api_call,
         header_meta=meta or None,
         header_md_extra=out_header.header_md,
+        root_path=request.scope.get("root_path", "")
     )
 
 @open_router.get(
@@ -2069,6 +2088,7 @@ def mlt_by_id(
         api_call=api_call,
         header_meta=meta or None,
         header_md_extra=out_header.header_md,
+        root_path=request.scope.get("root_path", "")
     )
 
 @open_router.get(
@@ -2133,6 +2153,7 @@ def mlt_by_text(
         api_call=api_call,
         header_meta=meta or None,
         header_md_extra=out_header.header_md,
+        root_path=request.scope.get("root_path", "")
     )
 
 # VIEWER
@@ -2232,8 +2253,8 @@ def get_text(os_doc_id: str):
     summary="Viewer start page",
     tags=["Viewer"],
 )
-def view_root():
-    return build_view_response(None, editable=False)
+def view_root(request: Request):
+    return build_view_response(request, None, editable=False)
 
 @open_router.get(
     "/view/{os_doc_id:path}",
@@ -2241,12 +2262,12 @@ def view_root():
     description="Indicate root directories and file extensions in configuration under 'viewer'.",
     tags=["Viewer"],
 )
-def view_page(os_doc_id: str):
-    return build_view_response(os_doc_id, editable=False)
+def view_page(request: Request, os_doc_id: str):
+    return build_view_response(request, os_doc_id, editable=False)
 
 @router.get("/edit-view/{os_doc_id:path}")
-def edit_page(os_doc_id: str):
-    return build_view_response(os_doc_id, editable=True)
+def edit_page(request: Request, os_doc_id: str):
+    return build_view_response(request, os_doc_id, editable=True)
 
 @router.post(
     "/save-view/{os_doc_id:path}",
@@ -2272,7 +2293,11 @@ def save_page(os_doc_id: str, text: str = Form(...)):
         status_code=303,
     )
 
-def build_view_response(original_os_doc_id: str | None, editable: bool = False) -> HTMLResponse:
+def build_view_response(
+    request: Request,
+    original_os_doc_id: str | None,
+    editable: bool = False
+) -> HTMLResponse:
     from .viewer import (
         render_page,
         split_doc_id,
@@ -2302,6 +2327,7 @@ def build_view_response(original_os_doc_id: str | None, editable: bool = False) 
             edit_url=None,
             ocr_url=None,
             current_framework="kraken",
+            root_path=request.scope.get("root_path", "")
         )
         return HTMLResponse(html)
 
@@ -2352,69 +2378,7 @@ def build_view_response(original_os_doc_id: str | None, editable: bool = False) 
         edit_url=f"{BASE_URL}/edit-view/{doc_id_only}:{page}" if not editable else None,
         ocr_url=f"{BASE_URL}/ocr-view/{doc_id_only}:{page}",
         current_framework="kraken",
-    )
-    return HTMLResponse(html)
-
-def build_view_response_legacy(original_os_doc_id: str, editable: bool = False) -> HTMLResponse:
-    from .viewer import (
-        render_page,
-        split_doc_id,
-        image_file,
-        text_file,
-        list_pages,
-        discover_doc_url,
-        IMAGE_EXT,
-        BASE_URL,
-    )
-
-    original_os_doc_id = (original_os_doc_id or "").strip()
-    doc_key, page = split_doc_id(original_os_doc_id)
-    doc_id_only = original_os_doc_id.rsplit(":", 1)[0]
-
-    img_path = image_file(doc_key, page)
-    txt_path = text_file(doc_key, page)
-    pages = list_pages(doc_key)
-
-    if not pages and not img_path.exists() and not txt_path.exists():
-        raise HTTPException(status_code=404, detail="Document not found")
-
-    image_url = None
-    if img_path.exists():
-        image_url = f"/image-files/{doc_key}/{page}.{IMAGE_EXT}"
-
-    if txt_path.exists():
-        try:
-            text = txt_path.read_text(encoding="utf-8", errors="replace")
-        except Exception as exc:
-            logger.warning(f"Could not read text file {txt_path}: {exc}")
-            text = "[error reading text]"
-    else:
-        text = "[no text on this page]"
-
-    prev_page = None
-    next_page = None
-    if page in pages:
-        idx = pages.index(page)
-        if idx > 0:
-            prev_page = pages[idx - 1]
-        if idx < len(pages) - 1:
-            next_page = pages[idx + 1]
-
-    html = render_page(
-        os_doc_id=doc_id_only,
-        page=page,
-        pages=pages,
-        image_url=image_url,
-        text=text,
-        prev_page=prev_page,
-        next_page=next_page,
-        discover_url=discover_doc_url(original_os_doc_id),
-        editable=editable,
-        save_url=f"{BASE_URL}/save-view/{doc_id_only}:{page}" if editable else None,
-        page_url_base=f"{BASE_URL}/view",
-        edit_url=f"{BASE_URL}/edit-view/{doc_id_only}:{page}" if not editable else None,
-        ocr_url=f"{BASE_URL}/ocr-view/{doc_id_only}:{page}",
-        current_framework="kraken",
+        root_path=request.scope.get("root_path", "")
     )
     return HTMLResponse(html)
 
@@ -2425,7 +2389,7 @@ def build_view_response_legacy(original_os_doc_id: str, editable: bool = False) 
 )
 def rerun_ocr(
     os_doc_id: str,
-    framework: Literal["kraken", "tesseract", "transformer"] = Query("kraken"),
+    framework: Literal["kraken", "tesseract", "transformer", "source", "none"] = Query("kraken"),
 ):
     from .viewer import split_doc_id
     from .ocr import page_to_text, PageItem
