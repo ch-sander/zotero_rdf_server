@@ -168,7 +168,7 @@ class KrakenModelSpec:
 @lru_cache(maxsize=8)
 def get_ocr_cfg(config_path: Path) -> dict[str, Any]:
     from zotero_rdf_server.utils import load_dict_like
-    return load_dict_like(config_path, label="OCR Config", verbose=True) or {}  
+    return load_dict_like(config_path, label="OCR Config", verbose=False) or {}  
  
 @lru_cache(maxsize=8)
 def get_kraken_cfg(config_path: Path) -> dict[str, Any]:
@@ -883,7 +883,9 @@ def iter_pages(
     timeout: int = 30,
     file_formats: list | None = None,
     start_page: int = 1,
-    doc_id: str = "n/a"
+    doc_id: str = "n/a",
+    skip: bool = False,
+    skip_pages: Optional[set[int]] = None,
 ) -> Iterator[PageItem]:
     if not start_page or int(start_page)<=0:
         start_page = 1
@@ -898,7 +900,7 @@ def iter_pages(
         if page.kind=="text":
             preview = " ".join((page.data or "").split())[:60]
             logger.debug(f"\n{doc_id}: {page.index}/{total}: {preview}")
-        return page
+        return page, total
 
     if file_formats and not kind in file_formats:
         logger.warning(f"{doc_id}: File {input} skipped as {kind} not in {file_formats}")
@@ -922,11 +924,16 @@ def iter_pages(
             logger.warning(f"IIIF manifest <{manifest}> has no image canvases")
             return
         
+        if skip:
+            yield _log_and_yield(PageItem(start_page, "sniff", "", source=f"url:{src_path}", total=len(pages)),len(pages))
+
         logger.info(f"{doc_id}: Found {len(pages)} pages in IIIF, starting at {start_page}")
         pages = pages[(start_page - 1):]
         logger.debug(f"IIIF Policy: {iiif_ocr_policy}")
         try:
             for i, (img_url, canvas) in enumerate(pages, start=start_page):
+                if skip_pages is not None and i in skip_pages:
+                    continue
                 hit = find_ocr(canvas, iiif_ocr_policy)
                 if hit:                
                     ocr_url, rule, profile = hit
@@ -985,8 +992,14 @@ def iter_pages(
             # pages=reader.pages
             total = doc.page_count
             logger.info(f"{doc_id}: Found {total} pages in PDF, starting at {start_page}")
+
+            if skip:
+                yield _log_and_yield(PageItem(start_page, "sniff", "", source=f"pdf-file:{input}", total=total),total)
+
             # pages = pages[(start_page - 1):]
             for i in range(start_page, total + 1):
+                if skip_pages is not None and i in skip_pages:
+                    continue
                 page = doc.load_page(i-1)
                 # txt = page.extract_text() or ""
                 txt = page.get_text("text") or ""
@@ -1221,7 +1234,7 @@ def page_to_text(
     model_name: str | None = None,
     segmenter: str | None = None,
     binarize: bool = True,
-    framework: Literal["kraken", "tesseract"] = "kraken",
+    framework: Literal["kraken", "tesseract", "source"] = "kraken",
     tesseract_lang: str | None = None,
     tesseract_config: str | None = None,
     seg_blur_radius: float | None = None,
@@ -1272,21 +1285,35 @@ def iter_text_pages(
     page_to_text_kwargs: Dict[str, Any],
     text_image_file_kwargs: Optional[Dict[str, Any]] = None,
     framework: Literal["kraken", "tesseract", "transformer", "none"] = "kraken",
+    yield_result:bool = True,
 ) -> Iterator[Tuple[int, str]]:
-    
+    from .helpers import ISO_ts
     iter_kwargs = dict(iter_kwargs or {})
     page_to_text_kwargs = dict(page_to_text_kwargs or {})
     logger.debug(
         f"iter_text_pages received: {[iter_kwargs, page_to_text_kwargs, text_image_file_kwargs, framework]}"
     )
+    
     cfg = text_image_file_kwargs or {}
     use_transformer = framework == "transformer"
-    no_ocr = framework == "none"
-
-    
+    no_ocr = framework in {"none"}
+    ts_in = ISO_ts()
+    call_args = {
+            "input": input,
+            "doc_id": doc_id,
+            "iter_kwargs": iter_kwargs,
+            "page_to_text_kwargs": page_to_text_kwargs,
+            "text_image_file_kwargs": text_image_file_kwargs,
+            "framework": framework,
+            "yield_result": yield_result
+        }
+    meta_dict = {
+        'call':call_args,
+        'ts_in': ts_in
+        }
     if use_transformer:
         try:
-            logger.info("### Using Tranformer from medieval_ocr_pipeline ###")
+            logger.info("### Using Transformer from medieval_ocr_pipeline ###")
             here = Path(__file__).resolve().parent
             requirements = here / "medieval_ocr_pipeline" / "requirements.txt"
             ensure_import("transformers", requirements=requirements)
@@ -1302,16 +1329,17 @@ def iter_text_pages(
         except Exception as e:
             logger.exception("Transformer plugin import failed")
             use_transformer = False
+            framework = "soruce" 
 
     try:
         from zotero_rdf_server.config import EXPORT_DIRECTORY
-
         EXPORT_DIRECTORY = Path(EXPORT_DIRECTORY)
     except Exception:
         EXPORT_DIRECTORY = Path().resolve()
 
     img_out: Optional[str] = cfg.get("img_out", "images")
     txt_out: Optional[str] = cfg.get("txt_out", "texts")
+    meta_out = cfg.get("meta_out")
     img_ext: str = cfg.get("img_ext", "jpg")
     txt_ext: str = cfg.get("txt_ext", "txt")
 
@@ -1320,45 +1348,67 @@ def iter_text_pages(
     on_error: str = cfg.get("on_error", "log")  # "raise" | "skip" | "empty" | "log"
 
     if save_text not in {"skip", "overwrite", "active"}:
-        raise ValueError(f"save_text must be 'active', 'skip' or 'overwrite', got {save_text!r}")
-    if save_image not in {"skip", "overwrite", "active"}:
-        raise ValueError(f"save_image must be 'active', 'skip' or 'overwrite', got {save_image!r}")
+        raise ValueError(f"save_text must be 'active', 'skip' or 'overwrite', got {save_text}")
+    if save_image not in {"skip", "cache", "overwrite", "active", "sniff", "smart"}:
+        raise ValueError(
+            f"save_image must be one of 'skip', 'cache', 'overwrite', 'active', 'sniff', 'smart', got {save_image}"
+        )
     if on_error not in {"raise", "skip", "empty", "log"}:
-        raise ValueError(f"on_error must be 'raise', 'skip', 'empty' or 'log', got {on_error!r}")
+        raise ValueError(f"on_error must be 'raise', 'skip', 'empty' or 'log', got {on_error}")
 
     _doc_id = safe_doc_id(doc_id or input)
     iter_kwargs['doc_id']=_doc_id
+    iter_kwargs['skip'] = save_image in {"sniff"} # TODO
 
-    def _resolve_out(p: Optional[str]) -> Optional[Path]:
+
+    def _meta_file(meta:dict):
+        if meta_out:                 
+            try:
+                from .helpers import make_json_safe
+                meta_safe = make_json_safe(meta)
+                meta_file = _resolve_out(meta_out, None) / f"{_doc_id}.json"   
+                logger.debug(f"Stored meta: {meta_file}")                
+                meta_file.parent.mkdir(parents=True, exist_ok=True)
+                meta_file.write_text(json.dumps(meta_safe,indent=4,default=str), encoding="utf-8")
+            except Exception as e:
+                logger.error(f"{_doc_id}: Failed to store {meta_file}: {e}")
+
+    def _resolve_out(p: Optional[str], doc_dir:str|None = _doc_id) -> Optional[Path]:
         if not p:
             return None
         pp = Path(p)
         if pp.is_absolute():
             logger.error(f"Absolute paths are not allowed: {pp}")
-            return (EXPORT_DIRECTORY / _doc_id).resolve()
-        result_path = (EXPORT_DIRECTORY / pp / _doc_id).resolve()
+            return (EXPORT_DIRECTORY / doc_dir).resolve()
+        result_path = (EXPORT_DIRECTORY / pp / doc_dir).resolve() if doc_dir else (EXPORT_DIRECTORY / pp ).resolve()
         logger.info(f"Export path set: {result_path}")
         return result_path
 
     img_dir = _resolve_out(img_out)
-    txt_dir = _resolve_out(txt_out)
+    txt_dir = _resolve_out(txt_out)    
 
     def _save_pil(im, path: Path) -> None:
-        logger.debug(f"Stored file: {path}")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        im.save(path)
+        try:
+            logger.info(f"Stored file: {path}")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            im.save(path)
+        except Exception as e:
+            logger.error(f"{_doc_id}: Failed to store {path}: {e}")
 
     def _save_text(txt: str, path: Path) -> None:
-        logger.debug(f"Stored file: {path}")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(txt, encoding="utf-8")
+        try:
+            logger.debug(f"Stored file: {path}")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(txt, encoding="utf-8")
+        except Exception as e:
+            logger.error(f"{_doc_id}: Failed to store {path}: {e}")
 
     def _text_path(page_no: int) -> Optional[Path]:
         return None if txt_dir is None else (txt_dir / f"{page_no:04d}.{txt_ext}")
 
     def _image_path(page_no: int) -> Optional[Path]:
-        return None if img_dir is None else (img_dir / f"{page_no:04d}.{img_ext}")
-
+        return None if img_dir is None else (img_dir / f"{page_no:04d}.{img_ext}") 
+    
     def _parse_page_no(path: Path) -> Optional[int]:
         try:
             return int(path.stem)
@@ -1391,8 +1441,80 @@ def iter_text_pages(
             if n is not None:
                 yield n, f
 
+    def _cache_discrepancy_report() -> dict[str, Any]:        
+        pages = _cached_pages()
+        text_pages = set(pages["text"])
+        image_pages = set(pages["image"])        
+        return {
+            "call": call_args,
+            "ts_in": ts_in,
+            "ts_out": ISO_ts(),
+            "text_pages": sorted(text_pages),
+            "image_pages": sorted(image_pages),
+            "text_count": len(text_pages),
+            "image_count": len(image_pages),
+            "text_only": sorted(text_pages - image_pages),
+            "image_only": sorted(image_pages - text_pages),
+            "shared": sorted(text_pages & image_pages),
+        }
+    
+    def _log_discrepancy_report(total: int = 0) -> None:
+        # if save_text in {"ignore"}:
+        #     logger.info(
+        #         "TEXT IGNORE mode has not stored text files, but it reused cached text if at least one available; "
+        #         "otherwise it processed pages (OCR) without persisting results."
+        #     )
+        if save_text in {"skip"}:
+            logger.info(
+                "TEXT SKIP mode has not stored text files, but it reused cached text if at least one available; "
+                "otherwise it processed pages (OCR) without persisting results."
+            )
+
+        if save_text in {"active"}:
+            logger.info(
+                "TEXT ACTIVE mode has stored missing text files, reusing cached text where available; "
+                "OCR was only performed for pages without cached text."
+            )
+
+        if save_text in {"overwrite"}:
+            logger.info(
+                "TEXT OVERWRITE mode has regenerated and stored all text files, ignoring existing cache; "
+                "OCR was performed for every page and existing text files were replaced."
+            )
+        if save_image in {"skip"}:
+            logger.info("IMAGE SKIP mode has not stored images, but it downloaded from source, if no cached images were found.")
+        if save_image in {"cache"}:
+            logger.info("IMAGE CACHE mode only used cached images.")
+        if save_image in {"active"}:
+            logger.info("IMAGE ACTIVE has stored missing images, but only downloaded from source, if no cached images were found.")
+        if save_image in {"smart"}:
+            logger.info("IMAGE SMART mode has downloaded from source and stored missing image files.")
+        if save_image in {"sniff"}:
+            logger.info("IMAGE SNIFF mode has neither stored nor yielded any text data, but it downloaded from source for metadata sniffing.")
+
+        report = _cache_discrepancy_report()
+        report['total_source'] = total   
+        if total > 0 and not report['image_count'] == total:
+            logger.warning(f"DISCREPANCY REPORT FOR {_doc_id}: {report['image_count']} images cached, {total} found in source!")
+        if total > 0 and not report['text_count'] == total:
+            logger.warning(f"DISCREPANCY REPORT FOR {_doc_id}: {report['text_count']} texts cached, {total} found in source!")
+        if report["text_only"]:
+            logger.info(
+                f"DISCREPANCY REPORT FOR {_doc_id}: {len(report['text_only'])} cached text pages without cached image file: "
+                f"{report['text_only'][:10]}{' ...' if len(report['text_only']) > 10 else ''}"
+            )
+
+        if report["image_only"]:
+            logger.info(
+                f"DISCREPANCY REPORT FOR {_doc_id}: {len(report['image_only'])} cached image pages without cached text file: "
+                f"{report['image_only'][:10]}{' ...' if len(report['image_only']) > 10 else ''}"
+            )
+      
+        _meta_file(report)
+        logger.info("Report completed!")
+
     def _maybe_store_text(page_no: int, txt: str) -> None:
-        if save_text not in {"active", "overwrite"}:
+        if save_text not in {"active", "overwrite"} or no_ocr:
             return
         tp = _text_path(page_no)
         if tp is None:
@@ -1448,7 +1570,7 @@ def iter_text_pages(
         except Exception:
             pass
 
-    def _log_and_yield(page_no: int, txt: str, total: int=1, cached:bool=False):
+    def _log_and_yield(page_no: int, txt: str, total: int=1, cached:bool=False):        
         preview = (
             (t[:60] + "..." if len(t) > 60 else t)
             if (t := " ".join((txt or "").split()))
@@ -1457,28 +1579,34 @@ def iter_text_pages(
         logger.info(f"\n{_doc_id} {page_no}/{total}: {'CACHED' if cached else framework.upper()} result: {preview}")
         return page_no, txt
     
+    _meta_file(meta_dict)
     cached_page_set = _cached_pages()
 
     logger.info(f"{_doc_id}: Found {len(set(cached_page_set['text']))} text files and {len(set(cached_page_set['image']))} image files")
 
-    if no_ocr:
-        logger.info(f"{_doc_id}: framework='none' -> cache only")
-        if txt_dir is not None and any(txt_dir.glob(f"*.{txt_ext}")):
-            logger.info(f"{_doc_id}: Using {len(set(cached_page_set['text']))} cached text files in {txt_dir}")
-            yield from _yield_from_cache()
-        else:
-            logger.info(f"{_doc_id}: No cached text files found")
-        return
+    # if no_ocr:
+    #     logger.info(f"{_doc_id}: framework='none' -> cache only")
+    #     if txt_dir is not None and any(txt_dir.glob(f"*.{txt_ext}")):
+    #         logger.info(f"{_doc_id}: Using {len(set(cached_page_set['text']))} cached text files in {txt_dir}")
+    #         yield from _yield_from_cache()
+    #     else:
+    #         logger.info(f"{_doc_id}: No cached text files found")
+    #     return
+
+    if not yield_result:
+        logger.warning("Cached text files will not be logged and yielded!")
 
     # If text file found and not overwrite, use as result and skip download + OCR
     if (
-        save_text == "active"
+        save_text in {"active", "skip"}
         and save_image == "skip"
         and txt_dir is not None
-        and any(txt_dir.glob(f"*.{txt_ext}"))
+        and any(txt_dir.glob(f"*.{txt_ext}"))        
     ):      
         logger.warning(f"{_doc_id}: Using {len(set(cached_page_set['text']))} text files in {txt_dir}")
-        yield from _yield_from_cache()
+        if yield_result:
+            yield from _yield_from_cache()
+        _log_discrepancy_report()
         return    
     
     # writing_enabled = (
@@ -1496,65 +1624,109 @@ def iter_text_pages(
     # TODO call _write_lock_remove_best_effort in finally
 
     # If image file found and not overwrite, use as result and skip download but proceed with OCR
-    if save_image == "active" and img_dir is not None and img_dir.exists():
+    if save_image == "cache" and img_dir is not None and img_dir.exists():
         cached_imgs = list(_iter_cached_image_pages(img_dir, img_ext))
         total = len(cached_imgs)
         if cached_imgs:
             logger.warning(f"{_doc_id}: Using {len(set(cached_page_set['image']))} image files in {img_dir}; no remote download")
             for page_no, img_path in cached_imgs:
                 tp = _text_path(page_no)
-                if save_text == "active" and tp and tp.exists():
-                    yield _log_and_yield(page_no, tp.read_text(encoding="utf-8"), total, True)
-                    # yield page_no, tp.read_text(encoding="utf-8")
+                if save_text in {"active", "skip"} and tp and tp.exists(): # Cache
+                    if yield_result:
+                        try:
+                            txt = tp.read_text(encoding="utf-8")
+                        except Exception as e:
+                            logger.error(f"{_doc_id}: Failed to load cached text for page {page_no} from {str(tp)}: {e}")
+                            if on_error == "raise":
+                                raise
+                            if on_error == "skip":
+                                continue
+                            txt = ""
+                        
+                        yield _log_and_yield(page_no, txt, total, True)
+                        # yield page_no, tp.read_text(encoding="utf-8")
                     continue
 
-                try:
-                    with Image.open(img_path) as im:
-                        pil = im.copy()
-                    item = PageItem(page_no, "image", pil, source=f"cache-image:{img_path}",total=total) 
-                    txt = page_to_text(
-                        item,
-                        framework=framework,
-                        **page_to_text_kwargs
-                    )
-                except Exception as e:
-                    logger.error(f"{_doc_id}: Failed to load cached image for page {page_no} from {img_path}: {e}")
+                if not no_ocr: # OCR
+                    try:
+                        with Image.open(img_path) as im:
+                            pil = im.copy()
+                        item = PageItem(page_no, "image", pil, source=f"cache-image:{img_path}",total=total) 
+                        txt = page_to_text(
+                            item,
+                            framework=framework,
+                            **page_to_text_kwargs
+                        )
+                    except Exception as e:
+                        logger.error(f"{_doc_id}: Failed to load cached image for page {page_no} from {img_path}: {e}")
 
-                    if on_error == "raise":
-                        raise
-                    if on_error == "skip":
-                        continue
-                    txt = "" # DEBUG
+                        if on_error == "raise":
+                            raise
+                        if on_error == "skip":
+                            continue
+                        txt = "" # DEBUG
 
-                if save_text in {"active", "overwrite"}:
                     _maybe_store_text(page_no, txt)
-                yield _log_and_yield(page_no, txt, total)
+                    if yield_result: 
+                        yield _log_and_yield(page_no, txt, total)
+                    else:
+                        _log_and_yield(page_no, txt, total)
+            
+            _log_discrepancy_report()
             return
-        
-    for item in iter_pages(input=input, **iter_kwargs):
-        page_no = getattr(item, "sequence", None) or getattr(item, "index", None)
-        total = getattr(item, "total", 1)
+    
+    # Download
+    total = 0
+    _report = _cache_discrepancy_report()
+    
+    if save_text == "overwrite":
+        skip_pages = set()
+    elif save_image in {"active", "overwrite", "smart"}:
+        skip_pages = set(_report["shared"])
+    else:
+        skip_pages = set(_report["text_pages"])
+
+    iter_kwargs["skip_pages"] = skip_pages
+    # _peak, _total = next(iter_pages(input=input, **iter_kwargs, skip=True))
+
+    for item, total in iter_pages(input=input, **iter_kwargs):
+        page_no = getattr(item, "sequence", None) or getattr(item, "index", None)        
+
         if page_no is None:
             raise AttributeError("PageItem has neither .sequence nor .index")
+        if save_image in {"sniff"}:
+            break
+        if "overwrite" not in {save_image, save_text}:
+            if set(_report['shared']) == set(range(1, int(total + 1))):
+                logger.warning(f"{total} images and text files found that match source --> skip this item!")
+                if yield_result:
+                    yield from _yield_from_cache()
+                _log_discrepancy_report(total)
+                return
+        # if getattr(item, "kind") == "sniff":
+        #     logger.warning(f"Stopping at {page_no} of {total} as only sniffing --> skip this item!")
+        if save_image in {"smart"}:            
+            if int(page_no) in _report['shared']:
+                continue
 
-        if save_image == "active":
-            ip = _image_path(page_no)
-            if ip is not None and ip.exists():
-                try:
-                    with Image.open(ip) as im:
-                        item.data = im.copy()
-                    item.kind = getattr(item, "kind", "image")
-                except Exception as e:
-                    logger.error(f"{_doc_id}: Failed to load cached image for page {page_no} from {str(ip)}: {e}")
-                    if on_error == "raise":
-                        raise
-                    if on_error == "skip":
-                        continue
+        # if save_image == "active":
+        #     ip = _image_path(page_no)
+        #     if ip is not None and ip.exists():
+        #         try:
+        #             with Image.open(ip) as im:
+        #                 item.data = im.copy()
+        #             item.kind = getattr(item, "kind", "image")
+        #         except Exception as e:
+        #             logger.error(f"{_doc_id}: Failed to load cached image for page {page_no} from {str(ip)}: {e}")
+        #             if on_error == "raise":
+        #                 raise
+        #             if on_error == "skip":
+        #                 continue
 
         tp = _text_path(page_no)
 
         # Save Image
-        if item.kind == "image" and save_image in {"active", "overwrite"} and img_dir is not None:
+        if item.kind == "image" and save_image not in {"skip", "cache"} and img_dir is not None:
             ip = _image_path(page_no)
             if ip is not None and item.data is not None and hasattr(item.data, "save"):
                 if save_image == "overwrite" or not ip.exists():
@@ -1566,48 +1738,53 @@ def iter_text_pages(
                             raise
                         if on_error == "skip":
                             continue
+                else:
+                    logger.debug(f"Image exists: {ip}")
+        
+        
+        # If Cached Text --> return
+        if save_image not in {"smart"} and save_text not in {"overwrite"} and tp is not None and tp.exists():
+            if yield_result:
+                try:
+                    txt = tp.read_text(encoding="utf-8")
+                except Exception as e:
+                    logger.error(f"{_doc_id}: Failed to load cached text for page {page_no} from {str(tp)}: {e}")
+                    if on_error == "raise":
+                        raise
+                    if on_error == "skip":
+                        continue
+                    txt = ""
 
-        # If Cached Text return
-        if save_text == "active" and tp is not None and tp.exists():
+                yield _log_and_yield(page_no, txt, total, True)
+            # else:
+            #     _log_and_yield(page_no, "[skipping]", total, True)
+            continue
+
+        # OCR
+        if not no_ocr:
+            logger.info(f"Using {framework.upper()}")
             try:
-                txt = tp.read_text(encoding="utf-8")
+                txt = page_to_text(
+                    item,
+                    framework=framework,
+                    **page_to_text_kwargs
+                )
             except Exception as e:
-                logger.error(f"{_doc_id}: Failed to load cached text for page {page_no} from {str(tp)}: {e}")
+                logger.error(f"{_doc_id}: iter_text_pages error on page {page_no}: {e}")
                 if on_error == "raise":
                     raise
                 if on_error == "skip":
                     continue
                 txt = ""
-            yield _log_and_yield(page_no, txt, total, True)
-            continue
 
-        # OCR
-        try:
-            txt = page_to_text(
-                item,
-                framework=framework,
-                **page_to_text_kwargs
-            )
-        except Exception as e:
-            logger.error(f"{_doc_id}: iter_text_pages error on page {page_no}: {e}")
-            if on_error == "raise":
-                raise
-            if on_error == "skip":
-                continue
-            txt = ""
+            _maybe_store_text(page_no, txt)
+            if yield_result: 
+                yield _log_and_yield(page_no, txt, total)
+            else:
+                _log_and_yield(page_no, txt, total)
 
-        if save_text in {"active", "overwrite"} and tp is not None:
-            if save_text == "overwrite" or not tp.exists():
-                try:
-                    _save_text(txt, tp)
-                except Exception as e:
-                    logger.error(f"{_doc_id}: Failed to store text page {page_no} to {str(tp)}: {e}")
-                    if on_error == "raise":
-                        raise
-                    if on_error == "skip":
-                        continue
+    _log_discrepancy_report(total)
 
-        yield _log_and_yield(page_no, txt, total)    
 
     # for item in iter_pages(input=input, **iter_kwargs):
     #     page_no = getattr(item, "sequence", None) or getattr(item, "index", None)
