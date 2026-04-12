@@ -1,7 +1,5 @@
 kraken==6.0.3
 # kraken @ git+https://github.com/mittagessen/kraken.git@main
-# pypdf==5.3.1
-# pypdfium2==5.3.0
 pillow==12.1.1
 PyMuPDF==1.27.1
 opensearch-py==3.1.0
