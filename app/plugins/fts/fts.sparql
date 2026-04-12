@@ -52,15 +52,17 @@ OPTIONAL {  ?library rdf:type zot:library;
 
   # FILTER(CONTAINS(STR(?url), "digitale-sammlungen.de")) # filter on attachment URL
 
-  ?file zot:tags ?t . # ?t_ingest, ?t_pdf .
+  ?file zot:tags ?t_format .
+  ?t_format a zot:tag ;
+            zot:tag ?formatTag .
+  VALUES ?formatTag { "*pdf" "*iiif" }
 
-#  ?t_ingest a zot:tag ; zot:tag "*ingest" .
-#  ?t_pdf    a zot:tag ; zot:tag "*pdf" .
-  ?t a zot:tag ;
-     zot:tag ?tagVal .
+  ?file zot:tags ?t_ocr .
+  ?t_ocr a zot:tag ;
+        zot:tag ?ocrTag .
+  # VALUES ?ocrTag { "**redo_OCR" }
 
-  VALUES ?tagVal { "*pdf" "*iiif" }.
-  FILTER(?tagVal NOT IN ("*broken_url", "*broken_ocr"))
+  FILTER(?ocrTag NOT IN ("*broken_ocr"))
 
   OPTIONAL {
     ?parent zot:tags ?tag_1502_13.
