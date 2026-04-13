@@ -7,10 +7,13 @@ from .config import STATIC_UI_DIRECTORY, ROOT_PATH, STATIC_UI_PREFIX, INCLUDE_OP
 
 
 _title = FASTAPI_META.get('title', "Zotero RDF Server App")
+_version = FASTAPI_META.get('version', "0.1.0")
 logger.info(
     f"\n\n{'*'*50}\n"
     f"Starting App\n"
     f"{_title}\n"
+    f"version: {_version}\n"
+    f"root: {ROOT_PATH}\n"
     f"{'*'*50}\n\n"
 )
 
