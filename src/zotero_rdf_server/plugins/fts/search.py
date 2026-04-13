@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional, Annotated
-import html
+import html, json
 from pydantic import BaseModel, Field
+from copy import deepcopy
 
 # --- OpenSearch client --------------------------------------------------------
 
@@ -13,7 +14,6 @@ logger.debug(f"Loading config from {cfg_path}")
 oscfg = get_os_config(cfg_path)
 logger.debug(f"{oscfg}")
 client = make_client(oscfg)
-logger.info(f"Client config loaded from {cfg_path}")
 OS_META = oscfg.get("meta", {})
 DEFAULT_ALIAS = OS_META.get("default_alias", "ocr")
 
@@ -711,7 +711,8 @@ def os_search(index: str, body: Dict[str, Any], columns: Optional[str]) -> Dict[
     if not index: 
         index = DEFAULT_ALIAS
         logger.warning(f"index set to default: {index}")
-    logger.info(json.dumps(body,indent=4))    
+    logger.info("Submitting search...")
+    logger.info(json.dumps(body,indent=4))
     return client.search(index=index, body=body)
 
 def build_scroll_body(
