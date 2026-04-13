@@ -25,7 +25,7 @@ viewer:
   text_root: "/app/exports/kraken/texts"
   image_ext: jpg
   text_ext: txt
-  dashboard_url: http://localhost:5601/app/discover#/doc/fe2dc870-1182-11f1-86a9-eb629f790cf7/ocr-scigma?id=
+  # dashboard_url: http://localhost:5601/app/discover#/doc/fe2dc870-1182-11f1-86a9-eb629f790cf7/ocr-scigma?id=
   # viewer_urls
   #   view: /plugin/fts/view
   #   ... defined best in app
@@ -125,7 +125,7 @@ tesseract:
 open-search:
   client:
     hosts:
-      - host: 172.17.0.1 # opensearch # see in docker-compose.yml
+      - host:  opensearch # opensearch, see in docker-compose.yml, sometimes 172.17.0.1
         port: 9200
     retry_on_timeout: true
     timeout: 300
