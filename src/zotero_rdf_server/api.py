@@ -16,7 +16,7 @@ import pkgutil
 from importlib import import_module
 from importlib.util import find_spec
 
-security = HTTPBasic()
+security = HTTPBasic(auto_error=False)
 
 def verify(credentials: HTTPBasicCredentials = Depends(security)):
     if API_USER and API_PASSWORD:
@@ -31,7 +31,8 @@ def verify(credentials: HTTPBasicCredentials = Depends(security)):
             )
         return credentials.username
     
-router = APIRouter(dependencies=[Depends(verify)])
+protected_dependencies = [Depends(verify)] if API_USER and API_PASSWORD else []
+router = APIRouter(dependencies=protected_dependencies)
 open_router = APIRouter()
 
 def require_writable():
