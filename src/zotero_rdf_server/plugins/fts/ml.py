@@ -515,7 +515,7 @@ def _build_cluster_label(
     label = ", ".join(top_terms) if top_terms else "unlabeled"
     return label, top_terms
 
-def _compute_neighbors_knn(*, clustering_matrix, usable_hit_refs, k=10, metric="cosine"):
+def _compute_neighbors_knn(*, hits, clustering_matrix, usable_hit_refs, k=10, metric="cosine"):
     if clustering_matrix is None:
         raise ValueError("clustering_matrix is required for mode='knn_vector'")
 
@@ -527,17 +527,22 @@ def _compute_neighbors_knn(*, clustering_matrix, usable_hit_refs, k=10, metric="
 
     for row_idx, (dist_row, ind_row) in enumerate(zip(distances, indices)):
         hit_idx = usable_hit_refs[row_idx]
+        hit_row_id = _stable_neighbor_id(hits[hit_idx], hit_idx)
+
         ids = []
         dists = []
 
         for dist, neighbor_row in zip(dist_row, ind_row):
             if neighbor_row == row_idx:
                 continue
+
             neighbor_hit_idx = usable_hit_refs[neighbor_row]
-            ids.append(neighbor_hit_idx)
+            neighbor_row_id = _stable_neighbor_id(hits[neighbor_hit_idx], neighbor_hit_idx)
+
+            ids.append(neighbor_row_id)
             dists.append(float(dist))
 
-        out[hit_idx] = {"ids": ids[:k], "distances": dists[:k]}
+        out[hit_row_id] = {"ids": ids[:k], "distances": dists[:k]}
 
     return out
 
@@ -574,19 +579,27 @@ def _compute_neighbors_mlt(
         index = DEFAULT_ALIAS
         logger.warning(f"Using index: {DEFAULT_ALIAS}")
 
-    # Mapping OpenSearch _id -> local hit index
-    os_id_to_hit_idx = {}
+    os_id_to_row_id = {}
+    row_id_to_hit_idx = {}
+
     for hit_idx in usable_hit_refs:
-        os_id = _extract_os_id(hits[hit_idx], row_id_field=row_id_field)
+        hit = hits[hit_idx]
+        row_id = _stable_neighbor_id(hit, hit_idx)
+        os_id = _extract_os_id(hit, row_id_field=row_id_field)
+
+        row_id_to_hit_idx[row_id] = hit_idx
         if os_id is not None:
-            os_id_to_hit_idx[str(os_id)] = hit_idx
+            os_id_to_row_id[str(os_id)] = row_id
 
     out = {}
 
     for hit_idx in usable_hit_refs:
-        os_id = _extract_os_id(hits[hit_idx], row_id_field=row_id_field)
+        hit = hits[hit_idx]
+        hit_row_id = _stable_neighbor_id(hit, hit_idx)
+        os_id = _extract_os_id(hit, row_id_field=row_id_field)
+
         if os_id is None:
-            out[hit_idx] = {"ids": [], "distances": []}
+            out[hit_row_id] = {"ids": [], "distances": []}
             continue
 
         body = {
@@ -618,21 +631,20 @@ def _compute_neighbors_mlt(
 
         for neighbor in hits_res:
             neighbor_os_id = str(neighbor.get("_id"))
-            neighbor_hit_idx = os_id_to_hit_idx.get(neighbor_os_id)
-            if neighbor_hit_idx is None:
+            neighbor_row_id = os_id_to_row_id.get(neighbor_os_id)
+            if neighbor_row_id is None:
                 continue
 
             score = float(neighbor.get("_score") or 0.0)
-
             distance = 1.0 / (score + 1e-9)
 
-            ids.append(neighbor_hit_idx)
+            ids.append(neighbor_row_id)
             dists.append(distance)
 
             if len(ids) >= k:
                 break
 
-        out[hit_idx] = {"ids": ids, "distances": dists}
+        out[hit_row_id] = {"ids": ids, "distances": dists}
 
     return out
 
@@ -682,13 +694,16 @@ def _compute_neighbors_page_parent(
     usable_hit_refs,
     k,
     parent_field="meta.parent",
+    file_field="meta.file",
     page_field="page",
 ):
-    by_parent = defaultdict(list)
-
+    by_group = defaultdict(list)
+    # logger.info(json.dumps(hits,indent=4))
     for hit_idx in usable_hit_refs:
         hit = hits[hit_idx]
+        row_id = _stable_neighbor_id(hit, hit_idx)
         parent = _get_nested(hit, f"_source.{parent_field}")
+        file_ = _get_nested(hit, f"_source.{file_field}")
         page = _get_nested(hit, f"_source.{page_field}")
 
         if parent is None:
@@ -699,15 +714,15 @@ def _compute_neighbors_page_parent(
         except Exception:
             page_num = None
 
-        by_parent[parent].append((hit_idx, page_num))
+        group_key = (parent, file_)
+        by_group[group_key].append((hit_idx, row_id, page_num))
 
     out = {}
-    for parent, items in by_parent.items():
-        logger.info("group=%r size=%d pages=%r", parent, len(items), [p for _, p in items[:20]])
-    for parent, items in by_parent.items():
-        for hit_idx, page_num in items:
+
+    for group_key, items in by_group.items():
+        for hit_idx, row_id, page_num in items:
             candidates = []
-            for other_idx, other_page in items:
+            for other_idx, other_row_id, other_page in items:
                 if other_idx == hit_idx:
                     continue
 
@@ -716,16 +731,17 @@ def _compute_neighbors_page_parent(
                 else:
                     distance = 1.0
 
-                candidates.append((other_idx, float(distance)))
+                candidates.append((other_row_id, float(distance)))
 
             candidates.sort(key=lambda x: (x[1], x[0]))
-            out[hit_idx] = {
+            out[row_id] = {
                 "ids": [c[0] for c in candidates[:k]],
                 "distances": [c[1] for c in candidates[:k]],
             }
 
     for hit_idx in usable_hit_refs:
-        out.setdefault(hit_idx, {"ids": [], "distances": []})
+        row_id = _stable_neighbor_id(hits[hit_idx], hit_idx)
+        out.setdefault(row_id, {"ids": [], "distances": []})
 
     return out
 
@@ -747,7 +763,7 @@ def _compute_neighbors_meta_onehot(
     data = []
 
     use_all_meta = not meta_fields
- 
+
     for row_idx, hit_idx in enumerate(usable_hit_refs):
         hit = hits[hit_idx]
 
@@ -795,7 +811,10 @@ def _compute_neighbors_meta_onehot(
                     data.append(1.0)
 
     if not vocab:
-        return {hit_idx: {"ids": [], "distances": []} for hit_idx in usable_hit_refs}
+        return {
+            _stable_neighbor_id(hits[hit_idx], hit_idx): {"ids": [], "distances": []}
+            for hit_idx in usable_hit_refs
+        }
 
     X = csr_matrix(
         (data, (rows, cols)),
@@ -814,72 +833,22 @@ def _compute_neighbors_meta_onehot(
     out = {}
     for row_idx, (dist_row, ind_row) in enumerate(zip(distances, indices)):
         hit_idx = usable_hit_refs[row_idx]
+        hit_row_id = _stable_neighbor_id(hits[hit_idx], hit_idx)
+
         ids = []
         dists = []
 
         for dist, neighbor_row in zip(dist_row, ind_row):
             if neighbor_row == row_idx:
                 continue
-            ids.append(usable_hit_refs[neighbor_row])
+
+            neighbor_hit_idx = usable_hit_refs[neighbor_row]
+            neighbor_row_id = _stable_neighbor_id(hits[neighbor_hit_idx], neighbor_hit_idx)
+
+            ids.append(neighbor_row_id)
             dists.append(float(dist))
 
-        out[hit_idx] = {"ids": ids[:k], "distances": dists[:k]}
-
-    return out
-
-def _compute_neighbors_meta_onehot_deprecated(*, hits, usable_hit_refs, k, meta_fields = ['meta.parent_tag', 'meta.parent_creators']):
-    vocab = {}
-    rows = []
-    cols = []
-    data = []
-
-    
-    logger.info(meta_fields)
-    for row_idx, hit_idx in enumerate(usable_hit_refs):
-        hit = hits[hit_idx]
-        for field in meta_fields:
-            value = _get_nested(hit, f"_source.{field}")
-            if value is None:
-                continue
-
-            values = value if isinstance(value, list) else [value]
-
-            for v in values:
-                token = f"{field}={v}"
-                col_idx = vocab.setdefault(token, len(vocab))
-                rows.append(row_idx)
-                cols.append(col_idx)
-                data.append(1.0)
-
-    logger.info("meta_fields=%r", meta_fields)
-
-    for field in meta_fields:
-        sample_value = _get_nested(hits[usable_hit_refs[0]], f"_source.{field}")
-        logger.info("field=%r resolved=%r type=%r", field, sample_value, type(sample_value).__name__)
-
-    if not vocab:
-        return {hit_idx: {"ids": [], "distances": []} for hit_idx in usable_hit_refs}
-
-    X = csr_matrix((data, (rows, cols)), shape=(len(usable_hit_refs), len(vocab)), dtype=float)
-    X = sk_normalize(X, norm="l2", copy=False)
-
-    nn = NearestNeighbors(n_neighbors=min(k + 1, len(usable_hit_refs)), metric="cosine")
-    nn.fit(X)
-    distances, indices = nn.kneighbors(X)
-
-    out = {}
-    for row_idx, (dist_row, ind_row) in enumerate(zip(distances, indices)):
-        hit_idx = usable_hit_refs[row_idx]
-        ids = []
-        dists = []
-
-        for dist, neighbor_row in zip(dist_row, ind_row):
-            if neighbor_row == row_idx:
-                continue
-            ids.append(usable_hit_refs[neighbor_row])
-            dists.append(float(dist))
-
-        out[hit_idx] = {"ids": ids[:k], "distances": dists[:k]}
+        out[hit_row_id] = {"ids": ids[:k], "distances": dists[:k]}
 
     return out
 
@@ -980,8 +949,10 @@ def _compute_neighbors(
     hybrid_modes: Optional[List[str]] = None,
     hybrid_weights: Optional[Dict[str, float]] = None,
 ) -> Dict[int, Dict[str, List[Any]]]:
+    
     if mode == "knn_vector":
         return _compute_neighbors_knn(
+            hits=hits,
             clustering_matrix=clustering_matrix,
             usable_hit_refs=usable_hit_refs,
             k=k,
@@ -1063,6 +1034,10 @@ def cluster_hits_by_analysis(
     return_projection = return_projection if return_projection is not None else bool(getattr(analysis, "analysis_return_projection", True))
 
     hits_copy = [deepcopy(hit) for hit in hits]
+
+    for i, hit in enumerate(hits_copy):
+        hit.setdefault("_source", {})
+        hit["_source"].setdefault("__row_index__", i)
 
     def _set_unclustered(hit: Dict[str, Any]) -> None:
         hit.setdefault("_source", {})
@@ -1332,8 +1307,9 @@ def cluster_hits_by_analysis(
 
         hit["_source"]["analysis"]["cluster"] = cluster_result
         if neighbors_per_hit is not None:
+            row_id = _stable_neighbor_id(hit, i)
             hit["_source"]["analysis"]["neighbors"] = neighbors_per_hit.get(
-                i,
+                row_id,
                 {"ids": [], "distances": []},
             )
 

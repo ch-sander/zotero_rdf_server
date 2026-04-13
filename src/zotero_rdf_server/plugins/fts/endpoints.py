@@ -835,6 +835,43 @@ def format_search_response(
 
         cleaned_rows = [_clean_row(r) for r in rows]
 
+        row_by_id = {row.get("__row_index__"): row for row in cleaned_rows}
+
+        sample_found = False
+        for idx, row in enumerate(cleaned_rows):
+            neigh = row.get("neighbors") or {}
+            ids = neigh.get("ids") or []
+            if not ids:
+                continue
+
+            sample_found = True
+            logger.info(
+                "ATLAS SAMPLE idx=%s row_id=%r keys=%r",
+                idx,
+                row.get("__row_index__"),
+                list(row.keys()),
+            )
+            logger.info(
+                "ATLAS SAMPLE source parent-ish values: parent=%r meta_parent=%r",
+                row.get("parent"),
+                row.get("meta_parent"),
+            )
+            logger.info("ATLAS SAMPLE neighbor ids=%r", ids[:10])
+
+            for nid in ids[:10]:
+                nrow = row_by_id.get(nid)
+                logger.info(
+                    "  nid=%r found=%r parent=%r meta_parent=%r",
+                    nid,
+                    nrow is not None,
+                    None if nrow is None else nrow.get("parent"),
+                    None if nrow is None else nrow.get("meta_parent"),
+                )
+            break
+
+        if not sample_found:
+            logger.warning("No rows with non-empty neighbors found in atlas payload")
+
         content = json.dumps(
             cleaned_rows,
             ensure_ascii=False,
@@ -1853,7 +1890,7 @@ def search_terms(
             analysis=analysis,
             field=field,
             return_analysis=return_analysis,
-            sort = format!=OutputFormat.atlas
+            # sort = format!=OutputFormat.atlas
         )
 
         resp["hits"]["hits"] = hits

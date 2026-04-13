@@ -416,9 +416,17 @@ def export_atlas_folder(
         return labels
     
     df = pd.DataFrame(inputs)
-    id_column = find_column_name(df.columns, "__row_index__")
-    df[id_column] = range(df.shape[0])
-
+    logger.info(
+        "before atlas id assignment: %r",
+        df[["__row_index__", "neighbors", "meta_parent"]].head(10).to_dict(orient="records")
+    )
+    id_column = "__row_index__"
+    if id_column not in df.columns:
+        df[id_column] = range(df.shape[0])
+    logger.info(
+        "after atlas id assignment: %r",
+        df[["__row_index__", "neighbors", "meta_parent"]].head(10).to_dict(orient="records")
+    )
     stop_words_resolved = None
     if stop_words is not None:
         stop_words_df = pd.DataFrame(stop_words)
