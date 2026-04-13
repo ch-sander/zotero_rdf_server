@@ -70,6 +70,12 @@ def load_config(source):
             logger.error(f"Could not inject .env into {source}: {e}")
     return config
 
+def normalize(value):
+    if value is None:
+        return None
+    value = str(value).strip()
+    return value if value else None
+
 def safe_path(path_str: str | Path | None, base_dir: Path | str = WORKDIR, create: bool = True) -> Path | None:
     if path_str:
         p = Path(path_str)
@@ -218,17 +224,11 @@ STORE_DIRECTORY = safe_path(
     or "/app/data"
 )
 
-API_USER = (
-    os.getenv("API_USER")
-    or server_cfg.get("api_user")
-    or None
-)
+env_user = os.getenv("API_USER")
+env_password = os.getenv("API_PASSWORD")
 
-API_PASSWORD = (
-    os.getenv("API_PASSWORD")
-    or server_cfg.get("api_password")
-    or None
-)
+API_USER = normalize(env_user) if env_user is not None else normalize(server_cfg.get("api_user"))
+API_PASSWORD = normalize(env_password) if env_password is not None else normalize(server_cfg.get("api_password"))
 
 REFRESH = REFRESH_INTERVAL >= 0
 
