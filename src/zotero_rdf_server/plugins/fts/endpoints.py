@@ -2329,7 +2329,7 @@ def build_view_response(
 
     def url_for_path(name: str, **params) -> str:
         try:
-            return str(request.app.url_path_for(name, **params))
+            return str(request.url_for(name, **params).path)
         except:
             return ""
 
@@ -2408,7 +2408,7 @@ def build_view_response(
             next_page = pages[idx + 1]
 
     view_url = url_for_path("view", os_doc_id=f"{doc_id_only}:{page}")
-    edit_url = url_for_path("edit-view", os_doc_id=f"{doc_id_only}:{page}")
+    edit_url = url_for_path("edit-view", os_doc_id=f"{doc_id_only}:{page}")  
     save_url = url_for_path("save-view", os_doc_id=f"{doc_id_only}:{page}")
     ocr_url = url_for_path("ocr-view", os_doc_id=f"{doc_id_only}:{page}")
     view_base_url = url_for_path("view", os_doc_id="__ID__").removesuffix("/__ID__")
