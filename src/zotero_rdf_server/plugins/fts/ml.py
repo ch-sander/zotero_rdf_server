@@ -8,7 +8,7 @@ from copy import deepcopy
 import math
 from collections import Counter, defaultdict
 from typing import Any, Dict, List, Tuple
-from .search import logger, os_mtermvectors, sort_hits_by_cluster_and_score
+from .search import logger
 
 NeighborMode = Literal[
     "knn_vector",
@@ -19,6 +19,7 @@ NeighborMode = Literal[
 ]
 
 try:
+    logger.info("Tries to Load ML Dependencies...")
     ensure_import("scikit-learn", requirements=None)
     ensure_import("rapidfuzz", requirements=None)
     ensure_import("scipy", requirements=None)
