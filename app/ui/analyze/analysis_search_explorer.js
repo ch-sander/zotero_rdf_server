@@ -23,6 +23,7 @@
       : ["snippet", "summary", "description", "content", "text", "body"],
     links: {
       doc: {
+        directKey: "viewer",
         template: CONFIG.docLinkTemplate || "/plugin/fts/view/{os_doc_id}",
         map: (item) => ({
           os_doc_id: item.id
@@ -68,14 +69,17 @@
 
   function buildUrl(type, item) {
     const cfg = EXPLORER_CONFIG.links?.[type];
-    if (!cfg) return "";
+    if (!cfg || !item) return "";
+
+    if (cfg.directKey && item[cfg.directKey]) {
+      return item[cfg.directKey];
+    }
 
     const vars = cfg.map ? cfg.map(item) : item;
 
-    const result = cfg.template.replace(/\{(\w+)\}/g, (_, key) =>
+    return cfg.template.replace(/\{(\w+)\}/g, (_, key) =>
       encodeURIComponent(vars[key] ?? "")
     );
-    return result;
   }
 
   function initStaticTexts() {

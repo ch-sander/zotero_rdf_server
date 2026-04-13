@@ -70,6 +70,16 @@ const NUMERIC_TYPES = new Set([
   "scaled_float"
 ]);
 
+const LINK_CONFIG = {
+  doc: {
+    directKey: "viewer",
+    template: "/plugin/fts/view/{os_doc_id}",
+    map: (item) => ({
+      os_doc_id: item.objectID || item.doc_id || item.id
+    })
+  }
+};
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -200,6 +210,22 @@ function buildFacetWidgets(facets) {
   return widgets;
 }
 
+function buildUrl(type, item) {
+  const cfg = LINK_CONFIG[type];
+  if (!cfg || !item) return "";
+
+  if (cfg.directKey && item[cfg.directKey]) {
+    return item[cfg.directKey];
+  }
+
+  const vars = cfg.map ? cfg.map(item) : item;
+
+  return cfg.template.replace(/\{(\w+)\}/g, (_, key) =>
+    encodeURIComponent(vars[key] ?? "")
+  );
+}
+
+
 function buildHitsWidget() {
   return instantsearch.widgets.hits({
     container: "#hits",
@@ -216,10 +242,15 @@ function buildHitsWidget() {
         const date = hit.meta?.date || "-";
         const snippet = components.Snippet({ attribute: "text", hit });
         const raw = hit.text ? hit.text.slice(0, 2000) : "";
+        const url = buildUrl("doc", hit);
 
         return html`
           <div class="hit">
-            <h2>${escapeHtml(label)}</h2>
+            <h2>${
+                url
+                  ? html`<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`
+                  : label
+              }</h2>
 
             <div class="meta">
               <span class="badge">ID: ${escapeHtml(hit.objectID)}</span>
