@@ -5,4 +5,6 @@ PyMuPDF==1.27.1
 opensearch-py==3.1.0
 pytesseract==0.3.13
 lxml>=5.0.0
+scikit-learn~=1.5.0 # kraken needs it
+umap-learn==0.5.6 # conflict with kraken scikit-learn dependency
 # sentence_transformers==5.2.2 # only if vectorize
