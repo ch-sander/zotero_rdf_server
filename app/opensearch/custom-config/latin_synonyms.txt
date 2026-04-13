@@ -20,7 +20,6 @@ christus, chr
 spiritus, sp.
 
 # common OCR confusions
-vbi, ubi
 u, v
 i, j
 rn, m
@@ -48,7 +47,6 @@ iustus, justus
 iudex, judex
 
 # common manuscript / theological abbreviations
-dominus, dom., dns
 deus, ds
 christus, xps, christus
 iesus christus, ihesus christus, iesus xps
