@@ -369,7 +369,7 @@ def export_atlas_folder(
     text: str | None = "text",
     x_column: str | None = "projection_x",
     y_column: str | None = "projection_y",
-    neighbors_column: str | None = None,
+    neighbors_column: str | None = "neighbors",
     point_size: float | None = None,
     stop_words: str | None = None,    
     export_metadata: dict | None = None,

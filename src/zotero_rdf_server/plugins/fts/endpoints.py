@@ -809,8 +809,12 @@ def format_search_response(
             make_snippet=False,
         )
 
+        logger.info(json.dumps(normalized['hits'][0],indent=4))
+
         rows = [add_analysis_columns(r) for r in normalized["hits"]]
+
         exclude = {"highlight"}
+        include = {"neighbors"}
 
         def _is_scalar_list(v):
             return isinstance(v, list) and all(isinstance(x, (str, int, float)) for x in v)
@@ -820,7 +824,7 @@ def format_search_response(
             for k, v in row.items():
                 if k in exclude:
                     continue
-                if isinstance(v, dict):
+                if isinstance(v, dict) and k not in include:
                     continue
                 if isinstance(v, list):
                     if _is_scalar_list(v):
@@ -836,7 +840,7 @@ def format_search_response(
             ensure_ascii=False,
             separators=(",", ":"),
         )
-        
+
         if output_format == "atlas":
             try:                
                 from .viewer import export_atlas_folder, ATLAS_URL
@@ -1348,10 +1352,71 @@ class ResultAnalysisParams(BaseModel):
         le=100,
         description="Number of terms used to build the cluster label.",
     )
+    cluster_projection_method: Literal["umap", "tsne", "pca"] = Field(
+        default="umap",
+        description="Which projection method.",
+    )
+
+    neighbors_enabled: bool = Field(
+        default=False,
+        description="If true, compute neighbors for each hit.",
+    )
+    neighbors_mode: Literal["knn_vector", "mlt", "page_parent", "meta_onehot", "hybrid"] = Field(
+        default="knn_vector",
+        description="Neighbor computation mode.",
+    )
+    neighbors_k: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Number of neighbors per hit.",
+    )
+    neighbors_metric: Literal["cosine", "euclidean"] = Field(
+        default="cosine",
+        description="Distance metric for knn_vector mode.",
+    )
+
+    neighbors_row_id_field: Optional[str] = Field(
+        default=None,
+        description="Field path used as external document id for MLT mode. Defaults to hit['_id'].",
+    )
+    neighbors_mlt_index: Optional[str] = Field(
+        default=None,
+        description="OpenSearch index used for MLT mode.",
+    )
+    neighbors_mlt_fields: list[str] = Field(
+        default_factory=lambda: ["text"],
+        description="Fields used for MLT mode.",
+    )
+    neighbors_mlt_min_term_freq: int = Field(
+        default=1,
+        ge=0,
+        le=100,
+        description="MLT min_term_freq.",
+    )
+    neighbors_mlt_min_doc_freq: int = Field(
+        default=1,
+        ge=0,
+        le=100,
+        description="MLT min_doc_freq.",
+    )
+    neighbors_mlt_max_query_terms: int = Field(
+        default=25,
+        ge=1,
+        le=100,
+        description="MLT max_query_terms.",
+    )
+    neighbors_mlt_minimum_should_match: str = Field(
+        default="30%",
+        description="MLT minimum_should_match.",
+    )
 
 from typing import Annotated, Literal, Optional
 from fastapi import Query
 
+
+from typing import Annotated, Literal, Optional
+from fastapi import Query
 
 def get_result_analysis_params(
     perform_analysis: Annotated[
@@ -1431,6 +1496,55 @@ def get_result_analysis_params(
         int,
         Query(description="Number of terms used for cluster labels.", ge=1, le=100),
     ] = 3,
+    cluster_projection_method: Annotated[
+        Literal["umap", "tsne", "pca"],
+        Query(description="Which projection method for projection."),
+    ] = "umap",
+
+    neighbors_enabled: Annotated[
+        bool,
+        Query(description="Compute neighbors for each hit."),
+    ] = False,
+    neighbors_mode: Annotated[
+        Literal["knn_vector", "mlt", "page_parent", "meta_onehot", "hybrid"],
+        Query(description="Neighbor computation mode."),
+    ] = "knn_vector",
+    neighbors_k: Annotated[
+        int,
+        Query(description="Number of neighbors per hit.", ge=1, le=100),
+    ] = 10,
+    neighbors_metric: Annotated[
+        Literal["cosine", "euclidean"],
+        Query(description="Distance metric for knn_vector mode."),
+    ] = "cosine",
+    neighbors_row_id_field: Annotated[
+        Optional[str],
+        Query(description="Field path used as external id for MLT mode. Defaults to _id."),
+    ] = None,
+    neighbors_mlt_index: Annotated[
+        Optional[str],
+        Query(description="OpenSearch index used for MLT mode."),
+    ] = None,
+    neighbors_mlt_fields: Annotated[
+        list[str],
+        Query(description="Fields used for MLT mode."),
+    ] = ["text"],
+    neighbors_mlt_min_term_freq: Annotated[
+        int,
+        Query(description="MLT min_term_freq.", ge=0, le=100),
+    ] = 1,
+    neighbors_mlt_min_doc_freq: Annotated[
+        int,
+        Query(description="MLT min_doc_freq.", ge=0, le=100),
+    ] = 1,
+    neighbors_mlt_max_query_terms: Annotated[
+        int,
+        Query(description="MLT max_query_terms.", ge=1, le=100),
+    ] = 25,
+    neighbors_mlt_minimum_should_match: Annotated[
+        str,
+        Query(description="MLT minimum_should_match."),
+    ] = "30%",
 ) -> ResultAnalysisParams:
     return ResultAnalysisParams(
         perform_analysis=perform_analysis,
@@ -1450,7 +1564,20 @@ def get_result_analysis_params(
         cluster_label_source=cluster_label_source,
         cluster_label_top_terms=cluster_label_top_terms,
         cluster_use_svd=cluster_use_svd,
-        cluster_svd_components=cluster_svd_components,        
+        cluster_svd_components=cluster_svd_components,
+        cluster_projection_method=cluster_projection_method,
+
+        neighbors_enabled=neighbors_enabled,
+        neighbors_mode=neighbors_mode,
+        neighbors_k=neighbors_k,
+        neighbors_metric=neighbors_metric,
+        neighbors_row_id_field=neighbors_row_id_field,
+        neighbors_mlt_index=neighbors_mlt_index,
+        neighbors_mlt_fields=neighbors_mlt_fields,
+        neighbors_mlt_min_term_freq=neighbors_mlt_min_term_freq,
+        neighbors_mlt_min_doc_freq=neighbors_mlt_min_doc_freq,
+        neighbors_mlt_max_query_terms=neighbors_mlt_max_query_terms,
+        neighbors_mlt_minimum_should_match=neighbors_mlt_minimum_should_match,
     )
 
 @open_router.get(
@@ -1570,7 +1697,8 @@ def search_terms(
     context: bool = Query(True, description="Include query context in the response."),
 
 ):
-    from .search import parse_csv, build_terms_should_queries, os_search, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter, analysis_from_mtermvectors, os_mtermvectors, cluster_hits_by_analysis, sort_hits_by_cluster_and_score
+    from .search import parse_csv, build_terms_should_queries, os_search, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter
+
     api_call = str(request.url) 
     # --- Build query ---------------------------------------------------------
     terms=[]
@@ -1669,6 +1797,7 @@ def search_terms(
     if return_analysis:
         analysis.perform_analysis=True
         analysis.cluster_enabled=True
+        analysis.neighbors_enabled=True
 
     if analysis.cluster_enabled:
         required_modes = {analysis.cluster_source, analysis.cluster_label_source}
@@ -1724,6 +1853,7 @@ def search_terms(
             analysis=analysis,
             field=field,
             return_analysis=return_analysis,
+            sort = format!=OutputFormat.atlas
         )
 
         resp["hits"]["hits"] = hits
@@ -1735,111 +1865,6 @@ def search_terms(
             h0 = hits[0]
             logger.info("First hit keys: %s", list(h0.keys()))
             logger.debug("First hit highlight: %s", h0.get("highlight"))
-
-    # try:      
-    #     from .viewer import add_viewer_url
-
-    #     if return_analysis and match_all and size > 10000:
-    #         from .search import os_search_all_scroll
-    #         resp = os_search_all_scroll(
-    #             index=index,
-    #             body=body,
-    #             columns=source_columns,
-    #             batch_size=1000,
-    #             scroll_ttl="2m",
-    #         )
-
-    #         all_hits = resp.get("hits", {}).get("hits", [])
-
-    #         add_viewer_url(all_hits) # TODO
-
-    #         logger.info("Got all scroll hits!")
-    #         analysis_field = analysis.analyze_field or field
-    #         hit_ids = [h["_id"] for h in all_hits if h.get("_id")]
-
-    #         if hit_ids:
-    #             tv_docs = []
-    #             tv_batch_size = 200
-
-    #             for i in range(0, len(hit_ids), tv_batch_size):
-    #                 batch_ids = hit_ids[i:i + tv_batch_size]
-    #                 logger.info(f"Getting term vectors for batch {i}")
-    #                 tv_resp = os_mtermvectors(
-    #                     index=index,
-    #                     doc_ids=batch_ids,
-    #                     field=analysis_field,
-    #                 )
-    #                 tv_docs.extend(tv_resp.get("docs", []))
-
-    #             merged_tv_resp = {"docs": tv_docs}
-    #             logger.info("Got all term vectors!")
-
-    #             all_hits, cluster_vectors_by_id = analysis_from_mtermvectors(
-    #                 hits=all_hits,
-    #                 tv_resp=merged_tv_resp,
-    #                 analysis=analysis,
-    #                 field_fallback=field,
-    #             )
-
-    #             logger.info("Got all analyses!")
-                
-    #             all_hits = sort_hits_by_cluster_and_score(
-    #                 cluster_hits_by_analysis(
-    #                     all_hits,
-    #                     analysis=analysis,
-    #                     # return_vector=return_analysis,
-    #                     return_projection=return_analysis,
-    #                     cluster_vectors_by_id=cluster_vectors_by_id
-    #                 )
-    #             )
-    #             logger.info("Got all cluster!")
-    #             resp["hits"]["hits"] = all_hits
-    #             resp["hits"]["total"] = {"value": len(all_hits), "relation": "eq"}
-
-#############################
-
-        # else:            
-        #     resp = os_search(index=index, body=body, columns=source_columns)
-
-        #     if analysis.perform_analysis:
-                
-        #         hits = resp.get("hits", {}).get("hits", [])
-
-        #         add_viewer_url(hits) # TODO
-
-        #         analysis_field = analysis.analyze_field or field
-        #         hit_ids = [h["_id"] for h in hits if h.get("_id")]
-
-        #         if hit_ids:
-        #             tv_resp = os_mtermvectors(
-        #                 index=index,
-        #                 doc_ids=hit_ids,
-        #                 field=analysis_field,
-        #             )
-
-        #             hits, cluster_vectors_by_id  = analysis_from_mtermvectors(
-        #                 hits=hits,
-        #                 tv_resp=tv_resp,
-        #                 analysis=analysis,
-        #                 field_fallback=field,
-        #             )
-        #             if analysis.cluster_enabled:    
-        #                 hits = sort_hits_by_cluster_and_score(cluster_hits_by_analysis(
-        #                     hits,
-        #                     analysis=analysis,
-        #                     # return_vector = return_analysis,
-        #                     return_projection=return_analysis,
-        #                     cluster_vectors_by_id=cluster_vectors_by_id
-        #                 ))
-
-
-
-        #             resp["hits"]["hits"] = hits
-
-        # if resp.get("hits", {}).get("hits"):
-        #     h0 = resp["hits"]["hits"][0]
-        #     logger.info("First hit keys: %s", list(h0.keys()))
-        #     logger.debug("First hit highlight: %s", h0.get("highlight"))
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")

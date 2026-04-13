@@ -6,7 +6,7 @@
 
   const EXPLORER_CONFIG = {
     endpointPath: CONFIG.endpointPath || "/plugin/fts/search/terms",
-    openapiUrl: CONFIG.openapiUrl || "/openapi.json",
+    openapiUrl: CONFIG.openapiUrl || "/user/openapi.json",
     apiBaseUrl: CONFIG.apiBaseUrl || "",
     initialHits: Array.isArray(CONFIG.initialHits) ? CONFIG.initialHits : [],
     maxTermBadgesPerSection: Number(CONFIG.maxTermBadgesPerSection || 20),
@@ -949,6 +949,7 @@
     if (
       name === "perform_analysis" ||
       name.startsWith("analyze_") ||
+      name.startsWith("neighbors_") ||
       name.startsWith("cluster_") ||
       name === "analysis_mode"
     ) {
@@ -1324,7 +1325,7 @@
   async function loadOpenApiAndBuildForm() {
     setApiStatus(UI_TEXT.loading_openapi || "Loading OpenAPI...");
     submitApiSearchBtn.disabled = true;
-
+    console.log("loadOpenApiAndBuildForm started")
     try {
       const response = await fetch(EXPLORER_CONFIG.openapiUrl, {
         method: "GET",
@@ -1337,6 +1338,7 @@
 
       const openapiSpec = await response.json();
       const endpointSpec = resolveOpenApiEndpointSpec(openapiSpec, EXPLORER_CONFIG.endpointPath);
+      
       ENDPOINT_PARAMETERS = extractParameters(endpointSpec);
 
       buildDynamicForm(ENDPOINT_PARAMETERS);
