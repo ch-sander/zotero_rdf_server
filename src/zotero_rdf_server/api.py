@@ -16,22 +16,26 @@ import pkgutil
 from importlib import import_module
 from importlib.util import find_spec
 
-security = HTTPBasic(auto_error=False)
+security = HTTPBasic()
 
 def verify(credentials: HTTPBasicCredentials = Depends(security)):
-    if API_USER and API_PASSWORD:
-        correct_username = secrets.compare_digest(credentials.username, API_USER)
-        correct_password = secrets.compare_digest(credentials.password, API_PASSWORD)
+    correct_username = secrets.compare_digest(credentials.username, API_USER)
+    correct_password = secrets.compare_digest(credentials.password, API_PASSWORD)
 
-        if not (correct_username and correct_password):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Unauthorized",
-                headers={"WWW-Authenticate": "Basic"},
-            )
-        return credentials.username
-    
-protected_dependencies = [Depends(verify)] if API_USER and API_PASSWORD else []
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
+    return credentials.username
+
+
+protected_dependencies = (
+    [Depends(verify)] if API_USER and API_PASSWORD else []
+)
+
 router = APIRouter(dependencies=protected_dependencies)
 open_router = APIRouter()
 
