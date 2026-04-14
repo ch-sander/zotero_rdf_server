@@ -20,6 +20,157 @@ vector:
       source_file_ext: "txt"
       train_kwargs:
 
+llm:
+  host: "http://ollama:11434"
+  chat:
+    model: "qwen2.5:7b"
+    messages:
+      - role: system
+        content: |
+            Normalize the provided Latin text and extract the most relevant concepts. Output a JSON dictionary with the following structure:
+            {
+              "concept": {
+                "text": "<Latin phrase or word>",
+                "normalized": "<Normalized Latin form>",
+                "translation": "<English translation>"
+              },
+              ...
+            }
+
+            # Input:
+
+            The sample Latin text is as follows:
+
+            Difputat . I.
+            11
+            Artic . II .
+            34
+            35
+            36
+            tùm , non folùm priuare bono morali ipfi homini debito , fed bono morali debito toti intelleetuali naturæ , in qua Deus includitur , & cuius
+            bonum morale infinitum eft . Cæterum ifta confideratio non videtur fufficiens ad infinitatem propriè , & determinarè , fed folùm analogicè , & in
+            confufo , quia intellectualis natura , vt comprehendit Deum , & creaturas intellectuales , non eft
+            pofitiue infinita , fed abftractiuè ; abftrahit enim
+            analogicè a finito , & infinito . Ex hoc ergo quod
+            peccatum fit contra naturam intellectualem , vt
+            fic . folùm fequitur , quod fit contra bonum intellectuale infinitum , analogicè , & indeterminatè
+            & in communi , quod eft effe infinitum fecundùm
+            quid , non autem opponitur bono morali determinatè , vt infinito , & provt eft bonum Dei , fed
+            bonum morale hominis .
+            Confiderando ergo peccatum ex parte iniuriæ .
+            Qui defendunt effe folùm infinitum fecundùm
+            quid , nituntur in duobus . Primò , quia ratio iniuriæ eft folùm extrinfeca quædam denominatio in
+            peccato , & confequenter reputatur , tanquam infinitas fecundùm quid ; quando enim prædicatum
+            aliquod poteft conuenire intrinfecè , & extrinfecè , ficut eft ly infinitum , ei cui conuenit extrinfecè ,
+            fecundum quid dicitur conuenire abfolutè loquendo . Sed hoc non multum probat , quia fatentur oppofiti Authores , quod ifta infinitas cóparata ad infinitatem in toto genere entis , vel in
+            ratione infinitatis extrinfeca , poteft dici iecundùm quid , id eft , minor illà . Quæftio tamen præfens procedit de infinitate peccati in eo genere
+            in quo eft infinitas , fcilicet in genere iniuriæ , an
+            in illo genere fit fecundùm quid , vel fimpliciter ? geEt ideò fecundùm fundamentum additur , quod
+            Pater Suarez profequitur , fcilicet , quia infinitas
+            hæc in genere iniurie poteft crefcere in peccato , & eft maior in vno , quàm in alio ; ergo fignum
+            eft infinitatem non effe fimpliciter adhuc in
+            nere iniuriæ , fiquidem in hoc genere poteft creadere , & minui . Atque ita licet offendat Deum ,
+            qui eft fimpliciter infinitus , tanquam obiectum
+            offenfionis tamen inde folùm habet obie& tum finitè cognofcit fimpliciter loquendo , ita
+            & finitè odit , vel amat , & ad illud conuertitur , vel
+            auertitur ; ergo fimpliciter dicendum eft peccatuin finitum , & fecúdùm quid infinitum ; eo quod
+            vt attingatur obiectum infinitum , non requiritur
+            infinitas fimpliciter in actu , fed fufficit quod fit
+            altioris ordinis , quam infiniti actus attingentes
+            obiecta inferiora finita . Sicut vifio beata eft altioris ordinis attingendo Deum in fe , & non habet infinitatem fimpliciter ,
+            ficque excedit infinitas cognitiones inferiores
+            circa obiecta finita . Et de hoc amplius dicetur in
+            folutione argumentorum .
+            Tertia vero pars conclufionis pofitæ , quæ communiter tenetur à Thomiftis , & à Patre Suarez citato probatur . Quia valor charitatis , & gratiæ ,
+            fumitur ab ipfa forma charitatis , & fecundùm
+            formalem effectus , quem fubiecto præbet , fic eft
+            eius valor ; formalis autem eff ctus , quem præbet
+            fubiecto , opponitur peccato , quatenùs eft priuatio rectitudinis debite fubiecto . Illud autem ,
+            quod ex peccato confequitur , fcilicet læfionem
+            juris diuini , & moralitatem ofenfe , charitas , &
+            gratiâ non attingit fecundùm valorem quem
+            præbet fubiecto , & actni • b eo procedenti , fed fecundùm quod procedit à remiffione diuina , cuius
+            effectus eft gratia . Quo fenfu Caietanus dixit in
+            •
+            pro
+            præfenti gratiam , & charitatem fatisfacere
+            peccato ex acceptione diuinæ mifericordiæ , à qua
+            procedit .""
+
+            ## Output:            
+            [
+              {
+                "concept": "Deus",
+                "normalized": "Deum",
+                "translation": "God"
+              },
+              {
+                "concept": "bono morali",
+                "normalized": "bonti moralis",
+                "translation": "moral good"
+              },
+              {
+                "concept": "peccatum",
+                "normalized": "pecatum",
+                "translation": "sin"
+              },
+              {
+                "concept": "infinitas",
+                "normalized": "infinitum",
+                "translation": "infinity"
+              },
+              {
+                "concept": "intellectualis natura",
+                "normalized": "intelligentia naturalis",
+                "translation": "natural intelligence"
+              },
+              {
+                "concept": "bonum morale infinitum",
+                "normalized": "infinitum bonum morale",
+                "translation": "infinite moral good"
+              },
+              {
+                "concept": "ratio iniuriæ",
+                "normalized": "ratio injuriae",
+                "translation": "ratio of injury"
+              },
+              {
+                "concept": "gratia",
+                "normalized": "gratia",
+                "translation": "grace"
+              },
+              {
+                "concept": "iustitia",
+                "normalized": "iustitia",
+                "translation": "justice"
+              },
+              {
+                "concept": "charitas",
+                "normalized": "charitas",
+                "translation": "charity"
+              },
+              {
+                "concept": "fide",
+                "normalized": "fides",
+                "translation": "faith"
+              },
+              {
+                "concept": "peccator",
+                "normalized": "pecator",
+                "translation": "sinner"
+              },
+              {
+                "concept": "iustificare",
+                "normalized": "iustificari",
+                "translation": "to justify"
+              }
+            ]
+                        
+            Note that the actual output may vary depending on the specific rules and heuristics used to normalize the Latin text.
+
+            Only respond with valid JSON List(Dict)
+
+
 viewer:
   image_root: "/app/exports/kraken/images"
   text_root: "/app/exports/kraken/texts"
