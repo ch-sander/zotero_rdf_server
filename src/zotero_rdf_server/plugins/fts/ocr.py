@@ -1681,11 +1681,12 @@ def iter_text_pages(
 
     if save_text == "overwrite":
         skip_pages = set()
-    elif save_image in {"active", "overwrite", "smart"}:
+    elif save_image in {"active", "overwrite", "smart"}:        
         skip_pages = set(_report["shared"])
     else:
         skip_pages = set(_report["text_pages"])
 
+    logger.info(f"Skipping {len(skip_pages)} pages.")
     iter_kwargs["skip_pages"] = skip_pages
     # _peak, _total = next(iter_pages(input=input, **iter_kwargs, skip=True))
 
