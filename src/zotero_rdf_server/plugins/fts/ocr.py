@@ -1296,7 +1296,7 @@ def iter_text_pages(
     
     cfg = text_image_file_kwargs or {}
     use_transformer = framework == "transformer"
-    no_ocr = framework in {"none"}
+    ocr = framework and framework not in {"none"}
     ts_in = ISO_ts()
     call_args = {
             "input": input,
@@ -1513,7 +1513,7 @@ def iter_text_pages(
         logger.info("Report completed!")
 
     def _maybe_store_text(page_no: int, txt: str) -> None:
-        if save_text not in {"active", "overwrite"} or no_ocr:
+        if save_text not in {"active", "overwrite"} or not ocr:
             return
         tp = _text_path(page_no)
         if tp is None:
@@ -1576,7 +1576,7 @@ def iter_text_pages(
             else "[no text]"
         )
         logger.info(f"\n{_doc_id} {page_no}/{total}: {'CACHED' if cached else framework.upper()} result: {preview}")
-        return page_no, txt
+        return page_no, txt # TODO return LLM?
     
     _meta_file(meta_dict)
     cached_page_set = _cached_pages()
@@ -1637,7 +1637,7 @@ def iter_text_pages(
                         # yield page_no, tp.read_text(encoding="utf-8")
                     continue
 
-                if not no_ocr: # OCR
+                if ocr: # OCR
                     try:
                         with Image.open(img_path) as im:
                             pil = im.copy()
@@ -1752,7 +1752,7 @@ def iter_text_pages(
             continue
 
         # OCR
-        if not no_ocr:
+        if ocr:
             logger.info(f"Using {framework.upper()}")
             try:
                 txt = page_to_text(

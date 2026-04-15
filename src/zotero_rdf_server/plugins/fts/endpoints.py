@@ -376,7 +376,7 @@ def ingest_route(
                     #     raise HTTPException(status_code=400, detail=f"No FTS config for library {lib.base_url}")
                     for n, ncfg in enumerate(cfg, start=1): # allow multiple runs per library
                         name = ncfg.get('name','n/a')
-                        if ncfg.get("deactivated", False):
+                        if not ncfg.get("active", True):
                             logger.info(f"\n\n{n}/{len(cfg)}: Skipping deactivated pipeline {name}\n\n")
                             continue
                         
