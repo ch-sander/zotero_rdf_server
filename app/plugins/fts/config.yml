@@ -21,13 +21,15 @@ vector:
       train_kwargs:
 
 llm:
-  host: "http://ollama:11434"
+  client:
+    host: "http://localhost:11434" # or ollama:11434 if in Docker Network
   chat:
-    model: "qwen2.5:7b"
+    model: "qwen2.5:7b" #  "llama3.2:3b", "nomic-embed-text:latest"
     messages:
       - role: system
         content: |
-            Normalize the provided Latin text and extract the most relevant concepts. Output a JSON dictionary with the following structure:
+            You are provided Latin text of a page rendered with poor OCR, mostly theological texts of the early modern period. Extract the most relevant concepts as normalized Latin phrases or terms and translate them. Output a list of JSON no more than 20 dictionaries with the following structure:
+
             {
               "concept": {
                 "text": "<Latin phrase or word>",
@@ -166,10 +168,9 @@ llm:
               }
             ]
                         
-            Note that the actual output may vary depending on the specific rules and heuristics used to normalize the Latin text.
+            There may be input that doesn't contain any text. Return an empty list in this case: []
 
-            Only respond with valid JSON List(Dict)
-
+            Only respond with valid JSON List(Dict), no verbal explanation! Otherwise my parser breaks.
 
 viewer:
   image_root: "/app/exports/kraken/images"
