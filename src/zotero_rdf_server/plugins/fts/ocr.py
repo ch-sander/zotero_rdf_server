@@ -1347,7 +1347,7 @@ def iter_text_pages(
     save_image: str = cfg.get("save_image", "skip")  # "skip" | "overwrite" | "active"
     on_error: str = cfg.get("on_error", "log")  # "raise" | "skip" | "empty" | "log"
 
-    if save_text not in {"skip", "overwrite", "active"}:
+    if save_text not in {"skip", "overwrite", "active", "cache"}:
         raise ValueError(f"save_text must be 'active', 'skip' or 'overwrite', got {save_text}")
     if save_image not in {"skip", "cache", "overwrite", "active", "sniff", "smart"}:
         raise ValueError(
@@ -1459,11 +1459,10 @@ def iter_text_pages(
         }
     
     def _log_discrepancy_report(total: int = 0) -> None:
-        # if save_text in {"ignore"}:
-        #     logger.info(
-        #         "TEXT IGNORE mode has not stored text files, but it reused cached text if at least one available; "
-        #         "otherwise it processed pages (OCR) without persisting results."
-        #     )
+        if save_text in {"cache"}:
+            logger.info(
+                "TEXT CACHE mode has not stored text files, but it reused cached text if at least one available; "
+            )
         if save_text in {"skip"}:
             logger.info(
                 "TEXT SKIP mode has not stored text files, but it reused cached text if at least one available; "
@@ -1584,22 +1583,13 @@ def iter_text_pages(
 
     logger.info(f"{_doc_id}: Found {len(set(cached_page_set['text']))} text files and {len(set(cached_page_set['image']))} image files")
 
-    # if no_ocr:
-    #     logger.info(f"{_doc_id}: framework='none' -> cache only")
-    #     if txt_dir is not None and any(txt_dir.glob(f"*.{txt_ext}")):
-    #         logger.info(f"{_doc_id}: Using {len(set(cached_page_set['text']))} cached text files in {txt_dir}")
-    #         yield from _yield_from_cache()
-    #     else:
-    #         logger.info(f"{_doc_id}: No cached text files found")
-    #     return
-
     if not yield_result:
         logger.warning("Cached text files will not be logged and yielded!")
 
     # If text file found and not overwrite, use as result and skip download + OCR
     if (
-        save_text in {"active", "skip"}
-        and save_image == "skip"
+        save_text not in {"overwrite"} # {"active", "skip"}
+        and save_image in {"skip"} #  == "skip"
         and txt_dir is not None
         and any(txt_dir.glob(f"*.{txt_ext}"))        
     ):      
@@ -1624,14 +1614,14 @@ def iter_text_pages(
     # TODO call _write_lock_remove_best_effort in finally
 
     # If image file found and not overwrite, use as result and skip download but proceed with OCR
-    if save_image == "cache" and img_dir is not None and img_dir.exists():
+    if save_image in {"cache"} and img_dir is not None and img_dir.exists():
         cached_imgs = list(_iter_cached_image_pages(img_dir, img_ext))
         total = len(cached_imgs)
         if cached_imgs:
             logger.warning(f"{_doc_id}: Using {len(set(cached_page_set['image']))} image files in {img_dir}; no remote download")
             for page_no, img_path in cached_imgs:
                 tp = _text_path(page_no)
-                if save_text in {"active", "skip"} and tp and tp.exists(): # Cache
+                if save_text not in {"overwrite"} and tp and tp.exists(): # Cache
                     if yield_result:
                         try:
                             txt = tp.read_text(encoding="utf-8")
