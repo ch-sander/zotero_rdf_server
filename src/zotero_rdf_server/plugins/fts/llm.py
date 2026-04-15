@@ -14,14 +14,15 @@ logger=plugin_logger()
 def get_llm_config(config_path: Path) -> dict[str, Any]:
     from zotero_rdf_server.utils import load_dict_like
     cfg = load_dict_like(config_path,label="Ollama Config",verbose=False)
-    return cfg.get("llm") or {'host':'http://ollama:11434'}
+    return cfg.get("llm") or cfg
 
 
 cfg_path = resolve_config_path()
 logger.debug(f"Loading config from {cfg_path}")
 llmcfg = get_llm_config(cfg_path)
 logger.debug(f"{llmcfg}")
-client = Client(**llmcfg)
+ollama_cfg=llmcfg.get('client',{'host':'http://ollama:11434'})
+client = Client(**ollama_cfg)
 
 DEFAULT_CHAT = {
     "model": "qwen2.5:7b",
