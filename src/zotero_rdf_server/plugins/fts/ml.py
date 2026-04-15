@@ -246,10 +246,10 @@ def analysis_from_mtermvectors(
     }
 
     def wants_global() -> bool:
-        return analysis.analysis_mode in ("global", "both")
+        return analysis.analysis_mode in ("index_documents", "both")
 
     def wants_local() -> bool:
-        return analysis.analysis_mode in ("local", "both")
+        return analysis.analysis_mode in ("hits_documents", "both")
 
     def build_global_scored_terms(
         *,
@@ -333,21 +333,21 @@ def analysis_from_mtermvectors(
                     filtered_items=term_items,
                     n_docs=global_n_docs,
                 )
-                derived["global"] = {
+                derived["index_documents"] = {
                     "key_terms": [item["term"] for item in global_top],
                     "key_terms_details": global_top,
                 }
 
             if wants_local():
                 local_top = local_top_terms_by_id.get(doc_id, [])
-                derived["local"] = {
+                derived["hits_documents"] = {
                     "key_terms": [item["term"] for item in local_top],
                     "key_terms_details": local_top,
                     # "vector": local_vectors_by_id.get(doc_id, {}),
                 }
                 # include_vector = getattr(analysis, "analyze_include_vector", False)
                 # if include_vector:
-                #     derived["local"]["vector"] = local_vectors_by_id.get(doc_id, {})
+                #     derived["hits_documents"]["vector"] = local_vectors_by_id.get(doc_id, {})
 
         hit_copy.setdefault("_source", {})
         hit_copy["_source"].setdefault("analysis", {})

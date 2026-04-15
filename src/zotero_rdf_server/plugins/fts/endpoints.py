@@ -305,6 +305,7 @@ def ingest_route(
     framework_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for OCR Backend Config", examples=[None]),
     file_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for File Output", examples=[{'img_out':'kraken/images','txt_out':'kraken/texts','meta_out':'kraken/meta','save_text':'active','save_image':'skip'}]),
     vector_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for embedding Backend Config", examples=[None]),
+    llm_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for LLM Backend Config", examples=[None]),
 ):
     from .pipeline import ingest_pipeline
     from .helpers import convert_bindings
@@ -411,6 +412,8 @@ def ingest_route(
                         framework_x = framework  if framework is not None else ncfg.get("framework", "kraken")
                         vector_x = vector_kwargs if vector_kwargs is not None else ncfg.get("vector")
 
+                        llm_x = llm_kwargs if llm_kwargs is not None else pipeline_cfg.get("llm_kwargs")
+
                         iter_pages_kwargs = source_kwargs if source_kwargs is not None else dict(pipeline_cfg.get("source_kwargs") or {})
                         page_to_text_kwargs = framework_kwargs if framework_kwargs is not None else dict(pipeline_cfg.get("framework_kwargs") or {})
                         text_image_file_kwargs = file_kwargs if file_kwargs is not None else dict(pipeline_cfg.get("file_kwargs") or {})
@@ -441,6 +444,7 @@ def ingest_route(
                                                 from_source=from_source_x,
                                                 framework=framework_x,
                                                 vector_kwargs=vector_x,
+                                                llm_kwargs=llm_x,
                                                 ingest=ingest_x,
                                                 iter_pages_kwargs=iter_pages_kwargs,
                                                 page_to_text_kwargs=page_to_text_kwargs, text_image_file_kwargs=text_image_file_kwargs,
@@ -491,6 +495,7 @@ def ingest_route(
                                             from_source=from_source,
                                             framework=framework,
                                             vector_kwargs=vector_kwargs,
+                                            llm_kwargs=llm_kwargs,
                                             ingest=ingest,
                                             iter_pages_kwargs=source_kwargs,
                                             page_to_text_kwargs=framework_kwargs,
@@ -536,6 +541,7 @@ def ingest_route(
                                         from_source=from_source,
                                         framework=framework,
                                         vector_kwargs=vector_kwargs,
+                                        llm_kwargs=llm_kwargs,
                                         ingest=ingest,
                                         iter_pages_kwargs=source_kwargs,
                                         page_to_text_kwargs=framework_kwargs,
@@ -1307,11 +1313,11 @@ class ResultAnalysisParams(BaseModel):
     )
     analyze_field: Optional[str] = Field(
         default=None,
-        description="Field from each hit used for per-document keyword extraction.",
+        description="Field from each hit used for per-document keyword extraction. Defaults to the search field.",
     )
-    analysis_mode: Literal["global", "local", "both"] = Field(
+    analysis_mode: Literal["index_documents", "hits_documents", "both"] = Field(
         default="both",
-        description="TF-IDF mode: global, local, or both.",
+        description="TF-IDF mode: index_documents, hits_documents, or both.",
     )
     analyze_top_terms: int = Field(
         default=5,
@@ -1365,12 +1371,12 @@ class ResultAnalysisParams(BaseModel):
         le=50,
         description="Requested number of clusters for KMeans.",
     )
-    cluster_source: Literal["local", "global"] = Field(
-        default="local",
+    cluster_source: Literal["hits_documents", "index_documents"] = Field(
+        default="hits_documents",
         description="Which analysis branch to use for clustering.",
     )
-    cluster_label_source: Literal["local", "global"] = Field(
-        default="local",
+    cluster_label_source: Literal["hits_documents", "index_documents"] = Field(
+        default="hits_documents",
         description="Which analysis branch to use for cluster labels.",
     )
     cluster_use_svd: bool = Field(
@@ -1462,11 +1468,11 @@ def get_result_analysis_params(
     ] = False,
     analyze_field: Annotated[
         Optional[str],
-        Query(description="Field used for per-hit TF-IDF analysis."),
+        Query(description="Field used for per-hit TF-IDF analysis. Defaults to the search field."),
     ] = None,
     analysis_mode: Annotated[
-        Literal["global", "local", "both"],
-        Query(description="TF-IDF mode: global, local, or both."),
+        Literal["index_documents", "hits_documents", "both"],
+        Query(description="TF-IDF mode: index_documents, hits_documents, or both."),
     ] = "both",
     analyze_top_terms: Annotated[
         int,
@@ -1514,13 +1520,13 @@ def get_result_analysis_params(
         Query(description="Requested number of clusters for KMeans.", ge=1, le=50),
     ] = 5,
     cluster_source: Annotated[
-        Literal["local", "global"],
+        Literal["hits_documents", "index_documents"],
         Query(description="Which analysis branch to use for clustering."),
-    ] = "local",
+    ] = "hits_documents",
     cluster_label_source: Annotated[
-        Literal["local", "global"],
+        Literal["hits_documents", "index_documents"],
         Query(description="Which analysis branch to use for cluster labels."),
-    ] = "local",
+    ] = "hits_documents",
     cluster_use_svd: Annotated[
         bool,
         Query(description="Apply SVD before clustering."),
@@ -1543,7 +1549,7 @@ def get_result_analysis_params(
         Query(description="Compute neighbors for each hit."),
     ] = False,
     neighbors_mode: Annotated[
-        Literal["knn_vector", "mlt", "page_parent", "meta_onehot", "hybrid"],
+        Literal["knn_vector", "mlt", "page_parent", "meta_onehot", "hybrid"], # TODO knn from index
         Query(description="Neighbor computation mode."),
     ] = "knn_vector",
     neighbors_k: Annotated[
@@ -1851,11 +1857,11 @@ def search_terms(
     if analysis.perform_analysis:
         # if source_cols and field and field not in source_cols:
         #     source_cols.append(field)
-        if analysis.analysis_mode == "both" or analysis.analysis_mode == "local": 
+        if analysis.analysis_mode == "both" or analysis.analysis_mode == "hits_documents": 
             if "analysis_local_key_terms" not in render_cols:
                 render_cols.append("analysis_local_key_terms")
 
-        if analysis.analysis_mode == "both" or analysis.analysis_mode == "global": 
+        if analysis.analysis_mode == "both" or analysis.analysis_mode == "index_documents": 
             if "analysis_global_key_terms" not in render_cols:
                 render_cols.append("analysis_global_key_terms")
 

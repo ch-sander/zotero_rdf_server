@@ -21,6 +21,7 @@ def ingest_pipeline(
     from_source: bool = True,
     framework: TypeLiteral["kraken", "tesseract", "transformer", "source", "none"] = "kraken",
     vector_kwargs: dict | None = None,
+    llm_kwargs: dict | None = None,
     ingest: bool = True,
     iter_pages_kwargs: dict = {},
     page_to_text_kwargs: dict = {},
