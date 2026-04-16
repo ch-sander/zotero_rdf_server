@@ -1,28 +1,29 @@
 
 from .helpers import ensure_import, resolve_config_path, plugin_logger
+from zotero_rdf_server.utils import load_dict_like
 from typing import Dict, Iterator, Tuple, Any, Iterable, Callable
 from functools import lru_cache
 from pathlib import Path
+import json
 from copy import deepcopy
-from .helpers import ensure_import
 ensure_import("ollama==0.6.1", requirements=None)
 from ollama import Client
 
 logger=plugin_logger()
 
 @lru_cache(maxsize=8)
-def get_llm_config(config_path: Path) -> dict[str, Any]:
-    from zotero_rdf_server.utils import load_dict_like
-    cfg = load_dict_like(config_path,label="Ollama Config",verbose=False)
+def get_llm_config(config_path: Path | str | None = None) -> dict[str, Any]:
+    if isinstance(config_path, Path):
+        config_path = str(config_path)
+    cfg_path = resolve_config_path(config_path)
+    cfg = load_dict_like(cfg_path, label="Ollama Config", verbose=False)
     return cfg.get("llm") or cfg
-
-
-cfg_path = resolve_config_path()
-logger.debug(f"Loading config from {cfg_path}")
-llmcfg = get_llm_config(cfg_path)
-logger.debug(f"{llmcfg}")
-ollama_cfg=llmcfg.get('client',{'host':'http://ollama:11434'})
-client = Client(**ollama_cfg)
+    
+def make_llm_client(config:dict): 
+    client_cfg = config.get('client')
+    logger.info(f"{client_cfg}")
+    ollama_cfg = client_cfg or {'host':'http://ollama:11434'}
+    return Client(**ollama_cfg)
 
 DEFAULT_CHAT = {
     "model": "qwen2.5:7b",
@@ -65,17 +66,20 @@ def build_chat_config(llmcfg: dict[str, Any] | None) -> dict[str, Any]:
     return cfg
 
 
-CHAT = build_chat_config(llmcfg)
-
-
-def llm(user_input: str) -> str:
+def llm(user_input: str, llm_kwargs: dict = {}) -> dict:
+    config_path = llm_kwargs.pop('config_path')
     if not isinstance(user_input, str):
-        raise TypeError("input muss ein String sein.")
+        raise TypeError("input must be string.")
+    llm_config = get_llm_config(config_path)
+    client = make_llm_client(llm_config)
 
+    llmcfg = llm_kwargs | llm_config.get('chat')  
+    CHAT = build_chat_config(llmcfg)
+    # logger.info(json.dumps(CHAT,indent=4))
     user_input = user_input.strip()
     if not user_input:
         return ""
-
+    
     payload = {
         "model": CHAT["model"],
         "messages": deepcopy(CHAT["messages"]) + [
@@ -85,13 +89,12 @@ def llm(user_input: str) -> str:
 
     try:
         response = client.chat(**payload)
-
         content = getattr(response.message, "content", None)
         if not isinstance(content, str):
             raise ValueError("Response invalid.")
-
-        return content.strip()
+        content_dict = load_dict_like(content.strip(),default={'response':''})
+        return content_dict
 
     except Exception as e:
         logger.exception("Ollama request failed: %s", e)
-        return ""
+        return {'response': ''}

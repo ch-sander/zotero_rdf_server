@@ -2622,7 +2622,23 @@ def rerun_ocr(
 
 ##Proxy
 
-@open_router.get("/search-proxy/{index}/_mapping")
+@open_router.post("/ollama-proxy", tags=["Proxy"],)
+async def ollama_proxy(
+    user_input: str = Body(..., embed=True),
+    llm_kwargs: dict = Body(default_factory=dict, embed=True),
+):
+    from .llm import llm
+    from .helpers import resolve_config_path
+
+    try:
+        llm_kwargs = dict(llm_kwargs)
+        llm_kwargs["config_path"] = llm_kwargs.get("config_path", resolve_config_path())
+        return llm(user_input=user_input, llm_kwargs=llm_kwargs)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ollama proxy failed: {e}")
+
+@open_router.get("/search-proxy/{index}/_mapping", tags=["Proxy"])
 async def get_mapping(index: str):
     from .db import make_client, get_os_config
     from .helpers import resolve_config_path
@@ -2632,7 +2648,7 @@ async def get_mapping(index: str):
 
     return client.indices.get_mapping(index=index)
 
-@open_router.post("/search-proxy/_msearch")
+@open_router.post("/search-proxy/_msearch", tags=["Proxy"])
 async def msearch(request: Request):
     body = await request.body()
     from .db import make_client, get_os_config
