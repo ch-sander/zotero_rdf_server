@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Iterator, Optional, Dict, Any, List, Literal, Union, Tuple, Mapping, Iterable, Callable, Set, Sequence, Protocol
-import io, json, os, tempfile, time, re, math, requests
+import io, json, os, tempfile, time, re, math, requests, csv
 from functools import lru_cache
 from pathlib import Path
 from .helpers import ensure_import, _hash_file,  resolve_config_path, _download, plugin_logger, detect_url_kind, detect_file_kind, resolve_source
@@ -24,6 +24,375 @@ except Exception:
 _KRAKEN_NET: dict[tuple[str, str], object] = {}
 _KRAKEN_SEG: dict[tuple[str, str], object] = {}
 _NO_UPSCALE_HOSTS: set[str] = set()
+
+@dataclass(frozen=True)
+class ReplaceRule:
+    pattern: str
+    repl: str = ""
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> "ReplaceRule":
+        return cls(
+            pattern=str(data.get("pattern", "")),
+            repl=str(data.get("repl", "")),
+        )
+
+from dataclasses import dataclass
+from typing import Any, Mapping, Sequence
+
+
+@dataclass(frozen=True)
+class JsonPolicy:
+    enabled: bool = True
+    encoding: str = "utf-8"
+
+    page_path: str | None = None   # "items"
+    text_path: str | None = None   # "content" or "body.text"
+
+    fields: tuple[str, ...] = ()
+
+    replace_rules: tuple[ReplaceRule, ...] = ()
+    skip_empty: bool = True
+
+    fallback_to_full_document: bool = True
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any] | None) -> "JsonPolicy":
+        if not data:
+            return cls()
+
+        try:
+            raw_fields = data.get("fields", ())
+            if isinstance(raw_fields, str):
+                fields = (raw_fields,)
+            elif isinstance(raw_fields, Sequence):
+                fields = tuple(str(f) for f in raw_fields if f is not None)
+            else:
+                fields = ()
+
+            raw_rules = data.get("replace_rules", ())
+            if isinstance(raw_rules, Sequence) and not isinstance(raw_rules, (str, bytes)):
+                replace_rules = tuple(
+                    ReplaceRule.from_json(r) for r in raw_rules if isinstance(r, Mapping)
+                )
+            else:
+                replace_rules = ()
+
+            return cls(
+                enabled=bool(data.get("enabled", True)),
+                encoding=str(data.get("encoding", "utf-8") or "utf-8"),
+                page_path=str(data.get("page_path")) if data.get("page_path") else None,
+                text_path=str(data.get("text_path")) if data.get("text_path") else None,
+                fields=fields,
+                replace_rules=replace_rules,
+                skip_empty=bool(data.get("skip_empty", True)),
+                fallback_to_full_document=bool(data.get("fallback_to_full_document", True)),
+            )
+        except (TypeError, ValueError):
+            return cls()
+
+
+
+def _json_get_path(obj: Any, path: str | None) -> Any:
+    if not path:
+        return obj
+
+    cur = obj
+    for part in path.split("."):
+        if isinstance(cur, dict):
+            cur = cur.get(part)
+        elif isinstance(cur, list):
+            try:
+                idx = int(part)
+                cur = cur[idx]
+            except (ValueError, IndexError):
+                return None
+        else:
+            return None
+    return cur
+
+def _json_extract_text(item: Any, policy: JsonPolicy) -> str:
+    parts = []
+
+    if policy.fields:
+        for f in policy.fields:
+            val = _json_get_path(item, f)
+            if val is not None:
+                parts.append(str(val))
+    elif policy.text_path:
+        val = _json_get_path(item, policy.text_path)
+        if val is not None:
+            parts.append(str(val))
+    else:
+        parts.append(str(item))
+
+    txt = "\n".join(parts)
+    txt = _apply_replace_rules(txt, policy.replace_rules)
+    return _normalize_text(txt)
+
+
+@dataclass(frozen=True)
+class TextPolicy:
+    enabled: bool = True
+    encoding: str = "utf-8"
+    split_regex: str | None = None
+    keep_delimiters: bool = False
+    flags: int = 0
+    replace_rules: tuple[ReplaceRule, ...] = ()
+    skip_empty: bool = True
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any] | None) -> "TextPolicy":
+        if not data:
+            return cls()
+        try:
+            raw_rules = data.get("replace_rules", ())
+            if isinstance(raw_rules, Sequence) and not isinstance(raw_rules, (str, bytes)):
+                replace_rules = tuple(
+                    ReplaceRule.from_json(r) for r in raw_rules if isinstance(r, Mapping)
+                )
+            else:
+                replace_rules = ()
+
+            split_regex = data.get("split_regex")
+            if split_regex is not None:
+                split_regex = str(split_regex)
+
+            return cls(
+                enabled=bool(data.get("enabled", True)),
+                encoding=str(data.get("encoding", "utf-8") or "utf-8"),
+                split_regex=split_regex,
+                keep_delimiters=bool(data.get("keep_delimiters", False)),
+                flags=int(data.get("flags", 0)),
+                replace_rules=replace_rules,
+                skip_empty=bool(data.get("skip_empty", True)),
+            )
+        except (TypeError, ValueError):
+            return cls()
+        
+def _apply_replace_rules(text: str, rules: tuple[ReplaceRule, ...]) -> str:
+    for rule in rules:
+        if rule.pattern:
+            text = re.sub(rule.pattern, rule.repl, text)
+    return text
+
+
+def _split_text_pages(text: str, split_regex: str | None, keep_delimiters: bool, flags: int) -> list[str]:
+    if not split_regex:
+        return [text]
+
+    if keep_delimiters:
+        parts = re.split(f"({split_regex})", text, flags=flags)
+        out: list[str] = []
+        buf = ""
+        for part in parts:
+            if not part:
+                continue
+            if re.fullmatch(split_regex, part, flags=flags):
+                if buf.strip():
+                    out.append(buf)
+                buf = part
+            else:
+                buf += part
+        if buf.strip():
+            out.append(buf)
+        return out
+
+    return [p for p in re.split(split_regex, text, flags=flags) if p is not None]
+
+
+def _normalize_text(text: str) -> str:
+    lines = [line.rstrip() for line in text.splitlines()]
+    return "\n".join(lines).strip()
+
+def _get_lxml_html():
+    import lxml.html
+    return lxml.html
+
+
+def _get_lxml_etree():
+    from lxml import etree
+    return etree
+
+
+def _extract_xpath_text(node, text_xpath: str | None) -> str:
+    if not text_xpath:
+        return "".join(node.itertext()).strip()
+
+    parts = node.xpath(text_xpath)
+    out: list[str] = []
+
+    for p in parts:
+        if isinstance(p, str):
+            out.append(p)
+        else:
+            try:
+                out.append("".join(p.itertext()))
+            except AttributeError:
+                out.append(str(p))
+
+    return _normalize_text(" ".join(x for x in out if x))
+
+# TextPolicy
+#   "enabled": true,
+#   "split_regex": "^##\\s+",
+#   "flags": 8,
+#   "keep_delimiters": true,
+#   "replace_rules": [
+#     { "pattern": "\\r\\n?", "repl": "\n" },
+#     { "pattern": "[ \\t]+", "repl": " " }
+#   ],
+#   "skip_empty": true
+# }
+
+# HtmlPolicy
+#   "enabled": true,
+#   "page_xpath": "//article",
+#   "text_xpath": ".//text()",
+#   "replace_rules": [
+#     { "pattern": "\\s+", "repl": " " }
+#   ],
+#   "skip_empty": true,
+#   "fallback_to_full_document": true
+# }
+
+# XmlPolicy
+#   "enabled": true,
+#   "page_xpath": "//record",
+#   "text_xpath": ".//title/text() | .//body/text()",
+#   "replace_rules": [
+#     { "pattern": "\\s+", "repl": " " }
+#   ],
+#   "skip_empty": true
+
+# CsvPolicy
+# "enabled": True,
+# "columns": ["content"],
+# "delimiter": ";",
+# "has_header": True,
+# "encoding": "utf-8",
+# "quotechar": "\"",
+# "skip_empty": True
+
+@dataclass(frozen=True)
+class HtmlPolicy:
+    enabled: bool = True
+    encoding: str = "utf-8"
+    page_xpath: str | None = None
+    text_xpath: str | None = ".//text()"
+    replace_rules: tuple[ReplaceRule, ...] = ()
+    skip_empty: bool = True
+    fallback_to_full_document: bool = True
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any] | None) -> "HtmlPolicy":
+        if not data:
+            return cls()
+        try:
+            raw_rules = data.get("replace_rules", ())
+            if isinstance(raw_rules, Sequence) and not isinstance(raw_rules, (str, bytes)):
+                replace_rules = tuple(
+                    ReplaceRule.from_json(r) for r in raw_rules if isinstance(r, Mapping)
+                )
+            else:
+                replace_rules = ()
+
+            page_xpath = data.get("page_xpath")
+            text_xpath = data.get("text_xpath", ".//text()")
+
+            return cls(
+                enabled=bool(data.get("enabled", True)),
+                encoding=str(data.get("encoding", "utf-8") or "utf-8"),
+                page_xpath=str(page_xpath) if page_xpath else None,
+                text_xpath=str(text_xpath) if text_xpath else ".//text()",
+                replace_rules=replace_rules,
+                skip_empty=bool(data.get("skip_empty", True)),
+                fallback_to_full_document=bool(data.get("fallback_to_full_document", True)),
+            )
+        except (TypeError, ValueError):
+            return cls()
+
+@dataclass(frozen=True)
+class XmlPolicy:
+    enabled: bool = True
+    encoding: str = "utf-8"
+    page_xpath: str | None = None
+    text_xpath: str | None = ".//text()"
+    replace_rules: tuple[ReplaceRule, ...] = ()
+    skip_empty: bool = True
+    fallback_to_full_document: bool = True
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any] | None) -> "XmlPolicy":
+        if not data:
+            return cls()
+        try:
+            raw_rules = data.get("replace_rules", ())
+            if isinstance(raw_rules, Sequence) and not isinstance(raw_rules, (str, bytes)):
+                replace_rules = tuple(
+                    ReplaceRule.from_json(r) for r in raw_rules if isinstance(r, Mapping)
+                )
+            else:
+                replace_rules = ()
+
+            page_xpath = data.get("page_xpath")
+            text_xpath = data.get("text_xpath", ".//text()")
+
+            return cls(
+                enabled=bool(data.get("enabled", True)),
+                encoding=str(data.get("encoding", "utf-8") or "utf-8"),
+                page_xpath=str(page_xpath) if page_xpath else None,
+                text_xpath=str(text_xpath) if text_xpath else ".//text()",
+                replace_rules=replace_rules,
+                skip_empty=bool(data.get("skip_empty", True)),
+                fallback_to_full_document=bool(data.get("fallback_to_full_document", True)),
+            )
+        except (TypeError, ValueError):
+            return cls()
+
+@dataclass(frozen=True)
+class CsvPolicy:
+    enabled: bool = True
+    columns: tuple[str, ...] = ()
+    delimiter: str = ","
+    has_header: bool = True
+    encoding: str = "utf-8"
+    quotechar: str = '"'
+    skip_empty: bool = True
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any] | None) -> "CsvPolicy":
+        if not data:
+            return cls()
+
+        try:
+            raw_columns = data.get("columns", ())
+            if isinstance(raw_columns, str):
+                columns = (raw_columns,)
+            elif isinstance(raw_columns, Sequence):
+                columns = tuple(str(c) for c in raw_columns if c is not None)
+            else:
+                columns = ()
+
+            delimiter = str(data.get("delimiter", ",") or ",")
+            if len(delimiter) != 1:
+                delimiter = ","
+
+            quotechar = str(data.get("quotechar", '"') or '"')
+            if len(quotechar) != 1:
+                quotechar = '"'
+
+            return cls(
+                enabled=bool(data.get("enabled", True)),
+                columns=columns,
+                delimiter=delimiter,
+                has_header=bool(data.get("has_header", True)),
+                encoding=str(data.get("encoding", "utf-8") or "utf-8"),
+                quotechar=quotechar,
+                skip_empty=bool(data.get("skip_empty", True)),
+            )
+        except (TypeError, ValueError):
+            return cls()
 
 @dataclass(frozen=True)
 class PdfTextPolicy:
@@ -880,6 +1249,11 @@ def iter_pages(
     pdf_dpi: int = 200,
     pdf_text_policy: PdfTextPolicy = PdfTextPolicy(),
     iiif_ocr_policy: IiifOcrPolicy = IiifOcrPolicy(),
+    csv_policy: CsvPolicy = CsvPolicy(),
+    text_policy: TextPolicy = TextPolicy(),
+    html_policy: HtmlPolicy = HtmlPolicy(),
+    xml_policy: XmlPolicy = XmlPolicy(),
+    json_policy: JsonPolicy = JsonPolicy(),
     timeout: int = 30,
     file_formats: list | None = None,
     start_page: int = 1,
@@ -980,16 +1354,11 @@ def iter_pages(
                 except Exception as e:
                     logger.error(f"{doc_id}: Error downloading PDF {input}: {e}")
                     return
-            # from pypdf import PdfReader
-            # import pypdfium2 as pdfium
-            # PdfReader, pdfium = _get_pdf_libs()
+
             pymupdf = _get_PyMuPDF()
             doc = pymupdf.open(pdf_path)
             scale = pdf_dpi / 72
             mat = pymupdf.Matrix(scale, scale)
-            # reader = PdfReader(pdf_path)
-            # doc = pdfium.PdfDocument(pdf_path)
-            # pages=reader.pages
             total = doc.page_count
             logger.info(f"{doc_id}: Found {total} pages in PDF, starting at {start_page}")
 
@@ -1028,23 +1397,369 @@ def iter_pages(
                 except OSError:
                     pass
         return
-    
-    if kind in ("text", "html", "xml"): # TODO XML parsing
+
+    if kind in ("text", "html", "xml"):
         try:
+            if kind == "text":
+                policy = text_policy
+                encoding = policy.encoding
+            elif kind == "html":
+                policy = html_policy
+                encoding = policy.encoding
+            else:
+                policy = xml_policy
+                encoding = policy.encoding
+
             if src_kind == "file":
-                raw = src_path.read_text(encoding="utf-8")
+                raw = src_path.read_text(encoding=encoding)
             else:
                 r = requests.get(input, timeout=timeout, headers=APP_USER)
                 r.raise_for_status()
                 if not r.encoding:
-                    r.encoding = "utf-8"
+                    r.encoding = encoding
                 raw = r.text
-            aPage = PageItem(1, "text", raw, source=f"{kind}:{input}", total=1)
-            yield _log_and_yield(aPage,1)
+
+            if kind == "text":
+                if not policy.enabled:
+                    aPage = PageItem(1, "text", raw, source=f"{kind}:{input}", total=1)
+                    yield _log_and_yield(aPage, 1)
+                    return
+
+                raw = _apply_replace_rules(raw, policy.replace_rules)
+                pages = [_normalize_text(p) for p in _split_text_pages(
+                    raw,
+                    split_regex=policy.split_regex,
+                    keep_delimiters=policy.keep_delimiters,
+                    flags=policy.flags,
+                )]
+
+                if policy.skip_empty:
+                    pages = [p for p in pages if p]
+
+                total = len(pages) or 1
+                logger.info(f"{doc_id}: Found {total} text page(s), starting at {start_page}")
+
+                if skip:
+                    yield _log_and_yield(
+                        PageItem(start_page, "sniff", "", source=f"text-file:{input}", total=total),
+                        total,
+                    )
+
+                for i, txt in enumerate(pages, start=1):
+                    if i < start_page:
+                        continue
+                    if skip_pages is not None and i in skip_pages:
+                        continue
+
+                    aPage = PageItem(i, "text", txt, source=f"text:{input}#page={i}", total=total)
+                    yield _log_and_yield(aPage, total)
+
+                return
+
+            elif kind == "html":
+                if not policy.enabled:
+                    aPage = PageItem(1, "text", raw, source=f"{kind}:{input}", total=1)
+                    yield _log_and_yield(aPage, 1)
+                    return
+
+                lxml_html = _get_lxml_html()
+                doc = lxml_html.fromstring(raw)
+
+                nodes = doc.xpath(policy.page_xpath) if policy.page_xpath else [doc]
+                if not nodes and policy.fallback_to_full_document:
+                    nodes = [doc]
+
+                pages = []
+                for node in nodes:
+                    txt = _extract_xpath_text(node, policy.text_xpath)
+                    txt = _apply_replace_rules(txt, policy.replace_rules)
+                    txt = _normalize_text(txt)
+                    if txt or not policy.skip_empty:
+                        pages.append(txt)
+
+                total = len(pages) or 1
+                logger.info(f"{doc_id}: Found {total} HTML page(s), starting at {start_page}")
+
+                if skip:
+                    yield _log_and_yield(
+                        PageItem(start_page, "sniff", "", source=f"html-file:{input}", total=total),
+                        total,
+                    )
+
+                for i, txt in enumerate(pages, start=1):
+                    if i < start_page:
+                        continue
+                    if skip_pages is not None and i in skip_pages:
+                        continue
+
+                    aPage = PageItem(i, "text", txt, source=f"html:{input}#page={i}", total=total)
+                    yield _log_and_yield(aPage, total)
+
+                return
+
+            elif kind == "xml":
+                if not policy.enabled:
+                    aPage = PageItem(1, "text", raw, source=f"{kind}:{input}", total=1)
+                    yield _log_and_yield(aPage, 1)
+                    return
+
+                etree = _get_lxml_etree()
+                parser = etree.XMLParser(recover=True)
+                doc = etree.fromstring(raw.encode(encoding), parser=parser)
+
+                nodes = doc.xpath(policy.page_xpath) if policy.page_xpath else [doc]
+                if not nodes and policy.fallback_to_full_document:
+                    nodes = [doc]
+
+                pages = []
+                for node in nodes:
+                    txt = _extract_xpath_text(node, policy.text_xpath)
+                    txt = _apply_replace_rules(txt, policy.replace_rules)
+                    txt = _normalize_text(txt)
+                    if txt or not policy.skip_empty:
+                        pages.append(txt)
+
+                total = len(pages) or 1
+                logger.info(f"{doc_id}: Found {total} XML page(s), starting at {start_page}")
+
+                if skip:
+                    yield _log_and_yield(
+                        PageItem(start_page, "sniff", "", source=f"xml-file:{input}", total=total),
+                        total,
+                    )
+
+                for i, txt in enumerate(pages, start=1):
+                    if i < start_page:
+                        continue
+                    if skip_pages is not None and i in skip_pages:
+                        continue
+
+                    aPage = PageItem(i, "text", txt, source=f"xml:{input}#page={i}", total=total)
+                    yield _log_and_yield(aPage, total)
+
+                return
+
         except Exception as e:
             logger.error(f"{doc_id}: Reading {kind.upper()} {input}: {e}")
         return
+
+    if kind == "json":
+        try:
+            if src_kind == "file":
+                raw = src_path.read_text(encoding=json_policy.encoding)
+            else:
+                r = requests.get(input, timeout=timeout, headers=APP_USER)
+                r.raise_for_status()
+                if not r.encoding:
+                    r.encoding = json_policy.encoding
+                raw = r.text
+
+            if not json_policy.enabled:
+                aPage = PageItem(1, "text", raw, source=f"json:{input}", total=1)
+                yield _log_and_yield(aPage, 1)
+                return
+
+            data = json.loads(raw)
+
+            # --- Paginierung ---
+            if json_policy.page_path:
+                pages = _json_get_path(data, json_policy.page_path)
+            else:
+                pages = data
+
+            if pages is None:
+                pages = []
+
+            # normalize: immer Liste
+            if not isinstance(pages, list):
+                pages = [pages]
+
+            if not pages and json_policy.fallback_to_full_document:
+                pages = [data]
+
+            total = len(pages) or 1
+
+            logger.info(f"{doc_id}: Found {total} JSON page(s), starting at {start_page}")
+
+            if skip:
+                yield _log_and_yield(
+                    PageItem(start_page, "sniff", "", source=f"json-file:{input}", total=total),
+                    total,
+                )
+
+            # --- Yield pro Element ---
+            for i, item in enumerate(pages, start=1):
+                if i < start_page:
+                    continue
+                if skip_pages is not None and i in skip_pages:
+                    continue
+
+                txt = _json_extract_text(item, json_policy)
+
+                if not txt and json_policy.skip_empty:
+                    continue
+
+                aPage = PageItem(
+                    i,
+                    "text",
+                    txt,
+                    source=f"json:{input}#page={i}",
+                    total=total,
+                )
+                yield _log_and_yield(aPage, total)
+
+        except Exception as e:
+            logger.error(f"{doc_id}: Reading JSON {input}: {e}")
+        return
+
+    # if kind in ("text", "html", "xml"): # TODO XML parsing
+    #     try:
+    #         if src_kind == "file":
+    #             raw = src_path.read_text(encoding="utf-8")
+    #         else:
+    #             r = requests.get(input, timeout=timeout, headers=APP_USER)
+    #             r.raise_for_status()
+    #             if not r.encoding:
+    #                 r.encoding = "utf-8"
+    #             raw = r.text
+    #         aPage = PageItem(1, "text", raw, source=f"{kind}:{input}", total=1)
+    #         yield _log_and_yield(aPage,1)
+    #     except Exception as e:
+    #         logger.error(f"{doc_id}: Reading {kind.upper()} {input}: {e}")
+    #     return
     
+    if kind == "csv":
+        try:
+            if src_kind == "file":
+                raw = src_path.read_text(encoding=csv_policy.encoding)
+            else:
+                r = requests.get(input, timeout=timeout, headers=APP_USER)
+                r.raise_for_status()
+                if not r.encoding:
+                    r.encoding = csv_policy.encoding
+                raw = r.text
+
+            if not csv_policy.enabled:
+                aPage = PageItem(1, "text", raw, source=f"csv:{input}", total=1)
+                yield _log_and_yield(aPage, 1)
+                return
+
+            if csv_policy.has_header:
+                reader = csv.DictReader(
+                    io.StringIO(raw),
+                    delimiter=csv_policy.delimiter,
+                    quotechar=csv_policy.quotechar,
+                )
+                rows = list(reader)
+                total = len(rows)
+
+                logger.info(f"{doc_id}: Found {total} rows in CSV, starting at {start_page}")
+
+                if skip:
+                    yield _log_and_yield(
+                        PageItem(start_page, "sniff", "", source=f"csv-file:{input}", total=total),
+                        total,
+                    )
+
+                available_columns = tuple(reader.fieldnames or ())
+                if csv_policy.columns:
+                    missing = [c for c in csv_policy.columns if c not in available_columns]
+                    if missing:
+                        raise ValueError(
+                            f"CSV columns not found: {missing}. Available columns: {available_columns}"
+                        )
+                    selected_columns = csv_policy.columns
+                else:
+                    selected_columns = available_columns
+
+                for i, row in enumerate(rows, start=1):
+                    if i < start_page:
+                        continue
+                    if skip_pages is not None and i in skip_pages:
+                        continue
+
+                    parts = []
+                    for col in selected_columns:
+                        value = row.get(col, "")
+                        if value is None:
+                            value = ""
+                        value = str(value).strip()
+                        if value or not csv_policy.skip_empty:
+                            parts.append(f"{col}: {value}" if len(selected_columns) > 1 else value)
+
+                    txt = "\n".join(parts).strip()
+
+                    if not txt and csv_policy.skip_empty:
+                        continue
+
+                    aPage = PageItem(
+                        i,
+                        "text",
+                        txt,
+                        source=f"csv-text:{input}#row={i}",
+                        total=total,
+                    )
+                    yield _log_and_yield(aPage, total)
+
+            else:
+                reader = csv.reader(
+                    io.StringIO(raw),
+                    delimiter=csv_policy.delimiter,
+                    quotechar=csv_policy.quotechar,
+                )
+                rows = list(reader)
+                total = len(rows)
+
+                logger.info(f"{doc_id}: Found {total} rows in CSV, starting at {start_page}")
+
+                if skip:
+                    yield _log_and_yield(
+                        PageItem(start_page, "sniff", "", source=f"csv-file:{input}", total=total),
+                        total,
+                    )
+
+                if csv_policy.columns:
+                    try:
+                        selected_indices = tuple(int(c) for c in csv_policy.columns)
+                    except ValueError as e:
+                        raise ValueError(
+                            "CSV policy columns must be numeric strings when has_header=False"
+                        ) from e
+                else:
+                    max_cols = max((len(r) for r in rows), default=0)
+                    selected_indices = tuple(range(max_cols))
+
+                for i, row in enumerate(rows, start=1):
+                    if i < start_page:
+                        continue
+                    if skip_pages is not None and i in skip_pages:
+                        continue
+
+                    parts = []
+                    for idx in selected_indices:
+                        value = row[idx] if idx < len(row) else ""
+                        value = str(value).strip()
+                        if value or not csv_policy.skip_empty:
+                            parts.append(f"col{idx}: {value}" if len(selected_indices) > 1 else value)
+
+                    txt = "\n".join(parts).strip()
+
+                    if not txt and csv_policy.skip_empty:
+                        continue
+
+                    aPage = PageItem(
+                        i,
+                        "text",
+                        txt,
+                        source=f"csv-text:{input}#row={i}",
+                        total=total,
+                    )
+                    yield _log_and_yield(aPage, total)
+
+        except Exception as e:
+            logger.error(f"{doc_id}: Reading {kind.upper()} {input}: {e}")
+        return
+      
     logger.error(f"{doc_id}: Unknown URL type: {kind.upper()} {input}")
     # raise ValueError("Unknown URL type.")
 

@@ -40,7 +40,7 @@ def ingest_pipeline(
 
     page_to_text_kwargs['config_path'] = config_path if (not page_to_text_kwargs.get('config_path') and config_path) else page_to_text_kwargs.get('config_path')
     vector_kwargs['config_path'] = config_path if (not vector_kwargs.get('config_path') and config_path) else vector_kwargs.get('config_path')
-
+    llm_kwargs['config_path'] = config_path if (not llm_kwargs.get('config_path') and config_path) else llm_kwargs.get('config_path')
 
     logger.info(
         "Pipeline configuration:\n"
@@ -54,13 +54,21 @@ def ingest_pipeline(
 
     if not from_source and not ingest:
         return([{"error":"nothing to do here: no from_source, no ingest!"}])
+    
     vector = isinstance(vector_kwargs, dict) and vector_kwargs.get('framework')
     if vector:
         from .vector import embed
         from .helpers import clean_ocr    
 
+    
+    use_llm = isinstance(llm_kwargs, dict) and llm_kwargs.get('config_path')
+    
+    if use_llm:
+        from .llm import llm
+        llm_mapping_key = llm_kwargs.pop('mapping_key','llm')        
+
     if from_source:
-        from .ocr import iter_text_pages, PdfTextPolicy, IiifOcrPolicy     
+        from .ocr import iter_text_pages, PdfTextPolicy, IiifOcrPolicy, TextPolicy, HtmlPolicy, XmlPolicy, JsonPolicy
 
         ptp = iter_pages_kwargs.get("pdf_text_policy")
         if isinstance(ptp, dict):
@@ -69,7 +77,23 @@ def ingest_pipeline(
         iiif_ocr_policy = iter_pages_kwargs.get("iiif_ocr_policy")
         if isinstance(iiif_ocr_policy, dict):
             iter_pages_kwargs["iiif_ocr_policy"] = IiifOcrPolicy.from_json(iiif_ocr_policy)
-        
+
+        text_policy = iter_pages_kwargs.get("text_policy")
+        if isinstance(text_policy, dict):
+            iter_pages_kwargs["text_policy"] = TextPolicy.from_json(text_policy)  
+
+        html_policy = iter_pages_kwargs.get("html_policy")
+        if isinstance(html_policy, dict):
+            iter_pages_kwargs["html_policy"] = HtmlPolicy.from_json(html_policy)  
+
+        xml_policy = iter_pages_kwargs.get("xml_policy")
+        if isinstance(xml_policy, dict):
+            iter_pages_kwargs["xml_policy"] = XmlPolicy.from_json(xml_policy) 
+
+        json_policy = iter_pages_kwargs.get("json_policy")
+        if isinstance(json_policy, dict):
+            iter_pages_kwargs["json_policy"] = JsonPolicy.from_json(json_policy) 
+
         def make_pages_fn(doc_id: str, stats: dict):
             def pages_fn(u: str):
                 try:
@@ -106,6 +130,7 @@ def ingest_pipeline(
                         "label": label,
                         "from_source": True,
                         "vector": vector,
+                        "llm":llm,
                         "ingest": False,
                         "error": "from_source=true requires '_input' in each item",
                     })
@@ -123,6 +148,11 @@ def ingest_pipeline(
                             logger.debug(vector_doc)
                             item["vector"] = vector_doc
 
+                        if use_llm:                            
+                            llm_response = llm(clean_ocr(text), llm_kwargs)
+                            logger.debug(llm_response)
+                            item[llm_mapping_key] = llm_response
+
                         pages.append(item)
 
                 except Exception as e:
@@ -133,6 +163,7 @@ def ingest_pipeline(
                         "meta": meta,
                         "from_source": True,
                         "vector": vector,
+                        "llm":llm,
                         "ingest": False,
                         "error": str(e),
                     })
@@ -146,6 +177,7 @@ def ingest_pipeline(
                     "from_source": True,
                     "framework": framework,
                     "vector": vector,
+                    "llm":llm,
                     "ocr_pages": len(pages),
                     "ingest": False,
                     "targets": targets,
@@ -208,7 +240,10 @@ def ingest_pipeline(
                 if vector:
                     vector_doc = embed(clean_ocr(text),**vector_kwargs)
                     d["vector"] = vector_doc
-
+                if use_llm:                            
+                    llm_response = llm(clean_ocr(text), llm_kwargs)
+                    logger.debug(llm_response)
+                    d[llm_mapping_key] = llm_response
                 digest = index_stream(
                         targets=targets,
                         doc_id=doc_id,

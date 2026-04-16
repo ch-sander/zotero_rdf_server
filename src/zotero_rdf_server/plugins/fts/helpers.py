@@ -191,7 +191,7 @@ def _download(url: str, dest: Path) -> None:
 
     raise RuntimeError(f"Download failed for all variants of {url!r}") from last_exc
 
-Kind = Literal["pdf", "iiif", "xml", "html", "text", "json"]
+Kind = Literal["pdf", "iiif", "xml", "html", "text", "json", "csv"]
 
 def detect_file_kind(path: Path) -> Optional[Kind]:
     ext = path.suffix.lower()
@@ -202,6 +202,7 @@ def detect_file_kind(path: Path) -> Optional[Kind]:
         ".html": "html",
         ".htm": "html",
         ".xml": "xml",
+        ".csv": "csv",
     }.get(ext, None)
 
 def is_url(s: str) -> bool:
