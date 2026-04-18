@@ -172,6 +172,55 @@ llm:
 
             Only respond with valid JSON List(Dict), no verbal explanation! Otherwise my parser breaks.
 
+rag:
+  working_dir: ./data/lightrag
+  workspace: default
+
+  storages:
+    kv: OpenSearchKVStorage
+    vector: OpenSearchVectorDBStorage
+    graph: OpenSearchGraphStorage
+    doc_status: OpenSearchDocStatusStorage
+
+  opensearch:
+    hosts: localhost:9200
+    user: admin # adjust
+    password: changeme
+    use_ssl: true
+    verify_certs: false
+
+    # optional:
+    timeout: 30
+    max_retries: 3
+    number_of_shards: 1
+    number_of_replicas: 0
+    knn_ef_construction: 200
+    knn_m: 16
+    knn_ef_search: 100
+    use_ppl_graphlookup: true
+
+  llm:
+    binding: ollama
+    host: http://localhost:11434
+    model: qwen2.5:7b
+    options:
+      num_ctx: 32768
+
+  embedding:
+    binding: ollama
+    host: http://localhost:11434
+    model: nomic-embed-text
+    dim: 768
+    max_token_size: 8192
+
+  query:
+    mode: mix
+    response_type: Multiple Paragraphs
+    top_k: 40
+    enable_rerank: true
+    only_need_context: false
+    only_need_prompt: false
+
 viewer:
   image_root: "/app/exports/kraken/images"
   text_root: "/app/exports/kraken/texts"
