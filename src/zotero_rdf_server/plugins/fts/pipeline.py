@@ -36,6 +36,8 @@ def ingest_pipeline(
     page_to_text_kwargs = dict(page_to_text_kwargs or {})
     vector_kwargs = dict(vector_kwargs or {})
     text_image_file_kwargs = dict(text_image_file_kwargs or {})
+    llm_kwargs = dict(llm_kwargs or {})
+    # rag_kwargs = dict(rag_kwargs or {})
     logger.info(f"Ingest Pipeline started with {len(items)} items using framework={framework}...")
 
     page_to_text_kwargs['config_path'] = config_path if (not page_to_text_kwargs.get('config_path') and config_path) else page_to_text_kwargs.get('config_path')
@@ -130,7 +132,7 @@ def ingest_pipeline(
                         "label": label,
                         "from_source": True,
                         "vector": vector,
-                        "llm":llm,
+                        "llm":use_llm,
                         "ingest": False,
                         "error": "from_source=true requires '_input' in each item",
                     })
@@ -163,7 +165,7 @@ def ingest_pipeline(
                         "meta": meta,
                         "from_source": True,
                         "vector": vector,
-                        "llm":llm,
+                        "llm":use_llm,
                         "ingest": False,
                         "error": str(e),
                     })
@@ -177,7 +179,7 @@ def ingest_pipeline(
                     "from_source": True,
                     "framework": framework,
                     "vector": vector,
-                    "llm":llm,
+                    "llm":use_llm,
                     "ocr_pages": len(pages),
                     "ingest": False,
                     "targets": targets,
