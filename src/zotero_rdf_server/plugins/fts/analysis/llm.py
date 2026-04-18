@@ -1,5 +1,5 @@
 
-from .helpers import ensure_import, resolve_config_path, plugin_logger
+from ..helpers import ensure_import, resolve_config_path, plugin_logger
 from zotero_rdf_server.utils import load_dict_like
 from typing import Dict, Iterator, Tuple, Any, Iterable, Callable
 from functools import lru_cache

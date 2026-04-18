@@ -59,14 +59,14 @@ def ingest_pipeline(
     
     vector = isinstance(vector_kwargs, dict) and vector_kwargs.get('framework')
     if vector:
-        from .vector import embed
+        from .analysis.vector import embed
         from .helpers import clean_ocr    
 
     
     use_llm = isinstance(llm_kwargs, dict) and llm_kwargs.get('config_path')
     
     if use_llm:
-        from .llm import llm
+        from .analysis.llm import llm
         llm_mapping_key = llm_kwargs.pop('mapping_key','llm')        
 
     if from_source:

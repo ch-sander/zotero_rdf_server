@@ -2,16 +2,17 @@ from sklearn.neighbors import NearestNeighbors
 from typing import Any, Dict, List, Literal, Optional
 from collections import defaultdict
 import math
-from .endpoints import ResultAnalysisParams
-from .helpers import ensure_import
+from ..endpoints import ResultAnalysisParams
+from ..helpers import ensure_import
 from copy import deepcopy
 import math
 from collections import Counter, defaultdict
 from typing import Any, Dict, List, Tuple
-from .search import logger
+from ..search import logger
 
 NeighborMode = Literal[
     "knn_vector",
+    "os_knn",
     "mlt",
     "page_parent",
     "meta_onehot",
@@ -574,7 +575,7 @@ def _compute_neighbors_os_knn(
         raise ValueError("client is required for mode='os_knn'")
 
     if not index:
-        from .search import DEFAULT_ALIAS
+        from ..search import DEFAULT_ALIAS
         index = DEFAULT_ALIAS
         logger.warning(f"Using index: {DEFAULT_ALIAS}")
 
@@ -589,7 +590,7 @@ def _compute_neighbors_os_knn(
 
     out = {}
 
-    from .search import get_doc_vector
+    from ..search import get_doc_vector
 
     for hit_idx in usable_hit_refs:
         hit = hits[hit_idx]
@@ -684,7 +685,7 @@ def _compute_neighbors_mlt(
     if client is None:
         raise ValueError("client is required for mode='mlt'")
     if not index:
-        from .search import DEFAULT_ALIAS
+        from ..search import DEFAULT_ALIAS
         index = DEFAULT_ALIAS
         logger.warning(f"Using index: {DEFAULT_ALIAS}")
 
@@ -859,7 +860,7 @@ from sklearn.preprocessing import normalize as sk_normalize
 from sklearn.neighbors import NearestNeighbors
 import json
 
-def _compute_neighbors_meta_onehot(
+def _compute_neighbors_meta_onehot_legacy(
     *,
     hits,
     usable_hit_refs,
@@ -960,6 +961,235 @@ def _compute_neighbors_meta_onehot(
         out[hit_row_id] = {"ids": ids[:k], "distances": dists[:k]}
 
     return out
+
+def _build_meta_onehot_matrix(
+    *,
+    hits,
+    usable_hit_refs,
+    meta_fields=None,
+):
+    vocab = {}
+    rows = []
+    cols = []
+    data = []
+
+    use_all_meta = not meta_fields
+
+    for row_idx, hit_idx in enumerate(usable_hit_refs):
+        hit = hits[hit_idx]
+
+        if use_all_meta:
+            logger.warning("Using all meta fields!")
+            meta_value = _get_nested(hit, "_source.meta")
+            if not isinstance(meta_value, dict):
+                continue
+
+            flat_items = _flatten_to_tokens(meta_value, prefix="meta")
+
+            for field_path, scalar_value in flat_items:
+                if scalar_value is None:
+                    continue
+                if isinstance(scalar_value, (dict, list, tuple, set)):
+                    continue
+
+                token = f"{field_path}={scalar_value}"
+                col_idx = vocab.setdefault(token, len(vocab))
+                rows.append(row_idx)
+                cols.append(col_idx)
+                data.append(1.0)
+
+        else:
+            for field in meta_fields:
+                value = _get_nested(hit, f"_source.{field}")
+                if value is None:
+                    continue
+
+                if isinstance(value, dict):
+                    continue
+
+                values = value if isinstance(value, list) else [value]
+
+                for v in values:
+                    if v is None:
+                        continue
+                    if isinstance(v, (dict, list, tuple, set)):
+                        continue
+
+                    token = f"{field}={v}"
+                    col_idx = vocab.setdefault(token, len(vocab))
+                    rows.append(row_idx)
+                    cols.append(col_idx)
+                    data.append(1.0)
+
+    if not vocab:
+        return None
+
+    X = csr_matrix(
+        (data, (rows, cols)),
+        shape=(len(usable_hit_refs), len(vocab)),
+        dtype=float,
+    )
+    X = sk_normalize(X, norm="l2", copy=False)
+    return X
+
+
+def _compute_neighbors_meta_onehot(
+    *,
+    hits,
+    usable_hit_refs,
+    k,
+    meta_fields=None,
+):
+    X = _build_meta_onehot_matrix(
+        hits=hits,
+        usable_hit_refs=usable_hit_refs,
+        meta_fields=meta_fields,
+    )
+
+    if X is None:
+        return {
+            _stable_neighbor_id(hits[hit_idx], hit_idx): {"ids": [], "distances": []}
+            for hit_idx in usable_hit_refs
+        }
+
+    nn = NearestNeighbors(
+        n_neighbors=min(k + 1, len(usable_hit_refs)),
+        metric="cosine",
+    )
+    nn.fit(X)
+    distances, indices = nn.kneighbors(X)
+
+    out = {}
+    for row_idx, (dist_row, ind_row) in enumerate(zip(distances, indices)):
+        hit_idx = usable_hit_refs[row_idx]
+        hit_row_id = _stable_neighbor_id(hits[hit_idx], hit_idx)
+
+        ids = []
+        dists = []
+
+        for dist, neighbor_row in zip(dist_row, ind_row):
+            if neighbor_row == row_idx:
+                continue
+
+            neighbor_hit_idx = usable_hit_refs[neighbor_row]
+            neighbor_row_id = _stable_neighbor_id(hits[neighbor_hit_idx], neighbor_hit_idx)
+
+            ids.append(neighbor_row_id)
+            dists.append(float(dist))
+
+        out[hit_row_id] = {"ids": ids[:k], "distances": dists[:k]}
+
+    return out
+
+
+def _neighbors_to_distance_matrix(
+    *,
+    hits,
+    usable_hit_refs,
+    neighbors_per_hit,
+    fill_value: float = 1.0,
+    symmetrize: bool = True,
+):
+    import numpy as np
+
+    row_ids = [_stable_neighbor_id(hits[i], i) for i in usable_hit_refs]
+    row_id_to_pos = {row_id: pos for pos, row_id in enumerate(row_ids)}
+    n = len(row_ids)
+
+    if n == 0:
+        return None
+
+    D = np.full((n, n), fill_value, dtype=float)
+    np.fill_diagonal(D, 0.0)
+
+    for row_pos, hit_idx in enumerate(usable_hit_refs):
+        row_id = _stable_neighbor_id(hits[hit_idx], hit_idx)
+        payload = neighbors_per_hit.get(row_id, {"ids": [], "distances": []})
+
+        for neighbor_id, dist in zip(payload.get("ids", []), payload.get("distances", [])):
+            col_pos = row_id_to_pos.get(neighbor_id)
+            if col_pos is None:
+                continue
+            D[row_pos, col_pos] = float(dist)
+
+    if symmetrize:
+        D = np.minimum(D, D.T)
+
+    return D
+
+
+def _build_projection_input_from_neighbors(
+    *,
+    projection_source: str,
+    projection_neighbors_mode: str,
+    hits,
+    usable_hit_refs,
+    clustering_matrix,
+    analysis,
+    os_client,
+):
+    if projection_source == "cluster_matrix":
+        return clustering_matrix, None, projection_neighbors_mode
+
+    if projection_source == "meta_onehot":
+        X = _build_meta_onehot_matrix(
+            hits=hits,
+            usable_hit_refs=usable_hit_refs,
+            meta_fields=getattr(analysis, "neighbors_meta_onehot_fields", []),
+        )
+        return X, None, "meta_onehot"
+
+    if projection_source != "neighbors":
+        raise ValueError(f"Unsupported projection_source: {projection_source}")
+
+    neighbors_per_hit = _compute_neighbors(
+        mode=projection_neighbors_mode,
+        hits=hits,
+        usable_hit_refs=usable_hit_refs,
+        clustering_matrix=clustering_matrix,
+        k=int(getattr(analysis, "neighbors_k", 10)),
+        metric=getattr(analysis, "neighbors_metric", "cosine"),
+        row_id_field=getattr(analysis, "neighbors_row_id_field", None),
+
+        # MLT
+        mlt_client=os_client,
+        mlt_index=getattr(analysis, "neighbors_mlt_index", None),
+        mlt_fields=getattr(analysis, "neighbors_mlt_fields", ["text"]),
+        mlt_min_term_freq=int(getattr(analysis, "neighbors_mlt_min_term_freq", 1)),
+        mlt_min_doc_freq=int(getattr(analysis, "neighbors_mlt_min_doc_freq", 1)),
+        mlt_max_query_terms=int(getattr(analysis, "neighbors_mlt_max_query_terms", 25)),
+        mlt_minimum_should_match=str(getattr(analysis, "neighbors_mlt_minimum_should_match", "30%")),
+
+        # OS kNN
+        os_knn_client=os_client,
+        os_knn_index=getattr(analysis, "neighbors_os_knn_index", None),
+        os_knn_vector_field=getattr(analysis, "neighbors_os_knn_vector_field", "vector"),
+        os_knn_k=getattr(analysis, "neighbors_os_knn_k", None),
+        os_knn_ef_search=getattr(analysis, "neighbors_os_knn_ef_search", None),
+
+        # Meta / page
+        parent_field=getattr(analysis, "neighbors_parent_field", "meta.parent"),
+        page_field=getattr(analysis, "neighbors_page_field", "page"),
+        meta_onehot_fields=getattr(analysis, "neighbors_meta_onehot_fields", []),
+
+        # Hybrid
+        hybrid_modes=getattr(analysis, "neighbors_hybrid_modes", ["knn_vector", "mlt"]),
+        hybrid_weights=getattr(
+            analysis,
+            "neighbors_hybrid_weights",
+            {"knn_vector": 1.0, "mlt": 1.0},
+        ),
+    )
+
+    distance_matrix = _neighbors_to_distance_matrix(
+        hits=hits,
+        usable_hit_refs=usable_hit_refs,
+        neighbors_per_hit=neighbors_per_hit,
+        fill_value=float(getattr(analysis, "projection_distance_fill_value", 1.0)),
+        symmetrize=bool(getattr(analysis, "projection_distance_symmetrize", True)),
+    )
+
+    return None, distance_matrix, projection_neighbors_mode
 
 def _normalize_distance_list(ids, distances):
     if not distances:
@@ -1424,13 +1654,40 @@ def cluster_hits_by_analysis(
             "label_source": analysis.cluster_label_source,
         }
 
+    # if return_projection:
+    #     projection_2d, projection_method = _compute_projection_2d(
+    #         clustering_matrix=clustering_matrix,
+    #         method=getattr(analysis, "cluster_projection_method", "umap"),
+    #         random_state=random_state,
+    #     )
+    projection_2d = None
+    projection_method = None
+    projection_source_used = None
+
     if return_projection:
-        projection_2d, projection_method = _compute_projection_2d(
+        projection_source = getattr(analysis, "projection_source", "cluster_matrix")
+        projection_neighbors_mode = getattr(
+            analysis,
+            "projection_neighbors_mode",
+            getattr(analysis, "neighbors_mode", "knn_vector"),
+        )
+
+        projection_matrix, projection_distance_matrix, projection_source_used = _build_projection_input_from_neighbors(
+            projection_source=projection_source,
+            projection_neighbors_mode=projection_neighbors_mode,
+            hits=hits_copy,
+            usable_hit_refs=usable_hit_refs,
             clustering_matrix=clustering_matrix,
+            analysis=analysis,
+            os_client=os_client,
+        )
+
+        projection_2d, projection_method = _compute_projection_2d(
+            clustering_matrix=projection_matrix,
+            distance_matrix=projection_distance_matrix,
             method=getattr(analysis, "cluster_projection_method", "umap"),
             random_state=random_state,
         )
-
 
     for i, hit in enumerate(hits_copy):
         hit.setdefault("_source", {})
@@ -1457,12 +1714,13 @@ def cluster_hits_by_analysis(
         else:
             cluster_result = cluster_meta[cluster_id]
 
-        if return_projection:
-                hit["_source"]["analysis"]["projection"] = {
-                    "x": float(projection_2d[row_idx][0]),
-                    "y": float(projection_2d[row_idx][1]),
-                    "method": projection_method,
-                }
+        if return_projection and projection_2d is not None:
+            hit["_source"]["analysis"]["projection"] = {
+                "x": float(projection_2d[row_idx][0]),
+                "y": float(projection_2d[row_idx][1]),
+                "method": projection_method,
+                "source": projection_source_used,
+            }
 
         hit["_source"]["analysis"]["cluster"] = cluster_result
         if neighbors_per_hit is not None:
@@ -1474,7 +1732,7 @@ def cluster_hits_by_analysis(
 
     return hits_copy
 
-def _compute_projection_2d(
+def _compute_projection_2d_legacy(
     clustering_matrix,
     method: str = "pca",
     random_state: int | None = None,
@@ -1537,4 +1795,117 @@ def _compute_projection_2d(
 
     projection = np.asarray(projection, dtype=float)
 
+    return projection.tolist(), method
+
+def _compute_projection_2d(
+    clustering_matrix=None,
+    distance_matrix=None,
+    method: str = "pca",
+    random_state: int | None = None,
+) -> tuple[list[list[float]], str]:
+    import numpy as np
+
+    method = (method or "pca").lower()
+
+    if distance_matrix is not None:
+        projection_input = np.asarray(distance_matrix, dtype=float)
+        n_samples = projection_input.shape[0]
+
+        if n_samples == 0:
+            return [], method
+
+        if n_samples == 1:
+            return [[0.0, 0.0]], method
+
+        if method == "pca":
+            raise ValueError("PCA does not support precomputed distance matrices. Use 'umap' or 'tsne'.")
+
+        if method == "tsne":
+            from sklearn.manifold import TSNE
+
+            perplexity = min(30, max(1, n_samples - 1))
+
+            model = TSNE(
+                n_components=2,
+                metric="precomputed",
+                random_state=random_state,
+                init="random",
+                learning_rate="auto",
+                perplexity=perplexity,
+            )
+            projection = model.fit_transform(projection_input)
+
+        elif method == "umap":
+            ensure_import("umap-learn", requirements=None)
+            import umap
+
+            n_neighbors = min(15, max(2, n_samples - 1))
+
+            model = umap.UMAP(
+                n_components=2,
+                metric="precomputed",
+                random_state=random_state,
+                n_neighbors=n_neighbors,
+            )
+            projection = model.fit_transform(projection_input)
+
+        else:
+            raise ValueError(f"Unsupported projection method for distance matrix: {method}")
+
+        projection = np.asarray(projection, dtype=float)
+        return projection.tolist(), method
+
+    if clustering_matrix is None:
+        return [], method
+
+    if hasattr(clustering_matrix, "toarray"):
+        projection_input = clustering_matrix.toarray()
+    else:
+        projection_input = np.asarray(clustering_matrix)
+
+    n_samples = projection_input.shape[0]
+
+    if n_samples == 0:
+        return [], method
+
+    if n_samples == 1:
+        return [[0.0, 0.0]], method
+
+    if method == "pca":
+        from sklearn.decomposition import PCA
+
+        model = PCA(n_components=2, random_state=random_state)
+        projection = model.fit_transform(projection_input)
+
+    elif method == "tsne":
+        from sklearn.manifold import TSNE
+
+        perplexity = min(30, max(1, n_samples - 1))
+
+        model = TSNE(
+            n_components=2,
+            random_state=random_state,
+            init="pca",
+            learning_rate="auto",
+            perplexity=perplexity,
+        )
+        projection = model.fit_transform(projection_input)
+
+    elif method == "umap":
+        ensure_import("umap-learn", requirements=None)
+        import umap
+
+        n_neighbors = min(15, max(2, n_samples - 1))
+
+        model = umap.UMAP(
+            n_components=2,
+            random_state=random_state,
+            n_neighbors=n_neighbors,
+        )
+        projection = model.fit_transform(projection_input)
+
+    else:
+        raise ValueError(f"Unsupported projection method: {method}")
+
+    projection = np.asarray(projection, dtype=float)
     return projection.tolist(), method

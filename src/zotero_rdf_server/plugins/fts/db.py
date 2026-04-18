@@ -186,7 +186,7 @@ def page_docs(
     now = datetime.now(timezone.utc).isoformat()
     vector = isinstance(vector_kwargs, dict) and vector_kwargs.get('framework')
     if vector:
-        from .vector import embed
+        from .analysis.vector import embed
         from .helpers import clean_ocr        
 
     for sequence, text in pages:

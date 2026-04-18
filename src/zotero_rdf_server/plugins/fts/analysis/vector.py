@@ -1,4 +1,4 @@
-from .helpers import ensure_import, plugin_logger, resolve_config_path
+from ..helpers import ensure_import, plugin_logger, resolve_config_path
 
 import os
 import logging
