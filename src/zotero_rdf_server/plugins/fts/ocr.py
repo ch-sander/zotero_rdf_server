@@ -2384,16 +2384,20 @@ def iter_text_pages(
     total = 0
     _report = _cache_discrepancy_report()
 
-    if save_text == "overwrite":
+    if save_text in {"overwrite"}:
         skip_pages = set()
-    elif save_image in {"active", "overwrite", "smart"}:        
+    elif save_image in {"smart"}:        
+        skip_pages = set(_report["image_pages"])
+        _sneak_kwargs = {**iter_kwargs, "skip": True}
+        _sneak, _total = next(iter_pages(input=input, **_sneak_kwargs))
+        logger.info(f"SMART: Skipping {len(skip_pages)} pages when iterating all {_total} source pages.")
+    elif save_image in {"active", "overwrite"}:
         skip_pages = set(_report["shared"])
     else:
         skip_pages = set(_report["text_pages"])
 
-    logger.info(f"Skipping {len(skip_pages)} pages.")
+    
     iter_kwargs["skip_pages"] = skip_pages
-    # _peak, _total = next(iter_pages(input=input, **iter_kwargs, skip=True))
 
     for item, total in iter_pages(input=input, **iter_kwargs):
         page_no = getattr(item, "sequence", None) or getattr(item, "index", None)        
@@ -2409,11 +2413,8 @@ def iter_text_pages(
                     yield from _yield_from_cache()
                 _log_discrepancy_report(total)
                 return
-        # if getattr(item, "kind") == "sniff":
-        #     logger.warning(f"Stopping at {page_no} of {total} as only sniffing --> skip this item!")
-        if save_image in {"smart"}:            
-            if int(page_no) in _report['shared']:
-                continue
+        if save_image in {"smart"} and int(page_no) in _report['shared']:
+            continue
 
         # if save_image == "active":
         #     ip = _image_path(page_no)
@@ -2446,8 +2447,7 @@ def iter_text_pages(
                             continue
                 else:
                     logger.debug(f"Image exists: {ip}")
-        
-        
+
         # If Cached Text --> return
         if save_image not in {"smart"} and save_text not in {"overwrite"} and tp is not None and tp.exists():
             if yield_result:
@@ -2462,8 +2462,6 @@ def iter_text_pages(
                     txt = ""
 
                 yield _log_and_yield(page_no, txt, total, True)
-            # else:
-            #     _log_and_yield(page_no, "[skipping]", total, True)
             continue
 
         # OCR
