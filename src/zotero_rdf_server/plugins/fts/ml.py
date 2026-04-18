@@ -559,6 +559,114 @@ def _extract_os_id(hit: Dict[str, Any], row_id_field: str | None = None) -> str 
 
     return hit.get("_id")
 
+def _compute_neighbors_os_knn(
+    *,
+    hits,
+    usable_hit_refs,
+    k,
+    client,
+    index,
+    vector_field,
+    ef_search=None,
+    row_id_field=None,
+):
+    if client is None:
+        raise ValueError("client is required for mode='os_knn'")
+
+    if not index:
+        from .search import DEFAULT_ALIAS
+        index = DEFAULT_ALIAS
+        logger.warning(f"Using index: {DEFAULT_ALIAS}")
+
+    os_id_to_row_id = {}
+
+    for hit_idx in usable_hit_refs:
+        hit = hits[hit_idx]
+        row_id = _stable_neighbor_id(hit, hit_idx)
+        os_id = _extract_os_id(hit, row_id_field=row_id_field)
+        if os_id is not None:
+            os_id_to_row_id[str(os_id)] = row_id
+
+    out = {}
+
+    from .search import get_doc_vector
+
+    for hit_idx in usable_hit_refs:
+        hit = hits[hit_idx]
+        hit_row_id = _stable_neighbor_id(hit, hit_idx)
+        os_id = _extract_os_id(hit, row_id_field=row_id_field)
+
+        if os_id is None:
+            out[hit_row_id] = {"ids": [], "distances": []}
+            continue
+
+        try:
+            query_vec = get_doc_vector(
+                index=index,
+                os_id=str(os_id),
+                vector_field=vector_field,
+            )
+        except Exception as e:
+            logger.warning("Could not fetch vector for doc %r: %s", os_id, e)
+            out[hit_row_id] = {"ids": [], "distances": []}
+            continue
+
+        if not query_vec:
+            out[hit_row_id] = {"ids": [], "distances": []}
+            continue
+
+        knn_inner = {"vector": query_vec, "k": k}
+        if ef_search is not None:
+            knn_inner["method_parameters"] = {"ef_search": ef_search}
+
+        body = {
+            "size": k + 1,
+            "query": {
+                "bool": {
+                    "must": [
+                        {
+                            "knn": {
+                                vector_field: knn_inner
+                            }
+                        }
+                    ],
+                    "must_not": [{"ids": {"values": [str(os_id)]}}],
+                }
+            },
+        }
+
+        try:
+            resp = client.search(index=index, body=body)
+        except Exception as e:
+            logger.warning("OpenSearch kNN search failed for doc %r: %s", os_id, e)
+            out[hit_row_id] = {"ids": [], "distances": []}
+            continue
+
+        hits_res = resp.get("hits", {}).get("hits", [])
+
+        ids = []
+        dists = []
+
+        for neighbor in hits_res:
+            neighbor_os_id = str(neighbor.get("_id"))
+            neighbor_row_id = os_id_to_row_id.get(neighbor_os_id)
+            if neighbor_row_id is None:
+                continue
+
+            score = float(neighbor.get("_score") or 0.0)
+
+            distance = 1.0 / (score + 1e-9)
+
+            ids.append(neighbor_row_id)
+            dists.append(distance)
+
+            if len(ids) >= k:
+                break
+
+        out[hit_row_id] = {"ids": ids, "distances": dists}
+
+    return out
+
 def _compute_neighbors_mlt(
     *,
     hits,
@@ -874,6 +982,13 @@ def _compute_neighbors_hybrid(
     mlt_client,
     mlt_index,
     mlt_fields,
+
+    os_knn_client,
+    os_knn_index,
+    os_knn_vector_field,
+    os_knn_k,
+    os_knn_ef_search,
+
     hybrid_modes,
     hybrid_weights,
     parent_field,
@@ -898,6 +1013,13 @@ def _compute_neighbors_hybrid(
             mlt_client=mlt_client,
             mlt_index=mlt_index,
             mlt_fields=mlt_fields,
+
+            os_knn_client=os_knn_client,
+            os_knn_index=os_knn_index,
+            os_knn_vector_field=os_knn_vector_field,
+            os_knn_k=os_knn_k,
+            os_knn_ef_search=os_knn_ef_search,
+
             parent_field=parent_field,
             page_field=page_field,
             meta_onehot_fields=meta_onehot_fields,
@@ -910,10 +1032,13 @@ def _compute_neighbors_hybrid(
     out = {}
 
     for hit_idx in usable_hit_refs:
+        hit = hits[hit_idx]
+        row_id = _stable_neighbor_id(hit, hit_idx)
+
         scores = defaultdict(float)
 
         for mode, neighbors in per_mode.items():
-            payload = neighbors.get(hit_idx, {"ids": [], "distances": []})
+            payload = neighbors.get(row_id, {"ids": [], "distances": []})
             norm = _normalize_distance_list(payload["ids"], payload["distances"])
             weight = float(hybrid_weights.get(mode, 1.0))
 
@@ -921,7 +1046,7 @@ def _compute_neighbors_hybrid(
                 scores[nid] += weight * ndist
 
         ranked = sorted(scores.items(), key=lambda x: (x[1], x[0]))[:k]
-        out[hit_idx] = {
+        out[row_id] = {
             "ids": [nid for nid, _ in ranked],
             "distances": [float(d) for _, d in ranked],
         }
@@ -944,6 +1069,13 @@ def _compute_neighbors(
     mlt_min_doc_freq: int = 1,
     mlt_max_query_terms: int = 25,
     mlt_minimum_should_match: str = "30%",
+
+    os_knn_client=None,
+    os_knn_index: Optional[str] = None,
+    os_knn_vector_field: str = "vector",
+    os_knn_k: Optional[int] = None,
+    os_knn_ef_search: Optional[int] = None,
+
     parent_field: str = "meta.parent",
     page_field: str = "page",
     meta_onehot_fields: Optional[List[str]] = None,
@@ -974,7 +1106,19 @@ def _compute_neighbors(
             minimum_should_match=mlt_minimum_should_match,
             row_id_field=row_id_field,
         )
-
+    
+    if mode == "os_knn":
+        return _compute_neighbors_os_knn(
+            hits=hits,
+            usable_hit_refs=usable_hit_refs,
+            k=os_knn_k or k,
+            client=os_knn_client or mlt_client,
+            index=os_knn_index or mlt_index,
+            vector_field=os_knn_vector_field,
+            ef_search=os_knn_ef_search,
+            row_id_field=row_id_field,
+        )
+    
     if mode == "page_parent":
         return _compute_neighbors_page_parent(
             hits=hits,
@@ -1003,6 +1147,13 @@ def _compute_neighbors(
             mlt_client=mlt_client,
             mlt_index=mlt_index,
             mlt_fields=mlt_fields or ["text"],
+
+            os_knn_client=os_knn_client or mlt_client,
+            os_knn_index=os_knn_index,
+            os_knn_vector_field=os_knn_vector_field,
+            os_knn_k=os_knn_k,
+            os_knn_ef_search=os_knn_ef_search,
+
             hybrid_modes=hybrid_modes or ["knn_vector", "mlt"],
             hybrid_weights=hybrid_weights or {"knn_vector": 1.0, "mlt": 1.0},
             parent_field=parent_field,
@@ -1025,7 +1176,7 @@ def cluster_hits_by_analysis(
     return_vector: bool = False,
     return_projection: bool = None,
     return_neighbors:bool = False,
-    mlt_client=None,
+    os_client=None,
     cluster_vectors_by_id: Dict[str, Dict[str, float]] | None = None,
 ) -> List[Dict[str, Any]]:
     if not hits or not analysis.cluster_enabled:
@@ -1221,13 +1372,20 @@ def cluster_hits_by_analysis(
             row_id_field=getattr(analysis, "neighbors_row_id_field", None),
 
             # MLT
-            mlt_client=mlt_client,
+            mlt_client=os_client,
             mlt_index=getattr(analysis, "neighbors_mlt_index", None),
             mlt_fields=getattr(analysis, "neighbors_mlt_fields", ["text"]),
             mlt_min_term_freq=int(getattr(analysis, "neighbors_mlt_min_term_freq", 1)),
             mlt_min_doc_freq=int(getattr(analysis, "neighbors_mlt_min_doc_freq", 1)),
             mlt_max_query_terms=int(getattr(analysis, "neighbors_mlt_max_query_terms", 25)),
             mlt_minimum_should_match=str(getattr(analysis, "neighbors_mlt_minimum_should_match", "30%")),
+
+            # OS kNN
+            os_knn_client=os_client, # TODO is this best?
+            os_knn_index=getattr(analysis, "neighbors_os_knn_index", None),
+            os_knn_vector_field=getattr(analysis, "neighbors_os_knn_vector_field", "vector"),
+            os_knn_k=getattr(analysis, "neighbors_os_knn_k", None),
+            os_knn_ef_search=getattr(analysis, "neighbors_os_knn_ef_search", None),
 
             # Meta
             parent_field=getattr(analysis, "neighbors_parent_field", "meta.parent"),

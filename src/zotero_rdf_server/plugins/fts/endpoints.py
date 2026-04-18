@@ -1454,6 +1454,29 @@ class ResultAnalysisParams(BaseModel):
         description="MLT minimum_should_match.",
     )
 
+    neighbors_os_knn_index: Optional[str] = Field(
+        default=None,
+        description="OpenSearch index used for os_knn mode.",
+    )
+
+    neighbors_os_knn_vector_field: str = Field(
+        default="vector",
+        description="OpenSearch knn_vector field used for os_knn mode.",
+    )
+
+    neighbors_os_knn_k: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=10000,
+        description="k parameter for OpenSearch kNN query. Falls back to neighbors_k.",
+    )
+
+    neighbors_os_knn_ef_search: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Optional ef_search for OpenSearch kNN mode.",
+    )
+
 from typing import Annotated, Literal, Optional
 from fastapi import Query
 
@@ -1588,6 +1611,22 @@ def get_result_analysis_params(
         str,
         Query(description="MLT minimum_should_match."),
     ] = "30%",
+    neighbors_os_knn_index: Annotated[
+        Optional[str],
+        Query(description="OpenSearch index used for os_knn mode."),
+    ] = None,
+    neighbors_os_knn_vector_field: Annotated[
+        str,
+        Query(description="OpenSearch knn_vector field used for os_knn mode."),
+    ] = "vector",
+    neighbors_os_knn_k: Annotated[
+        Optional[int],
+        Query(description="k parameter for OpenSearch kNN query. Falls back to neighbors_k.", ge=1, le=10000),
+    ] = None,
+    neighbors_os_knn_ef_search: Annotated[
+        Optional[int],
+        Query(description="Optional ef_search for OpenSearch kNN mode.", ge=1),
+    ] = None,
 ) -> ResultAnalysisParams:
     return ResultAnalysisParams(
         perform_analysis=perform_analysis,
@@ -1621,6 +1660,11 @@ def get_result_analysis_params(
         neighbors_mlt_min_doc_freq=neighbors_mlt_min_doc_freq,
         neighbors_mlt_max_query_terms=neighbors_mlt_max_query_terms,
         neighbors_mlt_minimum_should_match=neighbors_mlt_minimum_should_match,
+
+        neighbors_os_knn_index=neighbors_os_knn_index,
+        neighbors_os_knn_vector_field=neighbors_os_knn_vector_field,
+        neighbors_os_knn_k=neighbors_os_knn_k,
+        neighbors_os_knn_ef_search=neighbors_os_knn_ef_search,
     )
 
 @open_router.get(
