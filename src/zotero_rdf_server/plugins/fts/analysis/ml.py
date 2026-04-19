@@ -1,4 +1,3 @@
-from sklearn.neighbors import NearestNeighbors
 from typing import Any, Dict, List, Literal, Optional
 from collections import defaultdict
 import math
@@ -27,6 +26,7 @@ try:
     from rapidfuzz import fuzz
     from sklearn.cluster import KMeans
     from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.neighbors import NearestNeighbors
     from scipy.sparse import csr_matrix
     from sklearn.decomposition import TruncatedSVD
     from sklearn.preprocessing import normalize as sk_normalize
@@ -1129,7 +1129,7 @@ def _build_projection_input_from_neighbors(
     os_client,
 ):
     if projection_source == "cluster_matrix":
-        return clustering_matrix, None, projection_neighbors_mode
+        return clustering_matrix, None, projection_source # projection_neighbors_mode
 
     if projection_source == "meta_onehot":
         X = _build_meta_onehot_matrix(
@@ -1137,7 +1137,7 @@ def _build_projection_input_from_neighbors(
             usable_hit_refs=usable_hit_refs,
             meta_fields=getattr(analysis, "neighbors_meta_onehot_fields", []),
         )
-        return X, None, "meta_onehot"
+        return X, None, projection_source
 
     if projection_source != "neighbors":
         raise ValueError(f"Unsupported projection_source: {projection_source}")
@@ -1189,7 +1189,7 @@ def _build_projection_input_from_neighbors(
         symmetrize=bool(getattr(analysis, "projection_distance_symmetrize", True)),
     )
 
-    return None, distance_matrix, projection_neighbors_mode
+    return None, distance_matrix, f"neighbors:{projection_neighbors_mode}"
 
 def _normalize_distance_list(ids, distances):
     if not distances:
@@ -1720,6 +1720,8 @@ def cluster_hits_by_analysis(
                 "y": float(projection_2d[row_idx][1]),
                 "method": projection_method,
                 "source": projection_source_used,
+                "input_type": "distance_matrix" if projection_distance_matrix is not None else "feature_matrix",
+
             }
 
         hit["_source"]["analysis"]["cluster"] = cluster_result

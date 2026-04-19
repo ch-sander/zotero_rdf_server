@@ -379,9 +379,9 @@ def export_atlas_folder(
         logger.info("Imported embedding_atlas")
     except ImportError:
         from .helpers import ensure_import
-        ensure_import("embedding-atlas==0.20.0", requirements=None)
-        
-    import embedding_atlas
+        ensure_import("embedding-atlas==0.20.0", requirements=None)        
+        import embedding_atlas
+
     from embedding_atlas import __version__
     from embedding_atlas.data_source import DataSource
     from embedding_atlas.cli import find_column_name
@@ -446,7 +446,14 @@ def export_atlas_folder(
     metadata = {"props": props}
 
     identifier = sha256_hexdigest([__version__, inputs, metadata], scope="DataSource")
-    dataset = DataSource(identifier, df, metadata)
+    
+    try:
+        logger.info("atlas: creating DataSource")
+        dataset = DataSource(identifier, df, metadata)
+    except Exception:
+        logger.exception("atlas: DataSource failed")
+        raise
+
     static = Path(embedding_atlas.__file__).resolve().parent / "static"
     dataset.export_to_folder(str(static), str(output_dir), export_metadata)
 

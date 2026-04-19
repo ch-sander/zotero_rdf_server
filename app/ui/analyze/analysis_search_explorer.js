@@ -955,6 +955,7 @@
       name.startsWith("analyze_") ||
       name.startsWith("neighbors_") ||
       name.startsWith("cluster_") ||
+      name.startsWith("projection_") ||
       name === "analysis_mode"
     ) {
       return "analysis";
