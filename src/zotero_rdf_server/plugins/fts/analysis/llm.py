@@ -66,14 +66,15 @@ def build_chat_config(llmcfg: dict[str, Any] | None) -> dict[str, Any]:
     return cfg
 
 
-def llm(user_input: str, llm_kwargs: dict = {}) -> dict:
+def llm(user_input: str, llm_kwargs: dict | None = None) -> str:
+    llm_kwargs = dict(llm_kwargs or {})
     config_path = llm_kwargs.pop('config_path')
     if not isinstance(user_input, str):
         raise TypeError("input must be string.")
     llm_config = get_llm_config(config_path)
     client = make_llm_client(llm_config)
 
-    llmcfg = llm_kwargs | llm_config.get('chat')  
+    llmcfg = llm_kwargs | llm_config  
     CHAT = build_chat_config(llmcfg)
     # logger.info(json.dumps(CHAT,indent=4))
     user_input = user_input.strip()
@@ -87,13 +88,15 @@ def llm(user_input: str, llm_kwargs: dict = {}) -> dict:
         ],
     }
 
+    logger.info(json.dumps(payload, indent=4))
+
     try:
         response = client.chat(**payload)
         content = getattr(response.message, "content", None)
         if not isinstance(content, str):
             raise ValueError("Response invalid.")
-        content_dict = load_dict_like(content.strip(),default={'response':''})
-        return content_dict
+        # content_dict = load_dict_like(content.strip(),default={'response':''})
+        return content.strip() # content_dict
 
     except Exception as e:
         logger.exception("Ollama request failed: %s", e)

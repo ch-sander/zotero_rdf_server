@@ -9,8 +9,20 @@ import asyncio
 import os
 
 ensure_import("lightrag-hku==1.4.14", requirements=None)
-ensure_import("numpy", requirements=None)
+# ensure_import("numpy", requirements=None)
+def patch_lightrag():
+    path = Path("/usr/local/lib/python3.11/site-packages/lightrag/kg/opensearch_impl.py")
+    if not path.exists():
+        return
 
+    text = path.read_text()
+
+    if "_shard_doc" in text:
+        text = text.replace('"_shard_doc"', '"_doc"')
+        path.write_text(text)
+        print("Patched lightrag (_shard_doc → _doc)")
+
+patch_lightrag()
 from lightrag import LightRAG, QueryParam
 from lightrag.utils import wrap_embedding_func_with_attrs
 from lightrag.llm.ollama import ollama_model_complete, ollama_embed

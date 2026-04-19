@@ -153,7 +153,9 @@ def ingest_pipeline(
                         if use_llm:                            
                             llm_response = llm(clean_ocr(text), llm_kwargs)
                             logger.debug(llm_response)
-                            item[llm_mapping_key] = llm_response
+                            from zotero_rdf_server.utils import load_dict_like
+                            llm_dict = load_dict_like(llm_response)
+                            item[llm_mapping_key] = llm_dict
 
                         pages.append(item)
 

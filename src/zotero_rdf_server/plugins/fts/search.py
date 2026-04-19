@@ -97,7 +97,7 @@ def build_terms_should_queries(
     - "fuzzy"  => match with fuzziness (OCR-robust)
     Any single clause matching is enough when minimum_should_match=1.
     """
-    should: List[Dict[str, Any]] = []
+    should: List[Dict[str, Any]] = [] # TODO maybe add must, too!
 
     for t in terms:
         if exact:
@@ -902,7 +902,7 @@ def enrich_hits_with_analysis(
     mlt_client=client,
     sort:bool=True
 ):
-    from .ml import analysis_from_mtermvectors, cluster_hits_by_analysis
+    from .analysis.ml import analysis_from_mtermvectors, cluster_hits_by_analysis
 
     if not analysis.perform_analysis:
         return hits
@@ -942,7 +942,7 @@ def enrich_hits_with_analysis(
             analysis=analysis,
             return_projection=return_analysis,
             return_neighbors=bool(getattr(analysis, "neighbors_enabled", False)),
-            mlt_client=mlt_client,
+            os_client=mlt_client,
             cluster_vectors_by_id=cluster_vectors_by_id,
         )
 
