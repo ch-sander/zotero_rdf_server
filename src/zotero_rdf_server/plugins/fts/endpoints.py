@@ -1517,7 +1517,7 @@ def search_terms(
         if "snippet" not in render_cols:
             render_cols.insert(0, "snippet")
 
-    return_analysis = format in {OutputFormat.csv_analysis, OutputFormat.json_analysis, OutputFormat.atlas}
+    return_analysis = format in {OutputFormat.csv_analysis, OutputFormat.json_analysis, OutputFormat.atlas} or analysis.perform_analysis
 
     if return_analysis:
         analysis.perform_analysis=True
