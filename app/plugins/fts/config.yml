@@ -22,7 +22,7 @@ vector:
 
 llm:
   client:
-    host: "http://localhost:11434" # or ollama:11434 if in Docker Network
+    host: "http://host.docker.internal:11434" # or ollama:11434 if in Docker Network
   chat:
     model: "qwen2.5:7b" #  "llama3.2:3b", "nomic-embed-text:latest"
     messages:
@@ -183,10 +183,10 @@ rag:
     doc_status: OpenSearchDocStatusStorage
 
   opensearch:
-    hosts: localhost:9200
-    user: admin # adjust
-    password: changeme
-    use_ssl: true
+    hosts: opensearch:9200
+    # user: admin # adjust
+    # password: changeme
+    use_ssl: false
     verify_certs: false
 
     # optional:
@@ -201,14 +201,14 @@ rag:
 
   llm:
     binding: ollama
-    host: http://localhost:11434
+    host: http://host.docker.internal:11434
     model: qwen2.5:7b
     options:
-      num_ctx: 32768
+      num_ctx: 8192 # 32768
 
   embedding:
     binding: ollama
-    host: http://localhost:11434
+    host: http://host.docker.internal:11434
     model: nomic-embed-text
     dim: 768
     max_token_size: 8192
