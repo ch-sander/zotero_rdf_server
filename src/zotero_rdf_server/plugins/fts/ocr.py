@@ -1227,8 +1227,9 @@ def _get_pdf_libs():
 
 @lru_cache(maxsize=1)
 def _get_PyMuPDF():
-    fitz = ensure_import("pymupdf")
-    return fitz
+    ensure_import("pymupdf")
+    import pymupdf
+    return pymupdf
 
 import math
 
@@ -2389,8 +2390,11 @@ def iter_text_pages(
     elif save_image in {"smart"}:        
         skip_pages = set(_report["image_pages"])
         _sneak_kwargs = {**iter_kwargs, "skip": True}
-        _sneak, _total = next(iter_pages(input=input, **_sneak_kwargs))
-        logger.info(f"SMART: Skipping {len(skip_pages)} pages when iterating all {_total} source pages.")
+        try:
+            _sneak, _total = next(iter_pages(input=input, **_sneak_kwargs))
+            logger.info(f"SMART: Skipping {len(skip_pages)} pages when iterating all {_total} source pages.")
+        except Exception as e:
+            logger.info(f"SMART: could not peep into file: {e}.")
     elif save_image in {"active", "overwrite"}:
         skip_pages = set(_report["shared"])
     else:
