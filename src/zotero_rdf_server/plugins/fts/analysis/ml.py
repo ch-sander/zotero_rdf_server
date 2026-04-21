@@ -18,11 +18,6 @@ NeighborMode = Literal[
 
 try:
     logger.info("Tries to Load ML Dependencies...")
-    ensure_import("scikit-learn")
-    ensure_import("rapidfuzz", requirements=None)
-    ensure_import("scipy", requirements=None)
-    ensure_import("umap-learn")
-
     from rapidfuzz import fuzz
     import umap
     import numpy as np
@@ -35,7 +30,23 @@ try:
     from scipy.sparse import csr_matrix
     from sklearn.decomposition import TruncatedSVD
     from sklearn.preprocessing import normalize as sk_normalize
-
+except ImportError:
+    ensure_import("scikit-learn")
+    ensure_import("rapidfuzz", requirements=None)
+    ensure_import("scipy", requirements=None)
+    ensure_import("umap-learn")
+    from rapidfuzz import fuzz
+    import umap
+    import numpy as np
+    from scipy.sparse import csr_matrix
+    from sklearn.decomposition import PCA
+    from sklearn.cluster import KMeans
+    from sklearn.manifold import TSNE
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.neighbors import NearestNeighbors
+    from scipy.sparse import csr_matrix
+    from sklearn.decomposition import TruncatedSVD
+    from sklearn.preprocessing import normalize as sk_normalize
 except Exception as e:
     logger.critical(f"Failed to import ML packages: {e}")
 
