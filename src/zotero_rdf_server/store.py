@@ -99,32 +99,36 @@ def refresh_store(force_reload:bool = False, remove_store:bool=True):
             logger.exception(f"Failed to load store: {e}")
 
     else:
+        import importlib
+        from . import config
+        importlib.reload(config)
+        logger.warning("CONFIG reloaded!")
         while True:
             try:
                 logger.info("Refreshing Zotero data...")
                 del store
 
-                if STORE_MODE == "memory":
+                if config.STORE_MODE == "memory":
                     store = Store()                    
                 else:
-                    if STORE_DIRECTORY.exists() and remove_store:
-                        clear_directory(STORE_DIRECTORY)
+                    if config.STORE_DIRECTORY.exists() and remove_store:
+                        clear_directory(config.STORE_DIRECTORY)
                     # else:
                     #     STORE_DIRECTORY.mkdir(parents=True,exist_ok=True)
                     try:
-                        store = Store(path=STORE_DIRECTORY)
+                        store = Store(path=config.STORE_DIRECTORY)
                     except Exception as e:
                         logger.exception(f"Failed to load store: {e}")
 
                 if ZOT_SCHEMA:
                     try:
-                        schema = requests.get(ZOT_SCHEMA).json()
+                        schema = requests.get(config.ZOT_SCHEMA).json()
                         zotero_schema(store,schema,ZOT_NS)
-                        logger.info(f"Schema loaded from {ZOT_SCHEMA} for {ZOT_NS}")
+                        logger.info(f"Schema loaded from {config.ZOT_SCHEMA} for {ZOT_NS}")
                     except Exception as e:
                         logger.error(f"Schema could not be loaded: {e}")
 
-                for lib_cfg in ZOTERO_LIBRARIES_CONFIGS:
+                for lib_cfg in config.ZOTERO_LIBRARIES_CONFIGS:
                     lib = ZoteroLibrary(lib_cfg)
                     ensure_store(store)
                     if lib.load_mode == "rdf":
@@ -189,9 +193,9 @@ def refresh_store(force_reload:bool = False, remove_store:bool=True):
             except Exception as e:
                 logger.error(f"Error refreshing data: {e}")
 
-            if REFRESH_INTERVAL >= 30:
-                logger.info(f"Next refresh in {REFRESH_INTERVAL} seconds")
-                time.sleep(REFRESH_INTERVAL)
+            if config.REFRESH_INTERVAL >= 30:
+                logger.info(f"Next refresh in {config.REFRESH_INTERVAL} seconds")
+                time.sleep(config.REFRESH_INTERVAL)
             else:
                 logger.info("Refresh interval less than 30 seconds — exiting after initial load.")
                 break

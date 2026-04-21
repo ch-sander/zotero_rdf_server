@@ -317,9 +317,10 @@ async def reload(
         logger.setLevel(new_level)
 
     try:
-        if reload_config:
-            from . import config as config_module
-            importlib.reload(config_module)
+        # if reload_config:
+        #     from . import config as config_module
+        #     importlib.reload(config_module)
+        #     logger.warning("CONFIG reloaded!")
 
         if reload_libraries:
             refresh_store(True, remove_store=remove_store)
