@@ -70,8 +70,8 @@
   function buildUrl(type, item) {
     const cfg = EXPLORER_CONFIG.links?.[type];
     if (!cfg || !item) return "";
-
     if (cfg.directKey && item[cfg.directKey]) {
+      
       return item[cfg.directKey];
     }
 
@@ -414,6 +414,7 @@
       const hitId = safeStr(hit && hit._id ? hit._id : `hit-${idx}`);
       const score = hit && hit._score !== undefined ? hit._score : 0;
       const label = safeStr(source.label || "");
+      const viewer = source.viewer;
       const page = safeStr(source.page ?? hit.page ?? "");
       const title = pickTitle(hit);
       const snippet = pickSnippet(hit);
@@ -450,6 +451,7 @@
         clusterLabelTerms,
         hitsDocsTerms,
         indexDocsTerms,
+        viewer,
         searchBlob: `${hitId} ${title} ${snippetSearchText} ${clusterLabel} ${searchableTerms.join(" ")}`
           .toLowerCase()
           .replace(/\s+/g, " ")
