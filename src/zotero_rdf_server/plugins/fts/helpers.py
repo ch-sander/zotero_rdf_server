@@ -40,9 +40,9 @@ def ensure_import(module, attr=None, requirements=requirements):
 
 @lru_cache(maxsize=1)
 def resolve_config_path(config_path: Optional[str] = None) -> Path:
-    def is_url(s: str) -> bool:
-        u = urlparse(s)        
-        return u.scheme in ("http", "https") and bool(u.netloc)
+    # def is_url(s: str) -> bool:
+    #     u = urlparse(s)        
+    #     return u.scheme in ("http", "https") and bool(u.netloc)
 
     raw = config_path or os.getenv("FTS_CONFIG")
 
@@ -87,7 +87,7 @@ def make_json_safe(obj):
         return [make_json_safe(v) for v in obj]
     return str(obj)  # fallback
 
-def convert_bindings(bindings):
+def convert_bindings(bindings, reverse: bool = False):
     def parse_number_if_exact(val):
         try:
             i = int(val)
@@ -131,6 +131,9 @@ def convert_bindings(bindings):
         def get_value(sol, name):
             entry = sol[name]
             return None if entry is None else entry.value
+
+    if reverse:
+        rows = list(rows)[::-1]
 
     numeric_fields = set()
     for name in var_names:
@@ -207,10 +210,14 @@ def detect_file_kind(path: Path) -> Optional[Kind]:
 
 def is_url(s: str) -> bool:
     try:
-        u = urlparse(s)
-        return u.scheme in ("http", "https")
+        from zotero_rdf_server.utils import is_url
+        return is_url(s)
     except Exception:
-        return False
+        try:
+            u = urlparse(s)
+            return u.scheme in ("http", "https")
+        except Exception:
+            return False
     
 def resolve_source(src: str) -> tuple[str, Path | None]:
     if is_url(src):
