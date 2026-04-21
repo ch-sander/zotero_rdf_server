@@ -11,8 +11,8 @@
     initialHits: Array.isArray(CONFIG.initialHits) ? CONFIG.initialHits : [],
     maxTermBadgesPerSection: Number(CONFIG.maxTermBadgesPerSection || 20),
     maxSourceFieldsPreview: Number(CONFIG.maxSourceFieldsPreview || 12),
-    includeGlobalTerms: CONFIG.includeGlobalTerms !== false,
-    includeLocalTerms: CONFIG.includeLocalTerms !== false,
+    includeIndexDocsTerms: CONFIG.includeIndexDocsTerms !== false,
+    includeHitsDocsTerms: CONFIG.includeHitsDocsTerms !== false,
     includeClusterInfo: CONFIG.includeClusterInfo !== false,
     pageSize: Number(CONFIG.pageSize || 25),
     preferredTitleFields: Array.isArray(CONFIG.preferredTitleFields)
@@ -165,14 +165,14 @@
     return analysis.cluster && typeof analysis.cluster === "object" ? analysis.cluster : {};
   }
 
-  function getLocal(hit) {
+  function getHitsDocs(hit) {
     const analysis = getAnalysis(hit);
-    return analysis.local && typeof analysis.local === "object" ? analysis.local : {};
+    return analysis.hits_documents && typeof analysis.hits_documents === "object" ? analysis.hits_documents : {};
   }
 
-  function getGlobal(hit) {
+  function getIndexDocs(hit) {
     const analysis = getAnalysis(hit);
-    return analysis.global && typeof analysis.global === "object" ? analysis.global : {};
+    return analysis.index_documents && typeof analysis.index_documents === "object" ? analysis.index_documents : {};
   }
 
   function pickTitle(hit) {
@@ -407,8 +407,8 @@
   function prepareHits(hits) {
     return (hits || []).map((hit, idx) => {
       const cluster = getCluster(hit);
-      const local = getLocal(hit);
-      const global = getGlobal(hit);
+      const hitsDocs = getHitsDocs(hit);
+      const indexDocs = getIndexDocs(hit);
       const source = getSource(hit);
 
       const hitId = safeStr(hit && hit._id ? hit._id : `hit-${idx}`);
@@ -421,9 +421,9 @@
       const clusterId = cluster.id === null || cluster.id === undefined ? "unclustered" : safeStr(cluster.id);
       const clusterLabel = safeStr(cluster.label || UI_TEXT.unclustered || "Unclustered") || (UI_TEXT.unclustered || "Unclustered");
       const clusterLabelTerms = extractClusterLabelTerms(cluster);
-      const localTerms = extractKeyTerms(local);
-      const globalTerms = extractKeyTerms(global);
-      const searchableTerms = uniqueTerms([...clusterLabelTerms, ...localTerms, ...globalTerms]);
+      const hitsDocsTerms = extractKeyTerms(hitsDocs);
+      const indexDocsTerms = extractKeyTerms(indexDocs);
+      const searchableTerms = uniqueTerms([...clusterLabelTerms, ...hitsDocsTerms, ...indexDocsTerms]);
       const snippetSearchText = snippetToSearchText(snippet);
       const metaFacetConfig = (window.ANALYSIS_SEARCH_EXPLORER_CONFIG && window.ANALYSIS_SEARCH_EXPLORER_CONFIG.metaFacets) || {};
       const allowedMetaFacetKeys = Array.isArray(metaFacetConfig.keys)
@@ -442,14 +442,14 @@
         snippet,
         source,
         cluster,
-        local,
-        global,
+        hitsDocs,
+        indexDocs,
         metaFacets,
         clusterId,
         clusterLabel,
         clusterLabelTerms,
-        localTerms,
-        globalTerms,
+        hitsDocsTerms,
+        indexDocsTerms,
         searchBlob: `${hitId} ${title} ${snippetSearchText} ${clusterLabel} ${searchableTerms.join(" ")}`
           .toLowerCase()
           .replace(/\s+/g, " ")
@@ -506,8 +506,8 @@
 
       const termSpace = normalize([
         ...item.clusterLabelTerms,
-        ...item.localTerms,
-        ...item.globalTerms
+        ...item.hitsDocsTerms,
+        ...item.indexDocsTerms
       ].join(" "));
 
       const termOk = !activeTerm || termSpace.includes(activeTerm);
@@ -703,31 +703,31 @@
           `</section>`
         ) : "";
 
-        const localHtml = EXPLORER_CONFIG.includeLocalTerms ? (
+        const hitsDocsHtml = EXPLORER_CONFIG.includeHitsDocsTerms ? (
           `<div class="doc-chip-row">` +
-            `<span class="chip-label">${escapeHtml(UI_TEXT.local_terms || "Local terms")}</span>` +
-            renderTermBadges(item.localTerms, "term-badge local-term") +
+            `<span class="chip-label">${escapeHtml(UI_TEXT.hitsDocs_terms || "Hits documents terms")}</span>` +
+            renderTermBadges(item.hitsDocsTerms, "term-badge hitsDocs-term") +
           `</div>`
         ) : "";
 
-        const localDetailsHtml = EXPLORER_CONFIG.includeLocalTerms ? (
+        const hitsDocsDetailsHtml = EXPLORER_CONFIG.includeHitsDocsTerms ? (
           `<section class="details-section">` +
-            `<h4>${escapeHtml(UI_TEXT.local_analysis || "Local analysis")}</h4>` +
-            renderTermDetails(extractKeyTermDetails(item.local)) +
+            `<h4>${escapeHtml(UI_TEXT.hitsDocs_analysis || "Hits documents analysis")}</h4>` +
+            renderTermDetails(extractKeyTermDetails(item.hitsDocs)) +
           `</section>`
         ) : "";
 
-        const globalHtml = EXPLORER_CONFIG.includeGlobalTerms ? (
+        const indexDocsHtml = EXPLORER_CONFIG.includeIndexDocsTerms ? (
           `<div class="doc-chip-row">` +
-            `<span class="chip-label">${escapeHtml(UI_TEXT.global_terms || "Global terms")}</span>` +
-            renderTermBadges(item.globalTerms, "term-badge global-term") +
+            `<span class="chip-label">${escapeHtml(UI_TEXT.indexDocs_terms || "Index documents terms")}</span>` +
+            renderTermBadges(item.indexDocsTerms, "term-badge indexDocs-term") +
           `</div>`
         ) : "";
 
-        const globalDetailsHtml = EXPLORER_CONFIG.includeGlobalTerms ? (
+        const indexDocsDetailsHtml = EXPLORER_CONFIG.includeIndexDocsTerms ? (
           `<section class="details-section">` +
-            `<h4>${escapeHtml(UI_TEXT.global_analysis || "Global analysis")}</h4>` +
-            renderTermDetails(extractKeyTermDetails(item.global)) +
+            `<h4>${escapeHtml(UI_TEXT.indexDocs_analysis || "Index documents analysis")}</h4>` +
+            renderTermDetails(extractKeyTermDetails(item.indexDocs)) +
           `</section>`
         ) : "";
 
@@ -765,14 +765,14 @@
               renderTermBadges(item.clusterLabelTerms, "term-badge cluster-term") +
             `</div>` +
 
-            localHtml +
-            globalHtml +
+            hitsDocsHtml +
+            indexDocsHtml +
 
             `<details class="details-block">` +
               `<summary>${escapeHtml(UI_TEXT.analysis_details || "Analysis details")}</summary>` +
               clusterInfoHtml +
-              localDetailsHtml +
-              globalDetailsHtml +
+              hitsDocsDetailsHtml +
+              indexDocsDetailsHtml +
               `<section class="details-section">` +
                 `<h4>${escapeHtml(UI_TEXT.source_preview || "Source preview")}</h4>` +
                 renderSourcePreview(item.source) +
@@ -1108,8 +1108,8 @@
     }
 
     if (!params.get("analysis_mode")) params.set("analysis_mode", "both");
-    if (!params.get("cluster_source")) params.set("cluster_source", "local");
-    if (!params.get("cluster_label_source")) params.set("cluster_label_source", "local");
+    if (!params.get("cluster_source")) params.set("cluster_source", "hitsDocs");
+    if (!params.get("cluster_label_source")) params.set("cluster_label_source", "hitsDocs");
 
     return params;
   }
