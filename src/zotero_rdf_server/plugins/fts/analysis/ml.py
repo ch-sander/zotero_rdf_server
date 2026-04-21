@@ -1,12 +1,10 @@
-from typing import Any, Dict, List, Literal, Optional
-from collections import defaultdict
-import math
+from typing import Any, Dict, List, Literal, Optional, Tuple
+from collections import defaultdict, Counter
+from collections.abc import Mapping
+import math, json
 from ..endpoints import ResultAnalysisParams
 from ..helpers import ensure_import
 from copy import deepcopy
-import math
-from collections import Counter, defaultdict
-from typing import Any, Dict, List, Tuple
 from ..search import logger
 
 NeighborMode = Literal[
@@ -20,18 +18,26 @@ NeighborMode = Literal[
 
 try:
     logger.info("Tries to Load ML Dependencies...")
-    ensure_import("scikit-learn", requirements=None)
+    ensure_import("scikit-learn")
     ensure_import("rapidfuzz", requirements=None)
     ensure_import("scipy", requirements=None)
+    ensure_import("umap-learn")
+
     from rapidfuzz import fuzz
+    import umap
+    import numpy as np
+    from scipy.sparse import csr_matrix
+    from sklearn.decomposition import PCA
     from sklearn.cluster import KMeans
+    from sklearn.manifold import TSNE
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.neighbors import NearestNeighbors
     from scipy.sparse import csr_matrix
     from sklearn.decomposition import TruncatedSVD
     from sklearn.preprocessing import normalize as sk_normalize
+
 except Exception as e:
-    logger.error(f"Failed to import ML packages: {e}")
+    logger.critical(f"Failed to import ML packages: {e}")
 
 def _stable_neighbor_id(hit: Dict[str, Any], fallback: int | str):
     return _get_nested(hit, "_source.__row_index__", fallback)
@@ -766,7 +772,6 @@ def _get_nested(d, path, default=None):
         cur = cur.get(p, default)
     return cur
 
-from collections.abc import Mapping
 
 def _flatten_to_tokens(value, prefix=""):
     tokens = []
@@ -852,113 +857,6 @@ def _compute_neighbors_page_parent(
     for hit_idx in usable_hit_refs:
         row_id = _stable_neighbor_id(hits[hit_idx], hit_idx)
         out.setdefault(row_id, {"ids": [], "distances": []})
-
-    return out
-
-from scipy.sparse import csr_matrix
-from sklearn.preprocessing import normalize as sk_normalize
-from sklearn.neighbors import NearestNeighbors
-import json
-
-def _compute_neighbors_meta_onehot_legacy(
-    *,
-    hits,
-    usable_hit_refs,
-    k,
-    meta_fields=None,
-):
-    vocab = {}
-    rows = []
-    cols = []
-    data = []
-
-    use_all_meta = not meta_fields
-
-    for row_idx, hit_idx in enumerate(usable_hit_refs):
-        hit = hits[hit_idx]
-
-        if use_all_meta:
-            logger.warning("Using all meta fields!")
-            meta_value = _get_nested(hit, "_source.meta")
-            if not isinstance(meta_value, dict):
-                continue
-
-            flat_items = _flatten_to_tokens(meta_value, prefix="meta")
-
-            for field_path, scalar_value in flat_items:
-                if scalar_value is None:
-                    continue
-                if isinstance(scalar_value, (dict, list, tuple, set)):
-                    continue
-
-                token = f"{field_path}={scalar_value}"
-                col_idx = vocab.setdefault(token, len(vocab))
-                rows.append(row_idx)
-                cols.append(col_idx)
-                data.append(1.0)
-
-        else:
-            for field in meta_fields:
-                value = _get_nested(hit, f"_source.{field}")
-                if value is None:
-                    continue
-
-                if isinstance(value, dict):
-                    continue
-
-                values = value if isinstance(value, list) else [value]
-
-                for v in values:
-                    if v is None:
-                        continue
-                    if isinstance(v, (dict, list, tuple, set)):
-                        continue
-
-                    token = f"{field}={v}"
-                    col_idx = vocab.setdefault(token, len(vocab))
-                    rows.append(row_idx)
-                    cols.append(col_idx)
-                    data.append(1.0)
-
-    if not vocab:
-        return {
-            _stable_neighbor_id(hits[hit_idx], hit_idx): {"ids": [], "distances": []}
-            for hit_idx in usable_hit_refs
-        }
-
-    X = csr_matrix(
-        (data, (rows, cols)),
-        shape=(len(usable_hit_refs), len(vocab)),
-        dtype=float,
-    )
-    X = sk_normalize(X, norm="l2", copy=False)
-
-    nn = NearestNeighbors(
-        n_neighbors=min(k + 1, len(usable_hit_refs)),
-        metric="cosine",
-    )
-    nn.fit(X)
-    distances, indices = nn.kneighbors(X)
-
-    out = {}
-    for row_idx, (dist_row, ind_row) in enumerate(zip(distances, indices)):
-        hit_idx = usable_hit_refs[row_idx]
-        hit_row_id = _stable_neighbor_id(hits[hit_idx], hit_idx)
-
-        ids = []
-        dists = []
-
-        for dist, neighbor_row in zip(dist_row, ind_row):
-            if neighbor_row == row_idx:
-                continue
-
-            neighbor_hit_idx = usable_hit_refs[neighbor_row]
-            neighbor_row_id = _stable_neighbor_id(hits[neighbor_hit_idx], neighbor_hit_idx)
-
-            ids.append(neighbor_row_id)
-            dists.append(float(dist))
-
-        out[hit_row_id] = {"ids": ids[:k], "distances": dists[:k]}
 
     return out
 
@@ -1090,7 +988,6 @@ def _neighbors_to_distance_matrix(
     fill_value: float = 1.0,
     symmetrize: bool = True,
 ):
-    import numpy as np
 
     row_ids = [_stable_neighbor_id(hits[i], i) for i in usable_hit_refs]
     row_id_to_pos = {row_id: pos for pos, row_id in enumerate(row_ids)}
@@ -1734,78 +1631,12 @@ def cluster_hits_by_analysis(
 
     return hits_copy
 
-def _compute_projection_2d_legacy(
-    clustering_matrix,
-    method: str = "pca",
-    random_state: int | None = None,
-) -> tuple[list[list[float]], str]:
-    import numpy as np
-
-    if clustering_matrix is None:
-        return [], method
-
-    if hasattr(clustering_matrix, "toarray"):
-        projection_input = clustering_matrix.toarray()
-    else:
-        projection_input = np.asarray(clustering_matrix)
-
-    n_samples = projection_input.shape[0]
-
-    if n_samples == 0:
-        return [], method
-
-    if n_samples == 1:
-        return [[0.0, 0.0]], method
-
-    method = (method or "pca").lower()
-
-    if method == "pca":
-        from sklearn.decomposition import PCA
-
-        model = PCA(n_components=2, random_state=random_state)
-        projection = model.fit_transform(projection_input)
-
-    elif method == "tsne":
-        from sklearn.manifold import TSNE
-
-        perplexity = min(30, max(1, n_samples - 1))
-
-        model = TSNE(
-            n_components=2,
-            random_state=random_state,
-            init="pca",
-            learning_rate="auto",
-            perplexity=perplexity,
-        )
-        projection = model.fit_transform(projection_input)
-
-    elif method == "umap":
-        ensure_import("umap-learn", requirements=None)
-        import umap
-
-        n_neighbors = min(15, max(2, n_samples - 1))
-
-        model = umap.UMAP(
-            n_components=2,
-            random_state=random_state,
-            n_neighbors=n_neighbors,
-        )
-        projection = model.fit_transform(projection_input)
-
-    else:
-        raise ValueError(f"Unsupported projection method: {method}")
-
-    projection = np.asarray(projection, dtype=float)
-
-    return projection.tolist(), method
-
 def _compute_projection_2d(
     clustering_matrix=None,
     distance_matrix=None,
     method: str = "pca",
     random_state: int | None = None,
-) -> tuple[list[list[float]], str]:
-    import numpy as np
+) -> tuple[list[list[float]], str]:    
 
     method = (method or "pca").lower()
 
@@ -1823,8 +1654,6 @@ def _compute_projection_2d(
             raise ValueError("PCA does not support precomputed distance matrices. Use 'umap' or 'tsne'.")
 
         if method == "tsne":
-            from sklearn.manifold import TSNE
-
             perplexity = min(30, max(1, n_samples - 1))
 
             model = TSNE(
@@ -1838,8 +1667,6 @@ def _compute_projection_2d(
             projection = model.fit_transform(projection_input)
 
         elif method == "umap":
-            ensure_import("umap-learn", requirements=None)
-            import umap
 
             n_neighbors = min(15, max(2, n_samples - 1))
 
@@ -1873,15 +1700,13 @@ def _compute_projection_2d(
     if n_samples == 1:
         return [[0.0, 0.0]], method
 
-    if method == "pca":
-        from sklearn.decomposition import PCA
+    if method == "pca":        
 
         model = PCA(n_components=2, random_state=random_state)
         projection = model.fit_transform(projection_input)
 
     elif method == "tsne":
-        from sklearn.manifold import TSNE
-
+        
         perplexity = min(30, max(1, n_samples - 1))
 
         model = TSNE(
@@ -1894,8 +1719,6 @@ def _compute_projection_2d(
         projection = model.fit_transform(projection_input)
 
     elif method == "umap":
-        ensure_import("umap-learn", requirements=None)
-        import umap
 
         n_neighbors = min(15, max(2, n_samples - 1))
 
