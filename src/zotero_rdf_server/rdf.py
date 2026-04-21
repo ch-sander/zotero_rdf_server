@@ -512,6 +512,36 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 if obj:
                     obj = obj if isinstance(obj, list) else [obj]
                     for o in obj:
+                        field_map = get_field_map(field)
+                        load_spec = field_map.get('load')
+                        if load_spec and isinstance(o, (BlankNode, NamedNode, Literal)):
+                            input_ = load_spec.get("input", None)
+                            path_ = load_spec.get("path", None)
+
+                            if input_ is not None:
+                                input_ = _PLACEHOLDER_NODE_RE.sub(o.value, input_)
+
+                            if path_ is not None:
+                                input_ = _PLACEHOLDER_NODE_RE.sub(o.value, load_text_like(path_, label="RDF loading"))
+                                path_ = None
+
+                            fmt = ensure_rdf_format(load_spec.get("format", RdfFormat.TURTLE))
+
+                            base_iri = load_spec.get("base_iri")
+                            
+                            to_graph = load_spec.get("to_graph")
+                            to_graph = safeNamedNode(to_graph) if to_graph else ENTITY_GRAPH_URI
+                            lenient = bool(load_spec.get("lenient", False))
+
+                            store.load(
+                                input=input_,
+                                format=fmt,
+                                path=path_,
+                                base_iri=base_iri,
+                                to_graph=to_graph,
+                                lenient=lenient,
+                            )                            
+                            logger.debug(f"Add data for {field} in {o.value}")
                         for pred in predicates:                    
                             predicate = safeNamedNode(pred)
                             if isinstance(o, (BlankNode, NamedNode, Literal)):
