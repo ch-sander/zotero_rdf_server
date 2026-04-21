@@ -297,7 +297,7 @@ def ingest_route(
         None,
         description="Path to YAML config. If omitted: ENV FTS_CONFIG, otherwise ./config.yml",
     ),
-    store_path: Optional[str] = Query(default=None, description="Oxigraph store path (defaults to main store)"),
+    triple_store: Optional[str] = Query(default=None, description="Oxigraph store path (defaults to main store) or SPARQL endpoint (POST)"),
     open_search_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for Open Search Config", examples=[None]),
     source_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for OCR Config", examples=[None]),
     framework_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for OCR Backend Config", examples=[None]),
@@ -335,17 +335,71 @@ def ingest_route(
                 logger.info(f"Saved query to {filename}")
         except Exception as e:
             logger.exception(f"Failed to save query")
+    
+    def _query_bindings(
+        sparql_query: str,
+        *,
+        store=None,
+        endpoint_url: str | None = None,
+        use_default_graph_as_union: bool = False,
+        default_graphs: list[str] | None = None,
+        method: str = "POST",
+        timeout: int | None = None,
+    ):
+        if endpoint_url:
 
+            from .helpers import ensure_import
+            ensure_import("SPARQLWrapper", None)
+            from SPARQLWrapper import SPARQLWrapper, JSON, POST, GET
+
+            client = SPARQLWrapper(endpoint_url)
+            client.setQuery(sparql_query)
+            client.setReturnFormat(JSON)
+            client.setMethod(POST if method.upper() == "POST" else GET)
+
+            if timeout is not None:
+                client.setTimeout(timeout)
+
+            if not use_default_graph_as_union and default_graphs:
+                for graph in default_graphs:
+                    client.addDefaultGraph(graph)
+
+            return client.query().convert()
+        
+        if default_graphs:
+            from pyoxigraph import NamedNode
+            default_graphs = [
+                g if isinstance(g, NamedNode) else NamedNode(str(g))
+                for g in default_graphs
+            ]
+        return store.query(
+            sparql_query,
+            use_default_graph_as_union=use_default_graph_as_union,
+            default_graph=default_graphs,
+        )
+    
     if input is None:
         try:
-            if store_path:
+            from zotero_rdf_server.utils import load_text_like, is_url
+            if triple_store and is_url(triple_store):
+                sparql_endpoint = triple_store
+                store_path = None
+            else:
+                store_path = triple_store
+                sparql_endpoint = None
+
+            if sparql_endpoint:
+                logger.warning(f"Reading from SPARQL endpoint {sparql_endpoint}")
+                from pyoxigraph import NamedNode
+                store = None
+            elif store_path:
                 logger.warning(f"Reading from store in {store_path}")
                 from pyoxigraph import Store, NamedNode
                 store = Store.read_only(store_path)
             else:
                 from zotero_rdf_server.store import store, NamedNode, Store
-                from zotero_rdf_server.utils import load_text_like
-                logger.warning(f"Reading from main store")
+                logger.warning("Reading from main store")
+
         except Exception as e:
             logger.error(f"Reading from main store failed: {e}")                        
             raise HTTPException(
@@ -398,6 +452,7 @@ def ingest_route(
                         
                         config_path_x = config_path or os_cfg.get("config_path")
                         query_x = query or ncfg.get("query")
+                        sparql_endpoint_x = sparql_endpoint or ncfg.get("sparql_endpoint")
 
                         if not query_x:
                             raise HTTPException(
@@ -421,12 +476,19 @@ def ingest_route(
                         try:
                             sparql_query=load_text_like(query_x,label="Ingest Pipeline SPARQL Query")
                             logger.info(f"SPARQL query:\n\n{sparql_query}")
-                            bindings = store.query(
+
+                            bindings = _query_bindings(
                                 sparql_query,
+                                store=store,
+                                endpoint_url=sparql_endpoint_x,
                                 use_default_graph_as_union=False,
-                                default_graph=[NamedNode(lib.base_url), NamedNode(lib.knowledge_base_graph)]
-                                )
-                            items, var_names = convert_bindings(bindings)
+                                default_graphs=[lib.base_url, lib.knowledge_base_graph],                                
+                            )
+                            items, var_names = convert_bindings(
+                                bindings,
+                                reverse=pipeline_cfg.get("reverse_results", False),
+                            )
+
                             logger.info(f"SPARQL returned columns: {var_names}")              
                             logger.info(f"{len(items)} results (store LEN: {len(store)})")  
 
@@ -470,8 +532,20 @@ def ingest_route(
                 
                 sparql_query=load_text_like(query,label="Ingest Pipeline SPARQL Query")
                 logger.debug(f"{sparql_query}")
-                bindings = store.query(sparql_query, use_default_graph_as_union=True)
-                items, var_names = convert_bindings(bindings)
+                # bindings = store.query(sparql_query, use_default_graph_as_union=True)
+                # items, var_names = convert_bindings(bindings)
+                bindings = _query_bindings(
+                    sparql_query,
+                    store=store,
+                    endpoint_url=sparql_endpoint,
+                    use_default_graph_as_union=True,
+                    default_graphs=None,                                
+                )
+                items, var_names = convert_bindings(
+                    bindings,
+                    reverse=pipeline_cfg.get("reverse_results", False),
+                )
+
                 logger.info(f"SPARQL returned columns: {var_names}")
                 logger.debug(f"{items} results")
                 save_query_to_file(items=items,var_names=var_names)
