@@ -2,7 +2,7 @@ from functools import lru_cache
 from html import escape
 from pathlib import Path
 from typing import Any
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from zotero_rdf_server.config import STATIC_UI_PREFIX
@@ -82,12 +82,12 @@ ensure_router_mount(app)
 for route in app.routes:
     logger.info(f"name={getattr(route, 'name', None)} path={getattr(route, 'path', None)}")
 
-def add_viewer_url(hits: list) -> list:
+def add_viewer_url(hits: list, request: Request = None) -> list:
     for h in hits:
         _id = h.get("_id")
         src = h.get("_source")
         if _id and src:
-            src['viewer'] = app.url_path_for("view", os_doc_id=_id)
+            src['viewer'] = app.url_path_for("view", os_doc_id=_id) if not request else str(request.url_for("view", os_doc_id=_id))
     return hits
 
 def split_doc_id(os_doc_id: str) -> tuple[str, str]:

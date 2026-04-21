@@ -1644,7 +1644,7 @@ def search_terms(
         
         hits = resp.get("hits", {}).get("hits", [])
 
-        add_viewer_url(hits)
+        add_viewer_url(hits,request=None)
 
         hits = enrich_hits_with_analysis(
             hits,
