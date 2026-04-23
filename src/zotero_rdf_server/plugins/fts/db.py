@@ -219,7 +219,7 @@ def run_llm_tasks(
     for llm_task in llm_tasks:        
         llm_meta = dict(llm_task or {})
         llm_task_kwargs = dict(llm_task or {"task": "task"})
-        logger.info(f"LLM Processing\nTask {str(llm_task.get('task', 'n/a')).upper()}\nDocument {doc_id}:{sequence}\nModel {llm_task_kwargs.get('model', 'n/a')}")
+        
         llm_datatype = str(llm_task_kwargs.pop("datatype", "json")).lower().strip()
         llm_task_kwargs["config_path"] = (
             llm_task_kwargs.get("config_path") or llm_kwargs.get("config_path")
@@ -249,20 +249,22 @@ def run_llm_tasks(
                 llm_response_file = json.loads(llm_file.read_text(encoding="utf-8"))
                 llm_response = llm_response_file.get("response")
                 used_cache = True
+                logger.info(f"Used Cache\nTask {str(llm_task.get('task', 'n/a')).upper()}\nDocument {doc_id}:{sequence}")
             except Exception:
                 llm_response = None
                 used_cache = False
 
         if llm_response is None:
             llm_response = llm(clean_ocr(text), llm_task_kwargs)
+            logger.info(f"LLM Processing\nTask {str(llm_task.get('task', 'n/a')).upper()}\nDocument {doc_id}:{sequence}\nModel {llm_task_kwargs.get('model', 'n/a')}")
 
-        if llm_datatype == "json" and not used_cache:
+        if llm_datatype == "json":
             llm_result = load_dict_like(
                 llm_response,
                 label=f"LLM page response for {doc_id}:{sequence}",
                 default=[],
-                verbose=True,
-            )
+                verbose=not used_cache,
+            )        
         else:
             llm_result = llm_response
 
