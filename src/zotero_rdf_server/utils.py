@@ -161,6 +161,22 @@ def _ensure_dict(obj, label: str) -> dict:
         return obj
     raise ValueError(f"{label}: parsed content is not a mapping (got {type(obj).__name__})")
 
+def _ensure_mapping_or_list(data, label: str) -> dict | list[dict]:
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except Exception:
+            pass
+
+    if isinstance(data, dict):
+        return data
+
+    if isinstance(data, list):
+        if all(isinstance(item, dict) for item in data):
+            return data
+        raise ValueError(f"{label}: list must contain only dicts")
+
+    raise ValueError(f"{label}: expected dict or list of dicts")
 
 def _parse_csv_to_dict(content: str, label: str) -> dict:
     import csv
@@ -173,37 +189,44 @@ def _parse_csv_to_dict(content: str, label: str) -> dict:
         raise ValueError(f"{label}: failed to parse CSV: {e}")    
 
 def load_dict_like(
-    raw: str | dict | Path | None,
-    default: dict | None = None,
+    raw: str | dict | list | Path | None,
+    default: dict | list[dict] | None = None,
     label: str = "config",
     timeout: float = 10.0,
     required: bool = False,
     verbose:bool = False
-) -> dict:
+) -> dict | list[dict]:
 
-    def _return(data: dict) -> dict:
+    def _return(data: dict | list[dict]) -> dict | list[dict]:
         if verbose:
             logger.info(json.dumps(data,indent=4))
         else:
             logger.debug(json.dumps(data,indent=4))
         return data
     
-    def _fallback(reason: str) -> dict:
+    def _fallback(reason: str) -> dict | list[dict]:
         logger.info(f"got raw to load: {raw}")
         if required:
             raise ValueError(f"{label}: {reason}")
         if default is not None:
             logger.warning(f"{label}: {reason}; using fallback default")
-            return _return(deepcopy(dict(default)))
+            return _return(deepcopy(default))
         logger.warning(f"{label}: {reason}; using empty mapping")        
         return _return({})
 
     try:
-        if isinstance(raw, dict):
-            return _return(deepcopy(dict(raw)))
+        if isinstance(raw, (dict, list)):
+            return _return(deepcopy(_ensure_mapping_or_list(raw, label)))
+
+        if isinstance(raw, str):
+            try:
+                data = json.loads(raw)
+                return _return(_ensure_mapping_or_list(data, label))
+            except Exception:
+                pass
 
         if raw is None:
-            return _return(deepcopy(dict(default)) if default is not None else {})
+            return _return(deepcopy(default) if default is not None else {})
 
         if isinstance(raw, Path):
             path = raw.resolve()
@@ -233,12 +256,12 @@ def load_dict_like(
                     try:
                         data = json.loads(raw)
                         logger.info(f"{label}: loaded from JSON string")
-                        return _return(_ensure_dict(data, label))
+                        return _return(_ensure_mapping_or_list(data, label))
                     except json.JSONDecodeError:
                         try:
                             data = yaml.safe_load(raw)
                             logger.info(f"{label}: loaded from YAML string")
-                            return _return(_ensure_dict(data, label))
+                            return _return(_ensure_mapping_or_list(data, label))
                         except yaml.YAMLError as e:
                             if "," in raw.splitlines()[0]:
                                 try:
@@ -252,17 +275,17 @@ def load_dict_like(
         if suffix in (".yaml", ".yml"):
             data = yaml.safe_load(content)
             logger.info(f"{label}: parsed YAML")
-            return _return(_ensure_dict(data, label))
+            return _return(_ensure_mapping_or_list(data, label))
         if suffix == ".json" or not suffix:
             try:
                 data = json.loads(content)
                 logger.info(f"{label}: parsed JSON")
-                return _return(_ensure_dict(data, label))
+                return _return(_ensure_mapping_or_list(data, label))
             except json.JSONDecodeError:
                 try:
                     data = yaml.safe_load(content)
                     logger.info(f"{label}: parsed YAML (no/unknown suffix)")
-                    return _return(_ensure_dict(data, label))
+                    return _return(_ensure_mapping_or_list(data, label))
                 except yaml.YAMLError as e:
                     return _return(_fallback(f"failed to parse content as JSON/YAML: {e}"))                
         if suffix == ".csv":
@@ -276,12 +299,12 @@ def load_dict_like(
         try:
             data = json.loads(content)
             logger.info(f"{label}: parsed JSON despite suffix {suffix}")
-            return _return(_ensure_dict(data, label))
+            return _return(_ensure_mapping_or_list(data, label))
         except json.JSONDecodeError:
             try:
                 data = yaml.safe_load(content)
                 logger.info(f"{label}: parsed YAML despite suffix {suffix}")
-                return _return(_ensure_dict(data, label))
+                return _return(_ensure_mapping_or_list(data, label))
             except yaml.YAMLError:                
                 if "," in content.splitlines()[0]:
                     try:
