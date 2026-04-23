@@ -67,6 +67,13 @@ def resolve_config_path(config_path: Optional[str] = None) -> Path:
     fallback = Path(__file__).resolve().parent / "fts_config.yml"
     plugin_logger().info(f"Loading config from fallback: {str(fallback)}")
     return fallback
+  
+def write_data_to_file(data, filename):
+    with open(filename, "w", encoding="utf-8") as f:
+        if isinstance(data, (dict, list)):
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        else:
+            f.write(str(data))
 
 def ISO_ts():
     return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")

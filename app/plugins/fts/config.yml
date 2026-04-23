@@ -26,6 +26,9 @@ llm:
   chats:
     concepts:
       model: "llama3.2:3b" #  "llama3.2:3b", "qwen2.5:7b", "nomic-embed-text:latest"
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 500
       messages:
         - role: system
           content: |
@@ -62,12 +65,12 @@ llm:
                 - The first character of the response must be [
                 - The last character of the response must be ]
 
-                Invalid concepts:
+                Invalid concepts (examples):
                 - "peccatuin fit contra naturam intellectualem"
                 - "quia ratio iniuriæ eft folùm extrinfeca"
                 - "quod fit contra bonum intellectuale infinitum"
 
-                Valid concepts:
+                Valid concepts (examples):
                 - "peccatuin"
                 - "naturam intellectualem"
                 - "ratio iniuriæ"
@@ -125,6 +128,22 @@ llm:
                 Note: The OCR is noisy.
 
                 The invalid example is wrong because it contains text after the JSON array.
+    contexts:
+      model: "qwen2.5:7b" #  "llama3.2:3b", "qwen2.5:7b", "nomic-embed-text:latest"
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 500
+      messages:
+        - role: system
+          content: |
+              Return an array of context terms the Latin text relates to. Focus on seventeenth-century disciplines.
+
+              Limit yourself to clear candidates, do not hallucinate! Never!
+
+              IMPORTANT: Return multiple terms if applicable.
+              You pay particular attention to many disciplines being involved, e.g. ["alchemy", "theology"] or ["medicine", "astronomy"]. Most will pertain to theology. I am particularly interested in interdisciplinary texts. In striking cases (ONLY), add the keyword "interdisciplinary"!
+
+              ONLY RETURN A LIST OF STRINGS IN [] THAT CAN BE PARSED BY A MACHINE. DO NOT PROVIDE FURTHER TEXT OR EXPLANATION
 
 rag:
   working_dir: ./data/lightrag
@@ -410,7 +429,11 @@ open-search:
             meta:
               type: object
               dynamic: true
-            llm: # TODO
+            llm:
+              type: object
+              dynamic: true   
+            contexts: { type: keyword }     
+            concepts: # llm
               type: nested
               properties:
                 concept:
@@ -435,6 +458,11 @@ open-search:
           dynamic_templates:
             - meta_as_keyword:
                 path_match: "meta.*"
+                mapping:
+                  type: keyword
+                  ignore_above: 256
+            - llm_as_keyword:
+                path_match: "llm.*"
                 mapping:
                   type: keyword
                   ignore_above: 256

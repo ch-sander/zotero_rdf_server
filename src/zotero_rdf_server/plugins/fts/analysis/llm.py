@@ -34,10 +34,14 @@ DEFAULT_CHAT = {
 
 
 def build_chat_config(llmcfg: dict[str, Any] | None) -> dict[str, Any]:
-    task = llmcfg.pop('tasks', 'chat')
-    # TODO better logic
-    cfg = llmcfg.get('chats') or {}
-    cfg = deepcopy((llmcfg or {}).get(task, DEFAULT_CHAT))
+    task = llmcfg.pop('task', 'chat')
+    chats = llmcfg.get("chats") or {}
+
+    if task not in chats:
+        logger.warning(f"task {task} not found")
+        chats[task] = chats
+    
+    cfg = deepcopy(chats[task])
 
     if not isinstance(cfg, dict):
         raise ValueError("llmcfg['chat'] must be Dictionary.")
@@ -75,13 +79,17 @@ def llm(user_input: str, llm_kwargs: dict | None = None) -> str:
     config_path = llm_kwargs.pop('config_path')
     if not isinstance(user_input, str):
         raise TypeError("input must be string.")
+    
     llm_config = get_llm_config(config_path)
     client = make_llm_client(llm_config)
 
+    
     llmcfg = llm_kwargs | llm_config
+    task = llmcfg.get('task', 'n/a')
+    
     CHAT = build_chat_config(llmcfg)
     host = llmcfg.get("client", {}).get('host')
-    logger.info(f"Using Ollama host: {host}")
+    
     user_input = user_input.strip()
     if not user_input:
         return ""
@@ -103,6 +111,7 @@ def llm(user_input: str, llm_kwargs: dict | None = None) -> str:
         logger.error(f"Ollama not reachable at {host}: {e}")
     
     try:
+        logger.debug(f"Using Ollama host: {host}, model: {payload.get('model', 'n/a')}, task: {task}")
         response = client.chat(**payload)
         content = getattr(response.message, "content", None)
         if not isinstance(content, str):

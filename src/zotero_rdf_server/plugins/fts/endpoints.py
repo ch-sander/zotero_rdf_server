@@ -465,7 +465,7 @@ def ingest_route(
                         framework_x = framework  if framework is not None else ncfg.get("framework", "kraken")
                         vector_x = vector_kwargs if vector_kwargs is not None else ncfg.get("vector")
 
-                        llm_x = llm_kwargs if llm_kwargs is not None else pipeline_cfg.get("llm_kwargs")
+                        llm_x = llm_kwargs if llm_kwargs is not None else ncfg.get("llm_kwargs")
 
                         iter_pages_kwargs = source_kwargs if source_kwargs is not None else dict(pipeline_cfg.get("source_kwargs") or {})
                         page_to_text_kwargs = framework_kwargs if framework_kwargs is not None else dict(pipeline_cfg.get("framework_kwargs") or {})

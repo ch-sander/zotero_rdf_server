@@ -50,10 +50,12 @@ def ingest_pipeline(
         "Pipeline configuration:\n"
         "iter_pages_kwargs:\n%s\n\n"
         "page_to_text_kwargs:\n%s\n\n"
-        "text_image_file_kwargs:\n%s",
+        "text_image_file_kwargs:\n%s\n\n"
+        "llm_kwargs:\n%s\n",
         json.dumps(iter_pages_kwargs, indent=2, sort_keys=True, ensure_ascii=False),
         json.dumps(page_to_text_kwargs, indent=2, sort_keys=True, ensure_ascii=False),
         json.dumps(text_image_file_kwargs, indent=2, sort_keys=True, ensure_ascii=False),
+        json.dumps(llm_kwargs, indent=2, sort_keys=True, ensure_ascii=False),
     )
 
     if not from_source and not ingest:
@@ -65,9 +67,9 @@ def ingest_pipeline(
         from .helpers import clean_ocr    
 
     
-    use_llm = isinstance(llm_kwargs, dict) and llm_kwargs.get('config_path') and llm_kwargs.get('tasks')
-    
+    use_llm = isinstance(llm_kwargs, dict) and llm_kwargs.get('tasks')
     if use_llm:
+        logger.warning("LLM active!")
         from .analysis.llm import llm
         llm_mapping_key = llm_kwargs.pop('mapping_key','llm')        
 

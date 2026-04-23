@@ -1,11 +1,11 @@
 from __future__ import annotations
-from .helpers import ensure_import, resolve_config_path, plugin_logger
+from .helpers import ensure_import, resolve_config_path, plugin_logger, write_data_to_file, safe_doc_id
 ensure_import("opensearchpy")
 import os
 import yaml
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Iterator, Tuple, Any, Iterable, Callable
+from typing import Dict, Iterator, Tuple, Any, Iterable, Callable, Optional
 from opensearchpy import OpenSearch
 from opensearchpy.helpers import streaming_bulk
 from functools import lru_cache
@@ -183,6 +183,111 @@ def apply_ingest_tuning(client: OpenSearch, *, index: str, refresh_interval: str
         body={"index": {"refresh_interval": refresh_interval, "number_of_replicas": replicas}},
     )
 
+try:
+    from zotero_rdf_server.config import EXPORT_DIRECTORY
+    EXPORT_DIRECTORY = Path(EXPORT_DIRECTORY)
+except Exception:    
+    EXPORT_DIRECTORY = Path().resolve()
+
+def run_llm_tasks(
+    *,
+    text: str,
+    doc_id: str | None,
+    sequence: int,
+    llm_kwargs: dict,
+) -> dict:
+    from .analysis.llm import llm
+    from .helpers import clean_ocr, make_json_safe
+    from zotero_rdf_server.utils import load_dict_like
+    import json
+    _doc_id = safe_doc_id(doc_id)
+    def _resolve_out(p: Optional[str], doc_dir:str|None = _doc_id) -> Optional[Path]:
+
+        if not p:
+            return None
+        pp = Path(p)
+        if pp.is_absolute():
+            logger.error(f"Absolute paths are not allowed: {pp}")
+            return (EXPORT_DIRECTORY / doc_dir).resolve()
+        result_path = (EXPORT_DIRECTORY / pp / doc_dir).resolve() if doc_dir else (EXPORT_DIRECTORY / pp ).resolve()
+        logger.info(f"Export path set: {result_path}")
+        return result_path
+    
+    llm_dict = {}
+    llm_tasks = llm_kwargs.get("tasks") or []
+
+    for llm_task in llm_tasks:        
+        llm_meta = dict(llm_task or {})
+        llm_task_kwargs = dict(llm_task or {"task": "task"})
+        logger.info(f"LLM Processing\nTask {str(llm_task.get('task', 'n/a')).upper()}\nDocument {doc_id}:{sequence}\nModel {llm_task_kwargs.get('model', 'n/a')}")
+        llm_datatype = str(llm_task_kwargs.pop("datatype", "json")).lower().strip()
+        llm_task_kwargs["config_path"] = (
+            llm_task_kwargs.get("config_path") or llm_kwargs.get("config_path")
+        )
+        llm_mapping_key = llm_task_kwargs.pop("mapping_key", "llm")
+        llm_file_kwargs = llm_task_kwargs.pop("file_kwargs", {}) or {}
+        llm_out = llm_file_kwargs.get("llm_out")
+        save_llm = str(llm_file_kwargs.get("save_llm", "skip")).lower().strip()
+
+        llm_file = None
+        llm_response = None
+        cache_exists = False
+        used_cache = False
+
+        if llm_out:
+            llm_file = _resolve_out(llm_out, _doc_id) / f"{sequence:04d}.json"
+            cache_exists = llm_file.exists()
+
+        should_read_cache = (
+            llm_file is not None
+            and save_llm in {"skip", "active"}
+            and cache_exists
+        )
+
+        if should_read_cache:
+            try:
+                llm_response_file = json.loads(llm_file.read_text(encoding="utf-8"))
+                llm_response = llm_response_file.get("response")
+                used_cache = True
+            except Exception:
+                llm_response = None
+                used_cache = False
+
+        if llm_response is None:
+            llm_response = llm(clean_ocr(text), llm_task_kwargs)
+
+        if llm_datatype == "json" and not used_cache:
+            llm_result = load_dict_like(
+                llm_response,
+                label=f"LLM page response for {doc_id}:{sequence}",
+                default=[],
+                verbose=True,
+            )
+        else:
+            llm_result = llm_response
+
+        llm_dict[llm_mapping_key] = llm_result
+
+        should_write_cache = (
+            llm_file is not None
+            and not used_cache
+            and (
+                save_llm == "overwrite"
+                or (save_llm == "active" and not cache_exists)
+            )
+        )
+
+        if should_write_cache:
+            llm_result_file = {"meta": llm_meta, "response": llm_result}
+            llm_safe = make_json_safe(llm_result_file)
+            llm_file.parent.mkdir(parents=True, exist_ok=True)
+            llm_file.write_text(
+                json.dumps(llm_safe, indent=4, default=str),
+                encoding="utf-8",
+            )
+            logger.info(f"Stored {llm_file}...")
+
+    return llm_dict
 
 def page_docs(
     *,
@@ -196,9 +301,10 @@ def page_docs(
     llm_kwargs: dict | None = None,
     # config_path: str | None = None,
 ) -> Iterator[Dict[str, Any]]:
+
     now = datetime.now(timezone.utc).isoformat()
     vector = isinstance(vector_kwargs, dict) and vector_kwargs.get('framework')
-    use_llm = isinstance(llm_kwargs, (dict,list)) and llm_kwargs.get('tasks')
+    use_llm = isinstance(llm_kwargs, (dict)) and llm_kwargs.get('tasks')
 
     if vector:
         from .analysis.vector import embed
@@ -217,26 +323,14 @@ def page_docs(
         if vector:
             vector_doc = embed(clean_ocr(text),**vector_kwargs)
 
-        if use_llm and text:            
-            llm_dict = dict({})
-            llm_tasks = llm_kwargs.get('tasks')
-            for llm_task in llm_tasks:                
-                llm_task_kwargs = dict(llm_task or {'task': "task"})
-                llm_datatype = llm_task_kwargs.pop('llm_kwargs', "json")
-                llm_task_kwargs['config_path'] = llm_task_kwargs.get('config_path') or llm_kwargs.get('config_path')
-                llm_mapping_key = llm_task_kwargs.pop('mapping_key','llm')
-                llm_response = llm(clean_ocr(text), llm_task_kwargs) # TODO pass sequence and write out json
-                llm_file_kwargs = llm_task_kwargs.pop('file_kwargs') or {}
-                if llm_datatype in ('json'):
-                    llm_result = load_dict_like(llm_response, label="LLM page response", default=[], verbose=True)
-                else:
-                    llm_result = llm_response
-                llm_dict[llm_mapping_key] = llm_result
-                if llm_file_kwargs.get('file_out'):
-                    logger.info("Storing file....")
-
-                
-
+        llm_dict = {}
+        if use_llm and text:
+            llm_dict = run_llm_tasks(
+                text=text,
+                doc_id=doc_id,
+                llm_kwargs=llm_kwargs,
+                sequence=sequence,
+            )
 
         for index_name in targets:            
             source = {
@@ -250,8 +344,9 @@ def page_docs(
             }
             if vector:
                 source["vector"] = vector_doc
-            if use_llm and llm_result:
-                source[llm_mapping_key] = llm_result or None
+
+            if use_llm and llm_dict:
+                source.update(llm_dict)
 
             action = {
                 "_op_type": "index",
