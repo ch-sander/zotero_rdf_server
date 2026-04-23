@@ -199,6 +199,7 @@ def load_dict_like(
 
     def _return(data: dict | list[dict]) -> dict | list[dict]:
         if verbose:
+            logger.info(f"Finished: {label}")
             logger.info(json.dumps(data,indent=4))
         else:
             logger.debug(json.dumps(data,indent=4))
