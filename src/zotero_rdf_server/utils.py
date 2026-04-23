@@ -161,7 +161,7 @@ def _ensure_dict(obj, label: str) -> dict:
         return obj
     raise ValueError(f"{label}: parsed content is not a mapping (got {type(obj).__name__})")
 
-def _ensure_mapping_or_list(data, label: str) -> dict | list[dict]:
+def _ensure_mapping_or_list(data, label: str) -> dict | list:
     if isinstance(data, str):
         try:
             data = json.loads(data)
@@ -172,11 +172,9 @@ def _ensure_mapping_or_list(data, label: str) -> dict | list[dict]:
         return data
 
     if isinstance(data, list):
-        if all(isinstance(item, dict) for item in data):
-            return data
-        raise ValueError(f"{label}: list must contain only dicts")
+        return data
 
-    raise ValueError(f"{label}: expected dict or list of dicts")
+    raise ValueError(f"{label}: expected dict or list")
 
 def _parse_csv_to_dict(content: str, label: str) -> dict:
     import csv
