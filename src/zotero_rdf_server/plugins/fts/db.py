@@ -210,7 +210,7 @@ def run_llm_tasks(
             logger.error(f"Absolute paths are not allowed: {pp}")
             return (EXPORT_DIRECTORY / doc_dir).resolve()
         result_path = (EXPORT_DIRECTORY / pp / doc_dir).resolve() if doc_dir else (EXPORT_DIRECTORY / pp ).resolve()
-        logger.info(f"Export path set: {result_path}")
+        logger.debug(f"Export path set: {result_path}")
         return result_path
     
     llm_dict = {}
