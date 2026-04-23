@@ -29,6 +29,8 @@ def ingest_pipeline(
     config_path: str = None
 ):
     from .db import index_stream
+    from zotero_rdf_server.utils import load_dict_like
+
     items = list(items or [])
     total = len(items)
     targets = targets or []
@@ -63,7 +65,7 @@ def ingest_pipeline(
         from .helpers import clean_ocr    
 
     
-    use_llm = isinstance(llm_kwargs, dict) and llm_kwargs.get('config_path')
+    use_llm = isinstance(llm_kwargs, dict) and llm_kwargs.get('config_path') and llm_kwargs.get('tasks')
     
     if use_llm:
         from .analysis.llm import llm
@@ -145,17 +147,10 @@ def ingest_pipeline(
                             "page": int(page_no),
                             "text": text,
                         }
-                        if vector:
+                        if vector: # TODO why apply vector?
                             vector_doc = embed(clean_ocr(text),**vector_kwargs)
                             logger.debug(vector_doc)
                             item["vector"] = vector_doc
-
-                        if use_llm:                            
-                            llm_response = llm(clean_ocr(text), llm_kwargs)
-                            logger.debug(llm_response)
-                            from zotero_rdf_server.utils import load_dict_like
-                            llm_dict = load_dict_like(llm_response)
-                            item[llm_mapping_key] = llm_dict
 
                         pages.append(item)
 
@@ -221,12 +216,14 @@ def ingest_pipeline(
                         targets=targets,
                         meta=meta,
                         config_path=config_path,
-                        vector_kwargs=vector
+                        vector_kwargs=vector,
+                        llm_kwargs=llm_kwargs,
                     )         
                 digest["from_source"] = True
                 digest["framework"] = framework     
                 digest["ocr_pages"] = stats["pages_emitted"]
                 digest["ingest"] = True
+                digest["llm"] = True
                 runs.append(digest)
             else:
                 logger.info(f"Ingest Pipeline with no input from source!")
@@ -244,10 +241,14 @@ def ingest_pipeline(
                 if vector:
                     vector_doc = embed(clean_ocr(text),**vector_kwargs)
                     d["vector"] = vector_doc
-                if use_llm:                            
-                    llm_response = llm(clean_ocr(text), llm_kwargs)
+                if use_llm: # TODO adjust                           
+                    llm_response = llm(clean_ocr(text), llm_kwargs)                    
                     logger.debug(llm_response)
-                    d[llm_mapping_key] = llm_response
+                    llm_dict = load_dict_like(llm_response)
+                    if llm_dict:
+                        d[llm_mapping_key] = llm_response
+                        logger.debug(json.dumps(llm_dict,indent=4))
+
                 digest = index_stream(
                         targets=targets,
                         doc_id=doc_id,
@@ -258,6 +259,7 @@ def ingest_pipeline(
                 digest["from_source"] = False
                 digest["framework"] = framework
                 digest["ingest"] = True
+                digest["llm"] = True
                 runs.append(digest)
 
         logger.info(f"Ingest Pipeline finsihed with {len(runs)} runs!")

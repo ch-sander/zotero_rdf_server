@@ -21,7 +21,7 @@ def get_llm_config(config_path: Path | str | None = None) -> dict[str, Any]:
     
 def make_llm_client(config:dict): 
     client_cfg = config.get('client')
-    logger.info(f"{client_cfg}")
+    logger.debug(f"{client_cfg}")
     ollama_cfg = client_cfg or {'host':'http://ollama:11434'}
     return Client(**ollama_cfg)
 
@@ -67,6 +67,7 @@ def build_chat_config(llmcfg: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def llm(user_input: str, llm_kwargs: dict | None = None) -> str:
+    import requests
     llm_kwargs = dict(llm_kwargs or {})
     config_path = llm_kwargs.pop('config_path')
     if not isinstance(user_input, str):
@@ -76,7 +77,8 @@ def llm(user_input: str, llm_kwargs: dict | None = None) -> str:
 
     llmcfg = llm_kwargs | llm_config  
     CHAT = build_chat_config(llmcfg)
-    # logger.info(json.dumps(CHAT,indent=4))
+    host = llmcfg.get("client", {}).get('host')
+    logger.info(f"Using Ollama host: {host}")
     user_input = user_input.strip()
     if not user_input:
         return ""
@@ -88,8 +90,15 @@ def llm(user_input: str, llm_kwargs: dict | None = None) -> str:
         ],
     }
 
-    logger.info(json.dumps(payload, indent=4))
+    logger.debug(json.dumps(payload, indent=4))
 
+    try:
+        r = requests.get(f"{host}/api/tags", timeout=2)
+        r.raise_for_status()
+        logger.debug("Ollama reachable.")
+    except Exception as e:
+        logger.error(f"Ollama not reachable at {host}: {e}")
+    
     try:
         response = client.chat(**payload)
         content = getattr(response.message, "content", None)
@@ -100,4 +109,4 @@ def llm(user_input: str, llm_kwargs: dict | None = None) -> str:
 
     except Exception as e:
         logger.exception("Ollama request failed: %s", e)
-        return {'response': ''}
+        return '' # {'response': ''}

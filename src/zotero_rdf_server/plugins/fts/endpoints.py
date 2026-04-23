@@ -2383,14 +2383,35 @@ async def ollama_proxy(
     user_input: str = Body(..., embed=True),
     llm_kwargs: dict = Body(default_factory=dict, embed=True),
 ):
+    logger.info("Initializing ollama...")
     from .analysis.llm import llm
     from .helpers import resolve_config_path
 
     try:
-        llm_kwargs = dict(llm_kwargs)
+        llm_kwargs = dict(llm_kwargs or {})
         llm_kwargs["config_path"] = llm_kwargs.get("config_path", resolve_config_path())
-        return llm(user_input=user_input, llm_kwargs=llm_kwargs)
+        logger.info("Receiving llm response...")        
+        raw = llm(user_input=user_input, llm_kwargs=llm_kwargs)
 
+        # --- JSON Parsing ---
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Model did not return valid JSON: {raw}"
+            )
+
+        if not isinstance(parsed, list):
+            raise HTTPException(
+                status_code=502,
+                detail=f"Model JSON is not a list: {raw}"
+            )
+
+        return parsed
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ollama proxy failed: {e}")
 

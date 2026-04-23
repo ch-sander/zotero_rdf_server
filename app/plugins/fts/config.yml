@@ -22,155 +22,109 @@ vector:
 
 llm:
   client:
-    host: "http://host.docker.internal:11434" # or ollama:11434 if in Docker Network
-  chat:
-    model: "qwen2.5:7b" #  "llama3.2:3b", "nomic-embed-text:latest"
-    messages:
-      - role: system
-        content: |
-            You are provided Latin text of a page rendered with poor OCR, mostly theological texts of the early modern period. Extract the most relevant concepts as normalized Latin phrases or terms and translate them. Output a list of JSON no more than 20 dictionaries with the following structure:
+    host: http://ollama:11434 # "http://host.docker.internal:11434" # or ollama:11434 if in Docker Network
+  tasks:
+    concepts:
+      model: "llama3.2:3b" #  "llama3.2:3b", "qwen2.5:7b", "nomic-embed-text:latest"
+      messages:
+        - role: system
+          content: |
+                You are given noisy OCR text from early modern Latin theological works.
 
-            {
-              "concept": {
-                "text": "<Latin phrase or word>",
-                "normalized": "<Normalized Latin form>",
-                "translation": "<English translation>"
-              },
-              ...
-            }
+                Extract the most relevant concepts and translate them into English.
 
-            # Input:
+                Return ONLY a valid JSON array of objects.
+                Each object must contain exactly these keys:
+                "concept", "normalized", "translation"
 
-            The sample Latin text is as follows:
+                Rules:
+                - "concept" must be an exact substring from the source text.
+                - Do not correct OCR errors in "concept".
+                - "normalized" should correct OCR errors and provide a standard Latin form.
+                - "translation" should be concise.
+                - Extract only concepts of 1 to 3 words.
+                - Do not extract full sentences.
+                - Do not extract sentence fragments longer than 3 words.
+                - Prefer meaningful theological, philosophical, and moral terms.
+                - Ignore numbers, section labels, punctuation noise, and meaningless OCR fragments.
+                - Return at most 20 items.
+                - If nothing meaningful is found, return [].
 
-            Difputat . I.
-            11
-            Artic . II .
-            34
-            35
-            36
-            tùm , non folùm priuare bono morali ipfi homini debito , fed bono morali debito toti intelleetuali naturæ , in qua Deus includitur , & cuius
-            bonum morale infinitum eft . Cæterum ifta confideratio non videtur fufficiens ad infinitatem propriè , & determinarè , fed folùm analogicè , & in
-            confufo , quia intellectualis natura , vt comprehendit Deum , & creaturas intellectuales , non eft
-            pofitiue infinita , fed abftractiuè ; abftrahit enim
-            analogicè a finito , & infinito . Ex hoc ergo quod
-            peccatum fit contra naturam intellectualem , vt
-            fic . folùm fequitur , quod fit contra bonum intellectuale infinitum , analogicè , & indeterminatè
-            & in communi , quod eft effe infinitum fecundùm
-            quid , non autem opponitur bono morali determinatè , vt infinito , & provt eft bonum Dei , fed
-            bonum morale hominis .
-            Confiderando ergo peccatum ex parte iniuriæ .
-            Qui defendunt effe folùm infinitum fecundùm
-            quid , nituntur in duobus . Primò , quia ratio iniuriæ eft folùm extrinfeca quædam denominatio in
-            peccato , & confequenter reputatur , tanquam infinitas fecundùm quid ; quando enim prædicatum
-            aliquod poteft conuenire intrinfecè , & extrinfecè , ficut eft ly infinitum , ei cui conuenit extrinfecè ,
-            fecundum quid dicitur conuenire abfolutè loquendo . Sed hoc non multum probat , quia fatentur oppofiti Authores , quod ifta infinitas cóparata ad infinitatem in toto genere entis , vel in
-            ratione infinitatis extrinfeca , poteft dici iecundùm quid , id eft , minor illà . Quæftio tamen præfens procedit de infinitate peccati in eo genere
-            in quo eft infinitas , fcilicet in genere iniuriæ , an
-            in illo genere fit fecundùm quid , vel fimpliciter ? geEt ideò fecundùm fundamentum additur , quod
-            Pater Suarez profequitur , fcilicet , quia infinitas
-            hæc in genere iniurie poteft crefcere in peccato , & eft maior in vno , quàm in alio ; ergo fignum
-            eft infinitatem non effe fimpliciter adhuc in
-            nere iniuriæ , fiquidem in hoc genere poteft creadere , & minui . Atque ita licet offendat Deum ,
-            qui eft fimpliciter infinitus , tanquam obiectum
-            offenfionis tamen inde folùm habet obie& tum finitè cognofcit fimpliciter loquendo , ita
-            & finitè odit , vel amat , & ad illud conuertitur , vel
-            auertitur ; ergo fimpliciter dicendum eft peccatuin finitum , & fecúdùm quid infinitum ; eo quod
-            vt attingatur obiectum infinitum , non requiritur
-            infinitas fimpliciter in actu , fed fufficit quod fit
-            altioris ordinis , quam infiniti actus attingentes
-            obiecta inferiora finita . Sicut vifio beata eft altioris ordinis attingendo Deum in fe , & non habet infinitatem fimpliciter ,
-            ficque excedit infinitas cognitiones inferiores
-            circa obiecta finita . Et de hoc amplius dicetur in
-            folutione argumentorum .
-            Tertia vero pars conclufionis pofitæ , quæ communiter tenetur à Thomiftis , & à Patre Suarez citato probatur . Quia valor charitatis , & gratiæ ,
-            fumitur ab ipfa forma charitatis , & fecundùm
-            formalem effectus , quem fubiecto præbet , fic eft
-            eius valor ; formalis autem eff ctus , quem præbet
-            fubiecto , opponitur peccato , quatenùs eft priuatio rectitudinis debite fubiecto . Illud autem ,
-            quod ex peccato confequitur , fcilicet læfionem
-            juris diuini , & moralitatem ofenfe , charitas , &
-            gratiâ non attingit fecundùm valorem quem
-            præbet fubiecto , & actni • b eo procedenti , fed fecundùm quod procedit à remiffione diuina , cuius
-            effectus eft gratia . Quo fenfu Caietanus dixit in
-            •
-            pro
-            præfenti gratiam , & charitatem fatisfacere
-            peccato ex acceptione diuinæ mifericordiæ , à qua
-            procedit .""
+                Critical output rules:
+                - Output JSON only.
+                - Do not output markdown.
+                - Do not output prose.
+                - Do not output explanations.
+                - Do not output notes.
+                - Do not output comments.
+                - Do not output any text before the JSON array.
+                - Do not output any text after the JSON array.
+                - The first character of the response must be [
+                - The last character of the response must be ]
 
-            ## Output:            
-            [
-              {
-                "concept": "Deus",
-                "normalized": "Deum",
-                "translation": "God"
-              },
-              {
-                "concept": "bono morali",
-                "normalized": "bonti moralis",
-                "translation": "moral good"
-              },
-              {
-                "concept": "peccatum",
-                "normalized": "pecatum",
-                "translation": "sin"
-              },
-              {
-                "concept": "infinitas",
-                "normalized": "infinitum",
-                "translation": "infinity"
-              },
-              {
-                "concept": "intellectualis natura",
-                "normalized": "intelligentia naturalis",
-                "translation": "natural intelligence"
-              },
-              {
-                "concept": "bonum morale infinitum",
-                "normalized": "infinitum bonum morale",
-                "translation": "infinite moral good"
-              },
-              {
-                "concept": "ratio iniuriæ",
-                "normalized": "ratio injuriae",
-                "translation": "ratio of injury"
-              },
-              {
-                "concept": "gratia",
-                "normalized": "gratia",
-                "translation": "grace"
-              },
-              {
-                "concept": "iustitia",
-                "normalized": "iustitia",
-                "translation": "justice"
-              },
-              {
-                "concept": "charitas",
-                "normalized": "charitas",
-                "translation": "charity"
-              },
-              {
-                "concept": "fide",
-                "normalized": "fides",
-                "translation": "faith"
-              },
-              {
-                "concept": "peccator",
-                "normalized": "pecator",
-                "translation": "sinner"
-              },
-              {
-                "concept": "iustificare",
-                "normalized": "iustificari",
-                "translation": "to justify"
-              }
-            ]
-                        
-            There may be input that doesn't contain any text. Return an empty list in this case: []
+                Invalid concepts:
+                - "peccatuin fit contra naturam intellectualem"
+                - "quia ratio iniuriæ eft folùm extrinfeca"
+                - "quod fit contra bonum intellectuale infinitum"
 
-            Only respond with valid JSON List(Dict), no verbal explanation! Otherwise my parser breaks.
+                Valid concepts:
+                - "peccatuin"
+                - "naturam intellectualem"
+                - "ratio iniuriæ"
+                - "in peccato"
+                - "infinitum fecundùm quid"
+
+                Example input:
+                peccatuin fit contra naturam intellectualem , vt fic . folùm fequitur ,
+                quod fit contra bonum intellectuale infinitum , analogicè . Qui defendunt
+                effe folùm infinitum fecundùm quid , nituntur in duobus . Primò , quia
+                ratio iniuriæ eft folùm extrinfeca quædam denominatio in peccato .
+
+                Example output:
+                [
+                  {
+                    "concept": "peccatuin",
+                    "normalized": "peccatum",
+                    "translation": "sin"
+                  },
+                  {
+                    "concept": "naturam intellectualem",
+                    "normalized": "natura intellectualis",
+                    "translation": "intellectual nature"
+                  },
+                  {
+                    "concept": "bonum intellectuale infinitum",
+                    "normalized": "bonum intellectuale infinitum",
+                    "translation": "infinite intellectual good"
+                  },
+                  {
+                    "concept": "infinitum fecundùm quid",
+                    "normalized": "infinitum secundum quid",
+                    "translation": "infinite in a certain respect"
+                  },
+                  {
+                    "concept": "ratio iniuriæ",
+                    "normalized": "ratio iniuriae",
+                    "translation": "nature of injury"
+                  },
+                  {
+                    "concept": "in peccato",
+                    "normalized": "in peccato",
+                    "translation": "in sin"
+                  }
+                ]
+
+                Invalid output example:
+                [
+                  {
+                    "concept": "peccatuin",
+                    "normalized": "peccatum",
+                    "translation": "sin"
+                  }
+                ]
+                Note: The OCR is noisy.
+
+                The invalid example is wrong because it contains text after the JSON array.
 
 rag:
   working_dir: ./data/lightrag
@@ -456,6 +410,28 @@ open-search:
             meta:
               type: object
               dynamic: true
+            llm: # TODO
+              type: nested
+              properties:
+                concept:
+                  type: text
+                  fields:
+                    keyword:
+                      type: keyword
+                      ignore_above: 256
+                normalized:
+                  type: text
+                  fields:
+                    keyword:
+                      type: keyword
+                      ignore_above: 256
+                translation:
+                  type: text
+                  fields:
+                    keyword:
+                      type: keyword
+                      ignore_above: 256
+
           dynamic_templates:
             - meta_as_keyword:
                 path_match: "meta.*"

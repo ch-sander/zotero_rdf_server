@@ -33,7 +33,7 @@ def make_client(cfg: dict) -> OpenSearch:
         raise ValueError("Missing 'client' configuration")
     try:
         cli = OpenSearch(**cfg["client"])
-        logger.debug("OS client created")
+        logger.info("OS client created")
         return cli
     except Exception as e:
         logger.critical("Client failed. Service running?")
@@ -138,20 +138,32 @@ def provision_from_cfg(client: OpenSearch, cfg: dict) -> None:
             ensure_index_from_schema(client, index=name, index_def=indices[name])
 
     if plan:
-        # Execute declarative provisioning steps
         for step in plan:
+            logger.debug("starting step: %s", step)
+
             if "put_component_templates" in step:
-                put_component_templates(step["put_component_templates"])
+                for name in step["put_component_templates"]:
+                    logger.debug("PUT component_template %s", name)
+                    ensure_component_template(client, name=name, body=component_templates[name])
+                    logger.debug("DONE component_template %s", name)
+
             elif "put_ingest_pipelines" in step:
-                put_ingest_pipelines(step["put_ingest_pipelines"])
+                for name in step["put_ingest_pipelines"]:
+                    logger.debug("PUT ingest_pipeline %s", name)
+                    ensure_ingest_pipeline(client, name=name, body=ingest_pipelines[name])
+                    logger.debug("DONE ingest_pipeline %s", name)
+
             elif "put_index_templates" in step:
-                put_index_templates(step["put_index_templates"])
+                for name in step["put_index_templates"]:
+                    logger.debug("PUT index_template %s", name)
+                    ensure_index_template(client, name=name, body=index_templates[name])
+                    logger.debug("DONE index_template %s", name)
+
             elif "create_indices" in step:
-                create_indices(step["create_indices"])
-            else:
-                # Unknown step: ignore to keep this minimal and non-breaking
-                continue
-        logger.debug("putting plan")
+                for name in step["create_indices"]:
+                    logger.debug("CREATE index %s", name)
+                    ensure_index_from_schema(client, index=name, index_def=indices[name])
+                    logger.debug("DONE index %s", name)
         return
 
     # Fallback: best-effort default order (safe for most cases)
@@ -181,19 +193,51 @@ def page_docs(
     pages: Iterator[Tuple[int, str]],
     meta: dict = {}, 
     vector_kwargs: dict | None = None,
+    llm_kwargs: dict | None = None,
     # config_path: str | None = None,
 ) -> Iterator[Dict[str, Any]]:
     now = datetime.now(timezone.utc).isoformat()
     vector = isinstance(vector_kwargs, dict) and vector_kwargs.get('framework')
+    use_llm = isinstance(llm_kwargs, (dict,list)) and llm_kwargs.get('tasks')
+
     if vector:
         from .analysis.vector import embed
-        from .helpers import clean_ocr        
+        from .helpers import clean_ocr
+        vector_doc = None   
+    if use_llm:
+        from .analysis.llm import llm
+        from .helpers import clean_ocr
+        import json
+        from zotero_rdf_server.utils import load_dict_like        
+        llm_result = None
 
     for sequence, text in pages:
         label_s = f"{label.rstrip(',.:')}: {sequence}"
-        vector_doc = None
+        
         if vector:
             vector_doc = embed(clean_ocr(text),**vector_kwargs)
+
+        if use_llm and text:            
+            llm_dict = dict({})
+            llm_tasks = llm_kwargs.get('tasks')
+            for llm_task in llm_tasks:                
+                llm_task_kwargs = dict(llm_task or {'task': "task"})
+                llm_datatype = llm_task_kwargs.pop('llm_kwargs', "json")
+                llm_task_kwargs['config_path'] = llm_task_kwargs.get('config_path') or llm_kwargs.get('config_path')
+                llm_mapping_key = llm_task_kwargs.pop('mapping_key','llm')
+                llm_response = llm(clean_ocr(text), llm_task_kwargs) # TODO pass sequence and write out json
+                llm_file_kwargs = llm_task_kwargs.pop('file_kwargs') or {}
+                if llm_datatype in ('json'):
+                    llm_result = load_dict_like(llm_response, label="LLM page response", default=[], verbose=True)
+                else:
+                    llm_result = llm_response
+                llm_dict[llm_mapping_key] = llm_result
+                if llm_file_kwargs.get('file_out'):
+                    logger.info("Storing file....")
+
+                
+
+
         for index_name in targets:            
             source = {
                 "source": input,
@@ -206,6 +250,8 @@ def page_docs(
             }
             if vector:
                 source["vector"] = vector_doc
+            if use_llm and llm_result:
+                source[llm_mapping_key] = llm_result or None
 
             action = {
                 "_op_type": "index",
@@ -350,14 +396,17 @@ def index_stream(
     source_kwargs: dict | None = None,
     meta: dict | None = None,
     doc: Any | None = None,
-    vector_kwargs: dict | None = None
+    vector_kwargs: dict | None = None,
+    llm_kwargs: dict | None = None
 ) -> dict:
     logger.debug(f"OS index_stream started...")
     cfg_path = resolve_config_path(config_path)
     oscfg = get_os_config(cfg_path)
     client = make_client(oscfg)
     try:
+        logger.info(f"Provisioning {targets}...")
         provision_from_cfg(client, oscfg)
+        logger.info("Provisioning completed!")
     except Exception as e:
         logger.critical(f"Open Search failed: {e}. Open Search running?")
 
@@ -393,6 +442,7 @@ def index_stream(
             pages=pages_iter,
             meta=meta or {},
             vector_kwargs=vector_kwargs,
+            llm_kwargs=llm_kwargs,
             # config_path=cfg_path,
         )
 
