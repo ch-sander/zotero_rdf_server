@@ -34,9 +34,10 @@ DEFAULT_CHAT = {
 
 
 def build_chat_config(llmcfg: dict[str, Any] | None) -> dict[str, Any]:
-    task = llmcfg.get('tasks', 'chat')
+    task = llmcfg.pop('tasks', 'chat')
     # TODO better logic
-    cfg = deepcopy((llmcfg or {}).get("chat", DEFAULT_CHAT))
+    cfg = llmcfg.get('chats') or {}
+    cfg = deepcopy((llmcfg or {}).get(task, DEFAULT_CHAT))
 
     if not isinstance(cfg, dict):
         raise ValueError("llmcfg['chat'] must be Dictionary.")
