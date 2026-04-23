@@ -34,6 +34,8 @@ DEFAULT_CHAT = {
 
 
 def build_chat_config(llmcfg: dict[str, Any] | None) -> dict[str, Any]:
+    task = llmcfg.get('tasks', 'chat')
+    # TODO better logic
     cfg = deepcopy((llmcfg or {}).get("chat", DEFAULT_CHAT))
 
     if not isinstance(cfg, dict):
@@ -75,7 +77,7 @@ def llm(user_input: str, llm_kwargs: dict | None = None) -> str:
     llm_config = get_llm_config(config_path)
     client = make_llm_client(llm_config)
 
-    llmcfg = llm_kwargs | llm_config  
+    llmcfg = llm_kwargs | llm_config
     CHAT = build_chat_config(llmcfg)
     host = llmcfg.get("client", {}).get('host')
     logger.info(f"Using Ollama host: {host}")

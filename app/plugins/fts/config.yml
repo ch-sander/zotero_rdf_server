@@ -23,7 +23,7 @@ vector:
 llm:
   client:
     host: http://ollama:11434 # "http://host.docker.internal:11434" # or ollama:11434 if in Docker Network
-  tasks:
+  chats:
     concepts:
       model: "llama3.2:3b" #  "llama3.2:3b", "qwen2.5:7b", "nomic-embed-text:latest"
       messages:
