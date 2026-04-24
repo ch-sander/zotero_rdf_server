@@ -1,5 +1,5 @@
 from __future__ import annotations
-from .helpers import ensure_import, resolve_config_path, plugin_logger, write_data_to_file, safe_doc_id
+from .helpers import ensure_import, resolve_config_path, plugin_logger, safe_doc_id
 ensure_import("opensearchpy")
 import os
 import yaml
