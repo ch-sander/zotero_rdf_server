@@ -225,7 +225,7 @@ def run_llm_tasks(
             llm_task_kwargs.get("config_path") or llm_kwargs.get("config_path")
         )
         llm_mapping_key = llm_task_kwargs.pop("mapping_key", "llm")
-        llm_mapping_keys = llm_kwargs.pop('mapping_keys', None) or [llm_mapping_key]
+        llm_mapping_keys = llm_task_kwargs.pop('mapping_keys', None) or [llm_mapping_key]
         llm_file_kwargs = llm_task_kwargs.pop("file_kwargs", {}) or {}
         llm_out = llm_file_kwargs.get("llm_out")
         save_llm = str(llm_file_kwargs.get("save_llm", "skip")).lower().strip()
