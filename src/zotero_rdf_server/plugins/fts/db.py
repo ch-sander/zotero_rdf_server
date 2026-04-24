@@ -212,7 +212,7 @@ def run_llm_tasks(
         result_path = (EXPORT_DIRECTORY / pp / doc_dir).resolve() if doc_dir else (EXPORT_DIRECTORY / pp ).resolve()
         logger.debug(f"Export path set: {result_path}")
         return result_path
-    
+
     llm_dict = {}
     llm_tasks = llm_kwargs.get("tasks") or []
 
@@ -267,7 +267,7 @@ def run_llm_tasks(
                 verbose=not used_cache,
             )        
         else:
-            llm_result = llm_response
+            llm_result = llm_response or []
 
         for key in llm_mapping_keys:
             llm_dict[key] = llm_result
@@ -282,7 +282,7 @@ def run_llm_tasks(
         )
 
         if should_write_cache:
-            llm_result_file = {"meta": llm_meta, "response": llm_result}
+            llm_result_file = {"config": llm_meta, "response": llm_result or [], 'generated':datetime.now(timezone.utc).isoformat(), 'input':{'text':text, 'doc_id':doc_id,'sequence':sequence}}
             llm_safe = make_json_safe(llm_result_file)
             llm_file.parent.mkdir(parents=True, exist_ok=True)
             llm_file.write_text(
@@ -314,12 +314,6 @@ def page_docs(
         from .analysis.vector import embed
         from .helpers import clean_ocr
         vector_doc = None   
-    if use_llm:
-        from .analysis.llm import llm
-        from .helpers import clean_ocr
-        import json
-        from zotero_rdf_server.utils import load_dict_like        
-        llm_result = None
 
     for sequence, text in pages:
         label_s = f"{label.rstrip(',.:')}: {sequence}"
@@ -349,7 +343,7 @@ def page_docs(
             if vector:
                 source["vector"] = vector_doc
 
-            if use_llm and llm_dict:
+            if use_llm and llm_dict and isinstance(llm_dict,dict):
                 source.update(llm_dict)
 
             action = {
