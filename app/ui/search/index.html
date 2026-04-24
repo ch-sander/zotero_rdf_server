@@ -20,6 +20,17 @@
   <div class="wrap">
     <h1>OCR Search</h1>
 
+    <details class="index-settings">
+      <summary>Search settings</summary>
+      <label>
+        Index
+        <select id="index-select">
+          <option value="ocr-scigma" selected>Main Index</option>
+          <option value="ocr-scigma-llm">LLM Index</option>
+        </select>
+      </label>
+    </details>
+
     <div id="searchbox"></div>
     <div id="stats"></div>
 

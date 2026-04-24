@@ -1,5 +1,11 @@
 const OPENSEARCH_HOST = "/plugin/fts/search-proxy";
-const INDEX_NAME = "ocr-scigma";
+
+const DEFAULT_INDEX_NAME = "ocr-scigma";
+
+let activeIndexName =
+  localStorage.getItem("ocrSearchIndex") || DEFAULT_INDEX_NAME;
+
+let searchInstance = null;
 
 const SEARCH_ATTRIBUTES_OLD = [
   { field: "text", weight: 5 },
@@ -153,8 +159,8 @@ function buildFacetAttributes(fields) {
     });
 }
 
-async function loadMapping() {
-  const res = await fetch(`${OPENSEARCH_HOST}/${INDEX_NAME}/_mapping`);
+async function loadMapping(indexName = activeIndexName) {
+  const res = await fetch(`${OPENSEARCH_HOST}/${indexName}/_mapping`);
   if (!res.ok) {
     throw new Error(`Failed to load mapping: ${res.status} ${res.statusText}`);
   }
@@ -282,10 +288,11 @@ function buildResultAttributes(fields) {
     .filter((field) => !HIT_BLACKLIST.has(field));
 }
 
-async function init() {
+async function init(indexName = activeIndexName) {
   try {
+    activeIndexName = indexName;
     const mapping = await loadMapping();
-    const properties = mapping?.[INDEX_NAME]?.mappings?.properties || {};
+    const properties = mapping?.[indexName]?.mappings?.properties || {};
     const flatFields = flattenProperties(properties);
     const dynamicFacets = buildFacetAttributes(flatFields);
     const dynamicResultAttributes = buildResultAttributes(flatFields);
@@ -408,7 +415,7 @@ async function init() {
     });
 
     const search = instantsearch({
-      indexName: INDEX_NAME,
+      indexName: indexName,
       searchClient
     });
 
@@ -458,7 +465,21 @@ async function init() {
   }
 }
 
-init();
+function initIndexSelector() {
+  const select = document.getElementById("index-select");
+  if (!select) return;
+
+  select.value = activeIndexName;
+
+  select.addEventListener("change", () => {
+    const nextIndex = select.value;
+    localStorage.setItem("ocrSearchIndex", nextIndex);
+    init(nextIndex);
+  });
+}
+
+initIndexSelector();
+init(activeIndexName);
 
 /*     const searchClient = SearchkitInstantsearchClient(sk, {
     getQuery(query, search_attributes) {

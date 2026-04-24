@@ -95,6 +95,23 @@ details {
   margin-top: 8px;
 }
 
+.index-settings {
+  margin: 0.5rem 0 1rem;
+  font-size: 0.9rem;
+  opacity: 0.75;
+}
+
+.index-settings summary {
+  cursor: pointer;
+}
+
+.index-settings label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
 summary {
   cursor: pointer;
   color: #ff9900; /* orange */
