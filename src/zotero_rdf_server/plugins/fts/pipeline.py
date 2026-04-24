@@ -244,7 +244,7 @@ def ingest_pipeline(
                     d["vector"] = vector_doc
                 if use_llm: # TODO adjust          
                     llm_mapping_key = llm_kwargs.pop('mapping_key','llm')
-                    llm_mapping_keys = llm_kwargs.pop('mapping_keys') or [llm_mapping_key]
+                    llm_mapping_keys = llm_kwargs.pop('mapping_keys', None) or [llm_mapping_key]
                     llm_response = llm(clean_ocr(text), llm_kwargs)                    
                     logger.debug(llm_response)
                     llm_dict = load_dict_like(llm_response)
