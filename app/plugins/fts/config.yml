@@ -458,22 +458,8 @@ open-search:
                       ignore_above: 256
             concepts_flat:
               type: object
-              properties:
-                concept:
-                  type: text
-                  fields:
-                    keyword:
-                      type: keyword
-                normalized:
-                  type: text
-                  fields:
-                    keyword:
-                      type: keyword
-                translation:
-                  type: text
-                  fields:
-                    keyword:
-                      type: keyword
+              dynamic: true
+
           dynamic_templates:
             - meta_as_keyword:
                 path_match: "meta.*"
@@ -482,6 +468,11 @@ open-search:
                   ignore_above: 256
             - llm_as_keyword:
                 path_match: "llm.*"
+                mapping:
+                  type: keyword
+                  ignore_above: 256
+            - concepts_flat_as_keyword:
+                path_match: "concepts_flat.*"
                 mapping:
                   type: keyword
                   ignore_above: 256
