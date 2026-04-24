@@ -454,7 +454,24 @@ open-search:
                     keyword:
                       type: keyword
                       ignore_above: 256
-
+            concepts_flat:
+              type: object
+              properties:
+                concept:
+                  type: text
+                  fields:
+                    keyword:
+                      type: keyword
+                normalized:
+                  type: text
+                  fields:
+                    keyword:
+                      type: keyword
+                translation:
+                  type: text
+                  fields:
+                    keyword:
+                      type: keyword
           dynamic_templates:
             - meta_as_keyword:
                 path_match: "meta.*"
