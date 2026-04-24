@@ -301,7 +301,7 @@ def ingest_route(
     open_search_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for Open Search Config", examples=[None]),
     source_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for OCR Config", examples=[None]),
     framework_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for OCR Backend Config", examples=[None]),
-    file_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for File Output", examples=[{'img_out':'kraken/images','txt_out':'kraken/texts','meta_out':'kraken/meta','save_text':'active','save_image':'skip'}]),
+    file_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for File Output", examples=[None]),
     vector_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for embedding Backend Config", examples=[None]),
     llm_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for LLM Backend Config", examples=[None]),
 ):
