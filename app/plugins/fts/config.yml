@@ -34,7 +34,7 @@ llm:
           content: |
                 You are given noisy OCR text from early modern Latin theological works.
 
-                Extract the most relevant concepts and translate them into English.
+                Extract the most relevant concepts and translate them into English. Relevance is undertood as semantic description of the Latin text.
 
                 Return ONLY a valid JSON array of objects.
                 Each object must contain exactly these keys:
@@ -65,17 +65,19 @@ llm:
                 - The first character of the response must be [
                 - The last character of the response must be ]
 
-                Invalid concepts (examples):
+                Invalid concepts (ONLY EXAMPLES):
                 - "peccatuin fit contra naturam intellectualem"
                 - "quia ratio iniuriæ eft folùm extrinfeca"
                 - "quod fit contra bonum intellectuale infinitum"
 
-                Valid concepts (examples):
+                Valid concepts (ONLY EXAMPLES):
                 - "peccatuin"
                 - "naturam intellectualem"
                 - "ratio iniuriæ"
                 - "in peccato"
                 - "infinitum fecundùm quid"
+
+                Here are examples (but do not simply return the example but create a return given the specific input. Rather do not return any objects before simply returning the exmaple below, not matching the input text.)
 
                 Example input:
                 peccatuin fit contra naturam intellectualem , vt fic . folùm fequitur ,
