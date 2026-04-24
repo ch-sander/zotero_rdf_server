@@ -225,6 +225,7 @@ def run_llm_tasks(
             llm_task_kwargs.get("config_path") or llm_kwargs.get("config_path")
         )
         llm_mapping_key = llm_task_kwargs.pop("mapping_key", "llm")
+        llm_mapping_keys = llm_kwargs.pop('mapping_keys') or [llm_mapping_key]
         llm_file_kwargs = llm_task_kwargs.pop("file_kwargs", {}) or {}
         llm_out = llm_file_kwargs.get("llm_out")
         save_llm = str(llm_file_kwargs.get("save_llm", "skip")).lower().strip()
@@ -268,7 +269,8 @@ def run_llm_tasks(
         else:
             llm_result = llm_response
 
-        llm_dict[llm_mapping_key] = llm_result
+        for key in llm_mapping_keys:
+            llm_dict[key] = llm_result
 
         should_write_cache = (
             llm_file is not None

@@ -70,8 +70,7 @@ def ingest_pipeline(
     use_llm = isinstance(llm_kwargs, dict) and llm_kwargs.get('tasks')
     if use_llm:
         logger.warning("LLM active!")
-        from .analysis.llm import llm
-        llm_mapping_key = llm_kwargs.pop('mapping_key','llm')        
+        from .analysis.llm import llm                
 
     if from_source:
         from .ocr import iter_text_pages, PdfTextPolicy, IiifOcrPolicy, TextPolicy, HtmlPolicy, XmlPolicy, JsonPolicy
@@ -243,12 +242,15 @@ def ingest_pipeline(
                 if vector:
                     vector_doc = embed(clean_ocr(text),**vector_kwargs)
                     d["vector"] = vector_doc
-                if use_llm: # TODO adjust                           
+                if use_llm: # TODO adjust          
+                    llm_mapping_key = llm_kwargs.pop('mapping_key','llm')
+                    llm_mapping_keys = llm_kwargs.pop('mapping_keys') or [llm_mapping_key]
                     llm_response = llm(clean_ocr(text), llm_kwargs)                    
                     logger.debug(llm_response)
                     llm_dict = load_dict_like(llm_response)
-                    if llm_dict:
-                        d[llm_mapping_key] = llm_response
+                    if llm_dict:                        
+                        for key in llm_mapping_keys:
+                            d[key] = llm_response
                         logger.debug(json.dumps(llm_dict,indent=4))
 
                 digest = index_stream(
