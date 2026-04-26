@@ -56,7 +56,7 @@ OPTIONAL {  ?library rdf:type zot:library;
 
   FILTER(?ocrTag NOT IN ("*broken_file"))
 
-  ?parent zot:collections <https://www.zotero.org/groups/4929619/collections/42TKQY36> . # Filter pending
+  ?parent zot:collections <https://www.zotero.org/groups/4929619/collections/9D9XX2VG> . # Filter pending
 
   OPTIONAL {
     ?parent zot:tags ?tag_1502_13.
