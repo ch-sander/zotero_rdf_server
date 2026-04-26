@@ -45,13 +45,6 @@ OPTIONAL {  ?file zot:url ?url;
 OPTIONAL {  ?library rdf:type zot:library;
                      zot:id ?library_label.}
 
-# FILTER( # filter on attachment name
-#     CONTAINS(?file_label, "PDF") #||
-# #    CONTAINS(?file_label, "Books")
-#   )
-
-  # FILTER(CONTAINS(STR(?url), "digitale-sammlungen.de")) # filter on attachment URL
-
   ?file zot:tags ?t_format .
   ?t_format a zot:tag ;
             zot:tag ?formatTag .
@@ -60,9 +53,10 @@ OPTIONAL {  ?library rdf:type zot:library;
   ?file zot:tags ?t_ocr .
   ?t_ocr a zot:tag ;
         zot:tag ?ocrTag .
-  # VALUES ?ocrTag { "**redo_OCR" }
 
   FILTER(?ocrTag NOT IN ("*broken_file"))
+
+  ?parent zot:collections <https://www.zotero.org/groups/4929619/collections/42TKQY36> . # Filter pending
 
   OPTIONAL {
     ?parent zot:tags ?tag_1502_13.
