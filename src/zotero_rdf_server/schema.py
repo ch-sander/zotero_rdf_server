@@ -4,7 +4,7 @@ from collections import defaultdict
 from .logging_config import logger, setup_logging
 from .config import *
 from .utils import *
-from .store import Quad, NamedNode, Literal, BlankNode
+from .global_store import Quad, NamedNode, Literal, BlankNode
 
 def zotero_schema(store, schema, vocab_iri="http://www.zotero.org/namespaces/export#"):
 

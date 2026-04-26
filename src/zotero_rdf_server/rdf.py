@@ -6,7 +6,7 @@ from pathlib import Path
 from requests.exceptions import RequestException
 from typing import Iterable, Optional
 
-from .store import Store, Quad, NamedNode, Literal, RdfFormat, BlankNode
+from .global_store import Store, Quad, NamedNode, Literal, RdfFormat, BlankNode
 from .logging_config import logger
 from .config import *
 from .models import ZoteroLibrary

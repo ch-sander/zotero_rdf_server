@@ -4,7 +4,7 @@ import time, threading, asyncio
 
 from .config import log_level, DELAY, STORE_MODE
 from .logging_config import logger
-from .store import initialize_store, refresh_store
+from .global_store import initialize_store, refresh_store
 
 @asynccontextmanager
 async def app_lifespan_legacy(app: FastAPI):
@@ -34,7 +34,8 @@ async def app_lifespan(app: FastAPI):
 
     try:
         if STORE_MODE in {"directory_rw"}:
-            from .store import store
+            from . import global_store
+            store = global_store.get_store()
             store.flush()
     except Exception as e:
         logger.warning(f"Flush on shutdown failed: {e}")

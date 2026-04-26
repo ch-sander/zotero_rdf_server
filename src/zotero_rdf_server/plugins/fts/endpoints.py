@@ -397,7 +397,9 @@ def ingest_route(
                 from pyoxigraph import Store, NamedNode
                 store = Store.read_only(store_path)
             else:
-                from zotero_rdf_server.store import store, NamedNode, Store
+                from zotero_rdf_server.global_store import  NamedNode, Store
+                from zotero_rdf_server import global_store
+                store = global_store.get_store()
                 logger.warning("Reading from main store")
 
         except Exception as e:
@@ -409,7 +411,7 @@ def ingest_route(
 
         if graph or (graph is None and query is None):  # take one or multple graphs if no query given in API
             targets_set = []
-            from zotero_rdf_server.store import get_graph
+            from zotero_rdf_server.global_store import get_graph
             checked_graph, all_graphs = get_graph(graph)
             if graph and not checked_graph:
                 raise HTTPException(status_code=400, detail=f"Invalid graph IRI. Use one of these or None: {all_graphs}")
@@ -517,7 +519,9 @@ def ingest_route(
 
             targets=list(set(targets_set))
             try:
-                del store
+                store = None
+                import gc
+                gc.collect()
             except:
                 logger.warning("Store not found, maybe check!")
 
@@ -557,9 +561,12 @@ def ingest_route(
                 )
 
             try:
-                del store
+                store = None
+                import gc
+                gc.collect()
             except:
                 logger.warning("Store not found, maybe check!")
+                
             from_source = True if from_source is True else False
 
             run_ids.extend(ingest_pipeline(items=items,

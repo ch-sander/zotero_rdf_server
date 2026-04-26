@@ -1,12 +1,13 @@
 from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Depends, status
 from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse, FileResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-import secrets
+import secrets, shutil
 from typing import Any, Literal as TypingLiteral
 import logging
 from pathlib import Path
 # import asyncio
-from .store import *
+# from .global_store import *
+from . import global_store
 from .rdf import *
 from .logging_config import logger, LogLevel
 from .config import *
@@ -92,8 +93,8 @@ def build_subset_store(source_store, graphs):
     return temp_store
 
 def prepare_export(format: str, graph: list[str] | None, ts_filename: bool = False):
-    from .store import store
-
+    # from .global_store import store
+    store = global_store.get_store()
     rdf_format = ensure_rdf_format(format=format)
     if rdf_format is None:
         raise HTTPException(status_code=400, detail=f"Unsupported RDF format: {format}")
@@ -103,7 +104,7 @@ def prepare_export(format: str, graph: list[str] | None, ts_filename: bool = Fal
 
     if graph:
         for g in graph:
-            checked_graph, all_graphs = get_graph(g)
+            checked_graph, all_graphs = global_store.get_graph(g)
             if not checked_graph:
                 raise HTTPException(
                     status_code=400,
@@ -193,79 +194,10 @@ async def export_graph_file(
         "path": path,
     }
 
-# @router.get("/export", summary="Create export", tags=["Data"])
-# async def export_graph(
-#     format: str = Query("trig"),
-#     graph: list[str] | None = Query(default=None, description="Named graph IRIs (repeat parameter)")
-# ):
-#     from .store import store
-    
-#     def build_subset_store(source_store, graphs):
-#         temp_store = Store()
-#         for graph in graphs:
-#             temp_store.bulk_extend(source_store.quads_for_pattern(None, None, None, graph))
-#         return temp_store
-    
-#     # EXPORT_DIRECTORY.mkdir(parents=True, exist_ok=True)
-
-#     rdf_format = ensure_rdf_format(format=format)
-#     if rdf_format is None:
-#         raise HTTPException(status_code=400, detail=f"Unsupported RDF format: {format}")
-
-#     checked_graphs = []
-#     all_graphs = None
-
-#     if graph:
-#         for g in graph:
-#             checked_graph, all_graphs = get_graph(g)
-#             if not checked_graph:
-#                 raise HTTPException(
-#                     status_code=400,
-#                     detail=f"Invalid graph IRI: {g}. Use one of these or None: {all_graphs}"
-#                 )
-#             checked_graphs.append(checked_graph)
-
-#     extension = rdf_format.file_extension
-#     if len(checked_graphs) == 1:
-#         filename_base = iri_to_filename(graph[0])
-#     else:
-#         filename_base = "zotero_store" if not checked_graphs else "graph_subset"
-
-#     path = EXPORT_DIRECTORY / f"{filename_base}.{extension}"
-#     len_store = 0
-#     logger.info(f"Create {path}")
-#     logger.info(f"Checked graphs: {checked_graphs!r}")
-
-#     if not checked_graphs:
-#         len_store = len(store)
-#         if rdf_format.supports_datasets:
-#             store.dump(output=path, format=rdf_format, prefixes=PREFIXES)            
-#         else:
-#             store.dump(
-#                 output=path,
-#                 format=rdf_format,
-#                 prefixes=PREFIXES,
-#                 from_graph=DefaultGraph(),
-#             )
-#     elif len(checked_graphs) == 1:
-#         len_store = len(store)
-#         g = checked_graphs[0]
-#         store.dump(
-#             output=path,
-#             format=rdf_format,
-#             prefixes=PREFIXES,
-#             from_graph=g,
-#             base_iri=str(g.value).rstrip("/") + "/" if getattr(g, "value", None) else None,
-#         )
-#     else:
-#         subset_store = build_subset_store(store, checked_graphs)
-#         subset_store.dump(output=path, format=rdf_format, prefixes=PREFIXES)
-#         len_store = len(subset_store)
-#     return {"success": f"Exported {[str(g) for g in checked_graphs] or [str(g) for g in store.named_graphs()]}", "len": len_store, "path":path}
-
 @router.get("/backup", summary="Create backup", description=f"Creates a complete backup of the store to {BACKUP_DIRECTORY}", tags=["Data"])
 async def backup_store():
-    from .store import store
+    # from .global_store import store
+    store = global_store.get_store()
     backup_root = Path(BACKUP_DIRECTORY).resolve()
     backup_path = backup_root / "Store"
     log_file = backup_root / "backup.log"
@@ -317,17 +249,18 @@ async def reload(
         logger.setLevel(new_level)
 
     try:
-        # if reload_config:
+        # if reload_config: # TODO
         #     from . import config as config_module
         #     importlib.reload(config_module)
         #     logger.warning("CONFIG reloaded!")
 
         if reload_libraries:
-            refresh_store(True, remove_store=remove_store)
+            global_store.refresh_store(True, remove_store=remove_store)
         else:
-            refresh_store(False, remove_store=remove_store)
+            global_store.refresh_store(False, remove_store=remove_store)
 
-        from .store import store
+        # from .global_store import store
+        store = global_store.get_store()
         graphs = [str(g) for g in store.named_graphs()]
         return {
             "status": "success",
@@ -344,9 +277,11 @@ async def reload(
 
 @router.get("/optimize", summary="Optimize Store", description="Will optimize the oxigraph store", tags=["Data"])
 async def optimize_store():
-    from .store import store
-    store.optimize()
-    return {"success":"Store optimized"}
+    with global_store._store_lock:
+        store = global_store.get_store()
+        store.optimize()
+
+    return {"success": "Store optimized"}
 
 @open_router.get("/favicon.ico", include_in_schema=False)
 def favicon():
@@ -368,7 +303,8 @@ async def get_libs():
 
 @open_router.get("/graphs", summary="List of all named graphs", description="Returns all available named graphs.", tags=["RDF"])
 async def list_graphs():
-    from .store import store
+    # from .global_store import store
+    store = global_store.get_store()
     graphs = [str(g) for g in store.named_graphs()]
     return {"status": "success", "store":{"named_graphs":graphs, "len":len(store)}}
 
@@ -389,9 +325,10 @@ async def delete_mapping_targets(
         description="If true, performs the deletion. If false, only returns how many triples would be removed.",
     ),
 ) -> dict:    
-    from .store import store
+    # from .global_store import store
+    store = global_store.get_store()
 
-    map_graph, all_graphs = get_graph(map_graph_iri)
+    map_graph, all_graphs = global_store.get_graph(map_graph_iri)
     if map_graph_iri is not None and not map_graph:
         raise HTTPException(
             status_code=400,
@@ -409,7 +346,8 @@ async def delete_mapping_targets(
         }
 
     for q in target_quads:
-        store.remove(q)
+        with global_store._store_lock:
+            store.remove(q)
 
     return {
         "execute": True,
@@ -472,8 +410,8 @@ async def purge(
         description="Mappings mode only: if true, includes mapping entries whose target does not exist in the entity graph.",
     ),
 ) -> list:
-    from .store import store
-
+    from .global_store import get_graph
+    store = global_store.get_store()
     checked_graph, all_graphs = get_graph(graph_iri)
     if graph_iri is not None and not checked_graph:
         raise HTTPException(
@@ -554,7 +492,8 @@ async def merge(
         description="If true, deduplicate and merge all mappings targeting new_iri",
     )    ,
 ) -> dict:
-    from .store import store
+    from .global_store import get_graph
+    store = global_store.get_store()
 
     old = safeNamedNode(old_iri)
     new = safeNamedNode(new_iri)
@@ -635,7 +574,8 @@ async def kb_map_sync(
         description="If true, performs the synchronization. If false, returns only checks and resolved direction.",
     ),
 ) -> dict[str, Any]:
-    from .store import store
+    from .global_store import get_graph
+    store = global_store.get_store()
 
     entity_graph, _ = get_graph(entity_graph_iri)
     map_graph, _ = get_graph(map_graph_iri)
@@ -720,7 +660,8 @@ async def delete_graph(
         description="If true, performs the deletion. If false, only checks existence.",
     ),
 ) -> dict[str, Any]:
-    from .store import store
+    from .global_store import get_graph, _store_lock
+    store = global_store.get_store()
 
     # Resolve graph object
     if graph_iri is None or graph_iri.lower() == "default":
@@ -776,7 +717,8 @@ async def get_csv(
     output_file = EXPORT_DIRECTORY / "export.csv"
     delimiter = " | "
 
-    from .store import store
+    from .global_store import get_graph
+    store = global_store.get_store()
 
     checked_graph, all_graphs = get_graph(graph)
     if graph and not checked_graph:

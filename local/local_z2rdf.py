@@ -57,7 +57,7 @@ def generate_openapi(output_path: Path, html_output_path: Path) -> None:
 import asyncio
 
 async def export_rdf(force=False):
-    from zotero_rdf_server.store import initialize_store, refresh_store
+    from zotero_rdf_server.global_store import initialize_store, refresh_store
     initialize_store()
     print(f"✅ Store initialized")
 
