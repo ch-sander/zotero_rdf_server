@@ -254,10 +254,7 @@ async def reload(
         #     importlib.reload(config_module)
         #     logger.warning("CONFIG reloaded!")
 
-        if reload_libraries:
-            global_store.refresh_store(True, remove_store=remove_store)
-        else:
-            global_store.refresh_store(False, remove_store=remove_store)
+        global_store.refresh_store(reload_libraries, remove_store=remove_store)
 
         # from .global_store import store
         store = global_store.get_store()
@@ -298,7 +295,10 @@ def favicon():
 
 @router.get("/libs", summary="List of all libraries", description="Returns all available libraries with configuration.", tags=["Admin"])
 async def get_libs():
-    result = [ZoteroLibrary(cfg) for cfg in ZOTERO_LIBRARIES_CONFIGS]
+    import importlib
+    from . import config
+    importlib.reload(config)
+    result = [ZoteroLibrary(cfg) for cfg in config.ZOTERO_LIBRARIES_CONFIGS]
     return {"success": result}
 
 @open_router.get("/graphs", summary="List of all named graphs", description="Returns all available named graphs.", tags=["RDF"])
