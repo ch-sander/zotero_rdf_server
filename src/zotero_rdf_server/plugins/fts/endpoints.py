@@ -416,8 +416,11 @@ def ingest_route(
             if graph and not checked_graph:
                 raise HTTPException(status_code=400, detail=f"Invalid graph IRI. Use one of these or None: {all_graphs}")
             from zotero_rdf_server.models import ZoteroLibrary
-            from zotero_rdf_server.config import ZOTERO_LIBRARIES_CONFIGS
-            for lib_cfg in ZOTERO_LIBRARIES_CONFIGS:
+            import importlib
+            import zotero_rdf_server.config as zcfg
+            importlib.reload(zcfg)
+            # from zotero_rdf_server.config import ZOTERO_LIBRARIES_CONFIGS
+            for lib_cfg in zcfg.ZOTERO_LIBRARIES_CONFIGS:
                 lib = ZoteroLibrary(lib_cfg)            
                 if not graph or graph == lib.base_url:
                     logger.info(f"starting FTS pipeline for {lib.base_url}...")
