@@ -203,16 +203,44 @@ def _download(url: str, dest: Path) -> None:
 
 Kind = Literal["pdf", "iiif", "xml", "html", "text", "json", "csv"]
 
-def detect_file_kind(path: Path) -> Optional[Kind]:
+def detect_file_kind(
+    path: Path,
+    sniff_bytes: int = 16384,
+) -> Optional[Kind]:
+    try:
+        with path.open("rb") as f:
+            prefix = f.read(sniff_bytes)
+
+            if _looks_like_pdf(prefix):
+                return "pdf"
+
+            mk = _sniff_markup(prefix)
+            if mk:
+                return mk
+
+            jt = _sniff_text_vs_json(prefix)
+
+            if jt == "json" or path.suffix.lower() == ".json":
+                def fetch_more(step: int, offset: int) -> bytes:
+                    f.seek(offset)
+                    return f.read(step) or b""
+
+                return (
+                    "iiif"
+                    if _is_probably_iiif_json(prefix, fetch_more_cb=fetch_more)
+                    else "json"
+                )
+
+    except OSError:
+        return None
+
     ext = path.suffix.lower()
     return {
-        ".json": "json",
-        ".pdf": "pdf",
         ".txt": "text",
+        ".csv": "csv",
         ".html": "html",
         ".htm": "html",
         ".xml": "xml",
-        ".csv": "csv",
     }.get(ext, None)
 
 def is_url(s: str) -> bool:

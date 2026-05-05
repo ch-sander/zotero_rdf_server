@@ -1036,6 +1036,20 @@ def mk_iiif_image_url(service_id: str, max_width: Optional[int] = 2000, fmt: str
         return f"{sid}/full/full/0/{quality}.{fmt}"
     return f"{sid}/full/{int(max_width)},/0/{quality}.{fmt}"
 
+def mk_iiif_image_url_deprecated(
+    service_id: str,
+    max_width: Optional[int] = 2000,
+    fmt: str = "jpg",
+    quality: str = "default",
+) -> str:
+    sid = service_id.rstrip("/")
+    fmt = fmt.lstrip(".")
+    quality = quality or "default"
+
+    if max_width is None:
+        return f"{sid}/full/full/0/{quality}.{fmt}"
+
+    return f"{sid}/full/!{int(max_width)},/0/{quality}.{fmt}"
 # -----------------------------
 # Manifest -> image URLs (v2 + v3)
 # -----------------------------
@@ -1084,18 +1098,32 @@ def iiif_manifest_to_pages(
             if not isinstance(canvas, dict):
                 continue
             for img in _as_list(canvas.get("images")):
-                if not isinstance(img, dict):
-                    continue
+                # if not isinstance(img, dict):
+                #     continue
+                # res = img.get("resource") or {}
+                # direct = res.get("@id") or res.get("id")
+                # if direct:
+                #     add(direct, canvas)
+                #     continue
+                # if not isinstance(res, dict):
+                #     res = {}
+                # sids = _extract_image_service_ids(res)
+                # if sids:
+                #     for sid in sids:
+                #         add(mk_iiif_image_url(sid, max_width=max_width, fmt=fmt, quality=quality), canvas)
+                # elif include_direct_ids_as_fallback:
+                #     add(res.get("@id") or res.get("id"), canvas)
                 res = img.get("resource") or {}
                 if not isinstance(res, dict):
-                    res = {}
+                    continue
+
                 sids = _extract_image_service_ids(res)
+
                 if sids:
                     for sid in sids:
                         add(mk_iiif_image_url(sid, max_width=max_width, fmt=fmt, quality=quality), canvas)
                 elif include_direct_ids_as_fallback:
                     add(res.get("@id") or res.get("id"), canvas)
-
     return pages
 
 def iiif_manifest_to_image_urls(
@@ -1168,6 +1196,10 @@ def fetch_pil_image(
     logger.error(f"Fetching image failed for {url}: {last_exc}")
     return None
 
+def origin_referer(url: str) -> str:
+    p = urlparse(url)
+    return f"{p.scheme}://{p.netloc}/"
+
 def stream_download_to_tempfile(
     url: str,
     suffix: str,
@@ -1184,8 +1216,12 @@ def stream_download_to_tempfile(
         try:
             with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                 tmp_path = tmp.name
-
-            with requests.get(url, stream=True, timeout=timeout, headers=APP_USER) as r:
+            headers = {
+                **APP_USER,
+                "Accept": "application/pdf,application/octet-stream,*/*",
+            }
+            headers.setdefault("Referer", origin_referer(url))
+            with requests.get(url, stream=True, timeout=timeout, headers=headers) as r:
                 r.raise_for_status()
                 with open(tmp_path, "wb") as f:
                     for chunk in r.iter_content(chunk_size=chunk_size):
@@ -1261,9 +1297,23 @@ def iter_pages(
     doc_id: str = "n/a",
     skip: bool = False,
     skip_pages: Optional[set[int]] = None,
+    local_in: str | None | Path = None,
 ) -> Iterator[PageItem]:
     if not start_page or int(start_page)<=0:
         start_page = 1
+
+    if local_in:
+        matches = list(Path(local_in).glob(f"{doc_id}.*"))
+        
+        if matches:
+            file_in = matches[0]
+            logger.warning(f"Using local {file_in} instead of remote {input}")
+            input = file_in
+        else:
+            logger.info(f"No local file found for {doc_id} in {local_in}. Using {input}")
+            for p in Path(local_in).glob("*"):
+                logger.info(p)
+
     src_kind, src_path = resolve_source(input)
 
     if src_kind == "file":
@@ -1326,6 +1376,7 @@ def iter_pages(
                             logger.info(f"{doc_id}: [{i}/{len(pages)}]: Using IIIF OCR text from {ocr_url}")
                             aPage = PageItem(i, "text", txt, source=f"ocr:{ocr_url}", meta={
                                 "canvas": canvas.get("@id") or canvas.get("id"),
+                                "img_url": img_url,
                                 "profile": profile,
                                 "key": rule.key,
                                 "xpath": rule.xpath,
@@ -1339,10 +1390,10 @@ def iter_pages(
                 if img is None:
                     logger.warning(f"{doc_id}: Skipping page {i}: could not fetch image {img_url}")
                     continue
-                aPage = PageItem(i, "image", img, source=f"iiif:{img_url}", meta={
-                    "canvas": canvas.get("@id") or canvas.get("id"),
+                bPage = PageItem(i, "image", img, source=f"iiif:{img_url}", meta={
+                    "canvas": canvas.get("@id") or canvas.get("id"), "img_url": img_url,
                 }, total=len(pages))
-                yield _log_and_yield(aPage,len(pages))
+                yield _log_and_yield(bPage,len(pages))
         except Exception as e:
             logger.error(f"{doc_id}: Error reading IIIF {input}: {e}")
         return
@@ -1779,85 +1830,6 @@ def ink_ratio(pil_img):
     ink = (a < thr).mean()
     return float(ink), float(bg), float(thr)
 
-def kraken_image_to_text_legacy(
-    im: Image.Image,
-    *,
-    config_path: str | None = None,
-    domain: str | None = None,
-    model_name: str | None = None,
-    segmenter: str | None = None,
-    binarize: bool = False,
-    ink_ratio_range: list | None = None # [0, 1]
-) -> str:
-    try:
-        if ink_ratio_range:
-            r, bg, thr = ink_ratio(im)
-            logger.debug(f"Found page (blank), r={r:.5f}, bg={bg:.1f}, thr={thr:.1f}")
-            if r < ink_ratio_range[0]:
-                logger.warning(
-                    f"Skipping page (blank), r={r:.5f}, bg={bg:.1f}, thr={thr:.1f}"
-                )
-                return ""
-
-            if r > ink_ratio_range[1]:
-                logger.warning(
-                    f"Skipping page (too dark/ornament), r={r:.3f}, bg={bg:.1f}"
-                )
-                return ""
-            
-        ensure_import("kraken")
-        try:
-            from kraken import binarization, blla, rpred #, pageseg
-            from kraken.lib import models
-            import warnings
-
-            warnings.filterwarnings(
-                "ignore",
-                message="Using legacy polygon extractor",
-                module="kraken.rpred",
-            )
-        except Exception:
-            logger.exception("Kraken import failed")
-            return ""
-        
-
-        cfg_path = resolve_config_path(config_path)
-        dom = resolve_domain(config_path=cfg_path, domain=domain)
-        recog_name = resolve_recognition_model_name(
-            config_path=cfg_path,
-            domain=dom,
-            model_name=model_name,
-        )
-        seg_name = resolve_segmentation_name(config_path=cfg_path, segmenter=segmenter)
-        seg_key = (str(cfg_path), str(seg_name))
-        seg_model = _KRAKEN_SEG.get(seg_key)
-        if seg_model is None:
-            seg_model = load_segmentation_model(config_path=cfg_path, segmenter=segmenter)
-            _KRAKEN_SEG[seg_key] = seg_model
-
-        # seg_model = load_segmentation_model(config_path=cfg_path, segmenter=segmenter)
-        logger.debug(f"Kraken page recognition with {recog_name}...")
-        work = binarization.nlbin(im) if binarize else im
-        bounds = blla.segment(work, model=seg_model)
-        # seg = pageseg.segment(work)
-        model_path = str(resolve_kraken_model_path(config_path=cfg_path, model_name=recog_name))
-        net_key = (str(cfg_path), model_path)
-        net = _KRAKEN_NET.get(net_key)
-        if net is None:
-            net = models.load_any(model_path)
-            _KRAKEN_NET[net_key] = net
-        # net = models.load_any(model_path)
-
-        preds = rpred.rpred(network=net, im=work, bounds=bounds)
-        ocr_page = "\n".join(p.prediction for p in preds)
-
-        logger.debug(ocr_page)
-
-        return ocr_page
-    except Exception:
-        logger.exception("Kraken OCR failed")
-        return ""
-
 def kraken_image_to_text(
     im: Image.Image,
     *,
@@ -2066,6 +2038,24 @@ def iter_text_pages(
     save_text: str = cfg.get("save_text", "skip")  # "skip" | "overwrite" | "active"
     save_image: str = cfg.get("save_image", "skip")  # "skip" | "overwrite" | "active"
     on_error: str = cfg.get("on_error", "log")  # "raise" | "skip" | "empty" | "log"
+    if cfg.get('cache_policy') is not False and not cfg.get('cache_policy'):
+        cfg['cache_policy'] = {
+                                    "text": {
+                                        "min_len": 20,
+                                        "min_alpha": 10,
+                                        "required_re": None,   # r"[A-Za-zÄÖÜäöüß]{3,}"
+                                    },
+                                    "image": {
+                                        "min_width": 1200,
+                                        "min_height": 1600,
+                                        "min_pixels": 1_500_000,
+                                        "min_ratio": 0.25,
+                                        "max_ratio": 4.0,
+                                    },
+                                }
+    cache_policy = cfg.get("cache_policy", {})
+    text_policy = cache_policy.get("text", {})
+    image_policy = cache_policy.get("image", {})
 
     if save_text not in {"skip", "overwrite", "active", "cache"}:
         raise ValueError(f"save_text must be 'active', 'skip' or 'overwrite', got {save_text}")
@@ -2078,9 +2068,19 @@ def iter_text_pages(
 
     _doc_id = safe_doc_id(doc_id or input)
     iter_kwargs['doc_id']=_doc_id
-    iter_kwargs['skip'] = save_image in {"sniff"} # TODO
+    iter_kwargs['skip'] = save_image in {"sniff"}    
 
-
+    def _resolve_out(p: Optional[str], doc_dir:str|None = _doc_id) -> Optional[Path]:
+        if not p:
+            return None
+        pp = Path(p)
+        if pp.is_absolute():
+            logger.error(f"Absolute paths are not allowed: {pp}")
+            return (EXPORT_DIRECTORY / doc_dir).resolve()
+        result_path = (EXPORT_DIRECTORY / pp / doc_dir).resolve() if doc_dir else (EXPORT_DIRECTORY / pp ).resolve()
+        logger.info(f"Path set: {result_path}")
+        return result_path
+    
     def _meta_file(meta:dict):
         if meta_out:                 
             try:
@@ -2092,21 +2092,99 @@ def iter_text_pages(
                 meta_file.write_text(json.dumps(meta_safe,indent=4,default=str), encoding="utf-8")
             except Exception as e:
                 logger.error(f"{_doc_id}: Failed to store {meta_file}: {e}")
+    
+    local_in = text_image_file_kwargs.get('local_in')
 
-    def _resolve_out(p: Optional[str], doc_dir:str|None = _doc_id) -> Optional[Path]:
-        if not p:
-            return None
-        pp = Path(p)
-        if pp.is_absolute():
-            logger.error(f"Absolute paths are not allowed: {pp}")
-            return (EXPORT_DIRECTORY / doc_dir).resolve()
-        result_path = (EXPORT_DIRECTORY / pp / doc_dir).resolve() if doc_dir else (EXPORT_DIRECTORY / pp ).resolve()
-        logger.info(f"Export path set: {result_path}")
-        return result_path
+    if local_in:
+        local_in = _resolve_out(local_in, None)
+        matches = list(Path(local_in).glob(f"{_doc_id}.*"))
+        
+        if matches:
+            file_in = matches[0]
+            logger.warning(f"Using local {file_in} instead of remote {input}")
+            input = file_in
+            # iter_kwargs['local_in'] = _resolve_out(local_in, None)
+        else:
+            logger.info(f"No local file found for {_doc_id} in {local_in}. Using {input}")
+            for p in Path(local_in).glob("*"):
+                logger.debug(f"found {p}")
 
     img_dir = _resolve_out(img_out)
     txt_dir = _resolve_out(txt_out)    
 
+    def _cache_image_ok(src: Union[Path, Image.Image], policy: dict) -> bool:
+        try:
+            if isinstance(src, Path):
+                if not src.exists() or src.stat().st_size == 0:
+                    return False
+                with Image.open(src) as im:
+                    width, height = im.size
+                    im.verify()
+            elif isinstance(src, Image.Image):
+                width, height = src.size
+            else:
+                return False
+        except Exception:
+            return False
+
+        min_width = policy.get("min_width")
+        if min_width is not None and width < int(min_width):
+            logger.info(f"{width} < {int(min_width)}")
+            return False
+
+        min_height = policy.get("min_height")
+        if min_height is not None and height < int(min_height):
+            logger.info(f"{height} < {int(min_height)}")
+            return False
+
+        min_pixels = policy.get("min_pixels")
+        if min_pixels is not None and width * height < int(min_pixels):
+            logger.info(f"{width * height} < {int(min_pixels)}")
+            return False
+
+        if height == 0:
+            logger.info(f"height == 0")
+            return False
+
+        ratio = width / height
+
+        min_ratio = policy.get("min_ratio")
+        if min_ratio is not None and ratio < float(min_ratio):
+            logger.info(f"{ratio} < {float(min_ratio)}")
+            return False
+
+        max_ratio = policy.get("max_ratio")
+        if max_ratio is not None and ratio > float(max_ratio):
+            logger.info(f"{ratio} > {float(max_ratio)}")
+            return False
+
+        return True
+
+    def _cache_text_ok(txt: str, policy: dict[str, Any]) -> bool:
+        if txt is None:
+            logger.info(f"None")
+            return False
+
+        min_len = int(policy.get("min_len", 1))
+        if len(txt.strip()) < min_len:
+            logger.info(f"{len(txt.strip())} < {min_len}")
+            return False
+
+        min_alpha = policy.get("min_alpha")
+        if min_alpha is not None:
+            alpha_count = sum(ch.isalpha() for ch in txt)
+            if alpha_count < int(min_alpha):
+                logger.info(f"{alpha_count} < {int(min_alpha)}")
+                return False
+
+        required_re = policy.get("required_re")
+        if required_re:
+            if not re.search(required_re, txt):
+                logger.info(f"{required_re} not matched")
+                return False
+
+        return True
+    
     def _save_pil(im, path: Path) -> None:
         try:
             logger.info(f"Stored file: {path}")
@@ -2117,7 +2195,7 @@ def iter_text_pages(
 
     def _save_text(txt: str, path: Path) -> None:
         try:
-            logger.debug(f"Stored file: {path}")
+            logger.info(f"Stored text file: {path}")
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(txt, encoding="utf-8")
         except Exception as e:
@@ -2232,13 +2310,13 @@ def iter_text_pages(
         _meta_file(report)
         logger.info("Report completed!")
 
-    def _maybe_store_text(page_no: int, txt: str) -> None:
+    def _maybe_store_text(page_no: int, txt: str, force: bool = False) -> None:
         if save_text not in {"active", "overwrite"} or not ocr:
             return
         tp = _text_path(page_no)
         if tp is None:
             return
-        if save_text == "overwrite" or not tp.exists():
+        if save_text == "overwrite" or not tp.exists() or force:
             _save_text(txt, tp)
 
     def _yield_from_cache() -> Iterator[Tuple[int, str]]:
@@ -2289,13 +2367,13 @@ def iter_text_pages(
         except Exception:
             pass
 
-    def _log_and_yield(page_no: int, txt: str, total: int=1, cached:bool=False):        
+    def _log_and_yield(page_no: int, txt: str, total: int=1, source:str=framework):        
         preview = (
             (t[:60] + "..." if len(t) > 60 else t)
             if (t := " ".join((txt or "").split()))
             else "[no text]"
         )
-        logger.info(f"\n{_doc_id} {page_no}/{total}: {'CACHED' if cached else framework.upper()} result: {preview}")
+        logger.info(f"\n{_doc_id} {page_no}/{total}: {source.upper()} result: {preview}")
         return page_no, txt # TODO return LLM?
     
     _meta_file(meta_dict)
@@ -2353,7 +2431,7 @@ def iter_text_pages(
                                 continue
                             txt = ""
                         
-                        yield _log_and_yield(page_no, txt, total, True)
+                        yield _log_and_yield(page_no, txt, total, "file")
                         # yield page_no, tp.read_text(encoding="utf-8")
                     continue
 
@@ -2376,7 +2454,7 @@ def iter_text_pages(
                             continue
                         txt = "" # DEBUG
 
-                    _maybe_store_text(page_no, txt)
+                    _maybe_store_text(page_no, txt) # _cache_text_ok check not needed as img source is fixed anyway
                     if yield_result: 
                         yield _log_and_yield(page_no, txt, total)
                     else:
@@ -2389,7 +2467,7 @@ def iter_text_pages(
     total = 0
     _report = _cache_discrepancy_report()
 
-    if save_text in {"overwrite"}:
+    if "overwrite" in {save_text, save_image}:
         skip_pages = set()
     elif save_image in {"smart"}:        
         skip_pages = set(_report["image_pages"])
@@ -2401,10 +2479,12 @@ def iter_text_pages(
                 logger.debug("Skip from here?")
         except Exception as e:
             logger.info(f"SMART: could not peep into file: {e}.")
-    elif save_image in {"active", "overwrite"}:
+    elif save_image in {"active"} and not image_policy:
         skip_pages = set(_report["shared"])
-    else:
+    elif not text_policy:
         skip_pages = set(_report["text_pages"])
+    else:
+        skip_pages = set()
 
     
     iter_kwargs["skip_pages"] = skip_pages
@@ -2415,8 +2495,10 @@ def iter_text_pages(
         if page_no is None:
             raise AttributeError("PageItem has neither .sequence nor .index")
         if save_image in {"sniff"}:
+            logger.info(f"SNIFF: Skipping document {_doc_id} before iterating all {total} source pages.")
             break
-        if "overwrite" not in {save_image, save_text}:
+
+        if "overwrite" not in {save_image, save_text} and not (image_policy or text_policy):
             if set(_report['shared']) == set(range(1, int(total + 1))):
                 logger.warning(f"{total} images and text files found that match source --> skip this item!")
                 if yield_result:
@@ -2425,30 +2507,45 @@ def iter_text_pages(
                 return
         if save_image in {"smart"} and int(page_no) in _report['shared']:
             continue
-
-        # if save_image == "active":
-        #     ip = _image_path(page_no)
-        #     if ip is not None and ip.exists():
-        #         try:
-        #             with Image.open(ip) as im:
-        #                 item.data = im.copy()
-        #             item.kind = getattr(item, "kind", "image")
-        #         except Exception as e:
-        #             logger.error(f"{_doc_id}: Failed to load cached image for page {page_no} from {str(ip)}: {e}")
-        #             if on_error == "raise":
-        #                 raise
-        #             if on_error == "skip":
-        #                 continue
-
         tp = _text_path(page_no)
 
         # Save Image
-        if item.kind == "image" and save_image not in {"skip", "cache"} and img_dir is not None:
+        # if item.kind == "image" and save_image not in {"skip", "cache"} and img_dir is not None:
+        #     ip = _image_path(page_no)
+        #     if ip is not None and item.data is not None and hasattr(item.data, "save"):
+        #         if save_image == "overwrite" or not ip.exists() or (not _cache_image_ok(ip, image_policy) and _cache_image_ok(item.data, image_policy)):
+        #             try:
+        #                 _save_pil(item.data, ip)
+        #             except Exception as e:
+        #                 logger.error(f"{_doc_id}: Failed to store image page {page_no} to {str(ip)}: {e}")
+        #                 if on_error == "raise":
+        #                     raise
+        #                 if on_error == "skip":
+        #                     continue
+        #         else:
+        #             logger.debug(f"Image exists: {ip}")
+
+        if item.kind in {"image", "text"} and save_image not in {"skip", "cache"} and img_dir is not None:
             ip = _image_path(page_no)
-            if ip is not None and item.data is not None and hasattr(item.data, "save"):
-                if save_image == "overwrite" or not ip.exists():
+
+            img = None
+
+            if item.kind == "image" and item.data is not None and hasattr(item.data, "save"):
+                img = item.data
+
+            elif item.kind == "text":
+                img_url = (item.meta or {}).get("img_url")
+                if img_url:                     
+                    img = fetch_pil_image(img_url, timeout=iter_kwargs.get('timeout'),iiif_format=iter_kwargs.get('iiif_format'))
+
+            if ip is not None and img is not None and hasattr(img, "save"):
+                if (
+                    save_image == "overwrite"
+                    or not ip.exists()
+                    or (not _cache_image_ok(ip, image_policy) and _cache_image_ok(img, image_policy))
+                ):
                     try:
-                        _save_pil(item.data, ip)
+                        _save_pil(img, ip)
                     except Exception as e:
                         logger.error(f"{_doc_id}: Failed to store image page {page_no} to {str(ip)}: {e}")
                         if on_error == "raise":
@@ -2459,8 +2556,9 @@ def iter_text_pages(
                     logger.debug(f"Image exists: {ip}")
 
         # If Cached Text --> return
+        drop_cached_txt = False
         if save_image not in {"smart"} and save_text not in {"overwrite"} and tp is not None and tp.exists():
-            if yield_result:
+            if yield_result:                
                 try:
                     txt = tp.read_text(encoding="utf-8")
                 except Exception as e:
@@ -2470,32 +2568,44 @@ def iter_text_pages(
                     if on_error == "skip":
                         continue
                     txt = ""
+                if not _cache_text_ok(txt, text_policy):
+                    logger.warning(f"{_doc_id}: Rejected cached text for page {page_no} with length {len(txt.strip())}: {str(tp)}")
+                    drop_cached_txt = True
+                else:
+                    yield _log_and_yield(page_no, txt, total, "file")
 
-                yield _log_and_yield(page_no, txt, total, True)
-            continue
+            if not drop_cached_txt:
+                continue
 
         # OCR
         if ocr:
             logger.info(f"Using {framework.upper()}")
-            try:
-                txt = page_to_text(
-                    item,
-                    framework=framework,
-                    **page_to_text_kwargs
-                )
-            except Exception as e:
-                logger.error(f"{_doc_id}: iter_text_pages error on page {page_no}: {e}")
-                if on_error == "raise":
-                    raise
-                if on_error == "skip":
-                    continue
-                txt = ""
+            source = framework
+            if item.kind == "text":
+                txt =  item.data or ""
+                source = "source"
+            else:                
+                try:
+                    txt = page_to_text(
+                        item,
+                        framework=framework,
+                        **page_to_text_kwargs
+                    )
+                except Exception as e:
+                    logger.error(f"{_doc_id}: iter_text_pages error on page {page_no}: {e}")
+                    if on_error == "raise":
+                        raise
+                    if on_error == "skip":
+                        continue
+                    txt = ""
+                    source = "failed"
 
-            _maybe_store_text(page_no, txt)
+            # _save_text(txt, _text_path(page_no))
+            _maybe_store_text(page_no, txt, drop_cached_txt)
             if yield_result: 
-                yield _log_and_yield(page_no, txt, total)
+                yield _log_and_yield(page_no, txt, total, source)
             else:
-                _log_and_yield(page_no, txt, total)
+                _log_and_yield(page_no, txt, total, source)
 
     _log_discrepancy_report(total)
 
