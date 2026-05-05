@@ -72,4 +72,5 @@ OPTIONAL {  ?library rdf:type zot:library;
 }
 GROUP BY ?file
 ORDER BY ?_input
-# LIMIT 1
+# OFFSET 50
+# LIMIT 50

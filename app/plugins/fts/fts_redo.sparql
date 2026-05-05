@@ -6,8 +6,6 @@ SELECT ?file
        (SAMPLE(?date) AS ?date)
        (SAMPLE(?parent) AS ?parent)
        (SAMPLE(?parent_label) AS ?_label) # _label variable is optional
-       (SAMPLE(?parent_label) AS ?parent_label)
-       (SAMPLE(?parent_title) AS ?parent_title)
        (SAMPLE(?url) AS ?_input) # _input variable is required
        (GROUP_CONCAT(DISTINCT ?text_1724_9; SEPARATOR = "; ") AS ?parent_creators)
        (SAMPLE(?library) AS ?library)
@@ -25,11 +23,12 @@ WHERE {
         rdfs:label ?file_label;
         zot:parentItem ?parent.
 
+FILTER (?_id NOT IN ("9J58SQ8G"))
+
 VALUES ?link_type { "linked_url" "imported_url" }. # filter on attachment types
     
 OPTIONAL { ?parent rdfs:label ?parent_label }
 OPTIONAL { ?parent zot:date ?date }
-OPTIONAL { ?parent zot:title ?parent_title }
 OPTIONAL { ?parent zot:key ?parent_key }
 
 OPTIONAL {
@@ -45,6 +44,17 @@ OPTIONAL {  ?file zot:url ?url;
 OPTIONAL {  ?library rdf:type zot:library;
                      zot:id ?library_label.}
 
+# FILTER( # filter on attachment name
+#     CONTAINS(?file_label, "PDF") #||
+# #    CONTAINS(?file_label, "Books")
+#   )
+
+  # FILTER(CONTAINS(STR(?url), "digitale-sammlungen.de")) # filter on attachment URL
+
+
+#  ?t_ingest a zot:tag ; zot:tag "*ingest" .
+#  ?t_pdf    a zot:tag ; zot:tag "*pdf" .
+
   ?file zot:tags ?t_format .
   ?t_format a zot:tag ;
             zot:tag ?formatTag .
@@ -53,14 +63,7 @@ OPTIONAL {  ?library rdf:type zot:library;
   ?file zot:tags ?t_ocr .
   ?t_ocr a zot:tag ;
         zot:tag ?ocrTag .
-
-  # FILTER(?ocrTag NOT IN ("*broken_ocr"))
-  # FILTER(CONTAINS(STR(?url), "uni-halle.de")) # filter on attachment URL api.onb.ac.at poor quality
-  # FILTER(CONTAINS(STR(?file), "SU8DGT98")) # filter on attachment URL
-  FILTER(
-    REGEX(STR(?_id), "_747CPE5P|_K4S8F6G3|_9DDYJWFS|_A3NGVGDY|_R8GLPVX7|_IUP5G5Z9|ZI2DXZBB")
-  )
-  # ?parent zot:collections <https://www.zotero.org/groups/4929619/collections/9D9XX2VG> . # Filter pending
+  VALUES ?ocrTag { "**redo_OCR" }
 
   OPTIONAL {
     ?parent zot:tags ?tag_1502_13.
@@ -70,5 +73,5 @@ OPTIONAL {  ?library rdf:type zot:library;
 }
 GROUP BY ?file
 ORDER BY ?_input
-# OFFSET 120
-# LIMIT 40
+# ORDER BY DESC(?_input)
+# LIMIT 1
