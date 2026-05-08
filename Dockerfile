@@ -26,7 +26,7 @@ RUN if [ "$WITH_TESSERACT" = "true" ]; then \
 RUN echo "WITH_FTS=$WITH_FTS" && \
     if [ "$WITH_FTS" = "true" ]; then \
       echo ">>> Installing FTS dependencies"; \
-      pip install --no-cache-dir -r /src/zotero_rdf_server/plugins/fts/requirements.txt; \
+      pip install --no-cache-dir --default-timeout=1000 --retries=10 -r /src/zotero_rdf_server/plugins/fts/requirements.txt; \    
     else \
       echo ">>> Skipping FTS dependencies"; \
     fi
