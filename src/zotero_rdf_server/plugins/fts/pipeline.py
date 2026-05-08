@@ -23,6 +23,7 @@ def ingest_pipeline(
     vector_kwargs: dict | None = None,
     llm_kwargs: dict | None = None,
     ingest: bool = True,
+    delete_index: bool = True,
     iter_pages_kwargs: dict = {},
     page_to_text_kwargs: dict = {},
     text_image_file_kwargs: dict = {},
@@ -137,6 +138,7 @@ def ingest_pipeline(
                         "vector": vector,
                         "llm":use_llm,
                         "ingest": False,
+                        "delete_index": delete_index,
                         "error": "from_source=true requires '_input' in each item",
                     })
                     continue
@@ -166,6 +168,7 @@ def ingest_pipeline(
                         "llm":use_llm,
                         "ingest": False,
                         "error": str(e),
+                        "delete_index": False,
                     })
                     continue
 
@@ -181,6 +184,7 @@ def ingest_pipeline(
                     "ocr_pages": len(pages),
                     "ingest": False,
                     "targets": targets,
+                    "delete_index": False,
                 })
             logger.info(f"Pipeline finsihed with {len(results)} results!")
 
@@ -188,6 +192,23 @@ def ingest_pipeline(
           
     runs: List[dict] = []
     if ingest:
+        from .db import resolve_config_path, get_os_config, make_client, provision_from_cfg
+        cfg_path = resolve_config_path(config_path)
+        oscfg = get_os_config(cfg_path)
+        client = make_client(oscfg)
+        try:
+            logger.info(f"Provisioning {targets}...")
+            provision_from_cfg(client, oscfg)
+            logger.info("Provisioning completed!")
+        except Exception as e:
+            logger.critical(f"Open Search failed: {e}. Open Search running?")
+
+        if delete_index:
+            targets_list = [targets] if isinstance(targets, str) else list(targets)
+            for t in targets_list:
+                response = client.indices.delete(index=str(t), ignore=[400, 404])
+                logger.warning(f"Deleted Index {t}: {response}")
+
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc).isoformat()        
 
@@ -210,13 +231,14 @@ def ingest_pipeline(
                     continue
                 logger.info(f"Ingest Pipeline with input from source!")
                 digest = index_stream(
+                        client=client,
+                        oscfg=oscfg,
                         input=input,
                         doc_id=doc_id,
                         label=label,
                         url_to_text_pages_fn=make_pages_fn(doc_id or "", stats),
                         targets=targets,
                         meta=meta,
-                        config_path=config_path,
                         vector_kwargs=vector,
                         llm_kwargs=llm_kwargs,
                     )         
@@ -224,6 +246,7 @@ def ingest_pipeline(
                 digest["framework"] = framework     
                 digest["ocr_pages"] = stats["pages_emitted"]
                 digest["ingest"] = True
+                digest["delete_index"] = delete_index
                 digest["llm"] = True
                 runs.append(digest)
             else:
@@ -254,15 +277,17 @@ def ingest_pipeline(
                         logger.debug(json.dumps(llm_dict,indent=4))
 
                 digest = index_stream(
+                        client=client,
+                        oscfg=oscfg,
                         targets=targets,
                         doc_id=doc_id,
                         doc=d,
-                        config_path=config_path
                     )
                 
                 digest["from_source"] = False
                 digest["framework"] = framework
                 digest["ingest"] = True
+                digest["delete_index"] = delete_index
                 digest["llm"] = True
                 runs.append(digest)
 

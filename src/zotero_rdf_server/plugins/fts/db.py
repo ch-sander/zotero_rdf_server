@@ -480,7 +480,8 @@ PagesFn = Callable[[str], Iterator[Tuple[int, str]]]
 
 def index_stream(
     *,
-    config_path: str | None = None,
+    client,
+    oscfg: dict,
     input: str | None = None,
     doc_id: str | None = None,
     label: str | None = None,
@@ -493,15 +494,9 @@ def index_stream(
     llm_kwargs: dict | None = None
 ) -> dict:
     logger.debug(f"OS index_stream started...")
-    cfg_path = resolve_config_path(config_path)
-    oscfg = get_os_config(cfg_path)
-    client = make_client(oscfg)
-    try:
-        logger.info(f"Provisioning {targets}...")
-        provision_from_cfg(client, oscfg)
-        logger.info("Provisioning completed!")
-    except Exception as e:
-        logger.critical(f"Open Search failed: {e}. Open Search running?")
+    # cfg_path = resolve_config_path(config_path)
+    # oscfg = get_os_config(cfg_path)
+    # client = make_client(oscfg)
 
     # Normalize targets
     if isinstance(targets, str):
@@ -536,7 +531,6 @@ def index_stream(
             meta=meta or {},
             vector_kwargs=vector_kwargs,
             llm_kwargs=llm_kwargs,
-            # config_path=cfg_path,
         )
 
     # IMPORTANT: index=None so per-action _index is respected
@@ -565,3 +559,5 @@ def index_stream(
         doc_id,
     )
     return run
+
+# END
