@@ -2259,7 +2259,7 @@ def iter_text_pages(
     def _log_discrepancy_report(total: int = 0) -> None:
         if save_text in {"cache"}:
             logger.info(
-                "TEXT CACHE mode has not stored text files, but it reused cached text if at least one available; "
+                "TEXT CACHE mode has not stored text files, but it only reused cached text"
             )
         if save_text in {"skip"}:
             logger.info(
@@ -2386,10 +2386,11 @@ def iter_text_pages(
 
     # If text file found and not overwrite, use as result and skip download + OCR
     if (
-        save_text not in {"overwrite"} # {"active", "skip"}
-        and save_image in {"skip"} #  == "skip"
+        save_text in {"cache"} or
+        (save_text not in {"overwrite"} # {"active", "skip"}
+        and save_image in {"skip"}
         and txt_dir is not None
-        and any(txt_dir.glob(f"*.{txt_ext}"))        
+        and any(txt_dir.glob(f"*.{txt_ext}")))        
     ):      
         logger.warning(f"{_doc_id}: Using {len(set(cached_page_set['text']))} text files in {txt_dir}")
         if yield_result:
