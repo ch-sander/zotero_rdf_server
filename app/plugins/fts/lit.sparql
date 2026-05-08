@@ -57,10 +57,10 @@ OPTIONAL {  ?library rdf:type zot:library;
   # FILTER(?ocrTag NOT IN ("*broken_ocr"))
   # FILTER(CONTAINS(STR(?url), "uni-halle.de")) # filter on attachment URL api.onb.ac.at poor quality
   # FILTER(CONTAINS(STR(?file), "SU8DGT98")) # filter on attachment URL
-  # FILTER(
-  #   REGEX(STR(?_id), "747CPE5P|K4S8F6G3|9DDYJWFS|A3NGVGDY|R8GLPVX7|IUP5G5Z9|ZI2DXZBB")
-  # )
-  ?parent zot:collections <https://www.zotero.org/groups/4929619/collections/9D9XX2VG> . # Filter pending
+    #   FILTER(
+    #     REGEX(STR(?_id), "_747CPE5P|_K4S8F6G3|_9DDYJWFS|_A3NGVGDY|_R8GLPVX7|_IUP5G5Z9|ZI2DXZBB")
+    #   )
+  ?parent zot:collections <https://www.zotero.org/groups/4929619/collections/KJPE6S73> . # Filter literature
 
   OPTIONAL {
     ?parent zot:tags ?tag_1502_13.
@@ -70,5 +70,5 @@ OPTIONAL {  ?library rdf:type zot:library;
 }
 GROUP BY ?file
 ORDER BY ?_input
-# OFFSET 5
-# LIMIT 3
+# OFFSET 120
+# LIMIT 40

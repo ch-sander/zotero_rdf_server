@@ -45,6 +45,13 @@ OPTIONAL {  ?file zot:url ?url;
 OPTIONAL {  ?library rdf:type zot:library;
                      zot:id ?library_label.}
 
+# FILTER( # filter on attachment name
+#     CONTAINS(?file_label, "PDF") #||
+# #    CONTAINS(?file_label, "Books")
+#   )
+
+  # FILTER(CONTAINS(STR(?url), "digitale-sammlungen.de")) # filter on attachment URL
+
   ?file zot:tags ?t_format .
   ?t_format a zot:tag ;
             zot:tag ?formatTag .
@@ -53,14 +60,9 @@ OPTIONAL {  ?library rdf:type zot:library;
   ?file zot:tags ?t_ocr .
   ?t_ocr a zot:tag ;
         zot:tag ?ocrTag .
+  # VALUES ?ocrTag { "**redo_OCR" }
 
-  # FILTER(?ocrTag NOT IN ("*broken_ocr"))
-  # FILTER(CONTAINS(STR(?url), "uni-halle.de")) # filter on attachment URL api.onb.ac.at poor quality
-  # FILTER(CONTAINS(STR(?file), "SU8DGT98")) # filter on attachment URL
-  # FILTER(
-  #   REGEX(STR(?_id), "747CPE5P|K4S8F6G3|9DDYJWFS|A3NGVGDY|R8GLPVX7|IUP5G5Z9|ZI2DXZBB")
-  # )
-  ?parent zot:collections <https://www.zotero.org/groups/4929619/collections/9D9XX2VG> . # Filter pending
+  FILTER(?ocrTag NOT IN ("*broken_file"))
 
   OPTIONAL {
     ?parent zot:tags ?tag_1502_13.
@@ -70,5 +72,5 @@ OPTIONAL {  ?library rdf:type zot:library;
 }
 GROUP BY ?file
 ORDER BY ?_input
-# OFFSET 5
-# LIMIT 3
+# OFFSET 50
+# LIMIT 50
