@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse, FileResponse, Response, JSONRes
 from fastapi.staticfiles import StaticFiles
 from typing import Literal, Any, Dict, Iterator, List, Optional, Union, Tuple
 from pathlib import Path
-import json, io, html
+import json, io, html, os
 from pydantic import BaseModel, Field
 # from zotero_rdf_server.store import *
 # from zotero_rdf_server.rdf import *
@@ -291,6 +291,7 @@ def ingest_route(
         description="OCR backend: kraken, tesseract, or transformer. Choose 'none' to skip ATR/OCR",
     ),
     ingest: bool = Query(default=None, description="If true, ingest into Open Search"),
+    delete_index: bool = Query(default=None, description="If true, delete Open Search index before ingesting"),
     query: Optional[str] = Query(default=None, description="SPARQL SELECT query or path to file with query code (used when body is null)"),
     graph: str | None = Query(default=None, description="Named graph IRI containing the attachments or documents (optional)"),
     config_path: Optional[str] = Query(
@@ -298,12 +299,17 @@ def ingest_route(
         description="Path to YAML config. If omitted: ENV FTS_CONFIG, otherwise ./config.yml",
     ),
     triple_store: Optional[str] = Query(default=None, description="Oxigraph store path (defaults to main store) or SPARQL endpoint (POST)"),
+    pipeline_ids: list[str] | None = Query(
+        default=None,
+        description="Pipeline IDs to run. If provided, only these pipelines are executed, even if inactive.",
+    ),
     open_search_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for Open Search Config", examples=[None]),
     source_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for OCR Config", examples=[None]),
     framework_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for OCR Backend Config", examples=[None]),
     file_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for File Output", examples=[None]),
     vector_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for embedding Backend Config", examples=[None]),
     llm_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for LLM Backend Config", examples=[None]),
+
 ):
     from .pipeline import ingest_pipeline
     from .helpers import convert_bindings
@@ -420,6 +426,7 @@ def ingest_route(
             import zotero_rdf_server.config as zcfg
             importlib.reload(zcfg)
             # from zotero_rdf_server.config import ZOTERO_LIBRARIES_CONFIGS
+            selected_ids = set(pipeline_ids or [])
             for lib_cfg in zcfg.ZOTERO_LIBRARIES_CONFIGS:
                 lib = ZoteroLibrary(lib_cfg)            
                 if not graph or graph == lib.base_url:
@@ -433,9 +440,25 @@ def ingest_route(
                     #     raise HTTPException(status_code=400, detail=f"No FTS config for library {lib.base_url}")
                     for n, ncfg in enumerate(cfg, start=1): # allow multiple runs per library
                         name = ncfg.get('name','n/a')
-                        if not ncfg.get("active", True):
-                            logger.info(f"\n\n{n}/{len(cfg)}: Skipping deactivated pipeline {name}\n\n")
-                            continue
+                        pipe_id = ncfg.get("id")
+
+                        logger.info(f"PID {os.getpid()} running pipeline {pipe_id}")
+                        
+                        if not pipe_id:
+                            logger.warning(f"\n\n{n}/{len(cfg)}: Pipeline {name} has no id\n\n")
+                            
+                        if selected_ids:
+                            if pipe_id not in selected_ids:
+                                logger.info(
+                                    f"\n\n{n}/{len(cfg)}: Skipping pipeline {name} [{pipe_id}], not selected\n\n"
+                                )
+                                continue
+                        else:
+                            if not ncfg.get("active", True):
+                                logger.info(
+                                    f"\n\n{n}/{len(cfg)}: Skipping deactivated pipeline {name} [{pipe_id}]\n\n"
+                                )
+                                continue
                         
                         logger.info(f"\n\n{n}/{len(cfg)}: Deploying pipeline {name}\n\n")
 
@@ -448,6 +471,7 @@ def ingest_route(
                             targets_set.append(targets_x)
 
                         ingest_x = ingest if ingest is not None else ncfg.get("ingest", True)
+                        
 
                         if not targets_x and ingest_x==True:
                             raise HTTPException(
@@ -456,6 +480,7 @@ def ingest_route(
                             )
                         
                         config_path_x = config_path or os_cfg.get("config_path")
+                        delete_x = delete_index if delete_index is not None else os_cfg.get("delete_index", False)
                         query_x = query or ncfg.get("query")
                         sparql_endpoint_x = sparql_endpoint or ncfg.get("sparql_endpoint")
 
@@ -511,6 +536,7 @@ def ingest_route(
                                                 vector_kwargs=vector_x,
                                                 llm_kwargs=llm_x,
                                                 ingest=ingest_x,
+                                                delete_index=delete_x,
                                                 iter_pages_kwargs=iter_pages_kwargs,
                                                 page_to_text_kwargs=page_to_text_kwargs, text_image_file_kwargs=text_image_file_kwargs,
                                                 config_path=config_path_x))
@@ -579,6 +605,7 @@ def ingest_route(
                                             vector_kwargs=vector_kwargs,
                                             llm_kwargs=llm_kwargs,
                                             ingest=ingest,
+                                            delete_index=delete_index,
                                             iter_pages_kwargs=source_kwargs,
                                             page_to_text_kwargs=framework_kwargs,
                                             text_image_file_kwargs=file_kwargs,
@@ -625,6 +652,7 @@ def ingest_route(
                                         vector_kwargs=vector_kwargs,
                                         llm_kwargs=llm_kwargs,
                                         ingest=ingest,
+                                        delete_index=delete_index,
                                         iter_pages_kwargs=source_kwargs,
                                         page_to_text_kwargs=framework_kwargs,
                                         text_image_file_kwargs=file_kwargs,
