@@ -1,6 +1,6 @@
 const OPENSEARCH_HOST = "/plugin/fts/search-proxy";
 
-const DEFAULT_INDEX_NAME = "ocr-scigma";
+const DEFAULT_INDEX_NAME = "scigma-main-corpus";
 
 let activeIndexName =
   localStorage.getItem("ocrSearchIndex") || DEFAULT_INDEX_NAME;
