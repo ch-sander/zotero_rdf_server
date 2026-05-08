@@ -201,7 +201,7 @@ viewer:
   text_root: "/app/exports/kraken/texts"
   image_ext: jpg
   text_ext: txt
-  # dashboard_url: http://localhost:5601/app/discover#/doc/fe2dc870-1182-11f1-86a9-eb629f790cf7/ocr-scigma?id=
+  # dashboard_url: http://localhost:5601/app/discover#/doc/fe2dc870-1182-11f1-86a9-eb629f790cf7/scigma-main-corpus?id=
   # viewer_urls
   #   view: /plugin/fts/view
   #   ... defined best in app
@@ -308,7 +308,7 @@ open-search:
     max_retries: 2
   meta:
     owner: "zotero-rdf-server"
-    default_alias: ocr-scigma
+    default_alias: scigma-main-corpus
     max_size: 10000
     environment: "dev"
     # Minimum OpenSearch version this config is designed for
@@ -507,7 +507,7 @@ open-search:
   index_templates:
   
     ocr_pages_template_v1:
-      index_patterns: ["ocr*"]
+      index_patterns: ["scigma*"]
       priority: 200
       composed_of:
         - ct_ocr_pages_v1
@@ -532,11 +532,11 @@ open-search:
             #           meta.parent_tags: "*deprecated"
   # indices:
   #   # Optional bootstrap index. Recommended if you want to write to an alias.
-  #   zotero-ocr-000001:
+  #   scigma-main-corpus-000001:
   #     aliases:
-  #       zotero-ocr-write:
+  #       scigma-main-corpus-write:
   #         is_write_index: true
-  #       zotero-ocr-read: {}
+  #       scigma-main-corpus-read: {}
 
   plan:
     - put_component_templates:
@@ -545,4 +545,4 @@ open-search:
         - ocr_pages_template_v1
     - put_ingest_pipelines: [ocr_meta_pipeline_v1]
     # - create_indices:
-    #     - zotero-ocr-000001
+    #     - scigma-main-corpus-000001
