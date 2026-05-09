@@ -33,7 +33,7 @@ class ZoteroLibrary:
                         "Zotero-API-Version": "3",
                         "Accept": "application/json",
                         "User-Agent": self.user}
-        self.map = config.get("map") or {}
+        self.map = load_dict_like(config.get("map") or {}, label="Loading library map") #  TODO not tested
         self.sync = {}
 
         if (
@@ -46,7 +46,7 @@ class ZoteroLibrary:
             self.sync['base_uri'] = f"{ZOT_BASE_URL}{self.sync['library_type']}/{self.sync['library_id']}"
         
         # PLUG-IN Config
-        self.plugin = config.get("plugin") or {}
+        self.plugin = load_dict_like(config.get("plugin") or config.get("plugins") or {}, label="Loading library plugin config")
 
         # check settings
         if check:
