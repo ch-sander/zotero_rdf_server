@@ -23,6 +23,46 @@ vector:
 llm:
   client:
     host: http://ollama:11434 # "http://host.docker.internal:11434" # or ollama:11434 if in Docker Network
+
+  langextract:
+    concepts:
+      enabled: true
+      model: "qwen2.5:7b-instruct"
+      model_url: "http://ollama:11434" # or use client above?
+      temperature: 0.0
+      max_char_buffer: 1200
+      extraction_passes: 2
+      max_workers: 2
+
+      prompt_description: |
+        Extract relevant Latin concepts from noisy OCR text of early modern theological works.
+
+        Rules:
+        - Extract only concepts that appear verbatim in the source text.
+        - Each extraction_text must be an exact substring of the source text.
+        - Extract concepts of 1 to 3 words.
+        - Prefer theological, philosophical, moral, metaphysical, legal, and scholastic terms.
+        - Do not extract full sentences.
+        - Do not invent anything.
+        - If uncertain, omit.
+        - Add attributes:
+          - normalized: corrected standard Latin form
+          - translation: concise English translation
+
+      examples:
+        - text: "anima rationalis appetit bonum divinum."
+          extractions:
+            - extraction_class: "concept"
+              extraction_text: "anima rationalis"
+              attributes:
+                normalized: "anima rationalis"
+                translation: "rational soul"
+            - extraction_class: "concept"
+              extraction_text: "bonum divinum"
+              attributes:
+                normalized: "bonum divinum"
+                translation: "divine good"
+
   chats:
     concepts:
       model: "llama3.2:3b" #  "llama3.2:3b", "qwen2.5:7b", "nomic-embed-text:latest"
@@ -131,7 +171,7 @@ llm:
 
                 The invalid example is wrong because it contains text after the JSON array.
     contexts:
-      model: "qwen2.5:7b" #  "llama3.2:3b", "qwen2.5:7b", "nomic-embed-text:latest"
+      model: "qwen2.5:7b-instruct" #  "llama3.2:3b", "qwen2.5:7b", "nomic-embed-text:latest"
       temperature: 0.2
       top_p: 0.9
       max_tokens: 500
@@ -378,6 +418,11 @@ open-search:
                 type: stop
                 stopwords_path: custom/latin_stopwords.txt
                 lenient: true
+              latin_shingle_3_5:
+                type: shingle
+                min_shingle_size: 3
+                max_shingle_size: 5
+                output_unigrams: false
               latin_synonyms:
                 type: synonym_graph
                 expand: true
@@ -399,14 +444,49 @@ open-search:
             analyzer:
               latin_ocr_index:
                 type: custom
-                char_filter: ["ocr_common_map", "ocr_dehyphenate_linebreak", "ocr_newlines_to_space", "ocr_dehyphenate_linebreak_not", "ocr_punctuation_soften"]
+                char_filter:
+                  - ocr_common_map
+                  - ocr_dehyphenate_linebreak
+                  - ocr_newlines_to_space
+                  - ocr_dehyphenate_linebreak_not
+                  - ocr_punctuation_soften
                 tokenizer: standard
-                filter: ["lowercase", "asciifolding", "latin_stop_minimal", "latin_stop_file"] # be mindful if you exclude stopwords from index
+                filter:
+                  - lowercase
+                  - asciifolding
+                  - latin_stop_minimal
+                  - latin_stop_file
+
               latin_ocr_search:
                 type: custom
-                char_filter: ["ocr_common_map", "ocr_dehyphenate_linebreak", "ocr_newlines_to_space", "ocr_search_extra_map", "ocr_punctuation_soften"]
+                char_filter:
+                  - ocr_common_map
+                  - ocr_dehyphenate_linebreak
+                  - ocr_newlines_to_space
+                  - ocr_search_extra_map
+                  - ocr_punctuation_soften
                 tokenizer: standard
-                filter: ["lowercase", "asciifolding", "latin_stop_minimal", "latin_stop_file", "latin_synonyms", "latin_synonyms_file"]
+                filter:
+                  - lowercase
+                  - asciifolding
+                  - latin_stop_minimal
+                  - latin_stop_file
+                  - latin_synonyms
+                  - latin_synonyms_file
+
+              latin_ocr_shingles:
+                type: custom
+                char_filter:
+                  - ocr_common_map
+                  - ocr_dehyphenate_linebreak
+                  - ocr_newlines_to_space
+                  - ocr_dehyphenate_linebreak_not
+                  - ocr_punctuation_soften
+                tokenizer: standard
+                filter: # No stop words?
+                  - lowercase
+                  - asciifolding
+                  - latin_shingle_3_5
 
         mappings:
           dynamic: false
@@ -418,9 +498,15 @@ open-search:
             ingest_ts: { type: date }
             text:
               type: text
-              term_vector: "yes"
+              term_vector: with_positions_offsets
               analyzer: latin_ocr_index
               search_analyzer: latin_ocr_search
+              fields:
+                shingles:
+                  type: text
+                  analyzer: latin_ocr_shingles
+                  search_analyzer: latin_ocr_shingles
+                  term_vector: with_positions_offsets
             vector:
               type: knn_vector
               dimension: 1024 # adjust
