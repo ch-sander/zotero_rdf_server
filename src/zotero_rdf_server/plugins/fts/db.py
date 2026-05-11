@@ -229,7 +229,10 @@ def run_llm_tasks(
         llm_file_kwargs = llm_task_kwargs.pop("file_kwargs", {}) or {}
         llm_out = llm_file_kwargs.get("llm_out")
         save_llm = str(llm_file_kwargs.get("save_llm", "skip")).lower().strip()
+        framework = str(llm_meta.get("framework", "ollama")).lower().strip()
+        wadm_out = llm_file_kwargs.get("wadm_out")
 
+        wadm_file = None    
         llm_file = None
         llm_response = None
         cache_exists = False
@@ -256,15 +259,32 @@ def run_llm_tasks(
                 used_cache = False
 
         if llm_response is None:
-            llm_response = llm(clean_ocr(text), llm_task_kwargs)
-            logger.info(f"LLM Processing\nTask {str(llm_task.get('task', 'n/a')).upper()}\nDocument {doc_id}:{sequence}\nModel {llm_task_kwargs.get('model', 'n/a')}")
+            try:
+
+                llm_response = llm(clean_ocr(text), llm_task_kwargs)
+                logger.debug(
+                    "Raw LLM response\nTask %s\nDocument %s:%s\n%s",
+                    llm_task.get("task", "n/a"),
+                    doc_id,
+                    sequence,
+                    repr(llm_response[:500] if isinstance(llm_response, str) else llm_response),
+                )
+            except Exception as e:
+                logger.exception(
+                    "LLM task failed\nTask %s\nDocument %s:%s",
+                    llm_task.get("task", "n/a"),
+                    doc_id,
+                    sequence,
+                )
+                llm_response = []
+            logger.info(f"LLM Processing\nTask {str(llm_task.get('task', 'n/a')).upper()}\nDocument {doc_id}:{sequence}\nModel {llm_task_kwargs.get('model', 'n/a')}\nFramework {framework}")
 
         if llm_datatype == "json":
             llm_result = load_dict_like(
                 llm_response,
                 label=f"LLM page response for {doc_id}:{sequence}",
                 default=[],
-                verbose=not used_cache,
+                verbose=not used_cache or framework!="langextract",
             )        
         else:
             llm_result = llm_response or []
@@ -291,6 +311,38 @@ def run_llm_tasks(
             )
             logger.info(f"Stored {llm_file}...")
 
+        if framework == "langextract" and wadm_out:
+            from .helpers import le_output_to_wadm            
+            source_uri = f"urn:{_doc_id}:{sequence}"
+
+            wadm_result = le_output_to_wadm(
+                llm_result if isinstance(llm_result, list) else [],
+                source_uri=source_uri,
+                annotation_id_base=None,
+                creator=framework
+            )
+
+            if wadm_out:
+                wadm_file = _resolve_out(wadm_out, _doc_id) / f"{sequence:04d}.json"
+
+            if wadm_file is not None:
+                full = {
+                    "config": llm_meta,
+                    "response": wadm_result,
+                    "generated": datetime.now(timezone.utc).isoformat(),
+                    "input": {
+                        "text": text,
+                        "doc_id": doc_id,
+                        "sequence": sequence,
+                    },
+                }
+                wadm_file.parent.mkdir(parents=True, exist_ok=True)
+                wadm_file.write_text(
+                    json.dumps(full, indent=4, default=str),
+                    encoding="utf-8",
+                )   
+                logger.info(f"Stored WADM sidecar {wadm_file}...")
+    
     return llm_dict
 
 def page_docs(

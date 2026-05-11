@@ -1,14 +1,15 @@
 import json
 import re
-from typing import Literal, Optional
+from typing import Literal, Optional, Any
 from urllib.parse import urlparse
 import requests
 import subprocess, importlib, sys, os
-from typing import Optional
 from pathlib import Path
 import hashlib
 import datetime
 from functools import lru_cache
+from typing import Any
+from uuid import uuid4
 
 here = Path(__file__).resolve().parent
 requirements = here / "requirements.txt"
@@ -31,6 +32,7 @@ def plugin_logger(new:bool=False):
         return logger
     else:
         from zotero_rdf_server.logging_config import logger as logger_z
+        logger_z.propagate = False
         return logger_z
 
 def ensure_import(module, attr=None, requirements=requirements):
@@ -452,3 +454,122 @@ def clean_ocr(text: str) -> str:
     text = text.replace("\x0c", " ")
     text = re.sub(r"\s+", " ", text)
     return text.strip()
+
+
+def le_item_to_wadm_annotation(
+    item: dict[str, Any],
+    *,
+    source_uri: str,
+    annotation_id_base: str | None = None,
+    creator: str | None = "zotero-rdf-server",
+) -> dict[str, Any]:
+    """
+    Translate one grounded LangExtract item to a Web Annotation Data Model annotation.
+
+    Expected item:
+    {
+        "concept": "...",
+        "normalized": "...",
+        "translation": "...",
+        "start": 123,
+        "end": 145,
+        "evidence": "..."
+    }
+    """
+
+    start = item.get("start")
+    end = item.get("end")
+
+    if not isinstance(start, int) or not isinstance(end, int):
+        raise ValueError("WADM annotation requires integer start/end offsets.")
+
+    concept = item.get("concept")
+    if not isinstance(concept, str) or not concept.strip():
+        raise ValueError("WADM annotation requires a non-empty concept.")
+
+    annotation_id = (
+        f"{annotation_id_base.rstrip('/')}/{uuid4()}"
+        if annotation_id_base
+        else f"urn:uuid:{uuid4()}"
+    )
+
+    bodies: list[dict[str, Any]] = [
+        {
+            "type": "TextualBody",
+            "purpose": "tagging",
+            "value": concept,
+            "language": "la",
+        }
+    ]
+
+    normalized = item.get("normalized")
+    if isinstance(normalized, str) and normalized.strip():
+        bodies.append({
+            "type": "TextualBody",
+            "purpose": "normalizing",
+            "value": normalized,
+            "language": "la",
+        })
+
+    translation = item.get("translation")
+    if isinstance(translation, str) and translation.strip():
+        bodies.append({
+            "type": "TextualBody",
+            "purpose": "describing",
+            "value": translation,
+            "language": "en",
+        })
+
+    evidence = item.get("evidence")
+    if isinstance(evidence, str) and evidence.strip():
+        bodies.append({
+            "type": "TextualBody",
+            "purpose": "evidencing",
+            "value": evidence,
+            "language": "la",
+        })
+
+    annotation: dict[str, Any] = {
+        "@context": "http://www.w3.org/ns/anno.jsonld",
+        "id": annotation_id,
+        "type": "Annotation",
+        "motivation": "tagging",
+        "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "body": bodies,
+        "target": {
+            "source": source_uri,
+            "selector": {
+                "type": "TextPositionSelector",
+                "start": start,
+                "end": end,
+            },
+        },
+    }
+
+    if creator:
+        annotation["creator"] = {
+            "type": "Software",
+            "name": creator,
+        }
+
+    return annotation
+
+
+def le_output_to_wadm(
+    items: list[dict[str, Any]],
+    *,
+    source_uri: str,
+    annotation_id_base: str | None = None,
+    creator: str | None = "zotero-rdf-server",
+) -> list[dict[str, Any]]:
+    return [
+        le_item_to_wadm_annotation(
+            item,
+            source_uri=source_uri,
+            annotation_id_base=annotation_id_base,
+            creator=creator,
+        )
+        for item in items
+        if isinstance(item.get("start"), int)
+        and isinstance(item.get("end"), int)
+    ]

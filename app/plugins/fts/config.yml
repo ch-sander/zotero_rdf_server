@@ -31,8 +31,9 @@ llm:
       model_url: "http://ollama:11434" # or use client above?
       temperature: 0.0
       max_char_buffer: 1200
-      extraction_passes: 2
-      max_workers: 2
+      extraction_passes: 1
+      max_workers: 1
+      timeout: 300
 
       prompt_description: |
         Extract relevant Latin concepts from noisy OCR text of early modern theological works.
@@ -542,6 +543,12 @@ open-search:
                     keyword:
                       type: keyword
                       ignore_above: 256
+                evidence:
+                  type: text
+                start:
+                  type: integer
+                end:
+                  type: integer
             concepts_flat:
               type: object
               dynamic: true

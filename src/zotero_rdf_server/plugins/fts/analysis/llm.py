@@ -16,7 +16,7 @@ def get_llm_config(config_path: Path | str | None = None) -> dict[str, Any]:
     if isinstance(config_path, Path):
         config_path = str(config_path)
     cfg_path = resolve_config_path(config_path)
-    cfg = load_dict_like(cfg_path, label="Ollama Config", verbose=False)
+    cfg = load_dict_like(cfg_path, label="LLM Config", verbose=False)
     return cfg.get("llm") or cfg
     
 def make_llm_client(config:dict): 
@@ -77,8 +77,8 @@ def build_chat_config(llmcfg: dict[str, Any] | None, task: str = "chat") -> dict
         cfg["messages"] = cleaned_messages
 
     return cfg
+
 def build_langextract_examples(examples_cfg: list[dict[str, Any]]):
-    ensure_import("langextract", requirements=None)
     import langextract as lx
 
     return [
@@ -96,14 +96,13 @@ def build_langextract_examples(examples_cfg: list[dict[str, Any]]):
         for ex in examples_cfg
     ]
 
-
 def run_langextract(
     user_input: str,
     llm_config: dict[str, Any],
     task: str,
     overrides: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    ensure_import("langextract", requirements=None)
+    ensure_import("langextract==1.3.0", requirements=None)
     import langextract as lx
 
     overrides = overrides or {}
@@ -115,6 +114,8 @@ def run_langextract(
     cfg = deepcopy(le_tasks[task])
     cfg.update({k: v for k, v in overrides.items() if v is not None})
 
+    logger.debug(json.dumps(cfg,indent=4))
+
     client_host = (llm_config.get("client") or {}).get("host", "http://ollama:11434")
 
     model = cfg.get("model", "qwen2.5:7b-instruct")
@@ -122,12 +123,19 @@ def run_langextract(
 
     examples = build_langextract_examples(cfg.get("examples", []))
 
+    model_config = lx.factory.ModelConfig(
+        model_id=model,
+        provider_kwargs={
+            "model_url": model_url,
+            "timeout": cfg.get("timeout", 300),
+        },
+    )
+
     result = lx.extract(
         text_or_documents=user_input,
         prompt_description=cfg["prompt_description"],
         examples=examples,
-        model_id=f"ollama:{model}",
-        model_url=model_url,
+        config=model_config,
         temperature=cfg.get("temperature", 0.0),
         max_char_buffer=cfg.get("max_char_buffer", 1200),
         extraction_passes=cfg.get("extraction_passes", 1),
@@ -233,8 +241,9 @@ def run_ollama_chat(
     client = make_llm_client(llm_config)
     chat_cfg = build_chat_config(llm_config, task=task)
 
-    if "model" in overrides:
-        chat_cfg["model"] = overrides["model"]
+    model_override = overrides.get("model")
+    if isinstance(model_override, str) and model_override.strip():
+        chat_cfg["model"] = model_override
 
     payload = {
         "model": chat_cfg["model"],
