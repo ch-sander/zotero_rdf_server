@@ -319,7 +319,7 @@ open-search:
     max_chunk_bytes: 5242880
     max_retries: 3
     initial_backoff: 1
-    max_backof: 32
+    max_backoff: 32
 
   component_templates:
     # Analysis settings for OCR indexing & search
