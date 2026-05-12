@@ -599,7 +599,9 @@ open-search:
 
         - html_strip:
             field: "meta.html"
-            "target_field": "text"
+            target_field: "text"
+            ignore_missing: true
+            if: "ctx.text == null"
 
   index_templates:
   
