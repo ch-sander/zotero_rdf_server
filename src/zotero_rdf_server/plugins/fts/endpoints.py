@@ -285,7 +285,7 @@ JsonBody = Union[JsonObj, List[JsonObj]]
 def ingest_route(
     input: Optional[JsonBody] = Body(default=None, examples=[None],description="Provide JSON List or SPARQL query result bindings. If none, runs query to get input from results."),
     targets: str | list = Query(default=None, description="Index or alias"),
-    from_source: bool = Query(default=True, description="If true, generates input from external source (either produced via OCR or read from cache). If false, you must provide input directly."),
+    from_source: bool = Query(default=None, description="If true, generates input from external source (either produced via OCR or read from cache). If false, you must provide input directly."),
     framework: Literal["kraken", "tesseract", "transformer", "source", "none"] = Query(
         default=None,
         description="OCR backend: kraken, tesseract, or transformer. Choose 'none' to skip ATR/OCR",
