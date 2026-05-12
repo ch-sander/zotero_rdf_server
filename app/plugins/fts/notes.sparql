@@ -6,15 +6,16 @@ PREFIX semz: <https://semantic-html.org/vocab#>
 SELECT ?note
        (SAMPLE(?date) AS ?date)
        (SAMPLE(?parent) AS ?parent)
-       (SAMPLE(?parent_label) AS ?_label) # _label variable is optional
+       (SAMPLE(?parent_label) AS ?_label)
+       (SAMPLE(?html) AS ?html)
        (SAMPLE(?parent_label) AS ?parent_label)
        (SAMPLE(?parent_title) AS ?parent_title)
-       (SAMPLE(?text) AS ?_input) # _input variable is required
+       (SAMPLE(?text) AS ?_text)
        (GROUP_CONCAT(DISTINCT ?text_1724_9; SEPARATOR = "; ") AS ?parent_creators)
        (SAMPLE(?library) AS ?library)
        (SAMPLE(?library_label) AS ?library_label)
        (GROUP_CONCAT(DISTINCT ?text_1724_13; SEPARATOR = "; ") AS ?parent_tags)
-       (SAMPLE(CONCAT(STR(?library_label), ":", STR(?_id))) AS ?_id) # _id variable is required
+       (SAMPLE(CONCAT(STR(?library_label), ":", STR(?_id))) AS ?_id)
        (SAMPLE(?parent_key) AS ?parent_key)
        (SAMPLE(?file_label) AS ?file_label)
 WHERE {
@@ -22,28 +23,28 @@ WHERE {
         zot:key ?_id;
         zot:parentItem ?parent.
 
-?note semz:text ?text .
-    
-OPTIONAL { ?parent rdfs:label ?parent_label }
-OPTIONAL { ?parent zot:date ?date }
-OPTIONAL { ?parent zot:title ?parent_title }
-OPTIONAL { ?parent zot:key ?parent_key }
+  ?note zot:note ?html .
+  OPTIONAL {GRAPH <https://semantic-html.org> {
+    ?note semz:text ?text .
+  }}
 
-OPTIONAL {
-  ?parent (zot:creators/zot:hasCreator) ?person_1742_8 .
-  ?person_1742_8 a zot:actor ;
-                 rdfs:label ?text_1724_9 .
-}
+  OPTIONAL { ?parent rdfs:label ?parent_label }
+  OPTIONAL { ?parent zot:date ?date }
+  OPTIONAL { ?parent zot:title ?parent_title }
+  OPTIONAL { ?parent zot:key ?parent_key }
 
+  OPTIONAL {
+    ?parent zot:creators/zot:hasCreator ?person_1742_8 .
+    ?person_1742_8 a zot:actor ;
+                   rdfs:label ?text_1724_9 .
+  }
 
-OPTIONAL {  ?note zot:inLibrary ?library.}
-  
-OPTIONAL {  ?library rdf:type zot:library;
-                     zot:id ?library_label.}
+  OPTIONAL { ?note zot:inLibrary ?library. }
 
-#  ?note zot:tags/zot:tag ?tag .
-#  VALUES ?tag { "*pdf" "*iiif" }
-
+  OPTIONAL {
+    ?library rdf:type zot:library;
+             zot:id ?library_label.
+  }
 
   OPTIONAL {
     ?parent zot:tags ?tag_1502_13.

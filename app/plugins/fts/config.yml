@@ -597,6 +597,10 @@ open-search:
             field: "meta.parent_tags"
             ignore_missing: true
 
+        - html_strip:
+            field: "meta.html"
+            "target_field": "text"
+
   index_templates:
   
     ocr_pages_template_v1:
