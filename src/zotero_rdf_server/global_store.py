@@ -26,10 +26,10 @@ def open_store_rw():
     return store
 
 
-def get_store():
+def get_store(force:bool=True):
     global store
 
-    if store is None:
+    if store is None or force:
         initialize_store()
 
     return store
