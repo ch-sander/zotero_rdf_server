@@ -77,7 +77,7 @@ def get_doc_vector(index: str, os_id: str, vector_field: str = "vector") -> List
         raise KeyError(f"Document has no '{vector_field}' in _source.")
     return vec
 
-def build_terms_should_queries(
+def build_terms_should_queries_legacy(
     terms: List[str],
     field: str = "text",
     exact: bool = True,
@@ -121,6 +121,81 @@ def build_terms_should_queries(
                         }
                     }
                 )
+
+    return should
+
+def build_terms_should_queries(
+    terms: List[str],
+    field: str = "text",
+    exact: bool = True,
+    truncated: bool = True,
+    fuzzy: bool = True,
+    use_shingles: bool = True,
+    shingle_field: Optional[str] = None,
+    phrase_slop: int = 2,
+    shingle_boost: float = 3.0,
+    phrase_boost: float = 6.0,
+    prefix_boost: float = 2.0,
+    fuzzy_boost: float = 1.0,
+    prefix_max_expansions: int = 50,
+    fuzzy_max_expansions: int = 50,
+    fuzzy_prefix_length: int = 1,
+    fuzzy_edits: int = 2,
+    min_prefix_len: int = 3,
+) -> List[Dict[str, Any]]:
+
+    should: List[Dict[str, Any]] = []
+    shingle_field = shingle_field or f"{field}.shingles"
+
+    for t in terms:
+        if exact:
+            should.append({
+                "match_phrase": {
+                    field: {
+                        "query": t,
+                        "slop": phrase_slop,
+                        "boost": phrase_boost,
+                    }
+                }
+            })
+
+        if use_shingles:
+            should.append({
+                "match": {
+                    shingle_field: {
+                        "query": t,
+                        "operator": "and",
+                        "boost": shingle_boost,
+                    }
+                }
+            })
+
+        if truncated and maybe_guard_prefix(t, min_len=min_prefix_len):
+            should.append({
+                "match_phrase_prefix": {
+                    field: {
+                        "query": t,
+                        "max_expansions": prefix_max_expansions,
+                        "boost": prefix_boost,
+                    }
+                }
+            })
+
+        if fuzzy:
+            edits = effective_fuzzy_edits(t, fuzzy_edits)
+            if edits > 0:
+                should.append({
+                    "match": {
+                        field: {
+                            "query": t,
+                            "fuzziness": edits,
+                            "prefix_length": fuzzy_prefix_length,
+                            "max_expansions": fuzzy_max_expansions,
+                            "operator": "and",
+                            "boost": fuzzy_boost,
+                        }
+                    }
+                })
 
     return should
 

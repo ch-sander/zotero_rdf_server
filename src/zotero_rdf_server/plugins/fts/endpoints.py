@@ -1474,7 +1474,9 @@ def search_terms(
             "Does NOT affect aggregations."
         ),
     ),
-
+    use_shingles: bool = Query(True),
+    shingle_field: Optional[str] = Query(None),
+    phrase_slop: int = Query(2, ge=0, le=20),
     lucene: bool = Query(
         False,
         description="Interpret 'q' as a Lucene query_string instead of comma-separated terms.",
@@ -1568,14 +1570,18 @@ def search_terms(
 
         if not (exact or truncated or fuzzy):
             raise HTTPException(status_code=400, detail="Enable at least one mode: exact/truncated/fuzzy.")
-
+        
         should = build_terms_should_queries(
             terms=terms,
             field=field,
             exact=exact,
             truncated=truncated,
             fuzzy=fuzzy,
+            use_shingles=use_shingles,
+            shingle_field=shingle_field,
+            phrase_slop=phrase_slop,
         )
+
         body = {"query": {"bool": {"should": should, "minimum_should_match": 1}}}
     
     apply_ingest_ts_range_filter(body,ingest_ts)
