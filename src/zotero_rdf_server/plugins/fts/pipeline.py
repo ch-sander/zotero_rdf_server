@@ -193,6 +193,10 @@ def ingest_pipeline(
     runs: List[dict] = []
     if ingest:
         from .db import resolve_config_path, get_os_config, make_client, provision_from_cfg
+
+        resolve_config_path.cache_clear()
+        get_os_config.cache_clear()
+        
         cfg_path = resolve_config_path(config_path)
         oscfg = get_os_config(cfg_path)
         client = make_client(oscfg)

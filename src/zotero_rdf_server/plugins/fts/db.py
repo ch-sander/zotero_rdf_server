@@ -196,10 +196,13 @@ def run_llm_tasks(
     sequence: int,
     llm_kwargs: dict,
 ) -> dict:
-    from .analysis.llm import llm
+    from .analysis.llm import llm, get_llm_config
     from .helpers import clean_ocr, make_json_safe
     from zotero_rdf_server.utils import load_dict_like
     import json
+
+    get_llm_config.cache_clear()
+
     _doc_id = safe_doc_id(doc_id)
     def _resolve_out(p: Optional[str], doc_dir:str|None = _doc_id) -> Optional[Path]:
 

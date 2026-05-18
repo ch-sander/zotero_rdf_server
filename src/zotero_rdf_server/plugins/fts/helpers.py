@@ -35,9 +35,10 @@ def plugin_logger(new:bool=False):
         logger_z.propagate = False
         return logger_z
 
+@lru_cache()
 def ensure_import(module, attr=None, requirements=requirements):
     from zotero_rdf_server import utils
-    utils.ensure_import(module=module,attr=attr,requirements=requirements)
+    return utils.ensure_import(module=module,attr=attr,requirements=requirements)
 
 
 @lru_cache(maxsize=1)

@@ -535,24 +535,25 @@ class KrakenModelSpec:
     checksum: Optional[str] = None
 
 @lru_cache(maxsize=8)
-def get_ocr_cfg(config_path: Path) -> dict[str, Any]:
+def get_ocr_cfg(config_path: Path, key: str = "kraken") -> dict[str, Any]:
     from zotero_rdf_server.utils import load_dict_like
-    return load_dict_like(config_path, label="OCR Config", verbose=False) or {}  
+    cfg = load_dict_like(config_path, label="OCR Config", verbose=False) or {}
+    return cfg.get(key) or cfg if key else cfg
  
-@lru_cache(maxsize=8)
-def get_kraken_cfg(config_path: Path) -> dict[str, Any]:
-    cfg = get_ocr_cfg(config_path)
-    return cfg.get("kraken") or cfg
+# @lru_cache(maxsize=8)
+# def get_kraken_cfg(config_path: Path) -> dict[str, Any]:
+#     cfg = get_ocr_cfg(config_path)
+#     return cfg.get("kraken") or cfg
 
-@lru_cache(maxsize=8)
-def get_tesseract_cfg(config_path: Path) -> dict[str, Any]:
-    cfg = get_ocr_cfg(config_path)
-    return cfg.get("tesseract") or cfg
+# @lru_cache(maxsize=8)
+# def get_tesseract_cfg(config_path: Path) -> dict[str, Any]:
+#     cfg = get_ocr_cfg(config_path)
+#     return cfg.get("tesseract") or cfg
 
 def resolve_domain(*, config_path: Path, domain: Optional[str]) -> str:
     if domain:
         return domain
-    kcfg = get_kraken_cfg(config_path)
+    kcfg = get_ocr_cfg(config_path, key="kraken")
     active = kcfg.get("active") or {}
     if active.get("domain"):
         return active["domain"]
@@ -568,7 +569,7 @@ def resolve_recognition_model_name(
 ) -> str:
     if model_name:
         return model_name
-    kcfg = get_kraken_cfg(config_path)
+    kcfg = get_ocr_cfg(config_path, key="kraken")
     active = kcfg.get("active") or {}
     if active.get("model"):
         return active["model"]
@@ -585,7 +586,7 @@ def resolve_segmentation_name(
 ) -> str:
     if segmenter:
         return segmenter
-    kcfg = get_kraken_cfg(config_path)
+    kcfg = get_ocr_cfg(config_path, key="kraken")
     active = kcfg.get("active") or {}
     return active.get("segmentation") or "BLLA"
 
@@ -619,7 +620,7 @@ def resolve_kraken_model_path(
     config_path: Path | Path,
     model_name: str,
 ) -> Path:
-    kcfg = get_kraken_cfg(config_path) or {}
+    kcfg = get_ocr_cfg(config_path, key="kraken")
     models_dir = Path(kcfg.get("models_dir", Path(__file__).resolve().parent / "models")).expanduser()
     
     spec = _get_model_spec(kcfg, model_name)
@@ -660,7 +661,7 @@ def resolve_tesseract_lang(
     if lang:
         return lang
 
-    tcfg = get_tesseract_cfg(config_path)
+    tcfg = get_ocr_cfg(config_path, key="tesseract")
     active = tcfg.get("active") or {}
     if active.get("lang"):
         return active["lang"]
@@ -684,7 +685,7 @@ def resolve_tesseract_config(
     if config:
         return config
 
-    tcfg = get_tesseract_cfg(config_path)
+    tcfg = get_ocr_cfg(config_path, key="tesseract")
     active = tcfg.get("active") or {}
     if active.get("config"):
         return active["config"]
@@ -697,7 +698,7 @@ def resolve_tesseract_config(
     return tcfg.get("default_config") or ""
 
 def configure_tesseract_binary(*, config_path: Path) -> None:
-    tcfg = get_tesseract_cfg(config_path)
+    tcfg = get_ocr_cfg(config_path, key="tesseract")
     exe = tcfg.get("executable", "/usr/bin/tesseract")
     if exe:
         import pytesseract
@@ -1986,6 +1987,8 @@ def iter_text_pages(
         f"iter_text_pages received: {[iter_kwargs, page_to_text_kwargs, text_image_file_kwargs, framework]}"
     )
     
+    get_ocr_cfg.cache_clear()
+
     cfg = text_image_file_kwargs or {}
     use_transformer = framework == "transformer"
     ocr = framework and framework not in {"none"}
