@@ -1,5 +1,5 @@
 from __future__ import annotations
-from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Body, Depends
+from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Body, Depends, status
 from fastapi.responses import StreamingResponse, FileResponse, Response, JSONResponse, PlainTextResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from typing import Literal, Any, Dict, Iterator, List, Optional, Union, Tuple
@@ -2484,5 +2484,67 @@ async def msearch(request: Request):
         headers={"content-type": "application/x-ndjson"},
     )
     return resp
+
+## Cleaning
+
+class CleanRequest(BaseModel):
+    root_dir: str
+    extension: str
+    action: Literal["delete", "move"] = "delete"
+    move_to: str | None = None
+    min_bytes: int | None = None
+    min_content_len: int | None = None
+
+@router.post("/clean-files")
+def clean_files_endpoint(payload: CleanRequest):
+    from zotero_rdf_server.config import EXPORT_DIRECTORY
+    from .pipeline import clean_files
+    export_root = Path(EXPORT_DIRECTORY).resolve()
+    root_dir = (export_root / payload.root_dir).resolve()
+    if payload.move_to:
+        move_to = (export_root / payload.move_to).resolve()
+    else:
+        move_to = None
+
+    # Prevent path traversal outside EXPORT_DIRECTORY.
+    if not root_dir.is_relative_to(export_root):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"root_dir must be inside {EXPORT_DIRECTORY}",
+        )
+
+    if not root_dir.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Directory not found: {payload.root_dir}",
+        )
+
+    if not root_dir.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Path is not a directory: {payload.root_dir}",
+        )
+
+    try:
+        return clean_files(
+            root_dir=root_dir,
+            extension=payload.extension,
+            action=payload.action,
+            move_to=move_to,
+            min_bytes=payload.min_bytes,
+            min_content_len=payload.min_content_len,
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Filesystem error: {exc}",
+        ) from exc
 
 # end
