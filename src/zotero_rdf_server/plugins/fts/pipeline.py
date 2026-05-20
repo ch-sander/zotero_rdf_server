@@ -1,4 +1,7 @@
 from typing import Literal as TypeLiteral, Any, Dict, Iterator, List, Optional, Union
+from pathlib import Path
+from shutil import move
+
 import json
 from .helpers import plugin_logger
 logger=plugin_logger()
@@ -298,3 +301,100 @@ def ingest_pipeline(
         logger.info(f"Ingest Pipeline finsihed with {len(runs)} runs!")
         return runs
     return runs
+
+
+
+Action = TypeLiteral["delete", "move"]
+
+
+def clean_files(
+    root_dir: str | Path,
+    extension: str,
+    min_bytes: int | None = None,
+    min_content_len: int | None = None,
+    action: Action = "delete",
+    move_to: str | Path | None = None,
+) -> dict:
+    """
+    Recursively finds files by extension and deletes or moves files that are
+    smaller than min_bytes or whose decoded content length is smaller than
+    min_content_len.
+    """
+
+    root = Path(root_dir).resolve()
+
+    if not root.exists() or not root.is_dir():
+        raise ValueError(f"root_dir does not exist or is not a directory: {root}")
+
+    if min_bytes is None and min_content_len is None:
+        raise ValueError("At least one of min_bytes or min_content_len must be set")
+
+    if not extension.startswith("."):
+        extension = f".{extension}"
+
+    target_dir: Path | None = None
+
+    if action == "move":
+        if move_to is None:
+            raise ValueError("move_to must be set when action='move'")
+
+        target_dir = Path(move_to).resolve()
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+    deleted = 0
+    moved = 0
+    skipped = 0
+    errors: list[dict] = []
+
+    for file_path in root.rglob(f"*{extension}"):
+        if not file_path.is_file():
+            continue
+
+        should_clean = False
+
+        try:
+            # Check file size in bytes without reading the file.
+            if min_bytes is not None and file_path.stat().st_size < min_bytes:
+                should_clean = True
+
+            # Check content length only if needed.
+            if min_content_len is not None:
+                try:
+                    content = file_path.read_text(encoding="utf-8", errors="ignore")
+                    if len(content) < min_content_len:
+                        should_clean = True
+                except OSError as exc:
+                    errors.append({"file": str(file_path), "error": str(exc)})
+                    continue
+
+            if not should_clean:
+                skipped += 1
+                continue
+
+            if action == "delete":
+                file_path.unlink()
+                deleted += 1
+
+            elif action == "move":
+                assert target_dir is not None
+
+                # Preserve relative folder structure inside the move target.
+                relative_path = file_path.relative_to(root)
+                destination = target_dir / relative_path
+                destination.parent.mkdir(parents=True, exist_ok=True)
+
+                move(str(file_path), str(destination))
+                moved += 1
+
+        except OSError as exc:
+            errors.append({"file": str(file_path), "error": str(exc)})
+
+    return {
+        "root_dir": str(root),
+        "extension": extension,
+        "action": action,
+        "deleted": deleted,
+        "moved": moved,
+        "skipped": skipped,
+        "errors": errors,
+    }
