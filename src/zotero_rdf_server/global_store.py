@@ -13,11 +13,18 @@ from importlib.util import find_spec
 store = None
 _store_lock = threading.RLock()
 
+
 def close_store():
     global store
+    old = store
     store = None
+    if old is not None:
+        try:
+            old.flush()
+        except Exception:
+            pass
+        del old
     gc.collect()
-
 
 def open_store_rw():
     global store
@@ -25,17 +32,17 @@ def open_store_rw():
     store = Store(path=str(STORE_DIRECTORY))
     return store
 
-
-def get_store(force:bool=True):
+def get_store(force: bool = False):
     global store
 
-    if store is None or force:
-        initialize_store()
+    with _store_lock:
+        if store is None or force:
+            initialize_store(force=force)
 
-    return store
-
+        return store
+        
 def get_graph(graph: str | NamedNode):
-    s = get_store()
+    s = get_store(force=False)
 
     if graph and isinstance(graph, str):
         graph = safeNamedNode(graph.strip().strip('<>').strip())
@@ -47,7 +54,49 @@ def get_graph(graph: str | NamedNode):
 
     return None, graphs
 
-def initialize_store():
+def initialize_store(force: bool = False):
+    global store
+
+    with _store_lock:
+
+        if store is not None and not force:
+            return store
+
+        if force:
+            close_store()
+
+        old_store = store
+
+        if STORE_MODE == "memory":
+            new_store = Store()
+            logger.warning(f"Store re-opened in memory. {len(new_store)} triples.")
+
+
+        elif STORE_MODE == "directory_ro":
+            new_store = Store.read_only(path=str(STORE_DIRECTORY))
+            logger.warning(f"Store re-opened read-only. {len(new_store)} triples.")
+
+        elif STORE_MODE == "directory_rw":
+            try:
+                STORE_DIRECTORY.mkdir(parents=True, exist_ok=True)
+                new_store = Store(path=str(STORE_DIRECTORY))
+                logger.warning(f"Store re-opened read-write. {len(new_store)} triples.")
+            except Exception as e:
+                logger.exception(f"Failed to load store: {e}")
+                raise
+
+        else:
+            raise ValueError(f"Invalid store_mode: {STORE_MODE}")
+
+        store = new_store
+
+    if old_store is not None:
+        del old_store
+        gc.collect()
+
+    return store
+
+def initialize_store_deprecated():
     global store
 
     with _store_lock:
