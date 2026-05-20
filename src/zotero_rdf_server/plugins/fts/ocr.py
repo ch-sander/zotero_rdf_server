@@ -2047,6 +2047,7 @@ def iter_text_pages(
                                         "min_len": 20,
                                         "min_alpha": 10,
                                         "required_re": None,   # r"[A-Za-zÄÖÜäöüß]{3,}"
+                                        "store_min_len": 10
                                     },
                                     "image": {
                                         "min_width": 1200,
@@ -2320,7 +2321,8 @@ def iter_text_pages(
         if tp is None:
             return
         if save_text == "overwrite" or not tp.exists() or force:
-            _save_text(txt, tp)
+            if len(txt)>text_policy.get("store_min_len", 0): # TODO don't store empty text files
+                _save_text(txt, tp)
 
     def _yield_from_cache() -> Iterator[Tuple[int, str]]:
         if txt_dir is None or not txt_dir.exists():
