@@ -124,7 +124,32 @@ def build_terms_should_queries_legacy(
 
     return should
 
-def build_terms_should_queries(
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class TermQueryConfig:
+    field: str = "text"
+    exact: bool = True
+    truncated: bool = True
+    fuzzy: bool = True
+    use_shingles: bool = True
+    shingle_field: Optional[str] = None
+    phrase_slop: int = 2
+    shingle_boost: float = 3.0
+    phrase_boost: float = 6.0
+    prefix_boost: float = 2.0
+    fuzzy_boost: float = 1.0
+    prefix_max_expansions: int = 50
+    fuzzy_max_expansions: int = 50
+    fuzzy_prefix_length: int = 1
+    fuzzy_edits: int = 2
+    min_prefix_len: int = 3
+
+    @property
+    def resolved_shingle_field(self) -> str:
+        return self.shingle_field or f"{self.field}.shingles"
+
+def build_terms_should_queries_legacy(
     terms: List[str],
     field: str = "text",
     exact: bool = True,
@@ -196,6 +221,98 @@ def build_terms_should_queries(
                         }
                     }
                 })
+
+    return should
+
+def _build_single_term_queries(
+    term: str,
+    config: TermQueryConfig,
+) -> List[Dict[str, Any]]:
+    should: List[Dict[str, Any]] = []
+
+    t = term.strip()
+    if not t:
+        return should
+
+    if config.exact:
+        should.append({
+            "match_phrase": {
+                config.field: {
+                    "query": t,
+                    "slop": config.phrase_slop,
+                    "boost": config.phrase_boost,
+                }
+            }
+        })
+
+    if config.use_shingles:
+        should.append({
+            "match": {
+                config.resolved_shingle_field: {
+                    "query": t,
+                    "operator": "and",
+                    "boost": config.shingle_boost,
+                }
+            }
+        })
+
+    if config.truncated and maybe_guard_prefix(t, min_len=config.min_prefix_len):
+        should.append({
+            "match_phrase_prefix": {
+                config.field: {
+                    "query": t,
+                    "max_expansions": config.prefix_max_expansions,
+                    "boost": config.prefix_boost,
+                }
+            }
+        })
+
+    if config.fuzzy:
+        edits = effective_fuzzy_edits(t, config.fuzzy_edits)
+        if edits > 0:
+            should.append({
+                "match": {
+                    config.field: {
+                        "query": t,
+                        "fuzziness": edits,
+                        "prefix_length": config.fuzzy_prefix_length,
+                        "max_expansions": config.fuzzy_max_expansions,
+                        "operator": "and",
+                        "boost": config.fuzzy_boost,
+                    }
+                }
+            })
+
+    return should
+
+def build_terms_should_queries(
+    terms: List[str],
+    config: TermQueryConfig = TermQueryConfig(),
+) -> List[Dict[str, Any]]:
+    should: List[Dict[str, Any]] = []
+
+    for term in terms:
+        and_terms = [x.strip() for x in term.split("+") if x.strip()] # A+B = A AND B
+        if not and_terms:
+            continue
+
+        if len(and_terms) == 1:
+            should.extend(_build_single_term_queries(and_terms[0], config))
+            continue
+
+        must = []
+        for subterm in and_terms:
+            sub_should = _build_single_term_queries(subterm, config)
+            if sub_should:
+                must.append({
+                    "bool": {
+                        "should": sub_should,
+                        "minimum_should_match": 1,
+                    }
+                })
+
+        if must:
+            should.append({"bool": {"must": must}})
 
     return should
 
@@ -659,7 +776,7 @@ def render_html(
             if col not in row or col == "_id":
                 continue
 
-            if str(col).startswith("analysis_"):
+            if str(col).startswith("analysis_") or str(col).startswith("analysis."):
                 analysis_fields.append(col)
             else:
                 normal_fields.append(col)
