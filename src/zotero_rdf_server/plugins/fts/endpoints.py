@@ -1536,7 +1536,7 @@ def search_terms(
     context: bool = Query(True, description="Include query context in the response."),
 
 ):
-    from .search import parse_csv, build_terms_should_queries, os_search, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter
+    from .search import parse_csv, build_terms_should_queries, os_search, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter, TermQueryConfig
 
     api_call = str(request.url) 
     # --- Build query ---------------------------------------------------------
@@ -1573,13 +1573,15 @@ def search_terms(
         
         should = build_terms_should_queries(
             terms=terms,
-            field=field,
-            exact=exact,
-            truncated=truncated,
-            fuzzy=fuzzy,
-            use_shingles=use_shingles,
-            shingle_field=shingle_field,
-            phrase_slop=phrase_slop,
+            config=TermQueryConfig(
+                field=field,
+                exact=exact,
+                truncated=truncated,
+                fuzzy=fuzzy,
+                use_shingles=use_shingles,
+                shingle_field=shingle_field,
+                phrase_slop=phrase_slop,
+            ),
         )
 
         body = {"query": {"bool": {"should": should, "minimum_should_match": 1}}}
