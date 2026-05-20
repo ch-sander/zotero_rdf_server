@@ -287,7 +287,7 @@ def run_llm_tasks(
                 llm_response,
                 label=f"LLM page response for {doc_id}:{sequence}",
                 default=[],
-                verbose=not used_cache or framework!="langextract",
+                verbose=not used_cache or framework!="langextract", # TODO omitting verbose...? Maybe make lenghth-dependent?
             )        
         else:
             llm_result = llm_response or []
