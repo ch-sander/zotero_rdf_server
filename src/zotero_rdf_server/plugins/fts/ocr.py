@@ -2061,11 +2061,14 @@ def iter_text_pages(
     text_policy = cache_policy.get("text", {})
     image_policy = cache_policy.get("image", {})
 
-    if save_text not in {"skip", "overwrite", "active", "cache"}:
-        raise ValueError(f"save_text must be 'active', 'skip' or 'overwrite', got {save_text}")
-    if save_image not in {"skip", "cache", "overwrite", "active", "sniff", "smart"}:
+    if save_text not in {"skip", "overwrite", "active", "cache", "organize"}:
         raise ValueError(
-            f"save_image must be one of 'skip', 'cache', 'overwrite', 'active', 'sniff', 'smart', got {save_image}"
+            f"save_text must be one of 'active', 'skip', 'overwrite', 'cache', 'organize', got {save_text}"
+        )
+
+    if save_image not in {"skip", "cache", "overwrite", "active", "sniff", "smart", "organize"}:
+        raise ValueError(
+            f"save_image must be one of 'skip', 'cache', 'overwrite', 'active', 'sniff', 'smart', 'organize', got {save_image}"
         )
     if on_error not in {"raise", "skip", "empty", "log"}:
         raise ValueError(f"on_error must be 'raise', 'skip', 'empty' or 'log', got {on_error}")
@@ -2114,7 +2117,64 @@ def iter_text_pages(
                 logger.debug(f"found {p}")
 
     img_dir = _resolve_out(img_out)
-    txt_dir = _resolve_out(txt_out)    
+    txt_dir = _resolve_out(txt_out)
+   
+    def _organize_cache_files() -> dict[str, Any]:
+        from .pipeline import clean_files
+        organize = dict(cfg.get("organize") or {})
+
+        default_action = organize.get("action", "delete")
+        default_move_to = organize.get("move_to")
+
+        reports: dict[str, Any] = {}
+
+        if save_text == "organize" and txt_dir is not None:
+            text_cfg = dict(organize.get("text") or {})
+            action = text_cfg.get("action", default_action)
+            move_to = text_cfg.get("move_to", default_move_to)
+            if move_to:
+                move_to = _resolve_out(move_to)
+
+            reports["text"] = clean_files(
+                root_dir=txt_dir,
+                extension=text_cfg.get("extension", txt_ext),
+                min_bytes=text_cfg.get("min_bytes"),
+                min_content_len=text_cfg.get("min_content_len"),
+                action=action,
+                move_to=move_to,
+                all_files=text_cfg.get("all_files", False),
+            )
+
+        if save_image == "organize" and img_dir is not None:
+            image_cfg = dict(organize.get("image") or {})
+            action = image_cfg.get("action", default_action)
+            move_to = image_cfg.get("move_to", default_move_to)
+            if move_to:
+                move_to = _resolve_out(move_to)
+
+            reports["image"] = clean_files(
+                root_dir=img_dir,
+                extension=image_cfg.get("extension", img_ext),
+                min_bytes=image_cfg.get("min_bytes"),
+                min_content_len=image_cfg.get("min_content_len"),
+                action=action,
+                move_to=move_to,
+                all_files=image_cfg.get("all_files", False),
+            )
+
+        return reports
+
+    if "organize" in {save_text, save_image}:
+        logger.warning(f"Applying organize!")
+        report = {
+            "call": call_args,
+            "ts_in": ts_in,
+            "ts_out": ISO_ts(),
+            "organize": _organize_cache_files(),
+        }
+        _meta_file(report)
+        logger.info(f"{_doc_id}: ORGANIZE completed: {report['organize']}")
+        return
 
     def _cache_image_ok(src: Union[Path, Image.Image], policy: dict) -> bool:
         try:

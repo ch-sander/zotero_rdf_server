@@ -2496,6 +2496,7 @@ class CleanRequest(BaseModel):
     move_to: str | None = None
     min_bytes: int | None = None
     min_content_len: int | None = None
+    all_files: bool | None = False
 
 @router.post("/clean-files")
 def clean_files_endpoint(payload: CleanRequest):

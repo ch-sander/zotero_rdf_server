@@ -314,6 +314,7 @@ def clean_files(
     min_content_len: int | None = None,
     action: Action = "delete",
     move_to: str | Path | None = None,
+    all_files: bool = False
 ) -> dict:
     """
     Recursively finds files by extension and deletes or moves files that are
@@ -326,8 +327,8 @@ def clean_files(
     if not root.exists() or not root.is_dir():
         raise ValueError(f"root_dir does not exist or is not a directory: {root}")
 
-    if min_bytes is None and min_content_len is None:
-        raise ValueError("At least one of min_bytes or min_content_len must be set")
+    if not all_files and min_bytes is None and min_content_len is None:
+        raise ValueError("At least one of all_files, min_bytes or min_content_len must be set")
 
     if not extension.startswith("."):
         extension = f".{extension}"
@@ -340,7 +341,7 @@ def clean_files(
 
         target_dir = Path(move_to).resolve()
         target_dir.mkdir(parents=True, exist_ok=True)
-
+        
     deleted = 0
     moved = 0
     skipped = 0
@@ -350,7 +351,7 @@ def clean_files(
         if not file_path.is_file():
             continue
 
-        should_clean = False
+        should_clean = all_files
 
         try:
             # Check file size in bytes without reading the file.
