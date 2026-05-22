@@ -405,7 +405,7 @@ def ingest_route(
             else:
                 from zotero_rdf_server.global_store import  NamedNode, Store
                 from zotero_rdf_server import global_store
-                store = global_store.get_store()
+                store = global_store.get_store(force=True)
                 logger.warning("Reading from main store")
 
         except Exception as e:

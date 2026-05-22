@@ -21,7 +21,7 @@ async def parse_notes(
     ):
     from .parse_note import parse_all_notes                                
     from zotero_rdf_server import global_store
-    store = global_store.get_store()
+    store = global_store.get_store(force=True)
     
 
     checked_graph, all_graphs = get_graph(graph)
