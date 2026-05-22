@@ -2530,29 +2530,35 @@ def iter_text_pages(
                     continue
 
                 if ocr: # OCR
-                    try:
-                        with Image.open(img_path) as im:
-                            pil = im.copy()
-                        item = PageItem(page_no, "image", pil, source=f"cache-image:{img_path}",total=total) 
-                        txt = page_to_text(
-                            item,
-                            framework=framework,
-                            **page_to_text_kwargs
-                        )
-                    except Exception as e:
-                        logger.error(f"{_doc_id}: Failed to load cached image for page {page_no} from {img_path}: {e}")
+                    logger.info(f"Using {framework.upper()}")
+                    source = framework
+                    if item.kind == "text":
+                        txt =  item.data or ""
+                        source = "source"
+                    else:  
+                        try:
+                            with Image.open(img_path) as im:
+                                pil = im.copy()
+                            item = PageItem(page_no, "image", pil, source=f"cache-image:{img_path}",total=total) 
+                            txt = page_to_text(
+                                item,
+                                framework=framework,
+                                **page_to_text_kwargs
+                            )
+                        except Exception as e:
+                            logger.error(f"{_doc_id}: Failed to load cached image for page {page_no} from {img_path}: {e}")
 
-                        if on_error == "raise":
-                            raise
-                        if on_error == "skip":
-                            continue
-                        txt = "" # DEBUG
+                            if on_error == "raise":
+                                raise
+                            if on_error == "skip":
+                                continue
+                            txt = "" # DEBUG
 
                     _maybe_store_text(page_no, txt) # _cache_text_ok check not needed as img source is fixed anyway
                     if yield_result: 
-                        yield _log_and_yield(page_no, txt, total)
+                        yield _log_and_yield(page_no, txt, total, source)
                     else:
-                        _log_and_yield(page_no, txt, total)
+                        _log_and_yield(page_no, txt, total, source)
             
             _log_discrepancy_report()
             return
@@ -2666,7 +2672,7 @@ def iter_text_pages(
                     logger.warning(f"{_doc_id}: Rejected cached text for page {page_no} with length {len(txt.strip())}: {str(tp)}")
                     drop_cached_txt = True
                 else:
-                    yield _log_and_yield(page_no, txt, total, "file")
+                    yield _log_and_yield(page_no, txt, total, f"file: {tp}")
 
             if not drop_cached_txt:
                 continue
