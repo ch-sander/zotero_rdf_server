@@ -247,7 +247,7 @@ function buildHitsWidget() {
         const tags = hit.meta?.parent_tags || "-";
         const date = hit.meta?.date || "-";
         const snippet = components.Snippet({ attribute: "text", hit });
-        const raw = hit.text ? hit.text.slice(0, 2000) : "";
+        const raw = hit.text ? hit.text.slice(0, 10000) : "";
         const url = buildUrl("doc", hit);
 
         return html`
@@ -315,7 +315,7 @@ async function init(indexName = activeIndexName) {
       }
     });
 
-    const searchClient = SearchkitInstantsearchClient(sk, {
+    const searchClient_legacy = SearchkitInstantsearchClient(sk, {
       getQuery(query) {
         const q = (query || "").trim();
         if (!q) return false;
@@ -413,6 +413,109 @@ async function init(indexName = activeIndexName) {
 
       }
     });
+
+const searchClient = SearchkitInstantsearchClient(sk, {
+  getQuery(query) {
+    const q = (query || "").trim();
+
+    if (!q) {
+      return false;
+    }
+
+    const buildTermQuery = (term) => {
+      const t = term.trim();
+
+      if (!t) {
+        return null;
+      }
+
+      const isPhrase = /\s+/.test(t);
+
+      const should = [
+        {
+          match_phrase: {
+            text: {
+              query: t,
+              slop: 2,
+              boost: 6
+            }
+          }
+        },
+
+        {
+          match_phrase_prefix: {
+            text: {
+              query: t,
+              max_expansions: 50,
+              boost: 2
+            }
+          }
+        }
+      ];
+
+      if (!isPhrase) {
+        should.push({
+          match: {
+            text: {
+              query: t,
+              fuzziness: 2,
+              prefix_length: 1,
+              max_expansions: 50,
+              boost: 1
+            }
+          }
+        });
+      }
+
+      return {
+        bool: {
+          should,
+          minimum_should_match: 1
+        }
+      };
+    };
+
+    const orGroups = q
+      .split(",")
+      .map(v => v.trim())
+      .filter(Boolean);
+
+    const queryDsl = [
+      {
+        bool: {
+          should: orGroups.map((group) => {
+
+            const andTerms = group
+              .split("+")
+              .map(v => v.trim())
+              .filter(Boolean);
+
+            if (andTerms.length === 1) {
+              return buildTermQuery(andTerms[0]);
+            }
+
+            return {
+              bool: {
+                must: andTerms
+                  .map(buildTermQuery)
+                  .filter(Boolean)
+              }
+            };
+          }),
+
+          minimum_should_match: 1
+        }
+      }
+    ];
+
+    console.log("Search input:", query);
+    console.log("Generated OpenSearch query:");
+    console.log(JSON.stringify(queryDsl, null, 2));
+
+    return queryDsl;
+  }
+});
+
 
     const search = instantsearch({
       indexName: indexName,
