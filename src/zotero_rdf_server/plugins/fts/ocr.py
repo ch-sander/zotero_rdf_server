@@ -2120,10 +2120,38 @@ def iter_text_pages(
     txt_dir = _resolve_out(txt_out)
    
     def _organize_cache_files() -> dict[str, Any]:
+
+        # CONFIG EXAMPLE
+
+        # organize:
+        # # default values
+        # action: move
+        # move_to: trash/common
+        # text:
+        #     # overrides default action
+        #     action: move
+        #     # resolved via _resolve_out(...)
+        #     move_to: trash/text
+        #     # optional extension override
+        #     extension: txt
+        #     # clean_files params
+        #     min_bytes: 10
+        #     min_content_len: 5
+        #     # optional
+        #     all_files: false
+
+        # image:
+        #     action: move
+        #     move_to: trash/image
+        #     extension: jpg
+        #     min_bytes: 1024
+        #     min_content_len: null
+        #     all_files: true
+
         from .pipeline import clean_files
         organize = dict(cfg.get("organize") or {})
 
-        default_action = organize.get("action", "delete")
+        default_action = organize.get("action")
         default_move_to = organize.get("move_to")
 
         reports: dict[str, Any] = {}
