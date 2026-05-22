@@ -210,6 +210,10 @@ class ResultAnalysisParams(BaseModel):
         default="page",
         description="Page field used for page_parent mode.",
     )
+    neighbors_meta_onehot_key: str = Field(
+        default="meta",
+        description="Meta key used for meta_onehot mode. Empty means meta key in _source.",
+    )
     neighbors_meta_onehot_fields: list[str] = Field(
         default_factory=list,
         description="Meta fields used for meta_onehot mode. Empty means all meta fields.",
@@ -394,6 +398,10 @@ def get_result_analysis_params_legacy(
         str,
         Query(description="Page field used for page_parent mode."),
     ] = "page",
+    neighbors_meta_onehot_key: Annotated[
+        str,
+        Query(description="Meta key used for meta_onehot mode. Empty means all meta key in _source."),
+    ] = "meta",
     neighbors_meta_onehot_fields: Annotated[
         list[str],
         Query(description="Meta fields used for meta_onehot mode. Empty means all meta fields."),
@@ -455,6 +463,7 @@ def get_result_analysis_params_legacy(
 
         neighbors_parent_field=neighbors_parent_field,
         neighbors_page_field=neighbors_page_field,
+        neighbors_meta_onehot_key=neighbors_meta_onehot_key,
         neighbors_meta_onehot_fields=neighbors_meta_onehot_fields,
 
         neighbors_hybrid_modes=neighbors_hybrid_modes,
@@ -631,6 +640,10 @@ def get_result_analysis_params(
         str,
         Query(description="Page field used for page_parent mode."),
     ] = "page",
+    neighbors_meta_onehot_key: Annotated[
+        Optional[str],
+        Query(description="Meta key used for meta_onehot mode. Empty means meta key in _source."),
+    ] = "meta",
     neighbors_meta_onehot_fields: Annotated[
         Optional[list[str]],
         Query(description="Meta fields used for meta_onehot mode. Empty means all meta fields."),
@@ -698,6 +711,7 @@ def get_result_analysis_params(
 
         neighbors_parent_field=neighbors_parent_field,
         neighbors_page_field=neighbors_page_field,
+        neighbors_meta_onehot_key=neighbors_meta_onehot_key or "meta",
         neighbors_meta_onehot_fields=neighbors_meta_onehot_fields or [],
 
         neighbors_hybrid_modes=parsed_hybrid_modes,

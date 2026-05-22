@@ -775,7 +775,7 @@ def _compute_neighbors_mlt(
 
     return out
 
-def _get_nested(d, path, default=None):
+def _get_nested_legacy(d, path, default=None):
     cur = d
     for p in path.split("."):
         if not isinstance(cur, dict):
@@ -783,6 +783,40 @@ def _get_nested(d, path, default=None):
         cur = cur.get(p, default)
     return cur
 
+def _get_nested(obj, path, default=None):
+    parts = path.split(".")
+
+    def walk(cur, remaining):
+        if not remaining:
+            return cur
+
+        key = remaining[0]
+        rest = remaining[1:]
+
+        if isinstance(cur, dict):
+            if key not in cur:
+                return default
+            return walk(cur[key], rest)
+
+        if isinstance(cur, list):
+            out = []
+
+            for item in cur:
+                result = walk(item, remaining)
+
+                if result is default:
+                    continue
+
+                if isinstance(result, list):
+                    out.extend(result)
+                else:
+                    out.append(result)
+
+            return out if out else default
+
+        return default
+
+    return walk(obj, parts)
 
 def _flatten_to_tokens(value, prefix=""):
     tokens = []
@@ -875,6 +909,7 @@ def _build_meta_onehot_matrix(
     *,
     hits,
     usable_hit_refs,
+    meta_key="meta",
     meta_fields=None,
 ):
     vocab = {}
@@ -889,7 +924,7 @@ def _build_meta_onehot_matrix(
 
         if use_all_meta:
             logger.warning("Using all meta fields!")
-            meta_value = _get_nested(hit, "_source.meta")
+            meta_value = _get_nested(hit, f"_source.{meta_key}")
             if not isinstance(meta_value, dict):
                 continue
 
@@ -947,11 +982,13 @@ def _compute_neighbors_meta_onehot(
     hits,
     usable_hit_refs,
     k,
+    meta_key=None,
     meta_fields=None,
 ):
     X = _build_meta_onehot_matrix(
         hits=hits,
         usable_hit_refs=usable_hit_refs,
+        meta_key=meta_key,
         meta_fields=meta_fields,
     )
 
@@ -1043,6 +1080,7 @@ def _build_projection_input_from_neighbors(
         X = _build_meta_onehot_matrix(
             hits=hits,
             usable_hit_refs=usable_hit_refs,
+            meta_key=getattr(analysis, "neighbors_meta_onehot_key", "meta"),
             meta_fields=getattr(analysis, "neighbors_meta_onehot_fields", []),
         )
         return X, None, projection_source
@@ -1131,6 +1169,7 @@ def _compute_neighbors_hybrid(
     hybrid_weights,
     parent_field,
     page_field,
+    meta_onehot_key,
     meta_onehot_fields,
     mlt_min_term_freq,
     mlt_min_doc_freq,
@@ -1160,6 +1199,7 @@ def _compute_neighbors_hybrid(
 
             parent_field=parent_field,
             page_field=page_field,
+            meta_onehot_key=meta_onehot_key,
             meta_onehot_fields=meta_onehot_fields,
             mlt_min_term_freq=mlt_min_term_freq,
             mlt_min_doc_freq=mlt_min_doc_freq,
@@ -1216,6 +1256,7 @@ def _compute_neighbors(
 
     parent_field: str = "meta.parent",
     page_field: str = "page",
+    meta_onehot_key: str = "meta",
     meta_onehot_fields: Optional[List[str]] = None,
     hybrid_modes: Optional[List[str]] = None,
     hybrid_weights: Optional[Dict[str, float]] = None,
@@ -1271,6 +1312,7 @@ def _compute_neighbors(
             hits=hits,
             usable_hit_refs=usable_hit_refs,
             k=k,
+            meta_key=meta_onehot_key or "meta",
             meta_fields=meta_onehot_fields or [],
         )
 
@@ -1296,6 +1338,7 @@ def _compute_neighbors(
             hybrid_weights=hybrid_weights or {"knn_vector": 1.0, "mlt": 1.0},
             parent_field=parent_field,
             page_field=page_field,
+            meta_onehot_key=meta_onehot_key or "meta",
             meta_onehot_fields=meta_onehot_fields or [],
             mlt_min_term_freq=mlt_min_term_freq,
             mlt_min_doc_freq=mlt_min_doc_freq,
@@ -1528,6 +1571,7 @@ def cluster_hits_by_analysis(
             # Meta
             parent_field=getattr(analysis, "neighbors_parent_field", "meta.parent"),
             page_field=getattr(analysis, "neighbors_page_field", "page"),
+            meta_onehot_key=getattr(analysis, "neighbors_meta_onehot_key", "meta"),
             meta_onehot_fields=getattr(analysis, "neighbors_meta_onehot_fields", []), # ['meta.parent_tag', 'meta.parent_creators']
 
             # Hybrid
