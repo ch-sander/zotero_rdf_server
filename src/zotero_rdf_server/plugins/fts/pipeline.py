@@ -1,6 +1,6 @@
 from typing import Literal as TypeLiteral, Any, Dict, Iterator, List, Optional, Union
 from pathlib import Path
-from shutil import move
+from shutil import move, copy2
 
 import json
 from .helpers import plugin_logger
@@ -304,7 +304,7 @@ def ingest_pipeline(
 
 
 
-Action = TypeLiteral["delete", "move"]
+Action = TypeLiteral["delete", "move", "copy"]
 
 
 def clean_files(
@@ -335,15 +335,18 @@ def clean_files(
 
     target_dir: Path | None = None
 
-    if action == "move":
+    if action in {"move", "copy"}:
         if move_to is None:
-            raise ValueError("move_to must be set when action='move'")
+            raise ValueError(
+                "move_to must be set when action='move' or action='copy'"
+            )
 
         target_dir = Path(move_to).resolve()
         target_dir.mkdir(parents=True, exist_ok=True)
         
     deleted = 0
     moved = 0
+    copied = 0
     skipped = 0
     errors: list[dict] = []
 
@@ -376,16 +379,20 @@ def clean_files(
                 file_path.unlink()
                 deleted += 1
 
-            elif action == "move":
+            elif action in {"move", "copy"}:
                 assert target_dir is not None
 
-                # Preserve relative folder structure inside the move target.
                 relative_path = file_path.relative_to(root)
                 destination = target_dir / relative_path
                 destination.parent.mkdir(parents=True, exist_ok=True)
 
-                move(str(file_path), str(destination))
-                moved += 1
+                if action == "move":
+                    move(str(file_path), str(destination))
+                    moved += 1
+
+                else:
+                    copy2(str(file_path), str(destination))
+                    copied += 1
 
         except OSError as exc:
             errors.append({"file": str(file_path), "error": str(exc)})
@@ -396,6 +403,7 @@ def clean_files(
         "action": action,
         "deleted": deleted,
         "moved": moved,
+        "copied": copied,
         "skipped": skipped,
         "errors": errors,
     }

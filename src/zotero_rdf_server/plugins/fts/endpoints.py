@@ -2492,7 +2492,7 @@ async def msearch(request: Request):
 class CleanRequest(BaseModel):
     root_dir: str
     extension: str
-    action: Literal["delete", "move"] = "delete"
+    action: Literal["delete", "move", "copy"] = "delete"
     move_to: str | None = None
     min_bytes: int | None = None
     min_content_len: int | None = None
