@@ -923,13 +923,13 @@ def _build_meta_onehot_matrix(
         hit = hits[hit_idx]
 
         if use_all_meta:
-            logger.warning("Using all meta fields!")
+            logger.debug("Using all meta fields!")
             meta_value = _get_nested(hit, f"_source.{meta_key}")
-            if not isinstance(meta_value, dict):
+            if not isinstance(meta_value, (dict,list)):
                 continue
 
-            flat_items = _flatten_to_tokens(meta_value, prefix="meta")
-
+            flat_items = _flatten_to_tokens(meta_value, prefix=meta_key)
+            logger.debug(f"use_all_meta items: {flat_items}")
             for field_path, scalar_value in flat_items:
                 if scalar_value is None:
                     continue
@@ -944,12 +944,14 @@ def _build_meta_onehot_matrix(
 
         else:
             for field in meta_fields:
-                value = _get_nested(hit, f"_source.{field}")
+                value =  _get_nested(hit, f"_source.{field}") or _get_nested(hit, f"_source.{meta_key}.{field}")
                 if value is None:
                     continue
 
-                if isinstance(value, dict):
+                if isinstance(value, (dict)):
                     continue
+                
+                logger.debug(f"meta_fields items: {value}")
 
                 values = value if isinstance(value, list) else [value]
 
@@ -967,6 +969,8 @@ def _build_meta_onehot_matrix(
 
     if not vocab:
         return None
+    
+    logger.debug(f"data: {data}")
 
     X = csr_matrix(
         (data, (rows, cols)),

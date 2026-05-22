@@ -641,7 +641,7 @@ def get_result_analysis_params(
         Query(description="Page field used for page_parent mode."),
     ] = "page",
     neighbors_meta_onehot_key: Annotated[
-        Optional[str],
+        str,
         Query(description="Meta key used for meta_onehot mode. Empty means meta key in _source."),
     ] = "meta",
     neighbors_meta_onehot_fields: Annotated[
