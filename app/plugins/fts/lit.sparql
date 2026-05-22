@@ -60,8 +60,12 @@ OPTIONAL {  ?library rdf:type zot:library;
     #   FILTER(
     #     REGEX(STR(?_id), "_747CPE5P|_K4S8F6G3|_9DDYJWFS|_A3NGVGDY|_R8GLPVX7|_IUP5G5Z9|ZI2DXZBB")
     #   )
-  ?parent zot:collections <https://www.zotero.org/groups/4929619/collections/KJPE6S73> . # Filter literature
+  ?parent zot:collections ?col .
 
+  VALUES ?col {
+      <https://www.zotero.org/groups/4929619/collections/KJPE6S73>
+      <https://www.zotero.org/groups/4929619/collections/AZ962G9L>
+  }
   OPTIONAL {
     ?parent zot:tags ?tag_1502_13.
     ?tag_1502_13 rdf:type zot:tag;
