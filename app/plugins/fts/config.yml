@@ -373,6 +373,7 @@ open-search:
                 type: mapping
                 mappings:
                   - "ſ=>s"
+                  - "&=>et"
                   - "ﬁ=>fi"
                   - "ﬂ=>fl"
                   - "ﬀ=>ff"
