@@ -2,6 +2,8 @@ from typing import Any, Dict, List, Optional, Annotated
 import html, json
 from pydantic import BaseModel, Field
 from copy import deepcopy
+import csv, io, datetime, json
+from io import StringIO
 
 # --- OpenSearch client --------------------------------------------------------
 
@@ -53,9 +55,35 @@ def apply_paging(
     return body
 
 def parse_csv(raw: str) -> List[str]:
-    terms = [t.strip() for t in re.split(r"[;,]", raw) if t.strip()]
-    if not terms:
+    """
+    Parse comma/semicolon separated terms while respecting quoted values.
+    """
+
+    if not raw or not raw.strip():
         raise ValueError("No terms provided.")
+
+    # Normalize semicolons to commas outside quotes.
+    normalized = []
+    in_quotes = False
+
+    for char in raw:
+        if char == '"':
+            in_quotes = not in_quotes
+
+        if char == ";" and not in_quotes:
+            normalized.append(",")
+        else:
+            normalized.append(char)
+
+    reader = csv.reader(StringIO("".join(normalized)))
+
+    terms = [term.strip() for term in next(reader) if term.strip()]
+
+    if not terms:
+        # raise ValueError("No terms provided.")
+        logger.warning(f"No terms to return from {raw}")
+        return []
+    
     return terms
 
 def maybe_guard_prefix(term: str, min_len: int = 3) -> bool:
@@ -425,8 +453,6 @@ def build_proximity_intervals_query(
             }
         }
     }
-
-import csv, io, datetime, json
 
 def _all_highlight_fragments(
     h: Dict[str, Any],
