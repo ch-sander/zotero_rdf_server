@@ -310,12 +310,23 @@ def ingest_route(
     vector_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for embedding Backend Config", examples=[None]),
     llm_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for LLM Backend Config", examples=[None]),
 
+    reverse: bool = Query(default=None, description="If true, reverses order of item results"),
+
+    worker_id: int = Query(default=None, ge=0, description="Worker index, 0-based"),
+    total_workers: int = Query(default=None, ge=0, description="Total number of workers"),
+
 ):
     from .pipeline import ingest_pipeline
-    from .helpers import convert_bindings
+    from .helpers import convert_bindings, get_worker_slice
     import csv
     run_ids = []
-
+    if total_workers is not None and total_workers > 0:
+        if worker_id >= total_workers:
+            raise HTTPException(
+                status_code=400,
+                detail="worker_id must be < total_workers",
+            )
+    
     try:
         from zotero_rdf_server.config import EXPORT_DIRECTORY
         export_dir = Path(EXPORT_DIRECTORY) / "fts"
@@ -495,13 +506,14 @@ def ingest_route(
                         framework_x = framework  if framework is not None else ncfg.get("framework", "kraken")
                         vector_x = vector_kwargs if vector_kwargs is not None else ncfg.get("vector")
 
-                        llm_x = llm_kwargs if llm_kwargs is not None else ncfg.get("llm_kwargs")
+                        llm_x = llm_kwargs if llm_kwargs is not None else ncfg.get("llm_kwargs")                    
+                        reverse_x = reverse if reverse is not None else ncfg.get("reverse_results", False)
 
                         iter_pages_kwargs = source_kwargs if source_kwargs is not None else dict(pipeline_cfg.get("source_kwargs") or {})
                         page_to_text_kwargs = framework_kwargs if framework_kwargs is not None else dict(pipeline_cfg.get("framework_kwargs") or {})
                         text_image_file_kwargs = file_kwargs if file_kwargs is not None else dict(pipeline_cfg.get("file_kwargs") or {})
                         
-                        items = [] 
+                        items = []
 
                         try:
                             sparql_query=load_text_like(query_x,label="Ingest Pipeline SPARQL Query")
@@ -516,8 +528,13 @@ def ingest_route(
                             )
                             items, var_names = convert_bindings(
                                 bindings,
-                                reverse=pipeline_cfg.get("reverse_results", False),
+                                reverse=reverse_x,
                             )
+
+                            if total_workers is not None and total_workers > 0:
+                                logger.warning(f"SLICE of {len(items)} for worker {worker_id} of {total_workers} workers")
+                                items = get_worker_slice(items=items,worker_id=worker_id,total_workers=total_workers)
+                                logger.info(f"Got {len(items)} after SLICE!")
 
                             logger.info(f"SPARQL returned columns: {var_names}")              
                             logger.info(f"{len(items)} results (store LEN: {len(store)})")  
@@ -576,7 +593,7 @@ def ingest_route(
                 )
                 items, var_names = convert_bindings(
                     bindings,
-                    reverse=pipeline_cfg.get("reverse_results", False),
+                    reverse=reverse,
                 )
 
                 logger.info(f"SPARQL returned columns: {var_names}")
@@ -1961,7 +1978,7 @@ def mlt_by_id(
         root_path=request.scope.get("root_path", "")
     )
 
-@open_router.get(
+@open_router.post(
     "/search/mlt/by-text",
     summary="Token similarity search by free text (More Like This)",
     description="Runs a More Like This query using input text to find token-similar documents.",
@@ -1969,20 +1986,20 @@ def mlt_by_id(
 )
 def mlt_by_text(
     request: Request,
+    like_text: str = Body(..., min_length=1, max_length=20_000, example="Similis simili gaudet", media_type="text/plain"),
     index: str = Query(None, description="OpenSearch index name. Default alias can be set in configuration"),
-    like_text: str = Query(..., description="Reference text, sentence, or paragraph"),
     fields: str = Query("text", description="CSV list of fields, typically 'text'"),
     min_term_freq: int = Query(1, ge=0),
     min_doc_freq: int = Query(1, ge=0),
     max_query_terms: int = Query(25, ge=1, le=100),
     minimum_should_match: str = Query("30%", description="e.g. '30%' or '2'"),
     size: int = Query(20, ge=1, le=1000),
+    columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
+    context: bool = Query(True, description="Include query context in the response."),
     filters: KeywordFilter = Depends(keyword_filter_params),
     ingest_ts: IngestTsRangeFilter = Depends(get_ingest_ts_range_filter),
     format: OutputFormat = Depends(resolve_format),
-    columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     out_header: OutputHeader = Depends(output_header_params),
-    context: bool = Query(True, description="Include query context in the response."),
 ):
     from .search import os_search, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter
 

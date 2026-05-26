@@ -97,6 +97,14 @@ def make_json_safe(obj):
         return [make_json_safe(v) for v in obj]
     return str(obj)  # fallback
 
+def get_worker_slice(items, worker_id, total_workers):
+    n = len(items)
+
+    start = (n * worker_id) // total_workers
+    end = (n * (worker_id + 1)) // total_workers
+
+    return items[start:end]
+
 def convert_bindings(bindings, reverse: bool = False):
     def parse_number_if_exact(val):
         try:
