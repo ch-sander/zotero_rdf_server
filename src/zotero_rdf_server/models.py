@@ -23,7 +23,7 @@ class ZoteroLibrary:
         self.knowledge_base_graph = str(config.get("knowledge_base_graph", self.base_url)).strip("/#")
         self.mapping_base_graph = str(config.get("mapping_base_graph", self.knowledge_base_graph)).strip("/#")
 
-        self.load_from = safe_path(str(config.get("load_from",IMPORT_DIRECTORY / self.name)).replace("$",str(self.library_id)))
+        self.load_from = safe_path(str(config.get("load_from",IMPORT_DIRECTORY / self.name)).replace("$",str(self.library_id)),create=False)
 
         self.save_to = config.get("save_to")
         if self.save_to:

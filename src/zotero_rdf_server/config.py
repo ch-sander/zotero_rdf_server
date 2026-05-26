@@ -84,7 +84,10 @@ def safe_path(path_str: str | Path | None, base_dir: Path | str = WORKDIR, creat
         result = p if p.is_absolute() else (base_dir / p).resolve()
         
         if create:
-            result.mkdir(parents=True, exist_ok=True)
+            try:
+                result.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                logger.error(f"Failed creating safe path for {path_str}: {e}")
         
         return result
     logger.warning(f"Path not valid: {path_str} in {base_dir}")

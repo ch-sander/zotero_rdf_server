@@ -219,6 +219,7 @@ def refresh_store(force_reload:bool = False, remove_store:bool=True):
                     for lib_cfg in config.ZOTERO_LIBRARIES_CONFIGS:
                         lib = ZoteroLibrary(lib_cfg)
                         ensure_store(store)
+                        logger.warning(f"load_mode '{lib.load_mode}' for '{lib.name}' — start.")
                         if lib.load_mode == "rdf":
                             try:
                                 logger.info(f"Fetching RDF export for '{lib.name}'")
@@ -242,10 +243,12 @@ def refresh_store(force_reload:bool = False, remove_store:bool=True):
                                 logger.error(f"Error loading RDF from API for {lib.library_id}: {e}")
                         elif lib.load_mode == "manual_import":
                             try:
+                                logger.warning(f"Importing from local RDF")
                                 import_rdf(lib, store)
                             except Exception as e:
                                 logger.error(f"Error loading from file import for {lib.name}: {e}")
                         elif lib.load_mode == "json":
+                            logger.warning(f"Importing from local Zotero JSON")
                             if lib.library_type not in ["knowledge base","mapping", "dataset"]:
                                 try:
                                     build_graph_for_library(lib, store)
@@ -287,3 +290,5 @@ def refresh_store(force_reload:bool = False, remove_store:bool=True):
                 else:
                     logger.info("Refresh interval less than 30 seconds — exiting after initial load.")
                     break
+
+# END
