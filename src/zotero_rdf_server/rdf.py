@@ -241,7 +241,12 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 return None
             
             if field_map.get("value"):
-                new_object = field_map.get("value")
+                new_object = resolve_template(
+                    field_map.get("value"),
+                    data=data,
+                    node=subject.value
+                )
+
                 logger.warning(f"Overwriting {predicate_str}: '{new_object}' instead of '{object}'")
                 object = new_object
 
@@ -350,12 +355,12 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     for si in same_items:
                         if isinstance(si, str) and si.strip():
                             for p in same_predicates:
-                                store.add(Quad(subject, safeNamedNode(p), safeNamedNode(si), graph_name=GRAPH_URI))
+                                store.add(Quad(subject, safeNamedNode(p), safeNamedNode(normalize_iri_scheme(si)), graph_name=GRAPH_URI))
 
                     for ri in related_items:
                         if isinstance(ri, str) and ri.strip():
                             for p in rel_predicates:
-                                store.add(Quad(subject, safeNamedNode(p), safeNamedNode(ri), graph_name=GRAPH_URI))
+                                store.add(Quad(subject, safeNamedNode(p), safeNamedNode(normalize_iri_scheme(ri)), graph_name=GRAPH_URI))
 
                     if object:
                         logger.warning(f"Dropping from relations: {object}")
@@ -509,20 +514,30 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
 
             for item in values:
                 obj = zotero_property_map(field, item, map) or None
+
                 if obj:
                     obj = obj if isinstance(obj, list) else [obj]
+
                     for o in obj:
                         field_map = get_field_map(field)
-                        load_spec = field_map.get('load')
+                        load_spec = field_map.get("load")
+
                         if load_spec and isinstance(o, (BlankNode, NamedNode, Literal)):
                             input_ = load_spec.get("input", None)
                             path_ = load_spec.get("path", None)
 
                             if input_ is not None:
-                                input_ = _PLACEHOLDER_NODE_RE.sub(o.value, input_)
+                                input_ = resolve_template(input_, data=data, node=o.value)
 
                             if path_ is not None:
-                                input_ = _PLACEHOLDER_NODE_RE.sub(o.value, load_text_like(path_, label="RDF loading"))
+                                resolved_path = resolve_template(path_, data=data, node=o.value)
+
+                                input_ = resolve_template(
+                                    load_text_like(resolved_path, label="RDF loading"),
+                                    data=data,
+                                    node=o.value,
+                                )
+
                                 path_ = None
 
                             fmt = ensure_rdf_format(load_spec.get("format", RdfFormat.TURTLE))
@@ -553,7 +568,8 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                                 logger.warning(f"Received unexpected item in mapping for {pred}: {o}")
         except Exception as e:
             logger.error(f"Invalid data for: [{field}, {value}]: {e}")
-            continue        
+            continue   
+
 
 def apply_rdf_types(store: Store, node: NamedNode, data: dict, type_fields: list[str], default_type: str, base_ns: str, prefix_ns: str = ZOT_NS):
     GRAPH_URI = NamedNode(base_ns)
@@ -565,16 +581,14 @@ def apply_rdf_types(store: Store, node: NamedNode, data: dict, type_fields: list
             store.add(Quad(node, RDF_TYPE_NODE, default_node, graph_name=GRAPH_URI))
             logger.info(f"No type_fields for rdf:type – added default: {default_node}")
         else:
-            logger.error(f"No rdf:type default: {default_node}")
+            logger.error("No rdf:type default configured")
     else:
         for field in type_fields:
 
-            if field.startswith("_"):                
-                type_str = data.get(field.lstrip("_"))
-                if not type_str:
-                    continue
-            else:
-                type_str = field.strip()
+            type_str = resolve_template(field, data=data, node=node.value)
+
+            if not type_str:
+                continue
 
             type_str = make_iri(type_str, prefix_ns)
 
@@ -586,9 +600,52 @@ def apply_rdf_types(store: Store, node: NamedNode, data: dict, type_fields: list
                 logger.error(f"Invalid rdf:type at {node} for value '{type_str}': {e}")
                 continue
 
+_TEMPLATE_RE = re.compile(
+    r"""
+    (?:
+        \{\{\s*(?P<braces>[A-Za-z0-9]+)\s*\}\}
+    )
+    |
+    (?:
+        \$\{\s*(?P<dollar>[A-Za-z0-9]+)\s*\}
+    )
+    """,
+    re.VERBOSE
+)
 
-_PLACEHOLDER_NODE_RE = re.compile(r"\{\{\s*node\s*\}\}|\{\s*node\s*\}")
-_DATA_TOKEN_RE = re.compile(r"(?<!\w)_(?P<key>[A-Za-z0-9]+)(?!\w)")
+def resolve_template(
+    s: str,
+    data: dict | None = None,
+    node: str | None = None,
+) -> str:
+
+    if s is None:
+        return s
+
+    s = str(s)
+
+    data = data or {}
+    # exact _field shortcut
+    m = re.fullmatch(r"_([A-Za-z0-9_-]+)", s)
+    if m:
+        key = m.group(1)
+        return data.get(key) # do not return variable
+    
+    def repl(m: re.Match) -> str:
+
+        key = (
+            m.group("braces")
+            or m.group("dollar")
+        )
+
+        if key == "node":
+            return str(node) if node is not None else m.group(0)
+
+        value = data.get(key)
+
+        return str(value) if value is not None else m.group(0)
+
+    return _TEMPLATE_RE.sub(repl, s)
 
 def apply_additional_properties(
     store: Store,
@@ -600,34 +657,24 @@ def apply_additional_properties(
     context: str = None
 ):
     GRAPH_URI = NamedNode(base_ns)
-    
-    def resolve_data_token(s: str) -> str:
-        if s is None:
-            return s
 
-        s = str(s)
-
-        s = _PLACEHOLDER_NODE_RE.sub(node.value, s)
-
-        def repl(m: re.Match) -> str:
-            k = m.group("key")
-            v = data.get(k)
-            return str(v) if v is not None else m.group(0)
-
-        return _DATA_TOKEN_RE.sub(repl, s)
-
-    def resolve_value_spec(value_spec: str) -> str | None:
+    def resolve_value_spec(value_spec: str, data: dict | None = None, node: str | None = None) -> str | None:
+        """
+        Resolve a value specification using the global template resolver.
+        Supports _field, {{field}}, ${field}, and {{node}} placeholders.
+        """
         if value_spec is None:
             return None
 
-        value_spec = str(value_spec)
+        resolved = resolve_template(str(value_spec), data=data, node=node)
 
-        if value_spec.startswith("_") and value_spec.strip() == value_spec and " " not in value_spec:
-            raw = data.get(value_spec.lstrip("_"))
-            return str(raw) if raw is not None and raw != "" else None
+        if resolved is None:
+            return None
 
-        return resolve_data_token(value_spec).strip()
+        resolved = resolved.strip()
 
+        return resolved if resolved != "" else None
+        
     def resolve_rdf_format(fmt) -> RdfFormat | None:
         if not fmt:
             return None
@@ -657,7 +704,7 @@ def apply_additional_properties(
         if g is None or g == "":
             return None
 
-        g = resolve_value_spec(g)
+        g = resolve_value_spec(g, data=data, node=node.value)
         if not g:
             return None
 
@@ -685,13 +732,15 @@ def apply_additional_properties(
                         if context and context in restrict_to:
                             input_ = load_spec.get("input", None)
                             path_ = load_spec.get("path", None)
-
                             if input_ is not None:
-                                input_ = resolve_data_token(input_)
+                                input_ = resolve_template(input_, data=data, node=node.value)
 
                             if path_ is not None:
-                                input_ = resolve_data_token(
-                                    load_text_like(resolve_data_token(path_), label="RDF loading")
+                                resolved_path = resolve_template(path_, data=data, node=node.value)
+                                input_ = resolve_template(
+                                    load_text_like(resolved_path, label="RDF loading"),
+                                    data=data,
+                                    node=node.value,
                                 )
                                 path_ = None
 
@@ -726,7 +775,7 @@ def apply_additional_properties(
 
                 predicate = safeNamedNode(make_iri(property_str, prefix_ns))
 
-                raw_value = resolve_value_spec(value_spec)
+                raw_value = resolve_value_spec(value_spec, data=data, node=node.value)
                 if raw_value is None or raw_value == "":
                     continue
 
@@ -863,6 +912,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
             try:
                 item_data = item.get("data", {})
                 item_bib = item.get("bib")
+
                 item_citation = item.get("citation")
                 item_meta = item.get("meta", {})
                 item_creatorSummary = item_meta.get("creatorSummary")
@@ -920,7 +970,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
                         store.add(Quad(node_uri, NamedNode(RDFS_LABEL), Literal(label), graph_name=GRAPH_URI))
 
                     if item_bib:
-                        store.add(Quad(node_uri, safeNamedNode(f"{ZOT_NS}bib"), Literal(item_bib), graph_name=GRAPH_URI))
+                        store.add(Quad(node_uri, safeNamedNode(f"{ZOT_NS}bib"), Literal(item_bib, datatype=NamedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#HTML")), graph_name=GRAPH_URI))
 
                     apply_rdf_types(store, node_uri, item_data, item_type_fields, "item", lib.base_url, ZOT_NS)
 

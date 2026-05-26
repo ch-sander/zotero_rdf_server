@@ -60,7 +60,7 @@ OPTIONAL {  ?library rdf:type zot:library;
   # FILTER(
   #   REGEX(STR(?_id), "747CPE5P|K4S8F6G3|9DDYJWFS|A3NGVGDY|R8GLPVX7|IUP5G5Z9|ZI2DXZBB")
   # )
-  ?parent zot:collections <https://www.zotero.org/groups/4929619/collections/9D9XX2VG> . # Filter pending
+  ?parent zot:collections <https://zotero.org/groups/4929619/collections/9D9XX2VG> . # Filter pending
 
   OPTIONAL {
     ?parent zot:tags ?tag_1502_13.

@@ -58,7 +58,7 @@ OPTIONAL {  ?library rdf:type zot:library;
   # FILTER(CONTAINS(STR(?url), "uni-halle.de")) # filter on attachment URL
   # FILTER(CONTAINS(STR(?file), "SU8DGT98")) # filter on attachment URL
 
-  ?parent zot:collections <https://www.zotero.org/groups/4929619/collections/DXN9S7YV> . # Filter Demo
+  ?parent zot:collections <https://zotero.org/groups/4929619/collections/DXN9S7YV> . # Filter Demo
 
   OPTIONAL {
     ?parent zot:tags ?tag_1502_13.

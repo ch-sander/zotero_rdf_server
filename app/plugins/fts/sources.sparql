@@ -51,7 +51,7 @@ OPTIONAL {  ?library rdf:type zot:library;
 #   )
 
   # FILTER(CONTAINS(STR(?url), "digitale-sammlungen.de")) # filter on attachment URL
-  ?parent zot:collections <https://www.zotero.org/groups/4929619/collections/SYMRFAC3> . # Filter ingested
+  ?parent zot:collections <https://zotero.org/groups/4929619/collections/SYMRFAC3> . # Filter ingested
   ?file zot:tags ?t_format .
   ?t_format a zot:tag ;
             zot:tag ?formatTag .

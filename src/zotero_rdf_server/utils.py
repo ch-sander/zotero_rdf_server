@@ -95,11 +95,11 @@ def normalize_iri_scheme(iri: str) -> str:
     from .config import ZOT_BASE_URL
     BASE = urlparse(ZOT_BASE_URL)
     iri = iri.strip()
-    logger.warning(f"HTTP --> HTTPS for {BASE} in {iri}")
+    logger.debug(f"HTTP --> HTTPS for {BASE} in {iri}")
     try:
         parsed = urlparse(iri)
 
-        if parsed.netloc == BASE.netloc:
+        if parsed.netloc.replace("www.", "") == BASE.netloc.replace("www.", ""):
             parsed = parsed._replace(scheme=BASE.scheme)
             return parsed.geturl()
 

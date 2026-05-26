@@ -63,8 +63,8 @@ OPTIONAL {  ?library rdf:type zot:library;
   ?parent zot:collections ?col .
 
   VALUES ?col {
-      <https://www.zotero.org/groups/4929619/collections/KJPE6S73>
-      <https://www.zotero.org/groups/4929619/collections/AZ962G9L>
+      <https://zotero.org/groups/4929619/collections/KJPE6S73>
+      <https://zotero.org/groups/4929619/collections/AZ962G9L>
   }
   OPTIONAL {
     ?parent zot:tags ?tag_1502_13.
