@@ -2,65 +2,58 @@
 <html lang="de">
 <head>
   <meta charset="utf-8">
-  <title>RDF Resource Viewer</title>
+  <title>RDF Class Instance Viewer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
   <main>
-    <header>        
-        <h2 id="resource-label" class="resource-label"></h2>
-        <div id="resource-types" class="resource-types"></div>
-        <p id="resource-uri"></p>
+    <header>
+      <h1>Ontology Classes</h1>
+      <h2 id="class-label" class="resource-label"></h2>
+      <p id="class-uri"></p>
     </header>
+
     <section id="comment-box" class="comment-box" hidden>
-    <div id="comment-text"></div>
+      <div id="comment-text"></div>
     </section>
 
-    <section id="sameas-box" class="sameas-box" hidden>
-    <h4>Same As:</h4>
-    <ul id="sameas-list"></ul>
-    </section>
-    <section id="status" class="status">
-      Loading Ressource …
-    </section>
+    <section id="status" class="status">Loading Classes …</section>
 
     <section id="content" hidden>
-      <details open>
-        <summary>Properties</summary>
+      <div class="layout">
+        <nav class="class-nav" aria-label="Class hierarchy">
+          <h4>Classes</h4>
+          <ul id="class-tree"></ul>
+        </nav>
 
-        <table>
-          <thead>
-            <tr>
-              <th>Property</th>
-              <th>Value</th>
-            </tr>
-          </thead>
-          <tbody id="triples"></tbody>
-        </table>
-      </details>
+        <section class="class-content">
+          
+          <details open>
+            <summary>Instances</summary>
+              <div class="table-toolbar">
+                <input
+                  id="instance-search"
+                  type="search"
+                  placeholder="Search instances..."
+                >
+              </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Instance</th>
+                  <th>URI</th>
+                </tr>
+              </thead>
+              <tbody id="instances"></tbody>
+            </table>
+          </details>
+        </section>
+      </div>
     </section>
-
-    <section id="incoming-section" hidden>
-      <details>
-        <summary>References to Resource</summary>
-
-        <table>
-          <thead>
-            <tr>
-              <th>Subject</th>
-              <th>Property</th>
-            </tr>
-          </thead>
-          <tbody id="incoming-triples"></tbody>
-        </table>
-      </details>
-    </section>
-
-    <footer id="generated-at" hidden></footer>
   </main>
 
-  <script src="viewer.js"></script>
+  <script src="classes.js"></script>
 </body>
 </html>

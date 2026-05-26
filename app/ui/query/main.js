@@ -94,7 +94,7 @@ Object.assign(tableXConfig.config, {
   openIriInNewWindow: true,
 
   uriHrefAdapter: (uri) =>
-    `/ui/browse/#${encodeURIComponent(uri)}`
+    `/ui/browse/resource/#${encodeURIComponent(uri)}`
 });
 tableXConfig.persistentConfig.compact = true;
 

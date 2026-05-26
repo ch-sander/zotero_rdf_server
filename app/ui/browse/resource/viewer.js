@@ -10,6 +10,7 @@ const HIDDEN_PROPERTIES = new Set([
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
   "http://www.w3.org/2000/01/rdf-schema#comment",
   "http://www.w3.org/2002/07/owl#sameAs",
+  "http://purl.org/dc/elements/1.1/relation",
   "http://www.w3.org/ns/prov#generatedAtTime",
   "http://www.zotero.org/namespaces/export#links",
   "http://www.zotero.org/namespaces/export#href",
@@ -31,6 +32,8 @@ const commentTextEl = document.querySelector("#comment-text");
 const resourceTypesEl = document.querySelector("#resource-types");
 const sameAsBoxEl = document.querySelector("#sameas-box");
 const sameAsListEl = document.querySelector("#sameas-list");
+const relatedBoxEl = document.querySelector("#related-box");
+const relatedListEl = document.querySelector("#related-list");
 const incomingSectionEl = document.querySelector("#incoming-section");
 const incomingTriplesEl = document.querySelector("#incoming-triples");
 
@@ -52,7 +55,8 @@ async function loadCurrentResource() {
 
     sameAsListEl.innerHTML = "";
     sameAsBoxEl.hidden = true;
-
+    relatedListEl.innerHTML = "";
+    relatedBoxEl.hidden = true;
     generatedAtEl.hidden = true;
     generatedAtEl.textContent = "";
 
@@ -63,18 +67,32 @@ async function loadCurrentResource() {
     return;
   }
 
-    resourceUriEl.innerHTML = "";
+  resourceUriEl.innerHTML = "";
 
-    const span = document.createElement("span");
-    span.className = "resource-uri-text";
-    span.textContent = uri;
+  const span = document.createElement("span");
+  span.className = "resource-uri-text";
+  span.textContent = uri;
 
-    resourceUriEl.appendChild(withCopy(span, uri));
+  resourceUriEl.appendChild(withCopy(span, uri));
   showStatus("Loading Ressource …");
 
   try {
-    const data = await queryResource(uri);
-    const incomingData = await queryIncoming(uri);
+    const resolvedUri = await resolveUri(uri);
+
+    console.log("Requested URI:", uri);
+    console.log("Resolved URI:", resolvedUri);
+
+    const data = await queryResource(resolvedUri);
+    console.log(
+      "rdfs:label bindings",
+      data.results.bindings.filter(
+        b => b.p.value === "http://www.w3.org/2000/01/rdf-schema#label"
+      )
+    );
+    const incomingData = await queryIncoming(resolvedUri);
+    const sameAsData = await querySameAs(resolvedUri, uri);
+    const relatedData = await queryRelated(resolvedUri);
+
     console.log("Endpoint:", ENDPOINT);
     console.log("Resolved endpoint:", new URL(ENDPOINT, window.location.href).href);
     if (data.results.bindings.length === 0) {
@@ -84,6 +102,8 @@ async function loadCurrentResource() {
 
     renderTriples(data.results.bindings);
     renderIncomingTriples(incomingData.results.bindings);
+    renderSameAs(sameAsData.results.bindings);
+    renderRelated(relatedData.results.bindings);
     hideStatus();
     contentEl.hidden = false;
   } catch (error) {
@@ -139,13 +159,15 @@ async function queryIncoming(uri) {
 
   const query = `
     PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-    SELECT ?s (SAMPLE(?sl) AS ?sLabel)
-           ?p (SAMPLE(?pl) AS ?pLabel)
+    PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+    SELECT ?s (MIN(?sl) AS ?sLabel)
+          ?p (MIN(?pl) AS ?pLabel)
+          (GROUP_CONCAT(DISTINCT STR(?type); separator=" · ") AS ?sType)
     WHERE {
-
       ?s ?p <${escapeSparqlIri(uri)}> .
-
+      OPTIONAL {
+        ?s rdf:type ?type .
+      }
       OPTIONAL {
         ?s rdfs:label ?sl .
         FILTER(lang(?sl) = "${LANGUAGE}" || lang(?sl) = "")
@@ -155,10 +177,58 @@ async function queryIncoming(uri) {
     }
 
     GROUP BY ?s ?p
-    ORDER BY LCASE(STR(COALESCE(SAMPLE(?pl), ?p)))
-             LCASE(STR(COALESCE(SAMPLE(?sl), ?s)))
+    ORDER BY LCASE(STR(COALESCE(MIN(?pl), ?p)))
+             LCASE(STR(COALESCE(MIN(?sl), ?s)))
 
     LIMIT ${LIMIT}
+  `;
+
+  const response = await fetch(ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/sparql-query",
+      "Accept": "application/sparql-results+json"
+    },
+    body: query
+  });
+
+  if (!response.ok) {
+    throw new Error(`SPARQL endpoint returned ${response.status}`);
+  }
+
+  return response.json();
+}
+
+async function querySameAs(uri, requestedUri) {
+
+  const query = `
+    PREFIX owl:  <http://www.w3.org/2002/07/owl#>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+    SELECT ?same
+          (MIN(?label) AS ?sameLabel)
+          (GROUP_CONCAT(DISTINCT STR(?type); separator=" · ") AS ?sameType)
+    WHERE {
+
+      <${escapeSparqlIri(uri)}>
+        (owl:sameAs|^owl:sameAs)* ?same .
+
+      FILTER(isIRI(?same))
+      FILTER(?same != <${escapeSparqlIri(requestedUri)}>)
+
+      OPTIONAL {
+        ?same rdf:type ?type .
+      }
+
+      OPTIONAL {
+        ?same rdfs:label ?label .
+        FILTER(lang(?label) = "${LANGUAGE}" || lang(?label) = "")
+      }
+    }
+
+    GROUP BY ?same
+    ORDER BY LCASE(STR(COALESCE(MIN(?label), ?same)))
   `;
 
   const response = await fetch(ENDPOINT, {
@@ -197,25 +267,31 @@ function buildQuery(uri) {
   return `
     PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
     PREFIX owl: <http://www.w3.org/2002/07/owl#>
-    
-    SELECT ?p (SAMPLE(?pl) AS ?pLabel) ?o (SAMPLE(?ol) AS ?oLabel) WHERE {
+    PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+    SELECT ?p (MIN(?pl) AS ?pLabel)
+          ?o (MIN(?ol) AS ?oLabel)
+          (GROUP_CONCAT(DISTINCT STR(?type); separator=" · ") AS ?oType)
+    WHERE {
       <${escapeSparqlIri(uri)}> ?p ?o .
 
       FILTER(
         !isIRI(?o)
+        || ?p = rdf:type
         || ?p = owl:sameAs
         || EXISTS { ?o ?anyP ?anyO }
       )
 
       ${propertyLabelBlock}
-
+      OPTIONAL {
+        ?o rdf:type ?type .
+      }
       OPTIONAL {
         ?o rdfs:label ?ol .
         FILTER(lang(?ol) = "${LANGUAGE}" || lang(?ol) = "")
       }
     }
     GROUP BY ?p ?o
-    ORDER BY LCASE(STR(COALESCE(SAMPLE(?pl), ?p)))
+    ORDER BY LCASE(STR(COALESCE(MIN(?pl), ?p)))
     LIMIT ${LIMIT}
   `;
 }
@@ -236,9 +312,7 @@ function isRdfsComment(p) {
   return p === "http://www.w3.org/2000/01/rdf-schema#comment";
 }
 
-function isOwlSameAs(p) {
-  return p === "http://www.w3.org/2002/07/owl#sameAs";
-}
+
 function withCopy(node, value) {
   const wrap = document.createElement("span");
   wrap.className = "value-wrap";
@@ -260,6 +334,179 @@ function withCopy(node, value) {
 
   return wrap;
 }
+
+async function resolveUri(uri) {
+
+  const query = `
+    PREFIX owl: <http://www.w3.org/2002/07/owl#>
+
+    SELECT ?canonical WHERE {
+
+      ?canonical owl:sameAs* <${escapeSparqlIri(uri)}> .
+
+      ?canonical ?p ?o .
+    }
+    ORDER BY IF(?canonical = <${escapeSparqlIri(uri)}>, 0, 1)
+    LIMIT 1
+  `;
+
+  const response = await fetch(ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/sparql-query",
+      "Accept": "application/sparql-results+json"
+    },
+    body: query
+  });
+
+  if (!response.ok) {
+    throw new Error(`SPARQL endpoint returned ${response.status}`);
+  }
+
+  const data = await response.json();
+
+  return data.results.bindings[0]?.canonical?.value || uri;
+}
+
+async function queryRelated(uri) {
+  const query = `
+    PREFIX dc:   <http://purl.org/dc/elements/1.1/>
+    PREFIX dct:  <http://purl.org/dc/terms/>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+    SELECT ?related
+          (MIN(?label) AS ?relatedLabel)
+          (GROUP_CONCAT(DISTINCT STR(?type); separator=" · ") AS ?relatedType)
+    WHERE {
+      <${escapeSparqlIri(uri)}>
+        (dc:relation|^dc:relation|dct:relation|^dct:relation) ?related .
+
+      FILTER(isIRI(?related))
+
+      OPTIONAL {
+        ?related rdf:type ?type .
+      }
+
+      OPTIONAL {
+        ?related rdfs:label ?label .
+        FILTER(lang(?label) = "${LANGUAGE}" || lang(?label) = "")
+      }
+    }
+
+    GROUP BY ?related
+    ORDER BY LCASE(STR(COALESCE(MIN(?label), ?related)))
+    LIMIT ${LIMIT}
+  `;
+
+  const response = await fetch(ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/sparql-query",
+      "Accept": "application/sparql-results+json"
+    },
+    body: query
+  });
+
+  if (!response.ok) {
+    throw new Error(`SPARQL endpoint returned ${response.status}`);
+  }
+
+  return response.json();
+}
+
+function appendTypeBadge(anchor, typeBinding) {
+  if (!typeBinding?.value) return;
+
+  const sup = document.createElement("sup");
+  sup.className = "node-type";
+  sup.textContent = typeBinding.value
+    .split(" · ")
+    .map(shortenIri)
+    .join(" · ");
+
+  anchor.appendChild(document.createTextNode(" "));
+  anchor.appendChild(sup);
+}
+
+function renderRelated(bindings) {
+  if (bindings.length === 0) return;
+
+  relatedBoxEl.hidden = false;
+
+  for (const binding of bindings) {
+
+    const li = document.createElement("li");
+
+    const a = document.createElement("a");
+
+    const isInternal =
+      Boolean(binding.relatedLabel);
+
+    a.href = isInternal
+      ? "#" + encodeURIComponent(binding.related.value)
+      : binding.related.value;
+
+    if (!isInternal) {
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+    }
+
+    a.textContent =
+      binding.relatedLabel?.value ||
+      shortenIri(binding.related.value);
+    appendTypeBadge(a, binding.relatedType);
+    a.title = binding.related.value;
+
+    li.appendChild(
+      withCopy(a, binding.related.value)
+    );
+
+    relatedListEl.appendChild(li);
+  }
+}
+
+
+
+function renderSameAs(bindings) {
+
+  if (bindings.length === 0) {
+    return;
+  }
+
+  sameAsBoxEl.hidden = false;
+
+  for (const binding of bindings) {
+
+    const li = document.createElement("li");
+
+    const a = document.createElement("a");
+
+    const isInternal =
+      Boolean(binding.sameLabel);
+
+    a.href = isInternal
+      ? "#" + encodeURIComponent(binding.same.value)
+      : binding.same.value;
+
+    if (!isInternal) {
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+    }
+
+    a.textContent =
+      binding.sameLabel?.value ||
+      shortenIri(binding.same.value);
+    appendTypeBadge(a, binding.sameType);
+    a.title = binding.same.value;
+
+    li.appendChild(
+      withCopy(a, binding.same.value)
+    );
+
+    sameAsListEl.appendChild(li);
+  }
+}
+
 function renderTriples(bindings) {
 
   const normalRows = [];
@@ -298,24 +545,6 @@ function renderTriples(bindings) {
       commentBoxEl.hidden = false;
     }
 
-    if (isOwlSameAs(p)) {
-
-      const li = document.createElement("li");
-
-      const a = document.createElement("a");
-      a.href = binding.o.value;
-      a.textContent =
-        binding.oLabel?.value || binding.o.value;
-
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
-
-      li.appendChild(a);
-
-      sameAsListEl.appendChild(li);
-      sameAsBoxEl.hidden = false;
-    }
-
     if (isGeneratedAtTime(p)) {
       generatedAtEl.textContent =
         "Generated at: " + binding.o.value;
@@ -345,7 +574,6 @@ function renderTriples(bindings) {
   }
 }
 function renderIncomingSubject(binding) {
-
   const link = document.createElement("a");
 
   link.href =
@@ -354,6 +582,8 @@ function renderIncomingSubject(binding) {
   link.textContent =
     binding.sLabel?.value ||
     shortenIri(binding.s.value);
+
+  appendTypeBadge(link, binding.sType);
 
   link.title = binding.s.value;
 
@@ -424,6 +654,7 @@ function renderObject(binding) {
     const link = document.createElement("a");
     link.href = "#" + encodeURIComponent(object.value);
     link.textContent = binding.oLabel?.value || shortenIri(object.value);
+    appendTypeBadge(link, binding.oType);
     link.title = object.value;
 
     return withCopy(link, object.value);
@@ -459,12 +690,34 @@ function renderObject(binding) {
 }
 
 function shortenIri(iri) {
-  return iri
+  const prefixed = iri
     .replace("http://www.w3.org/1999/02/22-rdf-syntax-ns#", "rdf:")
     .replace("http://www.w3.org/2000/01/rdf-schema#", "rdfs:")
     .replace("http://www.w3.org/2002/07/owl#", "owl:")
-    .replace("http://www.w3.org/2001/XMLSchema#", "xsd:")
-    .replace(/^https?:\/\/[^/#]+[\/#]/, "");
+    .replace("http://www.w3.org/2001/XMLSchema#", "xsd:");
+
+  if (prefixed !== iri) {
+    return prefixed;
+  }
+
+  try {
+    const url = new URL(iri);
+
+    const host = url.hostname
+      .replace(/^www\./, "")
+      .split(".")[0];
+
+    const local =
+      url.hash.replace(/^#/, "") ||
+      url.pathname.split("/").filter(Boolean).pop();
+
+    return local
+      ? `${host}:${local}`
+      : host;
+
+  } catch {
+    return iri;
+  }
 }
 
 function escapeSparqlIri(iri) {

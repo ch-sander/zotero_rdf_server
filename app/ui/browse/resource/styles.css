@@ -48,8 +48,7 @@ body {
 }
 
 main {
-  max-width: none;
-  width: 100%;
+  max-width: 1150px;
   margin: 0 auto;
   padding: 2rem;
 }
@@ -101,25 +100,11 @@ h1 {
 
 table {
   width: 100%;
-  table-layout: auto;
+  table-layout: fixed;
   /* table-layout: auto; */
   border-collapse: collapse;
   background: var(--panel);
   border: 2px solid var(--border-mid);
-}
-
-.table-toolbar {
-  padding: 1rem;
-  border-bottom: 2px solid var(--border-soft);
-  background: var(--panel);
-}
-
-.table-toolbar input {
-  width: 100%;
-  padding: 0.65rem 0.8rem;
-  border: 2px solid var(--border-soft);
-  background: white;
-  font: inherit;
 }
 
 thead {
@@ -128,15 +113,15 @@ thead {
 
 th:first-child,
 td:first-child {
-  /* width: 40%; */
+  width: 40%;
   font-weight: 700;
   color: var(--border-dark);
 }
 
-/* th:last-child,
+th:last-child,
 td:last-child {
   width: 60%;
-} */
+}
 
 td,
 th {
@@ -370,63 +355,10 @@ details table {
 .html-literal p:last-child {
   margin-bottom: 0;
 }
-.layout {
-  display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: 1rem;
-  align-items: start;
-}
 
-.class-nav {
-  background: var(--panel);
-  border: 2px solid var(--border-mid);
-}
-
-.class-nav h4 {
-  margin: 0;
-  padding: 0.85rem 1rem;
-  background: var(--panel-2);
-  border-bottom: 2px solid var(--border-mid);
-  color: var(--border-dark);
-}
-
-.class-nav ul {
-  list-style: none;
-  margin: 0;
-  padding: 0.5rem 0 0.75rem 0;
-}
-
-.class-nav ul ul {
-  padding: 0 0 0 1rem;
-}
-
-.class-nav li {
-  margin: 0;
-}
-
-.class-nav a {
-  display: block;
-  padding: 0.35rem 0.8rem;
-  border-left: 4px solid transparent;
-  color: var(--border-dark);
-}
-
-.class-nav a.active {
-  background: var(--panel-3);
-  border-left-color: var(--accent-2);
-  color: var(--text);
-}
-
-.class-content details {
-  margin-top: 0;
-}
-
-@media (max-width: 900px) {
-  .layout {
-    display: block;
-  }
-
-  .class-nav {
-    margin-bottom: 1rem;
-  }
+.node-type {
+  margin-left: 0.25rem;
+  font-size: 0.65em;
+  opacity: 0.7;
+  letter-spacing: 0.04em;
 }

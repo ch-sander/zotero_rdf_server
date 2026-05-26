@@ -107,6 +107,10 @@
             "@id": "hasLevel",
             "@type": "xsd:int"
         },
+        "html": {
+            "@id": "html",
+            "@type": "http://www.w3.org/1999/02/22-rdf-syntax-ns#HTML"
+        },
         "generatedAtTime": {
             "@id": "prov:generatedAtTime",
             "@type": "xsd:dateTime"
