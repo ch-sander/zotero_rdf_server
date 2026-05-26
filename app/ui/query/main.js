@@ -91,7 +91,10 @@ sparnatural.addEventListener("reset", (event) => {
 const tableXConfig = yasr.plugins["TableX"];
 Object.assign(tableXConfig.config, {
   includeControls: true,
-  openIriInNewWindow: true
+  openIriInNewWindow: true,
+
+  uriHrefAdapter: (uri) =>
+    `/ui/browse/#${encodeURIComponent(uri)}`
 });
 tableXConfig.persistentConfig.compact = true;
 
