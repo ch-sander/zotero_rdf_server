@@ -1170,13 +1170,26 @@ def fetch_pil_image(
 
     for attempt in range(retries + 1):
         try:
-            r = requests.get(url, timeout=timeout, headers=APP_USER)
+            connect_timeout = min(timeout / 2, 10)
+            read_timeout = max(timeout * 2, 60)
+            r = requests.get(url, timeout=(read_timeout, connect_timeout), headers=APP_USER)
             r.raise_for_status()
             # return Image.open(BytesIO(r.content))
             with Image.open(BytesIO(r.content)) as img:
                 return img.convert("RGB").copy()
             
-        except Exception as e:
+        except (requests.ReadTimeout, requests.Timeout, requests.ConnectionError) as e:
+            last_exc = e
+
+            if attempt < retries:
+                time.sleep(backoff ** attempt)
+                continue
+
+            logger.error(f"Fetching image failed for {url}: {e}")
+            return None
+        
+        except requests.HTTPError as e:
+        
             last_exc = e
             status = getattr(getattr(e, "response", None), "status_code", None)
 
@@ -1191,8 +1204,12 @@ def fetch_pil_image(
                 time.sleep(backoff ** attempt)
                 continue
 
-            logger.error(f"Fetching image failed for {url}: {e}")
+            logger.error(f"HTTP Fetching image failed for {url}: {e}")
+            if status is not None:
+                raise
             return None
+        except Exception as e:
+            logger.error(f"Fetching image failed for {url}: {e}")
 
     logger.error(f"Fetching image failed for {url}: {last_exc}")
     return None
@@ -1279,11 +1296,39 @@ def downscale_if_needed(im: Image.Image, max_pixels: int= 10_000_000) -> Image.I
     new_size = (max(1, int(w * factor)), max(1, int(h * factor)))
     return im.resize(new_size)
 
+class ConsecutiveStatusBreaker:
+    def __init__(self, cfg: dict | None, *, label: str = "IIIF"):
+        cfg = cfg or {}
+        self.enabled = cfg.get("enabled", True)
+        self.max_events = int(cfg.get("max_consecutive_events", 10))
+        self.statuses = set(cfg.get("statuses", [429]))
+        self.label = label
+        self.count = 0
+
+    def reset(self):
+        self.count = 0
+
+    def record(self, status: int | None, *, doc_id: str, page_no: int, url: str) -> bool:
+        if not self.enabled or status not in self.statuses:
+            return False
+
+        self.count += 1
+        logger.warning(
+            f"{doc_id}: {self.label} status {status} on page {page_no}; "
+            f"{self.count}/{self.max_events}: {url}"
+        )
+        return self.count >= self.max_events
+    
 def iter_pages(
     input: str,
     *,
     iiif_max_width: Optional[int] = 2000,
     iiif_format: str = "jpg",
+    iiif_fetch_policy: dict | None = {
+                                            "enabled": True,
+                                            "max_consecutive_events": 10,
+                                            "statuses": [429],
+                                        },
     pdf_dpi: int = 200,
     pdf_text_policy: PdfTextPolicy = PdfTextPolicy(),
     iiif_ocr_policy: IiifOcrPolicy = IiifOcrPolicy(),
@@ -1299,6 +1344,7 @@ def iter_pages(
     skip: bool = False,
     skip_pages: Optional[set[int]] = None,
     local_in: str | None | Path = None,
+    load_images: bool = True
 ) -> Iterator[PageItem]:
     if not start_page or int(start_page)<=0:
         start_page = 1
@@ -1322,6 +1368,9 @@ def iter_pages(
     else:
         kind = detect_url_kind(input, timeout=timeout)
 
+    def _abort_log(status):
+        logger.error(f"**********************\n\n{doc_id}: Aborting IIIF manifest after repeated HTTP {status}")
+
     def _log_and_yield(page: PageItem, total:int=1):
         if page.kind=="text":
             preview = " ".join((page.data or "").split())[:60]
@@ -1344,6 +1393,10 @@ def iter_pages(
         else:
             manifest = requests.get(input, timeout=timeout, headers=APP_USER).json()
 
+        breaker = ConsecutiveStatusBreaker(
+            iiif_fetch_policy or {},
+            label="IIIF manifest"
+        )
         pages = iiif_manifest_to_pages(
             manifest,
             max_width=iiif_max_width,
@@ -1353,11 +1406,11 @@ def iter_pages(
         if not pages:
             logger.warning(f"IIIF manifest <{manifest}> has no image canvases")
             return
-        
+        total = len(pages)
         if skip:
-            yield _log_and_yield(PageItem(start_page, "sniff", "", source=f"url:{src_path}", total=len(pages)),len(pages))
+            yield _log_and_yield(PageItem(start_page, "sniff", "", source=f"url:{src_path}", total=total),total)
 
-        logger.info(f"{doc_id}: Found {len(pages)} pages in IIIF, starting at {start_page}")
+        logger.info(f"{doc_id}: Found {total} pages in IIIF, starting at {start_page}")
         pages = pages[(start_page - 1):]
         logger.debug(f"IIIF Policy: {iiif_ocr_policy}")
         try:
@@ -1372,29 +1425,65 @@ def iter_pages(
                         r = requests.get(ocr_url, timeout=getattr(iiif_ocr_policy, "timeout", timeout), headers=APP_USER)
                         r.raise_for_status()
                         txt = ocr_bytes_to_text(r.content, rule)
+                        breaker.reset()
                         logger.debug(f"{doc_id}: Seeing IIIF OCR text in {ocr_url}: {txt}")
                         if is_usable_text(txt, iiif_ocr_policy, log_label="OCR text"):
-                            logger.info(f"{doc_id}: [{i}/{len(pages)}]: Using IIIF OCR text from {ocr_url}")
+                            logger.info(f"{doc_id}: [{i}/{total}]: Using IIIF OCR text from {ocr_url}")
                             aPage = PageItem(i, "text", txt, source=f"ocr:{ocr_url}", meta={
                                 "canvas": canvas.get("@id") or canvas.get("id"),
                                 "img_url": img_url,
                                 "profile": profile,
                                 "key": rule.key,
                                 "xpath": rule.xpath,
-                            }, total=len(pages))
-                            yield _log_and_yield(aPage,len(pages))
+                            }, total=total)
+                            
+                            yield _log_and_yield(aPage,total)
                             continue
-                    except Exception as e:
-                        logger.warning(f"{doc_id}: OCR fetch/parse failed for page {i} ({ocr_url}): {e}")
+                    except requests.HTTPError as e:
+                        status = e.response.status_code if e.response is not None else None
+                        if breaker.record(status, doc_id=doc_id, page_no=i, url=ocr_url):
+                            _abort_log(status)
+                            return
 
-                img = fetch_pil_image(img_url, timeout=timeout, iiif_format=iiif_format, iiif_quality="default")
-                if img is None:
-                    logger.warning(f"{doc_id}: Skipping page {i}: could not fetch image {img_url}")
+                    except requests.RequestException as e:
+                        status = getattr(getattr(e, "response", None), "status_code", None)
+                        if breaker.record(status, doc_id=doc_id, page_no=i, url=ocr_url):
+                            _abort_log(status)
+                            return
+
+                if not load_images:
+                    logger.debug(f"{doc_id}: [{i}/{total}]: Skipping image fetch")
                     continue
+                try:
+                    img = fetch_pil_image(img_url, timeout=timeout, iiif_format=iiif_format, iiif_quality="default")
+                    if img is None:
+                        logger.warning(f"{doc_id}: Skipping page {i}: could not fetch image {img_url}")
+                        continue
+                    else:
+                        breaker.reset()
+                except requests.HTTPError as e:
+                    status = e.response.status_code if e.response is not None else None
+
+                    if breaker.record(status, doc_id=doc_id, page_no=i, url=img_url):
+                        _abort_log(status)
+                        return
+
+                    continue
+
+                except requests.RequestException as e:
+                    status = getattr(getattr(e, "response", None), "status_code", None)
+
+                    if breaker.record(status, doc_id=doc_id, page_no=i, url=img_url):
+                        _abort_log(status)
+                        return
+
+                    logger.warning(f"{doc_id}: Skipping page {i}: image fetch failed {img_url}: {e}")
+                    continue
+
                 bPage = PageItem(i, "image", img, source=f"iiif:{img_url}", meta={
                     "canvas": canvas.get("@id") or canvas.get("id"), "img_url": img_url,
-                }, total=len(pages))
-                yield _log_and_yield(bPage,len(pages))
+                }, total=total)
+                yield _log_and_yield(bPage,total)
         except Exception as e:
             logger.error(f"{doc_id}: Error reading IIIF {input}: {e}")
         return
@@ -1434,6 +1523,12 @@ def iter_pages(
                     aPage = PageItem(i, "text", txt, source=f"pdf-text:{input}#page={i}", total=total)
                     yield _log_and_yield(aPage,total)
                 else:
+                    if not load_images:
+                        logger.debug(
+                            f"{doc_id}: [{i}/{total}]: "
+                            "Skipping PDF rasterization"
+                        )
+                        continue
                     pix = page.get_pixmap(matrix=mat, alpha=False)
                     # pil = doc[i-1].render(scale=pdf_dpi/72).to_pil()
                     pil = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
@@ -1977,7 +2072,7 @@ def iter_text_pages(
     iter_kwargs: Dict[str, Any],
     page_to_text_kwargs: Dict[str, Any],
     text_image_file_kwargs: Optional[Dict[str, Any]] = None,
-    framework: Literal["kraken", "tesseract", "transformer", "none"] = "kraken",
+    framework: Literal["kraken", "tesseract", "transformer", "source", "none"] = "kraken",
     yield_result:bool = True,
 ) -> Iterator[Tuple[int, str]]:
     from .helpers import ISO_ts
@@ -2480,11 +2575,13 @@ def iter_text_pages(
     # If text file found and not overwrite, use as result and skip download + OCR
     if (
         save_text in {"cache"} or
-        (save_text not in {"overwrite"} # {"active", "skip"}
-        and save_image in {"skip"}
-        and txt_dir is not None
-        and any(txt_dir.glob(f"*.{txt_ext}")))        
-    ):      
+        (
+            save_text == "skip"
+            and save_image == "skip"
+            and txt_dir is not None
+            and any(txt_dir.glob(f"*.{txt_ext}"))
+        )
+    ):   
         logger.warning(f"{_doc_id}: Using {len(set(cached_page_set['text']))} text files in {txt_dir}")
         if yield_result:
             yield from _yield_from_cache()
@@ -2526,33 +2623,29 @@ def iter_text_pages(
                             txt = ""
                         
                         yield _log_and_yield(page_no, txt, total, "file")
-                        # yield page_no, tp.read_text(encoding="utf-8")
                     continue
 
-                if ocr: # OCR
-                    logger.info(f"Using {framework.upper()}")
+                if ocr and framework != "source": # OCR
+                    logger.info(f"Getting page text through {framework.upper()}")
                     source = framework
-                    if item.kind == "text":
-                        txt =  item.data or ""
-                        source = "source"
-                    else:  
-                        try:
-                            with Image.open(img_path) as im:
-                                pil = im.copy()
-                            item = PageItem(page_no, "image", pil, source=f"cache-image:{img_path}",total=total) 
-                            txt = page_to_text(
-                                item,
-                                framework=framework,
-                                **page_to_text_kwargs
-                            )
-                        except Exception as e:
-                            logger.error(f"{_doc_id}: Failed to load cached image for page {page_no} from {img_path}: {e}")
 
-                            if on_error == "raise":
-                                raise
-                            if on_error == "skip":
-                                continue
-                            txt = "" # DEBUG
+                    try:
+                        with Image.open(img_path) as im:
+                            pil = im.copy()
+                        item = PageItem(page_no, "image", pil, source=f"cache-image:{img_path}",total=total) 
+                        txt = page_to_text(
+                            item,
+                            framework=framework,
+                            **page_to_text_kwargs
+                        )
+                    except Exception as e:
+                        logger.error(f"{_doc_id}: Failed to load cached image for page {page_no} from {img_path}: {e}")
+
+                        if on_error == "raise":
+                            raise
+                        if on_error == "skip":
+                            continue
+                        txt = "" # DEBUG
 
                     _maybe_store_text(page_no, txt) # _cache_text_ok check not needed as img source is fixed anyway
                     if yield_result: 
@@ -2586,8 +2679,12 @@ def iter_text_pages(
     else:
         skip_pages = set()
 
-    
+    load_images = (
+        (ocr and framework != "source")
+        or save_image not in {"skip", "cache", "sniff"}
+    )
     iter_kwargs["skip_pages"] = skip_pages
+    iter_kwargs["load_images"] = load_images
 
     for item, total in iter_pages(input=input, **iter_kwargs):
         page_no = getattr(item, "sequence", None) or getattr(item, "index", None)        
@@ -2679,9 +2776,9 @@ def iter_text_pages(
 
         # OCR
         if ocr:
-            logger.info(f"Using {framework.upper()}")
+            logger.info(f"Getting page text through {framework.upper()}")
             source = framework
-            if item.kind == "text":
+            if item.kind == "text": # source framework implicit
                 txt =  item.data or ""
                 source = "source"
             else:                
