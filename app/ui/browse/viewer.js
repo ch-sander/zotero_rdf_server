@@ -1,5 +1,5 @@
-const ENDPOINT = "http://localhost:7879/query";
-// const ENDPOINT = "/sparql/query";
+// const ENDPOINT = "http://localhost:7879/query";
+const ENDPOINT = "/sparql/query";
 
 const ONTOLOGY_GRAPH = "http://www.zotero.org/namespaces/export";
 // const ONTOLOGY_GRAPH = null;
@@ -10,7 +10,10 @@ const HIDDEN_PROPERTIES = new Set([
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
   "http://www.w3.org/2000/01/rdf-schema#comment",
   "http://www.w3.org/2002/07/owl#sameAs",
-  "http://www.w3.org/ns/prov#generatedAtTime"
+  "http://www.w3.org/ns/prov#generatedAtTime",
+  "http://www.zotero.org/namespaces/export#links",
+  "http://www.zotero.org/namespaces/export#href",
+  "http://www.zotero.org/namespaces/export#url"
 ]);
 
 
@@ -118,26 +121,44 @@ async function queryResource(uri) {
 
 async function queryIncoming(uri) {
 
+  const propertyLabelBlock = ONTOLOGY_GRAPH
+    ? `
+      OPTIONAL {
+        GRAPH <${ONTOLOGY_GRAPH}> {
+          ?p rdfs:label ?pl .
+          FILTER(lang(?pl) = "${LANGUAGE}" || lang(?pl) = "")
+        }
+      }
+    `
+    : `
+      OPTIONAL {
+        ?p rdfs:label ?pl .
+        FILTER(lang(?pl) = "${LANGUAGE}" || lang(?pl) = "")
+      }
+    `;
+
   const query = `
     PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-    SELECT ?s ?sLabel ?p ?pLabel WHERE {
+    SELECT ?s (SAMPLE(?sl) AS ?sLabel)
+           ?p (SAMPLE(?pl) AS ?pLabel)
+    WHERE {
 
       ?s ?p <${escapeSparqlIri(uri)}> .
 
       OPTIONAL {
-        ?s rdfs:label ?sLabel .
-        FILTER(lang(?sLabel) = "${LANGUAGE}" || lang(?sLabel) = "")
+        ?s rdfs:label ?sl .
+        FILTER(lang(?sl) = "${LANGUAGE}" || lang(?sl) = "")
       }
 
-      OPTIONAL {
-        ?p rdfs:label ?pLabel .
-        FILTER(lang(?pLabel) = "${LANGUAGE}" || lang(?pLabel) = "")
-      }
+      ${propertyLabelBlock}
     }
 
-    ORDER BY ?pLabel ?sLabel
-    LIMIT 200
+    GROUP BY ?s ?p
+    ORDER BY LCASE(STR(COALESCE(SAMPLE(?pl), ?p)))
+             LCASE(STR(COALESCE(SAMPLE(?sl), ?s)))
+
+    LIMIT ${LIMIT}
   `;
 
   const response = await fetch(ENDPOINT, {
@@ -161,32 +182,40 @@ function buildQuery(uri) {
     ? `
       OPTIONAL {
         GRAPH <${ONTOLOGY_GRAPH}> {
-          ?p rdfs:label ?pLabel .
-          FILTER(lang(?pLabel) = "${LANGUAGE}" || lang(?pLabel) = "")
+          ?p rdfs:label ?pl .
+          FILTER(lang(?pl) = "${LANGUAGE}" || lang(?pl) = "")
         }
       }
     `
     : `
       OPTIONAL {
-        ?p rdfs:label ?pLabel .
-        FILTER(lang(?pLabel) = "${LANGUAGE}" || lang(?pLabel) = "")
+        ?p rdfs:label ?pl .
+        FILTER(lang(?pl) = "${LANGUAGE}" || lang(?pl) = "")
       }
     `;
 
   return `
     PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-    SELECT ?p ?pLabel ?o ?oLabel WHERE {
+    PREFIX owl: <http://www.w3.org/2002/07/owl#>
+    
+    SELECT ?p (SAMPLE(?pl) AS ?pLabel) ?o (SAMPLE(?ol) AS ?oLabel) WHERE {
       <${escapeSparqlIri(uri)}> ?p ?o .
+
+      FILTER(
+        !isIRI(?o)
+        || ?p = owl:sameAs
+        || EXISTS { ?o ?anyP ?anyO }
+      )
 
       ${propertyLabelBlock}
 
       OPTIONAL {
-        ?o rdfs:label ?oLabel .
-        FILTER(lang(?oLabel) = "${LANGUAGE}" || lang(?oLabel) = "")
+        ?o rdfs:label ?ol .
+        FILTER(lang(?ol) = "${LANGUAGE}" || lang(?ol) = "")
       }
     }
-    ORDER BY LCASE(STR(COALESCE(?pLabel, ?p))) LCASE(STR(COALESCE(?oLabel, ?o)))
+    GROUP BY ?p ?o
+    ORDER BY LCASE(STR(COALESCE(SAMPLE(?pl), ?p)))
     LIMIT ${LIMIT}
   `;
 }
