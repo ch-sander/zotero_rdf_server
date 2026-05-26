@@ -90,13 +90,31 @@ def store_move_subject(store: Store, src: NamedNode, dst: NamedNode, g: NamedNod
         # add with new subject
         store.add(Quad(dst, q.predicate, q.object, g))
 
+
+def normalize_iri_scheme(iri: str) -> str:
+    from .config import ZOT_BASE_URL
+    BASE = urlparse(ZOT_BASE_URL)
+    iri = iri.strip()
+    logger.warning(f"HTTP --> HTTPS for {BASE} in {iri}")
+    try:
+        parsed = urlparse(iri)
+
+        if parsed.netloc == BASE.netloc:
+            parsed = parsed._replace(scheme=BASE.scheme)
+            return parsed.geturl()
+
+    except Exception:
+        pass
+
+    return iri
+
 def safeNamedNode(uri: str | NamedNode, enforce: bool = True, allow_None: bool = False) -> NamedNode | Literal:
 
     if not isinstance(uri, (str, NamedNode)):
         raise TypeError(f"invalid type {type(uri)} for {uri}")
     
     INTERNAL_IRI_PREFIX = "http://internal.invalid/"
-    if uri == None and allow_None: #TODO not tested
+    if uri == None and allow_None: # TODO not tested
         return None
     if isinstance(uri, NamedNode):
         return uri
