@@ -1,8 +1,20 @@
 // const ENDPOINT = "http://localhost:7879/query";
-const ENDPOINT = "/sparql/query";
+const DEFAULT_ENDPOINT = "/sparql/query";
 
-const ONTOLOGY_GRAPH = "http://www.zotero.org/namespaces/export";
+const DEFAULT_ONTOLOGY_GRAPH = "http://www.zotero.org/namespaces/export";
 // const ONTOLOGY_GRAPH = null;
+
+const params = new URLSearchParams(location.search);
+
+const ENDPOINT =
+  params.get("endpoint")
+  || DEFAULT_ENDPOINT;
+
+const ONTOLOGY_GRAPH =
+  params.get("ontology")
+  || DEFAULT_ONTOLOGY_GRAPH;
+
+console.log("SPARQL endpoint:", ENDPOINT);
 
 const HIDDEN_PROPERTIES = new Set([
   "http://www.zotero.org/namespaces/export#version",
@@ -74,7 +86,7 @@ async function loadCurrentResource() {
   span.textContent = uri;
 
   resourceUriEl.appendChild(withCopy(span, uri));
-  showStatus("Loading Ressource …");
+  showStatus("Loading Resource …");
 
   try {
     const resolvedUri = await resolveUri(uri);
@@ -650,7 +662,7 @@ function renderObject(binding) {
 
     return withCopy(div, object.value);
   }
-  if (object.type === "uri") {
+  if (object.type === "uri" || object.type === "bnode") {
     const link = document.createElement("a");
     link.href = "#" + encodeURIComponent(object.value);
     link.textContent = binding.oLabel?.value || shortenIri(object.value);

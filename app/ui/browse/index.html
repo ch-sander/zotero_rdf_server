@@ -30,25 +30,35 @@
 
         <section class="class-content">
           
-          <details open>
-            <summary>Instances</summary>
-              <div class="table-toolbar">
-                <input
-                  id="instance-search"
-                  type="search"
-                  placeholder="Search instances..."
-                >
-              </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Instance</th>
-                  <th>URI</th>
-                </tr>
-              </thead>
-              <tbody id="instances"></tbody>
-            </table>
-          </details>
+        <details open>
+          <summary>Instances</summary>
+
+          <div class="table-toolbar">
+            <input
+              id="instance-search"
+              type="search"
+              placeholder="Search instances..."
+            >
+
+            <span id="instance-count"></span>
+
+            <div class="pagination">
+              <button id="prev-page" type="button">Previous</button>
+              <span id="page-info"></span>
+              <button id="next-page" type="button">Next</button>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Instance</th>
+                <th>URI</th>
+              </tr>
+            </thead>
+            <tbody id="instances"></tbody>
+          </table>
+        </details>
         </section>
       </div>
     </section>
