@@ -651,11 +651,12 @@ open-search:
               bool:
                 must:
                   - term:
-                      meta.parent_tags: "*public"
+                      meta.tags: "*public"
                 must_not:
                   - term:
                       meta.parent_tags: "*deprecated"
-
+                  - term:
+                      meta.tags: "*deprecated"
   # indices:
   #   # Optional bootstrap index. Recommended if you want to write to an alias.
   #   scigma-main-corpus-000001:
