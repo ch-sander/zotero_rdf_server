@@ -606,7 +606,7 @@ open-search:
 
   index_templates:
   
-    ocr_pages_template_v1:
+    scigma_template_app_v1:
       index_patterns: ["scigma*"]
       priority: 200
       composed_of:
@@ -620,7 +620,7 @@ open-search:
             number_of_replicas: 1
             default_pipeline: "ocr_meta_pipeline_v1"
         aliases:
-          ocr:
+          scigma-complete:
             is_write_index: false
             # filter:
             #   bool:
@@ -630,6 +630,32 @@ open-search:
             #     must_not:
             #       - term:
             #           meta.parent_tags: "*deprecated"
+
+    scigma_template_public_v1:
+      index_patterns: ["scigma-corpus-main"]
+      priority: 200
+      composed_of:
+        - ct_ocr_pages_v1
+      template:
+        # Optional but useful defaults
+        settings:
+          index:
+            knn: false # !!
+            number_of_shards: 1
+            number_of_replicas: 1
+            default_pipeline: "ocr_meta_pipeline_v1"
+        aliases:
+          scigma-public:
+            is_write_index: false
+            filter:
+              bool:
+                must:
+                  - term:
+                      meta.parent_tags: "*public"
+                must_not:
+                  - term:
+                      meta.parent_tags: "*deprecated"
+
   # indices:
   #   # Optional bootstrap index. Recommended if you want to write to an alias.
   #   scigma-main-corpus-000001:
@@ -642,7 +668,8 @@ open-search:
     - put_component_templates:
         - ct_ocr_pages_v1
     - put_index_templates:
-        - ocr_pages_template_v1
+        - scigma_template_app_v1
+        - scigma_template_public_v1
     - put_ingest_pipelines: [ocr_meta_pipeline_v1]
     # - create_indices:
     #     - scigma-main-corpus-000001
