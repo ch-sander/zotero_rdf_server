@@ -29,3 +29,4 @@ src/zotero_rdf_server/plugins/fts/_explorer.py
 /app/opensearch/opensearch/nodes
 /app/opensearch/opensearch
 /app/ui/atlas
+app/plugins/fts/pending-vpn.sparql
