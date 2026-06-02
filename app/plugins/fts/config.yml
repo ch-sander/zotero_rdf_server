@@ -608,7 +608,7 @@ open-search:
   
     scigma_template_app_v1:
       index_patterns: ["scigma*"]
-      priority: 200
+      priority: 100
       composed_of:
         - ct_ocr_pages_v1
       template:
@@ -651,10 +651,10 @@ open-search:
               bool:
                 must:
                   - term:
-                      meta.tags: "*public"
+                      meta.tags: "public"
                 must_not:
                   - term:
-                      meta.parent_tags: "*deprecated"
+                      meta.parent_tags: "deprecated"
                   - term:
                       meta.tags: "*deprecated"
   # indices:
