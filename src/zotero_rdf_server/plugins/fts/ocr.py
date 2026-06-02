@@ -2136,7 +2136,7 @@ def iter_text_pages(
     save_text: str = cfg.get("save_text", "skip")  # "skip" | "overwrite" | "active"
     save_image: str = cfg.get("save_image", "skip")  # "skip" | "overwrite" | "active"
     on_error: str = cfg.get("on_error", "log")  # "raise" | "skip" | "empty" | "log"
-    if cfg.get('cache_policy') is not False and not cfg.get('cache_policy'):
+    if cfg.get('cache_policy') is None:
         cfg['cache_policy'] = {
                                     "text": {
                                         "min_len": 20,
@@ -2152,7 +2152,7 @@ def iter_text_pages(
                                         "max_ratio": 4.0,
                                     },
                                 }
-    cache_policy = cfg.get("cache_policy", {})
+    cache_policy = cfg.get("cache_policy") or {}
     text_policy = cache_policy.get("text", {})
     image_policy = cache_policy.get("image", {})
 
@@ -2196,6 +2196,8 @@ def iter_text_pages(
                 logger.error(f"{_doc_id}: Failed to store {meta_file}: {e}")
     
     local_in = text_image_file_kwargs.get('local_in')
+    compile_out = text_image_file_kwargs.get('compile_out')
+
 
     if local_in:
         local_in = _resolve_out(local_in, None)
@@ -2298,6 +2300,39 @@ def iter_text_pages(
         _meta_file(report)
         logger.info(f"{_doc_id}: ORGANIZE completed: {report['organize']}")
         return
+
+    def compile_file():        
+        if not compile_out or txt_dir is None or not txt_dir.exists():
+            return None
+        try:
+            output_dir = _resolve_out(compile_out, None)
+            if output_dir is None:
+                return None
+
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            output_file = output_dir / f"{_doc_id}.txt"
+
+            import shutil
+
+            txt_files = sorted(
+                (p for p in txt_dir.glob(f"*.{txt_ext}") if _parse_page_no(p) is not None),
+                key=_parse_page_no,
+            )
+
+            with output_file.open("w", encoding="utf-8") as out:
+                for txt_file in txt_files:
+                    if txt_file.resolve() == output_file.resolve():
+                        continue
+
+                    with txt_file.open("r", encoding="utf-8") as inp:
+                        shutil.copyfileobj(inp, out)
+
+                    out.write("\n")
+            logger.info(f"{_doc_id}: Compiled file: {output_file}")
+            return output_file
+        except Exception as e:
+            logger.error(f"{_doc_id}: Compiling file failed: {e}")
 
     def _cache_image_ok(src: Union[Path, Image.Image], policy: dict) -> bool:
         try:
@@ -2585,6 +2620,7 @@ def iter_text_pages(
         logger.warning(f"{_doc_id}: Using {len(set(cached_page_set['text']))} text files in {txt_dir}")
         if yield_result:
             yield from _yield_from_cache()
+        compile_file()
         _log_discrepancy_report()
         return    
     
@@ -2652,10 +2688,16 @@ def iter_text_pages(
                         yield _log_and_yield(page_no, txt, total, source)
                     else:
                         _log_and_yield(page_no, txt, total, source)
-            
+            compile_file()
             _log_discrepancy_report()
             return
-    
+        
+    if save_image == "cache":
+        logger.warning(f"{_doc_id}: No cached images found; cache mode stops here.")
+        compile_file()
+        _log_discrepancy_report()
+        return
+     
     # Download
     total = 0
     _report = _cache_discrepancy_report()
@@ -2700,6 +2742,7 @@ def iter_text_pages(
                 logger.warning(f"{total} images and text files found that match source --> skip this item!")
                 if yield_result:
                     yield from _yield_from_cache()
+                compile_file()
                 _log_discrepancy_report(total)
                 return
         if save_image in {"smart"} and int(page_no) in _report['shared']:
@@ -2803,7 +2846,7 @@ def iter_text_pages(
                 yield _log_and_yield(page_no, txt, total, source)
             else:
                 _log_and_yield(page_no, txt, total, source)
-
+    compile_file()
     _log_discrepancy_report(total)
 
 # END
