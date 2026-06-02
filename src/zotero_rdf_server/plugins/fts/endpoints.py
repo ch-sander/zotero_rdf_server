@@ -680,6 +680,7 @@ def ingest_route(
         "run_ids": run_ids[:2],
         "targets": list(targets),
         "runs": len(run_ids),
+        "pipeline_ids": list(pipeline_ids),
     }    
     try:
         _runs_filename = _default_filename("runs_result", "json")
