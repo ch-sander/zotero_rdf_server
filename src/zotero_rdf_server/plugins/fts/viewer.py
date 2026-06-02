@@ -379,7 +379,7 @@ def export_atlas_folder(
         logger.info("Imported embedding_atlas")
     except ImportError:
         from .helpers import ensure_import
-        ensure_import("embedding-atlas==0.20.0", requirements=None)        
+        ensure_import("embedding-atlas==0.21.0", requirements=None) # Not tested TODO
         import embedding_atlas
 
     from embedding_atlas import __version__
