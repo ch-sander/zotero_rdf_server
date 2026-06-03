@@ -2543,8 +2543,18 @@ def iter_text_pages(
                 _save_text(txt, tp)
 
     def _yield_from_cache() -> Iterator[Tuple[int, str]]:
-        if txt_dir is None or not txt_dir.exists():
+        if txt_dir is None:
             return iter(())
+
+        # Single file
+        single_file = txt_dir.with_suffix(f".{txt_ext}")
+        if single_file.exists():
+            return iter([(1, single_file.read_text(encoding="utf-8"))])
+
+        # Folder
+        if not txt_dir.exists():
+            return iter(())
+        
         page_nos = sorted(
             n for n in (_parse_page_no(p) for p in txt_dir.glob(f"*.{txt_ext}")) if n is not None
         )
@@ -2596,8 +2606,8 @@ def iter_text_pages(
             if (t := " ".join((txt or "").split()))
             else "[no text]"
         )
-        logger.info(f"\n{_doc_id} {page_no}/{total}: {source.upper()} result: {preview}")
-        return page_no, txt # TODO return LLM?
+        logger.info(f"PID: {os.getpid()}\n{_doc_id} {page_no}/{total}: {source.upper()} result: {preview}")
+        return page_no, txt
     
     _meta_file(meta_dict)
     cached_page_set = _cached_pages()
