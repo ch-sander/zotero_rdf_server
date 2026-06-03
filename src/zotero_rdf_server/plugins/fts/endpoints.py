@@ -2442,7 +2442,7 @@ def rerun_ocr(
 
 ##Proxy
 
-@open_router.post("/ollama-proxy", tags=["Proxy"],)
+@router.post("/ollama-proxy", tags=["Proxy"],)
 async def ollama_proxy(
     user_input: str = Body(..., embed=True),
     llm_kwargs: dict = Body(default_factory=dict, embed=True),
