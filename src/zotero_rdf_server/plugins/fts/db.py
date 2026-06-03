@@ -1,8 +1,5 @@
-from __future__ import annotations
 from .helpers import ensure_import, resolve_config_path, plugin_logger, safe_doc_id
 ensure_import("opensearchpy")
-import os
-import yaml
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, Iterator, Tuple, Any, Iterable, Callable, Optional
@@ -15,7 +12,6 @@ import logging
 
 logger=plugin_logger()
 
-
 @lru_cache(maxsize=8)
 def get_os_config(config_path: Path) -> dict[str, Any]:
     # import yaml
@@ -27,7 +23,7 @@ def get_os_config(config_path: Path) -> dict[str, Any]:
     # cfg = load_dict_like(path, "Open Search YAML")
     return cfg.get("open-search") or cfg
 
-
+@lru_cache(maxsize=1)
 def make_client(cfg: dict) -> OpenSearch:
     if "client" not in cfg:
         raise ValueError("Missing 'client' configuration")
@@ -35,9 +31,9 @@ def make_client(cfg: dict) -> OpenSearch:
         cli = OpenSearch(**cfg["client"])
         logger.info("OS client created")
         return cli
-    except Exception as e:
-        logger.critical("Client failed. Service running?")
-        logger.info(e)
+    except Exception:
+        logger.exception("Failed to create OpenSearch client")
+        raise
 
 def ensure_ingest_pipeline(client: OpenSearch, *, name: str, body: dict) -> None:
     logger.debug("putting ingest_pipeline")
