@@ -410,6 +410,7 @@ def export_atlas_folder(
                 "x": float(group[x_col].mean()),
                 "y": float(group[y_col].mean()),
                 "text": ", ".join(str(t) for t in terms if t) or f"Cluster {cluster_id}",
+                "content": ", ".join(str(t) for t in terms if t) or f"Cluster {cluster_id}",
                 "priority": int(len(group)),
             })
 
