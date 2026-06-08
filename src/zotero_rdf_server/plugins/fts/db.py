@@ -23,7 +23,13 @@ def get_os_config(config_path: Path) -> dict[str, Any]:
     # cfg = load_dict_like(path, "Open Search YAML")
     return cfg.get("open-search") or cfg
 
+
 @lru_cache(maxsize=1)
+def get_os_client():
+    cfg_path = resolve_config_path()
+    oscfg = get_os_config(cfg_path)
+    return make_client(oscfg)
+
 def make_client(cfg: dict) -> OpenSearch:
     if "client" not in cfg:
         raise ValueError("Missing 'client' configuration")

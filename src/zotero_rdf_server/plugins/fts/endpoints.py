@@ -545,7 +545,7 @@ def ingest_route(
                         except Exception as e:
                             logger.error(f"Query failed: {e}")
                             items = []
-                        
+                        pipeline_meta:dict = {'name_pipeline': name, 'id_pipeline': pipe_id, 'i_worker': worker_id, 'len_worker': total_workers}
                         run_ids.extend(ingest_pipeline(items=items,
                                                 targets=targets_x, 
                                                 from_source=from_source_x,
@@ -556,7 +556,8 @@ def ingest_route(
                                                 delete_index=delete_x,
                                                 iter_pages_kwargs=iter_pages_kwargs,
                                                 page_to_text_kwargs=page_to_text_kwargs, text_image_file_kwargs=text_image_file_kwargs,
-                                                config_path=config_path_x))
+                                                config_path=config_path_x,
+                                                pipeline_meta=pipeline_meta))
                     
                 elif graph and graph != lib.base_url:
                     logger.debug(f"{lib.base_url} skipped")
@@ -2492,11 +2493,12 @@ async def get_mapping(index: str):
 @open_router.post("/search-proxy/_msearch", tags=["Proxy"])
 async def msearch(request: Request):
     body = await request.body()
-    from .db import make_client, get_os_config
-    from .helpers import resolve_config_path
-    cfg_path = resolve_config_path()
-    oscfg = get_os_config(cfg_path)
-    client = make_client(oscfg)
+    from .db import make_client, get_os_config, get_os_client
+    # from .helpers import resolve_config_path
+    # cfg_path = resolve_config_path()
+    # oscfg = get_os_config(cfg_path)
+    # client = make_client(oscfg)
+    client = get_os_client
     resp = client.transport.perform_request(
         method="POST",
         url="/_msearch",
