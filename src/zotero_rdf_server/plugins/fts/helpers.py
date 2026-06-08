@@ -152,6 +152,7 @@ def convert_bindings(bindings, reverse: bool = False):
 
     if reverse:
         rows = list(rows)[::-1]
+        plugin_logger().warning("Reverse = True")
 
     numeric_fields = set()
     for name in var_names:

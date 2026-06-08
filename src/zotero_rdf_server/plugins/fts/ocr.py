@@ -5,6 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from .helpers import ensure_import, _hash_file,  resolve_config_path, _download, plugin_logger, detect_url_kind, detect_file_kind, resolve_source
 from io import BytesIO
+import threading
 from urllib.parse import urlparse
 
 from .helpers import plugin_logger, safe_doc_id
@@ -2074,6 +2075,7 @@ def iter_text_pages(
     text_image_file_kwargs: Optional[Dict[str, Any]] = None,
     framework: Literal["kraken", "tesseract", "transformer", "source", "none"] = "kraken",
     yield_result:bool = True,
+    pipeline_meta:dict = {},
 ) -> Iterator[Tuple[int, str]]:
     from .helpers import ISO_ts
     iter_kwargs = dict(iter_kwargs or {})
@@ -2606,7 +2608,16 @@ def iter_text_pages(
             if (t := " ".join((txt or "").split()))
             else "[no text]"
         )
-        logger.info(f"PID: {os.getpid()}\n{_doc_id} {page_no}/{total}: {source.upper()} result: {preview}")
+
+        logger.info(
+            f"PID: {os.getpid()}; "
+            f"TID: {threading.get_ident()}; "
+            f"Thread: {threading.current_thread().name}; "
+            f"pipeline: {pipeline_meta.get('id_pipeline')}; "
+            f"worker: {pipeline_meta.get('i_worker',0)}/{pipeline_meta.get('len_worker',0)}; "
+            f"items: {pipeline_meta.get('i_items',0)}/{pipeline_meta.get('len_items',0)}\n"
+            f"{_doc_id} {page_no}/{total}: {source.upper()} result: {preview}"
+        )
         return page_no, txt
     
     _meta_file(meta_dict)
@@ -2758,22 +2769,6 @@ def iter_text_pages(
         if save_image in {"smart"} and int(page_no) in _report['shared']:
             continue
         tp = _text_path(page_no)
-
-        # Save Image
-        # if item.kind == "image" and save_image not in {"skip", "cache"} and img_dir is not None:
-        #     ip = _image_path(page_no)
-        #     if ip is not None and item.data is not None and hasattr(item.data, "save"):
-        #         if save_image == "overwrite" or not ip.exists() or (not _cache_image_ok(ip, image_policy) and _cache_image_ok(item.data, image_policy)):
-        #             try:
-        #                 _save_pil(item.data, ip)
-        #             except Exception as e:
-        #                 logger.error(f"{_doc_id}: Failed to store image page {page_no} to {str(ip)}: {e}")
-        #                 if on_error == "raise":
-        #                     raise
-        #                 if on_error == "skip":
-        #                     continue
-        #         else:
-        #             logger.debug(f"Image exists: {ip}")
 
         if item.kind in {"image", "text"} and save_image not in {"skip", "cache"} and img_dir is not None:
             ip = _image_path(page_no)

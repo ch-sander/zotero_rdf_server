@@ -30,7 +30,8 @@ def ingest_pipeline(
     iter_pages_kwargs: dict = {},
     page_to_text_kwargs: dict = {},
     text_image_file_kwargs: dict = {},
-    config_path: str = None
+    config_path: str = None,
+    pipeline_meta:dict = {},
 ):
     from .db import index_stream
     from zotero_rdf_server.utils import load_dict_like
@@ -103,6 +104,9 @@ def ingest_pipeline(
         if isinstance(json_policy, dict):
             iter_pages_kwargs["json_policy"] = JsonPolicy.from_json(json_policy) 
 
+        pipeline_meta['len_items'] = total
+
+
         def make_pages_fn(doc_id: str, stats: dict):
             def pages_fn(u: str):
                 try:
@@ -113,7 +117,8 @@ def ingest_pipeline(
                         page_to_text_kwargs=page_to_text_kwargs,
                         text_image_file_kwargs=text_image_file_kwargs,
                         framework=framework,
-                        yield_result=ingest
+                        yield_result=ingest,
+                        pipeline_meta = pipeline_meta
                     ):
                         stats["pages_emitted"] += 1
                         yield page
@@ -132,6 +137,8 @@ def ingest_pipeline(
                 input_ = payload.pop("_input", None) or payload.pop("_url", None)
                 label = payload.pop("_label", "no label")
                 meta = _meta_flat_strings(payload)
+                pipeline_meta['i_items'] = i
+                pipeline_meta['label_items'] = label
                 logger.info(f"\n\n[{i}/{total}] Loading {obj.get('_id')}\n{label}\n\n")  
                 if not input_:
                     results.append({
@@ -230,6 +237,8 @@ def ingest_pipeline(
             sequence = payload.pop("_idx", 1)
             label = payload.pop("_label", "no label")
             meta = _meta_flat_strings(payload)
+            pipeline_meta['i_items'] = i
+            pipeline_meta['label_items'] = label
             logger.info(f"\n\n[{i}/{total}] Loading {obj.get('_id')}\n{label}\n\n")  
             logger.debug(f"Ingest Pipeline index_stream from source: {from_source}")
             if from_source:
