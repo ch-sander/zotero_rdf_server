@@ -136,7 +136,8 @@ def convert_bindings(bindings, reverse: bool = False):
     elif isinstance(bindings, list):
         plugin_logger().info("Found JSON list as bindings!")
         rows = bindings
-        var_names = list({k for row in rows for k in row.keys()})
+        # var_names = list({k for row in rows for k in row.keys()})
+        var_names = list(dict.fromkeys(k for row in rows for k in row.keys()))
 
         def get_value(sol, name):
             return sol.get(name)
@@ -454,6 +455,30 @@ def detect_url_kind(
 
     except requests.RequestException:
         return "text"
+    
+def format_size(size: int) -> str:
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024:
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
+
+
+def _save_pil(im, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    im.save(path)
+
+    width, height = im.size
+    file_size = path.stat().st_size
+
+    logger.info(
+        "Stored image file: %s (%dx%d px, %s)",
+        path,
+        width,
+        height,
+        _format_size(file_size),
+    )
+
 
 def safe_doc_id(doc_id: str) -> str:
     s = doc_id.strip()

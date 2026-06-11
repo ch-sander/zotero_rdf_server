@@ -3,7 +3,7 @@ from typing import Iterator, Optional, Dict, Any, List, Literal, Union, Tuple, M
 import io, json, os, tempfile, time, re, math, requests, csv
 from functools import lru_cache
 from pathlib import Path
-from .helpers import ensure_import, _hash_file,  resolve_config_path, _download, plugin_logger, detect_url_kind, detect_file_kind, resolve_source
+from .helpers import ensure_import, _hash_file,  resolve_config_path, _download, plugin_logger, detect_url_kind, detect_file_kind, resolve_source, format_size
 from io import BytesIO
 import threading
 from urllib.parse import urlparse
@@ -2411,17 +2411,35 @@ def iter_text_pages(
     
     def _save_pil(im, path: Path) -> None:
         try:
-            logger.info(f"Stored file: {path}")
             path.parent.mkdir(parents=True, exist_ok=True)
             im.save(path)
+            width, height = im.size
+            file_size = path.stat().st_size
+
+            logger.info(
+                "Stored image file: %s (%dx%d px, %s)",
+                path,
+                width,
+                height,
+                format_size(file_size),
+            )
         except Exception as e:
             logger.error(f"{_doc_id}: Failed to store {path}: {e}")
 
     def _save_text(txt: str, path: Path) -> None:
         try:
-            logger.info(f"Stored text file: {path}")
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(txt, encoding="utf-8")
+
+            file_size = path.stat().st_size
+
+            logger.info(
+                "Stored text file: %s (%d chars, %d bytes)",
+                path,
+                len(txt),
+                file_size,
+            )
+
         except Exception as e:
             logger.error(f"{_doc_id}: Failed to store {path}: {e}")
 
