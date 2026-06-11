@@ -285,7 +285,7 @@ JsonBody = Union[JsonObj, List[JsonObj]]
 def ingest_route(
     input: Optional[JsonBody] = Body(default=None, examples=[None],description="Provide JSON List or SPARQL query result bindings. If none, runs query to get input from results."),
     targets: str | list = Query(default=None, description="Index or alias"),
-    from_source: bool = Query(default=None, description="If true, generates input from external source (either produced via OCR or read from cache). If false, you must provide input directly."),
+    from_source: bool = Query(default=None, description="If true, generates input from external source (either produced via OCR or read from cache). If false, you must provide text in input directly."),
     framework: Literal["kraken", "tesseract", "transformer", "source", "none"] = Query(
         default=None,
         description="OCR backend: kraken, tesseract, or transformer. Choose 'none' to skip ATR/OCR",
@@ -645,7 +645,7 @@ def ingest_route(
 
         if isinstance(input, str):
             from zotero_rdf_server.utils import load_dict_like
-            input = load_dict_like(input,label="Ingest Pipeline Input") # TODO not proper, yet, for lists (CSV should work)!
+            input = load_dict_like(input,label="Ingest Pipeline Input") # (CSV should work)!
         
         if (
             isinstance(input, dict)
@@ -654,11 +654,13 @@ def ingest_route(
             and "results" in input
             and "bindings" in input["results"]
         ):
+            logger.info("Input is SPARQL-JSON!")
             items, var_names = convert_bindings(input)
         elif isinstance(input, list) and all(isinstance(x, dict) for x in input):
+            logger.info("Input is JSON objects list!")
             items, var_names = convert_bindings(input)
         else:
-            raise HTTPException(status_code=400, detail="Body must be a SPARQL-JSON object, a list of JSON objects, or null")
+            raise HTTPException(status_code=400, detail="Body (can be read from file path) must be a SPARQL-JSON object, a list of JSON objects, a CSV, or null (then provide a query)")
         
         from_source = True if from_source is True else False
         save_query_to_file(items=items,var_names=var_names, json_mode=False)
@@ -2498,7 +2500,7 @@ async def msearch(request: Request):
     # cfg_path = resolve_config_path()
     # oscfg = get_os_config(cfg_path)
     # client = make_client(oscfg)
-    client = get_os_client
+    client = get_os_client()
     resp = client.transport.perform_request(
         method="POST",
         url="/_msearch",
