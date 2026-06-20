@@ -33,7 +33,7 @@ defaults:
     fts: # Full Text Search Plugin. Loads text from URL, performs OCR, ingests to Open Search index (see docker compose configuration). Lists of dictionnaries are possible, too.
       logging: # not deployed, yet
         ingest_into_graph: "" # whether the logging store shall be stored in the main store in a named graph by this IRI
-      query: "/app/plugins/fts/fts.sparql" # SPARQL query to retrieve URLs for OCR/ingesting
+      query: "/app/plugins/fts/queries/fts.sparql" # SPARQL query to retrieve URLs for OCR/ingesting
       from_source: true
       vector:
         framework: null # "SentenceTransformer" or null or "FastText"

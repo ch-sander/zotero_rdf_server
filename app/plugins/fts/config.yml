@@ -632,7 +632,7 @@ open-search:
             #           meta.parent_tags: "*deprecated"
 
     scigma_template_public_v1:
-      index_patterns: ["scigma-corpus-main"]
+      index_patterns: ["scigma-main-corpus"]
       priority: 200
       composed_of:
         - ct_ocr_pages_v1
@@ -654,9 +654,13 @@ open-search:
                       meta.tags: "public"
                 must_not:
                   - term:
-                      meta.parent_tags: "deprecated"
+                      meta.parent_tags: "*deprecated"
                   - term:
                       meta.tags: "*deprecated"
+                  - term:
+                      meta.parent_tags: "*excluded"
+                  - term:
+                      meta.tags: "*excluded"
   # indices:
   #   # Optional bootstrap index. Recommended if you want to write to an alias.
   #   scigma-main-corpus-000001:

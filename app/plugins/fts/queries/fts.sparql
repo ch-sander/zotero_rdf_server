@@ -25,47 +25,27 @@ WHERE {
         rdfs:label ?file_label;
         zot:parentItem ?parent.
 
-VALUES ?link_type { "linked_url" "imported_url" }. # filter on attachment types
-    
-OPTIONAL { ?parent rdfs:label ?parent_label }
-OPTIONAL { ?parent zot:date ?date }
-OPTIONAL { ?parent zot:title ?parent_title }
-OPTIONAL { ?parent zot:key ?parent_key }
+  VALUES ?link_type { "linked_url" "imported_url" }. # filter on attachment types
+      
+  OPTIONAL { ?parent rdfs:label ?parent_label }
+  OPTIONAL { ?parent zot:date ?date }
+  OPTIONAL { ?parent zot:title ?parent_title }
+  OPTIONAL { ?parent zot:key ?parent_key }
 
-OPTIONAL {
-  ?parent (zot:creators/zot:hasCreator) ?person_1742_8 .
-  ?person_1742_8 a zot:actor ;
-                 rdfs:label ?text_1724_9 .
-}
-
-
-OPTIONAL {  ?file zot:url ?url;
-                  zot:inLibrary ?library.}
-  
-OPTIONAL {  ?library rdf:type zot:library;
-                     zot:id ?library_label.}
-
-  ?file zot:tags ?t_format .
-  ?t_format a zot:tag ;
-            zot:tag ?formatTag .
-  VALUES ?formatTag { "*pdf" "*iiif" }
-
-  ?file zot:tags ?t_ocr .
-  ?t_ocr a zot:tag ;
-        zot:tag ?ocrTag .
-
-  # FILTER(?ocrTag NOT IN ("*broken_ocr"))
-  # FILTER(CONTAINS(STR(?url), "uni-halle.de")) # filter on attachment URL api.onb.ac.at poor quality
-  # FILTER(CONTAINS(STR(?file), "SU8DGT98")) # filter on attachment URL
-    #   FILTER(
-    #     REGEX(STR(?_id), "_747CPE5P|_K4S8F6G3|_9DDYJWFS|_A3NGVGDY|_R8GLPVX7|_IUP5G5Z9|ZI2DXZBB")
-    #   )
-  ?parent zot:collections ?col .
-
-  VALUES ?col {
-      <https://zotero.org/groups/4929619/collections/KJPE6S73>
-      <https://zotero.org/groups/4929619/collections/AZ962G9L>
+  OPTIONAL {
+    ?parent (zot:creators/zot:hasCreator) ?person_1742_8 .
+    ?person_1742_8 a zot:actor ;
+                  rdfs:label ?text_1724_9 .
   }
+
+  OPTIONAL {  ?file zot:url ?url;
+                    zot:inLibrary ?library.}
+    
+  OPTIONAL {  ?library rdf:type zot:library;
+                      zot:id ?library_label.}
+
+
+
   OPTIONAL {
     ?parent zot:tags ?tag_1502_13.
     ?tag_1502_13 rdf:type zot:tag;
@@ -74,5 +54,5 @@ OPTIONAL {  ?library rdf:type zot:library;
 }
 GROUP BY ?file
 ORDER BY ?_input
-# OFFSET 120
-# LIMIT 40
+# OFFSET 50
+# LIMIT 50
