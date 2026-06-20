@@ -50,11 +50,12 @@ OPTIONAL {  ?library rdf:type zot:library;
             zot:tag ?formatTag .
   VALUES ?formatTag { "*pdf" "*iiif" }
 
-  ?file zot:tags ?t_ocr .
-  ?t_ocr a zot:tag ;
-        zot:tag ?ocrTag .
-
-  # FILTER(?ocrTag NOT IN ("*broken_ocr"))
+  FILTER NOT EXISTS {
+    ?file zot:tags ?redoTag .
+    ?redoTag a zot:tag ;
+            zot:tag "**redo_OCR" .
+  }
+  
   # FILTER(CONTAINS(STR(?url), "uni-halle.de")) # filter on attachment URL api.onb.ac.at poor quality
   # FILTER(CONTAINS(STR(?file), "SU8DGT98")) # filter on attachment URL
   # FILTER(

@@ -23,8 +23,6 @@ WHERE {
         rdfs:label ?file_label;
         zot:parentItem ?parent.
 
-FILTER (?_id NOT IN ("9J58SQ8G"))
-
 VALUES ?link_type { "linked_url" "imported_url" }. # filter on attachment types
     
 OPTIONAL { ?parent rdfs:label ?parent_label }
@@ -43,17 +41,6 @@ OPTIONAL {  ?file zot:url ?url;
   
 OPTIONAL {  ?library rdf:type zot:library;
                      zot:id ?library_label.}
-
-# FILTER( # filter on attachment name
-#     CONTAINS(?file_label, "PDF") #||
-# #    CONTAINS(?file_label, "Books")
-#   )
-
-  # FILTER(CONTAINS(STR(?url), "digitale-sammlungen.de")) # filter on attachment URL
-
-
-#  ?t_ingest a zot:tag ; zot:tag "*ingest" .
-#  ?t_pdf    a zot:tag ; zot:tag "*pdf" .
 
   ?file zot:tags ?t_format .
   ?t_format a zot:tag ;
