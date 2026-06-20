@@ -3,7 +3,7 @@ from pathlib import Path
 from shutil import move, copy2
 
 import json
-from .helpers import plugin_logger
+from .helpers import plugin_logger, pipeline_log_prefix
 logger=plugin_logger()
 
 def _meta_flat_strings(d: Dict[str, Any]) -> Dict[str, str]:
@@ -139,7 +139,11 @@ def ingest_pipeline(
                 meta = _meta_flat_strings(payload)
                 pipeline_meta['i_items'] = i
                 pipeline_meta['label_items'] = label
-                logger.info(f"\n\n[{i}/{total}] Loading {obj.get('_id')}\n{label}\n\n")  
+                # logger.info(f"\n\n[{i}/{total}] Loading {obj.get('_id')}\n{label}\n\n")
+                logger.info(
+                    f"{pipeline_log_prefix(pipeline_meta)}\n"
+                    f"{obj.get('_id')} {label}\n\n"
+                )
                 if not input_:
                     results.append({
                         "doc_id": doc_id,
@@ -239,7 +243,11 @@ def ingest_pipeline(
             meta = _meta_flat_strings(payload)
             pipeline_meta['i_items'] = i
             pipeline_meta['label_items'] = label
-            logger.info(f"\n\n[{i}/{total}] Loading {obj.get('_id')}\n{label}\n\n")  
+            # logger.info(f"\n\n[{i}/{total}] Loading {obj.get('_id')}\n{label}\n\n")  
+            logger.info(
+                f"{pipeline_log_prefix(pipeline_meta)}\n"
+                f"{obj.get('_id')} {label}\n\n"
+            ) 
             logger.debug(f"Ingest Pipeline index_stream from source: {from_source}")
             if from_source:
                 if not input:

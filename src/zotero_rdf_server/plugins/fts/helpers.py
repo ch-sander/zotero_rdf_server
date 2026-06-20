@@ -1,5 +1,5 @@
 import json
-import re
+import re, os, threading
 from typing import Literal, Optional, Any
 from urllib.parse import urlparse
 import requests
@@ -13,6 +13,19 @@ from uuid import uuid4
 
 here = Path(__file__).resolve().parent
 requirements = here / "requirements.txt"
+
+def pipeline_log_prefix(meta: dict) -> str:
+    meta = meta or {}
+
+    return (
+        f"PID: {os.getpid()}; "
+        f"TID: {threading.get_ident()}; "
+        f"Thread: {threading.current_thread().name}; "
+        f"pipeline: {meta.get('id_pipeline')} "
+        f"{'(reverted); ' if meta.get('reverse') else '; '}"
+        f"worker: {meta.get('i_worker', 0)}/{meta.get('len_worker', 0)}; "
+        f"items: {meta.get('i_items', 0)}/{meta.get('len_items', 0)}"
+    )
 
 def plugin_logger(new:bool=False):
     if new:

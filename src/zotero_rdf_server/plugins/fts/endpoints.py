@@ -1,7 +1,6 @@
 from __future__ import annotations
 from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Body, Depends, status
 from fastapi.responses import StreamingResponse, FileResponse, Response, JSONResponse, PlainTextResponse, HTMLResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
 from typing import Literal, Any, Dict, Iterator, List, Optional, Union, Tuple
 from pathlib import Path
 import json, io, html, os
@@ -545,7 +544,8 @@ def ingest_route(
                         except Exception as e:
                             logger.error(f"Query failed: {e}")
                             items = []
-                        pipeline_meta:dict = {'name_pipeline': name, 'id_pipeline': pipe_id, 'i_worker': worker_id, 'len_worker': total_workers}
+                        pipeline_meta:dict = {'name_pipeline': name, 'id_pipeline': pipe_id, 'i_worker': worker_id, 'len_worker': total_workers, 'reverse': reverse_x}
+                        iter_pages_kwargs['reverse'] = reverse_x
                         run_ids.extend(ingest_pipeline(items=items,
                                                 targets=targets_x, 
                                                 from_source=from_source_x,
@@ -616,6 +616,8 @@ def ingest_route(
                 
             from_source = True if from_source is True else False
 
+            source_kwargs['reverse'] = reverse
+
             run_ids.extend(ingest_pipeline(items=items,
                                             targets=targets, 
                                             from_source=from_source,
@@ -655,10 +657,10 @@ def ingest_route(
             and "bindings" in input["results"]
         ):
             logger.info("Input is SPARQL-JSON!")
-            items, var_names = convert_bindings(input)
+            items, var_names = convert_bindings(input, reverse=reverse)
         elif isinstance(input, list) and all(isinstance(x, dict) for x in input):
             logger.info("Input is JSON objects list!")
-            items, var_names = convert_bindings(input)
+            items, var_names = convert_bindings(input, reverse=reverse)
         else:
             raise HTTPException(status_code=400, detail="Body (can be read from file path) must be a SPARQL-JSON object, a list of JSON objects, a CSV, or null (then provide a query)")
         
@@ -1990,7 +1992,7 @@ def mlt_by_id(
 )
 def mlt_by_text(
     request: Request,
-    like_text: str = Body(..., min_length=1, max_length=20_000, example="Similis simili gaudet", media_type="text/plain"),
+    like_text: str = Body(..., min_length=1, max_length=20_000, examples=["Similis simili gaudet"], media_type="text/plain"),
     index: str = Query(None, description="OpenSearch index name. Default alias can be set in configuration"),
     fields: str = Query("text", description="CSV list of fields, typically 'text'"),
     min_term_freq: int = Query(1, ge=0),

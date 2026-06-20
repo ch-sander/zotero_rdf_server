@@ -3,12 +3,10 @@ from typing import Iterator, Optional, Dict, Any, List, Literal, Union, Tuple, M
 import io, json, os, tempfile, time, re, math, requests, csv
 from functools import lru_cache
 from pathlib import Path
-from .helpers import ensure_import, _hash_file,  resolve_config_path, _download, plugin_logger, detect_url_kind, detect_file_kind, resolve_source, format_size
+from .helpers import ensure_import, _hash_file,  resolve_config_path, _download, plugin_logger, detect_url_kind, detect_file_kind, resolve_source, format_size, pipeline_log_prefix, safe_doc_id
 from io import BytesIO
-import threading
 from urllib.parse import urlparse
 
-from .helpers import plugin_logger, safe_doc_id
 logger=plugin_logger()
 
 ensure_import("PIL")
@@ -1345,7 +1343,8 @@ def iter_pages(
     skip: bool = False,
     skip_pages: Optional[set[int]] = None,
     local_in: str | None | Path = None,
-    load_images: bool = True
+    load_images: bool = True,
+    reverse: bool = False, # currently only for IIIF, PDF
 ) -> Iterator[PageItem]:
     if not start_page or int(start_page)<=0:
         start_page = 1
@@ -1413,9 +1412,16 @@ def iter_pages(
 
         logger.info(f"{doc_id}: Found {total} pages in IIIF, starting at {start_page}")
         pages = pages[(start_page - 1):]
+
+        indexed_pages = list(
+            enumerate(pages, start=start_page)
+        )
+
+        if reverse:
+            indexed_pages = reversed(indexed_pages)
         logger.debug(f"IIIF Policy: {iiif_ocr_policy}")
         try:
-            for i, (img_url, canvas) in enumerate(pages, start=start_page):
+            for i, (img_url, canvas) in indexed_pages:
                 if skip_pages is not None and i in skip_pages:
                     continue
                 hit = find_ocr(canvas, iiif_ocr_policy)
@@ -1513,7 +1519,10 @@ def iter_pages(
             #     yield _log_and_yield(PageItem(start_page, "sniff", "", source=f"pdf-file:{input}", total=total),total)
 
             # pages = pages[(start_page - 1):]
-            for i in range(start_page, total + 1):
+            page_numbers = range(start_page, total + 1)
+            if reverse:
+                page_numbers = range(total, start_page - 1, -1)
+            for i in page_numbers:
                 if skip_pages is not None and i in skip_pages:
                     continue
                 page = doc.load_page(i-1)
@@ -2628,12 +2637,7 @@ def iter_text_pages(
         )
 
         logger.info(
-            f"PID: {os.getpid()}; "
-            f"TID: {threading.get_ident()}; "
-            f"Thread: {threading.current_thread().name}; "
-            f"pipeline: {pipeline_meta.get('id_pipeline')}; "
-            f"worker: {pipeline_meta.get('i_worker',0)}/{pipeline_meta.get('len_worker',0)}; "
-            f"items: {pipeline_meta.get('i_items',0)}/{pipeline_meta.get('len_items',0)}\n"
+            f"{pipeline_log_prefix(pipeline_meta)}\n"
             f"{_doc_id} {page_no}/{total}: {source.upper()} result: {preview}"
         )
         return page_no, txt
