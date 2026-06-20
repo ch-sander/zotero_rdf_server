@@ -1414,11 +1414,14 @@ def iter_pages(
         pages = pages[(start_page - 1):]
 
         indexed_pages = list(
-            enumerate(pages, start=start_page)
+            enumerate(
+                pages,
+                start=start_page,
+            )
         )
 
         if reverse:
-            indexed_pages = reversed(indexed_pages)
+            indexed_pages.reverse()
         logger.debug(f"IIIF Policy: {iiif_ocr_policy}")
         try:
             for i, (img_url, canvas) in indexed_pages:
