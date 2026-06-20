@@ -1,9 +1,12 @@
 from fastapi import FastAPI
+from html import escape
 from .lifespan import app_lifespan
 from .api import router, include_plugins, open_router
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from .config import STATIC_UI_DIRECTORY, ROOT_PATH, STATIC_UI_PREFIX, INCLUDE_OPEN_ROUTER, INCLUDE_CLOSED_ROUTER, INCLUDE_PLUGINS, FASTAPI_META, API_UI_URL, logger
+from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi import Request
+from .config import STATIC_UI_DIRECTORY, ROOT_PATH, STATIC_UI_PREFIX, INCLUDE_OPEN_ROUTER, INCLUDE_CLOSED_ROUTER, INCLUDE_PLUGINS, FASTAPI_META, API_UI_URL, logger, ROOT_REDIRECT
 
 
 _title = FASTAPI_META.get('title', "Zotero RDF Server App")
@@ -55,3 +58,39 @@ if STATIC_UI_PREFIX and STATIC_UI_DIRECTORY:
     app.mount(STATIC_UI_PREFIX, ui_app, name="User Interfaces")
 else:
     logger.warning("No static files mount!")
+
+def join_url(root_path: str, path: str | None) -> str | None:
+    if not path:
+        return None
+
+    root_path = (root_path or "").rstrip("/")
+    path = "/" + path.strip("/")
+
+    return root_path + path
+
+@app.get("/", include_in_schema=False)
+async def root(request: Request):
+    if ROOT_REDIRECT:
+        return RedirectResponse(ROOT_REDIRECT)
+    
+    root_path = request.scope.get("root_path", "")
+    ui_url = join_url(root_path, STATIC_UI_PREFIX)
+    api_docs_url = join_url(root_path, API_UI_URL)
+
+    return HTMLResponse(f"""
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <title>Available Interfaces</title>
+      </head>
+      <body>
+        <h1>Available Interfaces</h1>
+
+        <ul>
+          {f'<li><a href="{escape(ui_url)}">User Interfaces</a></li>' if ui_url else ''}
+          {f'<li><a href="{escape(api_docs_url)}">API Documentation</a></li>' if api_docs_url else ''}
+        </ul>
+      </body>
+    </html>
+    """)

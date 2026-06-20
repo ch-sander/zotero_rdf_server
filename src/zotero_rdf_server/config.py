@@ -165,6 +165,11 @@ STATIC_UI_PREFIX = (
     or server_cfg.get("static_ui_prefix", "/ui")
     )
 
+ROOT_REDIRECT = (
+    os.getenv("ROOT_REDIRECT")
+    or server_cfg.get("root_redirect", STATIC_UI_PREFIX)
+    )
+
 API_UI_URL = (
     os.getenv("API_UI_URL")
     or server_cfg.get("api_ui_url", "/")
@@ -178,6 +183,8 @@ if FASTAPI_APP_NAME:
     FASTAPI_META['title'] = FASTAPI_APP_NAME
 
 STATIC_UI_PREFIX = f"/{STATIC_UI_PREFIX.lstrip('/').rstrip('/')}" if STATIC_UI_PREFIX else None
+
+ROOT_REDIRECT = f"/{ROOT_REDIRECT.lstrip('/').rstrip('/')}" if ROOT_REDIRECT else None
 
 INCLUDE_CLOSED_ROUTER = env_bool(
     "INCLUDE_CLOSED_ROUTER",
