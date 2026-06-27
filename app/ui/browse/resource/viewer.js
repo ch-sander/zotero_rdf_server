@@ -26,6 +26,7 @@ const HIDDEN_PROPERTIES = new Set([
   "http://www.w3.org/ns/prov#generatedAtTime",
   "http://www.zotero.org/namespaces/export#links",
   "http://www.zotero.org/namespaces/export#href",
+  "http://www.zotero.org/namespaces/export#relations",
   "http://www.zotero.org/namespaces/export#url"
 ]);
 

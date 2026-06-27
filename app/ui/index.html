@@ -17,90 +17,145 @@
         Edit, explore and search your RDF knowledge graph
       </p>
     </header>
-    <section class="grid">
-      <!-- BROWSE -->
-      <a href="browse" target="_blank" class="card">
-        <div class="card-header">/browse</div>
-        <h2>Ontology Browser</h2>
-        <p>
-          Explore ontology classes and browse their instances hierarchically.
-        </p>
-        <ul>
-          <li>OWL class hierarchy navigation</li>
-          <li>Browse instances by ontology class</li>
-          <li>Integrated RDF resource viewer</li>
-        </ul>
-        <div class="cta">Browse Ontology →</div>
-      </a>
-      <!-- QUERY -->
-      <a href="query" target="_blank" class="card">
-        <div class="card-header alt">/query</div>
-        <h2>Query Builder</h2>
-        <p>
-          Build SPARQL queries visually with a guided interface.
-        </p>
-        <ul>
-          <li>Visual graph exploration</li>
-          <li>No SPARQL knowledge required</li>
-          <li>Direct connection to triple store</li>
-        </ul>
-        <div class="cta alt">Start Query →</div>
-      </a>
+<section class="grid">
 
-      <!-- SEARCH -->
-      <a href="search" target="_blank" class="card">
-        <div class="card-header">/search</div>
-        <h2>Fulltext Search</h2>
-        <p>
-          Explore indexed data with clustering and semantic grouping.
-        </p>
-        <ul>
-          <li>Fast fulltext search</li>
-          <li>Filter through facets</li>
-          <li>Powered by OpenSearch and SearchKit</li>
-        </ul>
-        <div class="cta">Search Data →</div>
-      </a>
+  <!-- BROWSE -->
+  <div class="card">
+    <div class="card-header">/browse</div>
+    <h2>Ontology Browser</h2>
+    <p>
+      Explore relevant classes and browse their instances hierarchically.
+    </p>
+    <ul>
+      <li>OWL class hierarchy navigation</li>
+      <li>Live queries to SPARQL endpoint</li>
+      <li>Integrated RDF resource viewer</li>
+    </ul>
+    <a href="browse" target="_blank" class="cta">Browse Ontology →</a>
+    <div class="credit">
+      powered by
+      <a href="https://github.com/oxigraph/oxigraph" target="_blank" rel="noopener">Oxigraph</a>
+    </div>
+  </div>
 
-      <!-- ANALYIZE -->
-      <a href="analyze" target="_blank" class="card">
-        <div class="card-header">/analyze</div>
-        <h2>Analyze Text</h2>
-        <p>
-          Explore and analyze text as embeddings and 2D projections.
-        </p>
-        <ul>
-          <li>Fast text embeddings</li>
-          <li>Clustered and projected results</li>
-          <li>Powered by Embedding Atlas</li>
-        </ul>
-        <div class="cta">Analyze Text →</div>
-      </a>
+  <!-- QUERY -->
+  <div class="card">
+    <div class="card-header alt">/query</div>
+    <h2>Query Builder</h2>
+    <p>
+      Build SPARQL queries visually with a guided interface.
+    </p>
+    <ul>
+      <li>Visual ontology exploration</li>
+      <li>No SPARQL knowledge required</li>
+      <li>Direct connection to triple store</li>
+    </ul>
+    <a href="query" target="_blank" class="cta alt">Start Query →</a>
+    <div class="credit">
+      powered by
+      <a href="https://github.com/sparna-git/Sparnatural" target="_blank" rel="noopener">Sparnatural</a>
+    </div>
+  </div>
 
-      <!-- EDIT -->
-      <a href="edit" target="_blank" class="card">
-        <div class="card-header">/edit</div>
-        <h2>RDF Editor</h2>
-        <p>
-          Create and maintain entities and mappings using SHACL forms.
-        </p>
-        <ul>
-          <li>Structured editing with validation</li>
-          <li>Entity & mapping management</li>
-          <li>Export RDF (Turtle, JSON-LD, etc.)</li>
-        </ul>
-        <div class="cta">Open Editor →</div>
-      </a>
-    </section>
+  <!-- SEARCH -->
+  <div class="card">
+    <div class="card-header">/search</div>
+    <h2>Fulltext Search</h2>
+    <p>
+      Explore indexed data with clustering and semantic grouping.
+    </p>
+    <ul>
+      <li>Fast fulltext search</li>
+      <li>Filter through facets</li>
+      <li>Retrieve deterministic document IDs</li>
+    </ul>
+    <a href="search" target="_blank" class="cta">Search Data →</a>
+    <div class="credit">
+      powered by
+      <a href="https://github.com/opensearch-project/OpenSearch" target="_blank" rel="noopener">OpenSearch</a>
+      &
+      <a href="https://github.com/searchkit/searchkit" target="_blank" rel="noopener">SearchKit</a>
+    </div>
+  </div>
+
+  <!-- ANALYIZE -->
+  <div class="card">
+    <div class="card-header">/analyze</div>
+    <h2>Analyze Text</h2>
+    <p>
+      Explore and analyze text as embeddings and 2D projections.
+    </p>
+    <ul>
+      <li>Fast text embeddings</li>
+      <li>Clustered and projected results</li>
+      <li>Store query results</li>
+    </ul>
+    <a href="analyze" target="_blank" class="cta">Analyze Text →</a>
+    <div class="credit">
+      powered by
+      <a href="https://github.com/apple/embedding-atlas" target="_blank" rel="noopener">Embedding Atlas</a>
+      &
+      <a href="https://scipy.org/" target="_blank" rel="noopener">SciPy</a>
+    </div>
+  </div>
+
+  <!-- EDIT -->
+  <div class="card">
+    <div class="card-header">/edit</div>
+    <h2>RDF Editor</h2>
+    <p>
+      Create and maintain entities and mappings using SHACL.
+    </p>
+    <ul>
+      <li>Structured editing with validation</li>
+      <li>Entity & mapping management</li>
+      <li>Export RDF</li>
+    </ul>
+    <a href="edit" target="_blank" class="cta">Open Editor →</a>
+    <div class="credit">
+      powered by
+      <a href="https://github.com/ULB-Darmstadt/shacl-form" target="_blank" rel="noopener">SHACL-Form</a>
+    </div>
+  </div>
+
+</section>
 
     <footer class="footer">
       <div class="divider"></div>
         <p class="muted">
-        Developed by Christoph Sander, 2026
+        Developed by <a href="https://orcid.org/0000-0003-4452-0107" target="_blank">Christoph Sander</a>, 2026. See code on <a href="https://github.com/ch-sander/zotero_rdf_server" target="_blank">GitHub</a>
         </p>
     </footer>
 
   </main>
+
+  <!-- Citation -->
+
+  <div id="citation-popup" class="citation-popup">
+  <h2>Citation Required</h2>
+  <p>
+    If you use any resources, data, text, visualizations, query results,
+    or derived outputs from this workbench, you must cite the corresponding
+    source properly.
+  </p>
+  <p>    
+    Proper attribution is required for reuse, publication, redistribution,
+    or derivative work.
+  </p>
+  <button class="popup-button" onclick="closeCitationPopup()">
+    I Comply
+  </button>
+</div>
+
+<script>
+  function closeCitationPopup() {
+    document.getElementById("citation-popup").style.display = "none";
+  }
+
+  window.addEventListener("load", () => {
+    document.getElementById("citation-popup").style.display = "block";
+  });
+</script>
 
 </body>
 </html>

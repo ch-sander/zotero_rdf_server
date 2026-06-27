@@ -50,7 +50,9 @@ const FACET_BLACKLIST = new Set([
   "text",
   "source",
   "ingest_ts",
-  "meta.file"
+  "meta.file",
+  "concepts.start",
+  "concepts.end",
 ]);
 
 const FACET_PRIORITY = [
