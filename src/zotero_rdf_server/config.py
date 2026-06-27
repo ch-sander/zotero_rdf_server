@@ -242,6 +242,12 @@ API_PASSWORD = normalize(env_password) if env_password is not None else normaliz
 
 REFRESH = REFRESH_INTERVAL >= 0
 
+OS_MAX_SIZE = int(
+    os.getenv("OS_MAX_SIZE")
+    or server_cfg.get("os_max_size")
+    or 10000
+)
+
 if REFRESH_INTERVAL >= 30:
     logger.info(f"Refresh set to {REFRESH_INTERVAL} seconds")
 elif REFRESH_INTERVAL == -1:
