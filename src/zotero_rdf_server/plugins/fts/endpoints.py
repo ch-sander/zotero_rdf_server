@@ -5,15 +5,12 @@ from typing import Literal, Any, Dict, Iterator, List, Optional, Union, Tuple
 from pathlib import Path
 import json, io, html, os
 from pydantic import BaseModel, Field
-# from zotero_rdf_server.store import *
-# from zotero_rdf_server.rdf import *
-# from zotero_rdf_server.logging_config import logger, LogLevel
-# from zotero_rdf_server.config import *
-# from zotero_rdf_server.models import ZoteroLibrary
-# from zotero_rdf_server.utils import *
-
 from .helpers import plugin_logger, safe_doc_id
 logger=plugin_logger()
+
+from zotero_rdf_server.config import OS_MAX_SIZE as MAX_SIZE
+
+# MAX_SIZE = 2000000
 
 router = APIRouter()
 open_router = APIRouter()
@@ -325,7 +322,7 @@ def ingest_route(
                 status_code=400,
                 detail="worker_id must be < total_workers",
             )
-    
+
     try:
         from zotero_rdf_server.config import EXPORT_DIRECTORY
         export_dir = Path(EXPORT_DIRECTORY) / "fts"
@@ -351,7 +348,7 @@ def ingest_route(
                 logger.info(f"Saved query to {filename}")
         except Exception as e:
             logger.exception(f"Failed to save query")
-    
+
     def _query_bindings(
         sparql_query: str,
         *,
@@ -381,7 +378,7 @@ def ingest_route(
                     client.addDefaultGraph(graph)
 
             return client.query().convert()
-        
+
         if default_graphs:
             from pyoxigraph import NamedNode
             default_graphs = [
@@ -393,7 +390,7 @@ def ingest_route(
             use_default_graph_as_union=use_default_graph_as_union,
             default_graph=default_graphs,
         )
-    
+
     if input is None:
         try:
             from zotero_rdf_server.utils import load_text_like, is_url
@@ -419,7 +416,7 @@ def ingest_route(
                 logger.warning("Reading from main store")
 
         except Exception as e:
-            logger.error(f"Reading from main store failed: {e}")                        
+            logger.error(f"Reading from main store failed: {e}")
             raise HTTPException(
                 status_code=400,
                 detail="Reading from store failed",
@@ -438,11 +435,11 @@ def ingest_route(
             # from zotero_rdf_server.config import ZOTERO_LIBRARIES_CONFIGS
             selected_ids = set(pipeline_ids or [])
             for lib_cfg in zcfg.ZOTERO_LIBRARIES_CONFIGS:
-                lib = ZoteroLibrary(lib_cfg)            
+                lib = ZoteroLibrary(lib_cfg)
                 if not graph or graph == lib.base_url:
                     logger.info(f"starting FTS pipeline for {lib.base_url}...")
-                    
-                    cfg = lib.plugin.get("fts") or []
+
+                    cfg = lib.plugin.get("fts") or [] # TODO load_dict_like
                     cfg = [cfg] if isinstance(cfg,dict) else cfg
                     if len(cfg)>1:
                         logger.warning(f"Running {len(cfg)} FTS configuration for library {lib.base_url}")
@@ -453,10 +450,10 @@ def ingest_route(
                         pipe_id = ncfg.get("id")
 
                         logger.info(f"PID {os.getpid()} running pipeline {pipe_id}")
-                        
+
                         if not pipe_id:
                             logger.warning(f"\n\n{n}/{len(cfg)}: Pipeline {name} has no id\n\n")
-                            
+
                         if selected_ids:
                             if pipe_id not in selected_ids:
                                 logger.info(
@@ -469,7 +466,7 @@ def ingest_route(
                                     f"\n\n{n}/{len(cfg)}: Skipping deactivated pipeline {name} [{pipe_id}]\n\n"
                                 )
                                 continue
-                        
+
                         logger.info(f"\n\n{n}/{len(cfg)}: Deploying pipeline {name}\n\n")
 
                         os_cfg = open_search_kwargs if open_search_kwargs is not None else (ncfg.get("open-search") or {})
@@ -481,14 +478,14 @@ def ingest_route(
                             targets_set.append(targets_x)
 
                         ingest_x = ingest if ingest is not None else ncfg.get("ingest", True)
-                        
+
 
                         if not targets_x and ingest_x==True:
                             raise HTTPException(
                                 status_code=400,
                                 detail=f"Missing target indices/index in library {lib.library_id}, {ingest_x}",
                             )
-                        
+
                         config_path_x = config_path or os_cfg.get("config_path")
                         delete_x = delete_index if delete_index is not None else os_cfg.get("delete_index", False)
                         query_x = query or ncfg.get("query")
@@ -499,19 +496,19 @@ def ingest_route(
                                 status_code=400,
                                 detail="With no input, you must provide 'query' parameter",
                             )
-                        
+
                         from_source_x = from_source if from_source is not None else ncfg.get("from_source", True)
-                        
+
                         framework_x = framework  if framework is not None else ncfg.get("framework", "kraken")
                         vector_x = vector_kwargs if vector_kwargs is not None else ncfg.get("vector")
 
-                        llm_x = llm_kwargs if llm_kwargs is not None else ncfg.get("llm_kwargs")                    
+                        llm_x = llm_kwargs if llm_kwargs is not None else ncfg.get("llm_kwargs")
                         reverse_x = reverse if reverse is not None else ncfg.get("reverse_results", False)
 
                         iter_pages_kwargs = source_kwargs if source_kwargs is not None else dict(pipeline_cfg.get("source_kwargs") or {})
                         page_to_text_kwargs = framework_kwargs if framework_kwargs is not None else dict(pipeline_cfg.get("framework_kwargs") or {})
                         text_image_file_kwargs = file_kwargs if file_kwargs is not None else dict(pipeline_cfg.get("file_kwargs") or {})
-                        
+
                         items = []
 
                         try:
@@ -523,7 +520,7 @@ def ingest_route(
                                 store=store,
                                 endpoint_url=sparql_endpoint_x,
                                 use_default_graph_as_union=False,
-                                default_graphs=[lib.base_url, lib.knowledge_base_graph],                                
+                                default_graphs=[lib.base_url, lib.knowledge_base_graph],
                             )
                             items, var_names = convert_bindings(
                                 bindings,
@@ -535,8 +532,8 @@ def ingest_route(
                                 items = get_worker_slice(items=items,worker_id=worker_id,total_workers=total_workers)
                                 logger.info(f"Got {len(items)} after SLICE!")
 
-                            logger.info(f"SPARQL returned columns: {var_names}")              
-                            logger.info(f"{len(items)} results (store LEN: {len(store)})")  
+                            logger.info(f"SPARQL returned columns: {var_names}")
+                            logger.info(f"{len(items)} results (store LEN: {len(store)})")
 
                             # Save as CSV
                             save_query_to_file(items=items,var_names=var_names)
@@ -547,7 +544,7 @@ def ingest_route(
                         pipeline_meta:dict = {'name_pipeline': name, 'id_pipeline': pipe_id, 'i_worker': worker_id, 'len_worker': total_workers, 'reverse': reverse_x}
                         iter_pages_kwargs['reverse'] = reverse_x
                         run_ids.extend(ingest_pipeline(items=items,
-                                                targets=targets_x, 
+                                                targets=targets_x,
                                                 from_source=from_source_x,
                                                 framework=framework_x,
                                                 vector_kwargs=vector_x,
@@ -558,7 +555,7 @@ def ingest_route(
                                                 page_to_text_kwargs=page_to_text_kwargs, text_image_file_kwargs=text_image_file_kwargs,
                                                 config_path=config_path_x,
                                                 pipeline_meta=pipeline_meta))
-                    
+
                 elif graph and graph != lib.base_url:
                     logger.debug(f"{lib.base_url} skipped")
                 else:
@@ -580,7 +577,7 @@ def ingest_route(
                 )
             logger.info("Starting FTS pipeline for entire store with query...")
             try:
-                
+
                 sparql_query=load_text_like(query,label="Ingest Pipeline SPARQL Query")
                 logger.debug(f"{sparql_query}")
                 # bindings = store.query(sparql_query, use_default_graph_as_union=True)
@@ -590,7 +587,7 @@ def ingest_route(
                     store=store,
                     endpoint_url=sparql_endpoint,
                     use_default_graph_as_union=True,
-                    default_graphs=None,                                
+                    default_graphs=None,
                 )
                 items, var_names = convert_bindings(
                     bindings,
@@ -613,13 +610,13 @@ def ingest_route(
                 gc.collect()
             except:
                 logger.warning("Store not found, maybe check!")
-                
+
             from_source = True if from_source is True else False
 
             source_kwargs['reverse'] = reverse
 
             run_ids.extend(ingest_pipeline(items=items,
-                                            targets=targets, 
+                                            targets=targets,
                                             from_source=from_source,
                                             framework=framework,
                                             vector_kwargs=vector_kwargs,
@@ -648,7 +645,7 @@ def ingest_route(
         if isinstance(input, str):
             from zotero_rdf_server.utils import load_dict_like
             input = load_dict_like(input,label="Ingest Pipeline Input") # (CSV should work)!
-        
+
         if (
             isinstance(input, dict)
             and "head" in input
@@ -663,12 +660,12 @@ def ingest_route(
             items, var_names = convert_bindings(input, reverse=reverse)
         else:
             raise HTTPException(status_code=400, detail="Body (can be read from file path) must be a SPARQL-JSON object, a list of JSON objects, a CSV, or null (then provide a query)")
-        
+
         from_source = True if from_source is True else False
         save_query_to_file(items=items,var_names=var_names, json_mode=False)
 
         run_ids.extend(ingest_pipeline( items=items,
-                                        targets=targets, 
+                                        targets=targets,
                                         from_source=from_source,
                                         framework=framework,
                                         vector_kwargs=vector_kwargs,
@@ -679,14 +676,14 @@ def ingest_route(
                                         page_to_text_kwargs=framework_kwargs,
                                         text_image_file_kwargs=file_kwargs,
                                         config_path=config_path))
-    
+
     result = {
         "status": "ok",
         "run_ids": run_ids[:2],
         "targets": list(targets),
         "runs": len(run_ids),
         "pipeline_ids": list(pipeline_ids),
-    }    
+    }
     try:
         _runs_filename = _default_filename("runs_result", "json")
         with open(export_dir / _runs_filename, "w", encoding="utf-8") as f:
@@ -710,8 +707,6 @@ def ingest_opensearch(req: OpenSearchDocRequest = Body(...)):
         doc=req.doc,
     )
     return run #{"status": "ok", "run_id": run_id}
-
-MAX_SIZE = 2000000
 
 class OutputHeader(BaseModel):
     header_json: Optional[Dict[str, Any]] = None
@@ -829,7 +824,7 @@ def format_search_response(
         render_html_table,
         normalize_output_column,
     )
-    
+
     if not output_format == "json":
         normalized = normalize_hits(
             resp,
@@ -842,7 +837,7 @@ def format_search_response(
             truncate_field=truncate_field,
         )
 
-        
+
 
         rows = normalized.get("hits", [])
         aggs = normalized.get("aggregations") if include_aggs else None
@@ -875,10 +870,10 @@ def format_search_response(
         # )
 
         cols = combined_cols # [c for c in combined_cols if c in {k for r in rows for k in r.keys()}]
-    
+
 
     if output_format in ("md", "markdown", "html"):
-        cols = [c for c in cols if c != "highlight"] 
+        cols = [c for c in cols if c != "highlight"]
 
     if output_format == "json":
         hits = resp.get("hits", {}).get("hits", [])
@@ -911,7 +906,7 @@ def format_search_response(
                 )
             },
         )
-    
+
     if output_format == "csv-analysis":
         from .search import collect_columns, add_analysis_columns
         normalized = normalize_hits(
@@ -938,7 +933,7 @@ def format_search_response(
             },
         )
     if output_format in {"json-analysis", "atlas"}:
-        from .search import add_analysis_columns     
+        from .search import add_analysis_columns
 
         normalized = normalize_hits(
             resp,
@@ -1018,7 +1013,7 @@ def format_search_response(
         )
 
         if output_format == "atlas":
-            try:                
+            try:
                 from .viewer import export_atlas_folder, ATLAS_URL
                 safe_atlas_url = f"{root_path}/{ATLAS_URL.lstrip('/')}" if root_path and ATLAS_URL else ATLAS_URL
                 _input = list(cleaned_rows)
@@ -1040,7 +1035,7 @@ def format_search_response(
                 )
             },
         )
-    
+
     if output_format in ("md", "markdown"):
         header = render_markdown_query_header(context_query) if include_context else ""
 
@@ -1059,7 +1054,7 @@ def format_search_response(
         if aggs is not None:
             buckets = extract_buckets(aggs)
             header += "## Aggregations\n\n"
-            header += render_markdown_table(buckets)        
+            header += render_markdown_table(buckets)
 
 
         if include_context and api_call and include_context:
@@ -1422,7 +1417,7 @@ def get_ingest_ts_range_filter(
     ingest_from: Annotated[
         Optional[datetime],
         Query(description=(
-                "Lower bound for ingest_ts (inclusive), ISO-8601. "                
+                "Lower bound for ingest_ts (inclusive), ISO-8601. "
             )),
     ] = None,
     ingest_to: Annotated[
@@ -1435,7 +1430,7 @@ def get_ingest_ts_range_filter(
         ingest_from=ingest_from,
         ingest_to=ingest_to,
     )
-    
+
 
 # NLP
 from .analysis.models import ResultAnalysisParams, get_result_analysis_params
@@ -1561,7 +1556,7 @@ def search_terms(
 ):
     from .search import parse_csv, build_terms_should_queries, os_search, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter, TermQueryConfig
 
-    api_call = str(request.url) 
+    api_call = str(request.url)
     # --- Build query ---------------------------------------------------------
     terms=[]
     match_all = q == "*" or q == ""
@@ -1593,7 +1588,7 @@ def search_terms(
 
         if not (exact or truncated or fuzzy):
             raise HTTPException(status_code=400, detail="Enable at least one mode: exact/truncated/fuzzy.")
-        
+
         should = build_terms_should_queries(
             terms=terms,
             config=TermQueryConfig(
@@ -1608,7 +1603,7 @@ def search_terms(
         )
 
         body = {"query": {"bool": {"should": should, "minimum_should_match": 1}}}
-    
+
     apply_ingest_ts_range_filter(body,ingest_ts)
     apply_keyword_filter(body, filters)
     apply_paging(body, size=size, offset=offset)
@@ -1682,11 +1677,11 @@ def search_terms(
     if analysis.perform_analysis:
         # if source_cols and field and field not in source_cols:
         #     source_cols.append(field)
-        if analysis.analysis_mode == "both" or analysis.analysis_mode == "hits_documents": 
+        if analysis.analysis_mode == "both" or analysis.analysis_mode == "hits_documents":
             if "analysis_local_key_terms" not in render_cols:
                 render_cols.append("analysis_local_key_terms")
 
-        if analysis.analysis_mode == "both" or analysis.analysis_mode == "index_documents": 
+        if analysis.analysis_mode == "both" or analysis.analysis_mode == "index_documents":
             if "analysis_global_key_terms" not in render_cols:
                 render_cols.append("analysis_global_key_terms")
 
@@ -1709,8 +1704,8 @@ def search_terms(
             logger.info("Got all scroll hits!")
         else:
             resp = os_search(index=index, body=body, columns=source_columns)
-        
-        
+
+
         hits = resp.get("hits", {}).get("hits", [])
 
         add_viewer_url(hits,request=None)
@@ -1736,7 +1731,7 @@ def search_terms(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
-    
+
     meta = make_header(out_header)
 
     return format_search_response(
@@ -1787,13 +1782,13 @@ def search_proximity(
     size: int = Query(10, ge=1, le=1000),
     filters: KeywordFilter = Depends(keyword_filter_params),
     ingest_ts: IngestTsRangeFilter = Depends(get_ingest_ts_range_filter),
-    format: OutputFormat = Depends(resolve_format), 
+    format: OutputFormat = Depends(resolve_format),
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     out_header: OutputHeader = Depends(output_header_params),
     context: bool = Query(False, description="Include context"),
 ):
     from .search import parse_csv, build_proximity_intervals_query, os_search, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter
-    api_call = str(request.url) 
+    api_call = str(request.url)
     try:
         list_a = parse_csv(a)
         list_b = parse_csv(b)
@@ -1822,7 +1817,7 @@ def search_proximity(
         resp = os_search(index=index, body=body, columns=columns)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
-    
+
     meta = make_header(out_header)
 
     return format_search_response(
@@ -1855,21 +1850,21 @@ def knn_by_id(
     exclude_self: bool = Query(True),
     filters: KeywordFilter = Depends(keyword_filter_params),
     ingest_ts: IngestTsRangeFilter = Depends(get_ingest_ts_range_filter),
-    format: OutputFormat = Depends(resolve_format),   
+    format: OutputFormat = Depends(resolve_format),
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     out_header: OutputHeader = Depends(output_header_params),
     context: bool = Query(True, description="Include query context in the response."),
 ):
     from .search import get_doc_vector, os_search, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter
-    api_call = str(request.url) 
+    api_call = str(request.url)
     try:
         query_vec = get_doc_vector(index=index, os_id=os_id, vector_field=vector_field)
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"Could not fetch vector for doc {os_id}: {e}")
-    
+
     if not query_vec:
         raise HTTPException(404, detail="Reference doc has no vector")
-    
+
     knn_inner = {"vector": query_vec, "k": k}
     if ef_search is not None:
         knn_inner["method_parameters"] = {"ef_search": ef_search}
@@ -1894,7 +1889,7 @@ def knn_by_id(
         resp = os_search(index=index, body=body, columns=columns)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
-    
+
     meta = make_header(out_header)
 
     return format_search_response(
@@ -1929,18 +1924,18 @@ def mlt_by_id(
     exclude_self: bool = Query(True),
     filters: KeywordFilter = Depends(keyword_filter_params),
     ingest_ts: IngestTsRangeFilter = Depends(get_ingest_ts_range_filter),
-    format: OutputFormat = Depends(resolve_format),   
+    format: OutputFormat = Depends(resolve_format),
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     out_header: OutputHeader = Depends(output_header_params),
     context: bool = Query(True, description="Include query context in the response."),
-    
+
 ):
     from .search import os_search, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter
-    api_call = str(request.url) 
+    api_call = str(request.url)
     field_list = [f.strip() for f in fields.split(",") if f.strip()]
     if not field_list:
         raise HTTPException(status_code=400, detail="No fields provided.")
-    if not index: 
+    if not index:
         from .search import DEFAULT_ALIAS
         mlt_index = DEFAULT_ALIAS
     else:
@@ -1969,7 +1964,7 @@ def mlt_by_id(
         resp = os_search(index=index, body=body, columns=columns)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
-    
+
     meta = make_header(out_header)
 
     return format_search_response(
@@ -2168,7 +2163,7 @@ def build_view_response(
 
     root_path = request.scope.get("root_path", "")
 
-    
+
 
     if not raw_os_doc_id:
         view_root_url = url_for_path("view-root")
@@ -2210,7 +2205,7 @@ def build_view_response(
     from urllib.parse import quote
 
     if img_path.exists():
-        from .viewer import image_root       
+        from .viewer import image_root
 
         image_rel_path = quote(f"{doc_key}/{page}.{IMAGE_EXT}", safe="/")
         image_url = request.app.url_path_for("image-files", path=f"/{image_rel_path}")
@@ -2227,7 +2222,25 @@ def build_view_response(
             logger.warning(f"Could not read text file {txt_path}: {exc}")
             text = "[error reading text]"
     else:
-        text = "[no text on this page]"
+        text = None
+
+    if not text:
+        try:
+            from .db import get_os_client
+            from .search import DEFAULT_ALIAS
+
+            client = get_os_client()
+
+            result = client.get(
+                index=DEFAULT_ALIAS,
+                id=raw_os_doc_id,
+            )
+
+            text = result["_source"].get("text", "[no text in index]")
+
+        except Exception as exc:
+            logger.warning(f"Could not load text from OpenSearch for {raw_os_doc_id}: {exc}")
+            text = "[no text on this page]"
 
     prev_page = None
     next_page = None
@@ -2239,7 +2252,7 @@ def build_view_response(
             next_page = pages[idx + 1]
 
     view_url = url_for_path("view", os_doc_id=f"{doc_id_only}:{page}")
-    edit_url = url_for_path("edit-view", os_doc_id=f"{doc_id_only}:{page}")  
+    edit_url = url_for_path("edit-view", os_doc_id=f"{doc_id_only}:{page}")
     save_url = url_for_path("save-view", os_doc_id=f"{doc_id_only}:{page}")
     ocr_url = url_for_path("ocr-view", os_doc_id=f"{doc_id_only}:{page}")
     view_base_url = url_for_path("view", os_doc_id="__ID__").removesuffix("/__ID__")
@@ -2264,95 +2277,6 @@ def build_view_response(
         root_path=root_path,
     )
     return HTMLResponse(html)
-
-# def build_view_response_legacy(
-#     request: Request,
-#     original_os_doc_id: str | None,
-#     editable: bool = False
-# ) -> HTMLResponse:
-#     from .viewer import (
-#         render_page,
-#         split_doc_id,
-#         image_file,
-#         text_file,
-#         list_pages,
-#         discover_doc_url,
-#         IMAGE_EXT,
-#         VIEW_URLS,
-#     )
-
-#     raw_os_doc_id = (original_os_doc_id or "").strip()
-
-#     if not raw_os_doc_id:
-#         html = render_page(
-#             os_doc_id="",
-#             page="",
-#             pages=[],
-#             image_url=None,
-#             text="[no text selected]",
-#             prev_page=None,
-#             next_page=None,
-#             discover_url=None,
-#             editable=editable,
-#             save_url=None,
-#             page_url_base=VIEW_URLS['view'],
-#             edit_url=None,
-#             ocr_url=None,
-#             current_framework="kraken",
-#             root_path=request.scope.get("root_path", "")
-#         )
-#         return HTMLResponse(html)
-
-#     doc_key, page = split_doc_id(raw_os_doc_id)
-#     doc_id_only = raw_os_doc_id.rsplit(":", 1)[0]
-
-#     img_path = image_file(doc_key, page)
-#     txt_path = text_file(doc_key, page)
-#     pages = list_pages(doc_key)
-
-#     if not pages and not img_path.exists() and not txt_path.exists():
-#         raise HTTPException(status_code=404, detail="Document not found")
-
-#     image_url = None
-#     if img_path.exists():
-#         image_url = f"/image-files/{doc_key}/{page}.{IMAGE_EXT}"
-
-#     if txt_path.exists():
-#         try:
-#             text = txt_path.read_text(encoding="utf-8", errors="replace")
-#         except Exception as exc:
-#             logger.warning(f"Could not read text file {txt_path}: {exc}")
-#             text = "[error reading text]"
-#     else:
-#         text = "[no text on this page]"
-
-#     prev_page = None
-#     next_page = None
-#     if page in pages:
-#         idx = pages.index(page)
-#         if idx > 0:
-#             prev_page = pages[idx - 1]
-#         if idx < len(pages) - 1:
-#             next_page = pages[idx + 1]
-
-#     html = render_page(
-#         os_doc_id=doc_id_only,
-#         page=page,
-#         pages=pages,
-#         image_url=image_url,
-#         text=text,
-#         prev_page=prev_page,
-#         next_page=next_page,
-#         discover_url=discover_doc_url(raw_os_doc_id),
-#         editable=editable,
-#         save_url=f"{VIEW_URLS['save-view']}/{doc_id_only}:{page}" if editable else None,
-#         page_url_base=f"{VIEW_URLS['view']}",
-#         edit_url=f"{VIEW_URLS['view']}/edit-view/{doc_id_only}:{page}" if not editable else None,
-#         ocr_url=f"{VIEW_URLS['ocr-view']}/{doc_id_only}:{page}",
-#         current_framework="kraken",
-#         root_path=request.scope.get("root_path", "")
-#     )
-#     return HTMLResponse(html)
 
 @open_router.get(
     "/ocr-view/{os_doc_id:path}",
@@ -2411,17 +2335,17 @@ def rerun_ocr(
             source=str(img_path),
             total=1,
         )
-    
+
     original_os_doc_id = (os_doc_id or "").strip()
     doc_key, page = split_doc_id(original_os_doc_id)
 
     try:
         page_item = build_local_page_item(
-            doc_key, page, 
+            doc_key, page,
             # crop_box = (0.0, 0.0, 0.0, 0.13),
             # blur_radius=1
             )
-    
+
         logger.info(f"Built image from {doc_key}, {page}")
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Page image not found")
@@ -2459,7 +2383,7 @@ async def ollama_proxy(
     try:
         llm_kwargs = dict(llm_kwargs or {})
         llm_kwargs["config_path"] = llm_kwargs.get("config_path", resolve_config_path())
-        logger.info("Receiving llm response...")        
+        logger.info("Receiving llm response...")
         raw = llm(user_input=user_input, llm_kwargs=llm_kwargs)
 
         # --- JSON Parsing ---
@@ -2486,22 +2410,18 @@ async def ollama_proxy(
 
 @open_router.get("/search-proxy/{index}/_mapping", tags=["Proxy"])
 async def get_mapping(index: str):
-    from .db import make_client, get_os_config
-    from .helpers import resolve_config_path
-    cfg_path = resolve_config_path()
-    oscfg = get_os_config(cfg_path)
-    client = make_client(oscfg)
-
-    return client.indices.get_mapping(index=index)
-
-@open_router.post("/search-proxy/_msearch", tags=["Proxy"])
-async def msearch(request: Request):
-    body = await request.body()
     from .db import make_client, get_os_config, get_os_client
     # from .helpers import resolve_config_path
     # cfg_path = resolve_config_path()
     # oscfg = get_os_config(cfg_path)
     # client = make_client(oscfg)
+    client = get_os_client()
+    return client.indices.get_mapping(index=index)
+
+@open_router.post("/search-proxy/_msearch", tags=["Proxy"])
+async def msearch(request: Request):
+    body = await request.body()
+    from .db import get_os_client
     client = get_os_client()
     resp = client.transport.perform_request(
         method="POST",
