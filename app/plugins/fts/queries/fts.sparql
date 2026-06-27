@@ -13,9 +13,9 @@ SELECT ?file
        (SAMPLE(?library) AS ?library)
        (SAMPLE(?library_label) AS ?library_label)
        (GROUP_CONCAT(DISTINCT ?text_1724_13; SEPARATOR = "; ") AS ?parent_tags)
-       (SAMPLE(CONCAT(STR(?library_label), ":", STR(?_id))) AS ?_id) # _id variable is required
+       (GROUP_CONCAT(DISTINCT ?collection_label; SEPARATOR = "; ") AS ?collection_labels)
+       (SAMPLE(CONCAT(STR(?library_id), ":", STR(?_id))) AS ?_id) # _id variable is required
        (SAMPLE(?parent_key) AS ?parent_key)
-       #(SAMPLE(?content) AS ?content)
        (SAMPLE(?file_label) AS ?file_label)
        (SAMPLE(?link_type) AS ?link_type)
 WHERE {
@@ -24,33 +24,34 @@ WHERE {
         zot:linkMode ?link_type;
         rdfs:label ?file_label;
         zot:parentItem ?parent.
-
   VALUES ?link_type { "linked_url" "imported_url" }. # filter on attachment types
-      
-  OPTIONAL { ?parent rdfs:label ?parent_label }
-  OPTIONAL { ?parent zot:date ?date }
-  OPTIONAL { ?parent zot:title ?parent_title }
-  OPTIONAL { ?parent zot:key ?parent_key }
-
+  OPTIONAL { ?parent rdfs:label ?parent_label . }
+  OPTIONAL { ?parent zot:date ?date . }
+  OPTIONAL { ?parent zot:title ?parent_title . }
+  OPTIONAL { ?parent zot:key ?parent_key . }
+  OPTIONAL { ?parent zot:collections/zot:name ?collection_label . }
   OPTIONAL {
     ?parent (zot:creators/zot:hasCreator) ?person_1742_8 .
     ?person_1742_8 a zot:actor ;
                   rdfs:label ?text_1724_9 .
   }
-
-  OPTIONAL {  ?file zot:url ?url;
-                    zot:inLibrary ?library.}
-    
-  OPTIONAL {  ?library rdf:type zot:library;
-                      zot:id ?library_label.}
-
-
-
+  OPTIONAL {
+    ?file zot:url ?url ;
+          zot:inLibrary ?library .
+  }
+  OPTIONAL {
+    ?library rdf:type zot:library ;
+            rdfs:label ?library_label ;
+            zot:id ?library_id .
+  }
   OPTIONAL {
     ?parent zot:tags ?tag_1502_13.
     ?tag_1502_13 rdf:type zot:tag;
                  zot:tag ?text_1724_13.
   }
+
+# More here
+
 }
 GROUP BY ?file
 ORDER BY ?_input
