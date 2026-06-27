@@ -141,7 +141,7 @@ def ingest_pipeline(
                 pipeline_meta['label_items'] = label
                 # logger.info(f"\n\n[{i}/{total}] Loading {obj.get('_id')}\n{label}\n\n")
                 logger.info(
-                    f"{pipeline_log_prefix(pipeline_meta)}\n"
+                    f"\n\n{pipeline_log_prefix(pipeline_meta)}\n\n"
                     f"{obj.get('_id')} {label}\n\n"
                 )
                 if not input_:
@@ -245,7 +245,7 @@ def ingest_pipeline(
             pipeline_meta['label_items'] = label
             # logger.info(f"\n\n[{i}/{total}] Loading {obj.get('_id')}\n{label}\n\n")  
             logger.info(
-                f"{pipeline_log_prefix(pipeline_meta)}\n"
+                f"\n\n{pipeline_log_prefix(pipeline_meta)}\n"
                 f"{obj.get('_id')} {label}\n\n"
             ) 
             logger.debug(f"Ingest Pipeline index_stream from source: {from_source}")
