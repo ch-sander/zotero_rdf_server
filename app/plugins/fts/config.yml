@@ -582,16 +582,21 @@ open-search:
             ignore_missing: true
 
         - split:
+            field: "meta.collection_labels"
+            separator: "\\s*;\\s*"
+            ignore_missing: true
+
+        - split:
             field: "meta.parent_creators"
             separator: "\\s*;\\s*"
             ignore_missing: true
 
         # remove leading '*' from each tag value (works on arrays too)
-        - gsub:
-            field: "meta.parent_tags"
-            pattern: "^\\*"
-            replacement: ""
-            ignore_missing: true
+        # - gsub:
+        #     field: "meta.parent_tags"
+        #     pattern: "^\\*"
+        #     replacement: ""
+        #     ignore_missing: true
 
         # trim whitespace on each element (optional but nice)
         - trim:
@@ -622,14 +627,6 @@ open-search:
         aliases:
           scigma-complete:
             is_write_index: false
-            # filter:
-            #   bool:
-            #     must:
-            #       - term:
-            #           meta.parent_tags: "*public"
-            #     must_not:
-            #       - term:
-            #           meta.parent_tags: "*deprecated"
 
     scigma_template_public_v1:
       index_patterns: ["scigma-main-corpus"]
@@ -650,8 +647,15 @@ open-search:
             filter:
               bool:
                 must:
-                  - term:
-                      meta.tags: "public"
+                  - bool:
+                      should:
+                        - term:
+                            meta.parent_tags: "*ingested"
+                        - term:
+                            meta.tags: "*ingested"
+                        - term:
+                            meta.collection_labels: "ingested"
+                      minimum_should_match: 1
                 must_not:
                   - term:
                       meta.parent_tags: "*deprecated"
