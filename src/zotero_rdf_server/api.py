@@ -194,33 +194,63 @@ async def export_graph_file(
         "path": path,
     }
 
-@router.get("/backup", summary="Create backup", description=f"Creates a complete backup of the store to {BACKUP_DIRECTORY}", tags=["Data"])
-async def backup_store():
-    # from .global_store import store
+@router.get(
+    "/backup",
+    summary="Create backup",
+    description=f"Creates a complete backup of the store to {BACKUP_DIRECTORY}",
+    tags=["Data"],
+)
+async def backup_store(
+    timestamp: bool = Query(
+        default=False,
+        description="Add timestamp to backup directory name",
+    )
+):
     store = global_store.get_store()
     backup_root = Path(BACKUP_DIRECTORY).resolve()
-    backup_path = backup_root / "Store"
+
+    backup_name = (
+        f"Store_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        if timestamp
+        else "Store"
+    )
+    backup_path = backup_root / backup_name
+
     log_file = backup_root / "backup.log"
 
     try:
         store_path = Path(STORE_DIRECTORY).resolve()
     except AttributeError:
-        return {"error": "The current store was not found in {STORE_DIRECTORY} (maybe in-memory DB?)"}
+        return {"error": f"The current store was not found in {STORE_DIRECTORY} (maybe in-memory DB?)"}
 
     if backup_path == store_path or backup_path in store_path.parents:
         raise RuntimeError("Cannot backup into the current store's own directory")
 
     if backup_path.exists():
         shutil.rmtree(backup_path, ignore_errors=True)
-        log_file.write_text(f"[{datetime.now().isoformat()}] Deleted old Store backup\n", encoding="utf-8")
+        log_file.write_text(
+            f"[{datetime.now().isoformat()}] Deleted old Store backup\n",
+            encoding="utf-8",
+        )
 
     store.backup(str(backup_path))
+
     backup_store = Store(str(backup_path))
     graphs = [str(g) for g in backup_store.named_graphs()]
-    with log_file.open("a", encoding="utf-8") as f:
-        f.write(f"[{datetime.now().isoformat()}] Created new backup in {backup_path}\n")
 
-    return {"status": "success", "backup store":{"path": backup_path,"named_graphs":graphs, "len":len(store)}}
+    with log_file.open("a", encoding="utf-8") as f:
+        f.write(
+            f"[{datetime.now().isoformat()}] Created new backup in {backup_path}\n"
+        )
+
+    return {
+        "status": "success",
+        "backup store": {
+            "path": backup_path,
+            "named_graphs": graphs,
+            "len": len(backup_store),
+        },
+    }
 
 @router.get("/reload", summary="Reload app", description="Will trigger a reload, even if not set in config.", tags=["Data"])
 async def reload(
