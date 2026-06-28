@@ -268,7 +268,7 @@ def refresh_store(force_reload:bool = False, remove_store:bool=True):
                                 
                                 try:
                                     from .plugins.parser.parse_note import parse_all_notes
-                                    parse_all_notes(lib, store, delete=True)
+                                    parse_all_notes(lib, store, delete=False) # no deleting for multiple libraries using the same graph
                                 except ImportError:
                                     logger.exception("parse_all_notes import failed!")                                
 
