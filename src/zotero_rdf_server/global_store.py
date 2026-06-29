@@ -96,32 +96,6 @@ def initialize_store(force: bool = False):
 
     return store
 
-def initialize_store_deprecated():
-    global store
-
-    with _store_lock:
-        close_store()
-
-        if STORE_MODE == "directory_ro":
-            store = Store.read_only(path=str(STORE_DIRECTORY))
-            logger.warning(f"Store re-opened read-only. {len(store)} triples.")
-
-        elif STORE_MODE == "memory":
-            store = Store()
-            logger.warning(f"Store re-opened in memory. {len(store)} triples.")
-
-        elif STORE_MODE == "directory_rw":
-            try:
-                STORE_DIRECTORY.mkdir(parents=True, exist_ok=True)
-                store = Store(path=str(STORE_DIRECTORY))
-                logger.warning(f"Store re-opened read-write. {len(store)} triples.")
-            except Exception as e:
-                logger.exception(f"Failed to load store: {e}")
-                raise
-
-        else:
-            raise ValueError(f"Invalid store_mode: {STORE_MODE}")
-
 def clear_directory(directory_path):
     directory = safe_path(directory_path)
     if directory.exists():
