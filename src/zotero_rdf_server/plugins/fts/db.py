@@ -76,6 +76,14 @@ def ensure_index_template(client: OpenSearch, *, name: str, body: dict) -> None:
             body=body,
         )
 
+def ensure_aliases(client: OpenSearch, *, aliases_cfg: dict) -> None:
+    actions = []
+
+    for _, alias_def in aliases_cfg.items():
+        actions.extend(alias_def.get("actions", []))
+
+    if actions:
+        client.indices.update_aliases(body={"actions": actions})
 
 def ensure_index_from_schema(client: OpenSearch, *, index: str, index_def: dict) -> None:
     """
@@ -120,7 +128,8 @@ def provision_from_cfg(client: OpenSearch, cfg: dict) -> None:
     ingest_pipelines: dict = cfg.get("ingest_pipelines", {}) or {}
     index_templates: dict = cfg.get("index_templates", {}) or {}
     indices: dict = cfg.get("indices", {}) or {}
-
+    aliases: dict = cfg.get("aliases", {}) or {}
+    
     plan = cfg.get("plan")
 
     def put_component_templates(names: Iterable[str]) -> None:
@@ -166,6 +175,12 @@ def provision_from_cfg(client: OpenSearch, cfg: dict) -> None:
                     logger.debug("CREATE index %s", name)
                     ensure_index_from_schema(client, index=name, index_def=indices[name])
                     logger.debug("DONE index %s", name)
+
+            elif "put_aliases" in step:
+                logger.debug("PUT aliases")
+                ensure_aliases(client, aliases_cfg=aliases)
+                logger.debug("DONE aliases")
+
         return
 
     # Fallback: best-effort default order (safe for most cases)
@@ -177,7 +192,8 @@ def provision_from_cfg(client: OpenSearch, cfg: dict) -> None:
         put_index_templates(index_templates.keys())
     if indices:
         create_indices(indices.keys())
-
+    if aliases:
+        ensure_aliases(client, aliases_cfg=aliases)
 
 def apply_ingest_tuning(client: OpenSearch, *, index: str, refresh_interval: str, replicas: int) -> None:
     client.indices.put_settings(

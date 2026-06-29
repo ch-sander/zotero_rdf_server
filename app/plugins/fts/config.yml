@@ -271,7 +271,7 @@ kraken:
     segmentation: "BLLA"   # "BLLA" or name from models (e.g., "MySegModel")
 
   default_models:
-    print: "LatinIncunabulaEarlyPrints" # "CATMuS-Print-Large"
+    print: "CATMuS-Print-Large" # "LatinIncunabulaEarlyPrints" # "CATMuS-Print-Large"
     handwriting: "McCATMuS"
     medieval: "CATMuS-Medieval"
 
@@ -624,9 +624,11 @@ open-search:
             number_of_shards: 1
             number_of_replicas: 1
             default_pipeline: "ocr_meta_pipeline_v1"
-        aliases:
-          scigma-complete:
-            is_write_index: false
+        # aliases:
+        #   scigma-all:
+        #     is_write_index: false
+        #   scigma-complete:
+        #     is_write_index: false
 
     scigma_template_public_v1:
       index_patterns: ["scigma-main-corpus"]
@@ -641,30 +643,64 @@ open-search:
             number_of_shards: 1
             number_of_replicas: 1
             default_pipeline: "ocr_meta_pipeline_v1"
-        aliases:
-          scigma-public:
-            is_write_index: false
-            filter:
-              bool:
-                must:
-                  - bool:
-                      should:
-                        - term:
-                            meta.parent_tags: "*ingested"
-                        - term:
-                            meta.tags: "*ingested"
-                        - term:
-                            meta.collection_labels: "ingested"
-                      minimum_should_match: 1
-                must_not:
-                  - term:
-                      meta.parent_tags: "*deprecated"
-                  - term:
-                      meta.tags: "*deprecated"
-                  - term:
-                      meta.parent_tags: "*excluded"
-                  - term:
-                      meta.tags: "*excluded"
+        # aliases:
+        #   scigma-public:
+        #     is_write_index: false
+        #     filter:
+        #       bool:
+        #         must:
+        #           - bool:
+        #               should:
+        #                 - term:
+        #                     meta.parent_tags: "*ingested"
+        #                 - term:
+        #                     meta.tags: "*ingested"
+        #                 - term:
+        #                     meta.collection_labels: "ingested"
+        #               minimum_should_match: 1
+        #         must_not:
+        #           - term:
+        #               meta.parent_tags: "*deprecated"
+        #           - term:
+        #               meta.tags: "*deprecated"
+        #           - term:
+        #               meta.parent_tags: "*excluded"
+        #           - term:
+        #               meta.tags: "*excluded"
+aliases:
+  scigma-complete:
+    actions:
+      - add:
+          indices: ["scigma*"]
+          alias: scigma-complete
+
+  scigma-public:
+    actions:
+      - add:
+          index: scigma-main-corpus
+          alias: scigma-public
+          filter:
+            bool:
+              must:
+                - bool:
+                    should:
+                      - term:
+                          meta.parent_tags: "*ingested"
+                      - term:
+                          meta.tags: "*ingested"
+                      - term:
+                          meta.collection_labels: "ingested"
+                    minimum_should_match: 1
+              must_not:
+                - term:
+                    meta.parent_tags: "*deprecated"
+                - term:
+                    meta.tags: "*deprecated"
+                - term:
+                    meta.parent_tags: "*excluded"
+                - term:
+                    meta.tags: "*excluded"
+
   # indices:
   #   # Optional bootstrap index. Recommended if you want to write to an alias.
   #   scigma-main-corpus-000001:
@@ -682,3 +718,4 @@ open-search:
     - put_ingest_pipelines: [ocr_meta_pipeline_v1]
     # - create_indices:
     #     - scigma-main-corpus-000001
+    - put_aliases: true
