@@ -20,6 +20,10 @@ from importlib.util import find_spec
 security = HTTPBasic()
 
 def verify(credentials: HTTPBasicCredentials = Depends(security)):
+    if not API_USER or not API_PASSWORD:
+        logger.warning("No password set!")
+        return None
+
     correct_username = secrets.compare_digest(credentials.username, API_USER)
     correct_password = secrets.compare_digest(credentials.password, API_PASSWORD)
 
@@ -74,7 +78,7 @@ def include_plugins(app: FastAPI, plugins_pkg: str = "zotero_rdf_server.plugins"
             prefix = getattr(mod, "PLUGIN_PREFIX", f"{base_prefix}/{plugin_name}")
             if prouter is not None and INCLUDE_CLOSED_ROUTER:
                 app.include_router(prouter, prefix=prefix,
-                                    tags=["Plugin", display_name], dependencies=[Depends(verify)])
+                                    tags=["Plugin", display_name], dependencies=protected_dependencies)
                 
             if open_router is not None and INCLUDE_OPEN_ROUTER:
                 app.include_router(open_router, prefix=prefix,
