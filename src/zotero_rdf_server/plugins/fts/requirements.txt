@@ -1,10 +1,10 @@
-kraken==6.0.3
+kraken==7.0.2 # 6.0.3
 # kraken @ git+https://github.com/mittagessen/kraken.git@main
 pillow==12.1.1
 PyMuPDF==1.27.1
 opensearch-py==3.1.0
 pytesseract==0.3.13
 lxml>=5.0.0
-scikit-learn~=1.5.0 # kraken needs it
+scikit-learn==1.7.2 #~=1.5.0 # kraken needs it
 umap-learn==0.5.6 # conflict with kraken scikit-learn dependency
 # sentence_transformers==5.2.2 # only if vectorize

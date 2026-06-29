@@ -1,1 +1,1 @@
-https://github.com/ch-sander/semantic-html/releases/download/v0.5.3/semantic_html-0.5.3-py3-none-any.whl
+https://github.com/ch-sander/semantic-html/releases/download/v0.5.4/semantic_html-0.5.4-py3-none-any.whl
