@@ -163,7 +163,22 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 return parser.parse(str(text), dayfirst=dayfirst, default=datetime(1, 1, 1))
             except (ValueError, TypeError):
                 return text
-        
+            
+        def get_language_tag(field_map: dict) -> str | None:
+            lang = field_map.get("datatyping")
+
+            if not lang:
+                return None
+
+            lang = str(lang).strip()
+
+            if not lang.startswith("@"):
+                return None
+
+            lang = lang[1:].strip()
+
+            return lang or None 
+               
         def normalize_split_list(
             value: str | list,
             pattern: str = None # r"\s*;\s*",
@@ -217,8 +232,15 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         base_ns=ENTITY_GRAPH_URI.value,
                         prefix_ns=ns_prefix
                     )
+                    label_language = get_language_tag(field_map)
 
-                    store.add(Quad(node, NamedNode(RDFS_LABEL), Literal(item), graph_name=ENTITY_GRAPH_URI))
+                    store.add(Quad(
+                        node,
+                        NamedNode(RDFS_LABEL),
+                        Literal(item, language=label_language) if label_language else Literal(item),
+                        graph_name=ENTITY_GRAPH_URI
+                    ))
+
                     add_timestamp(store=store, node=node, graph=ENTITY_GRAPH_URI)
 
                     if on_create:
@@ -255,22 +277,28 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             if isinstance(object, dict): # dicts as named nodes
 
                 ### TAGS ###
-                if predicate_str == "tags" and "tag" in object:
-                    type_nodes = make_iri(field_map.get("types", ["tag"]), ns_prefix, enforce_list=True)
+                if predicate_str == "tags" and isinstance(object, dict) and "tag" in object:
+                    type_nodes = make_iri(
+                        field_map.get("types", ["tag"]),
+                        ns_prefix,
+                        enforce_list=True
+                    )
+
                     tag_value = object.get("tag")
                     fuzzy_threshold_specific = field_map.get("fuzzy") or 100
 
-                    tag_properties = make_iri(field_map.get("tag_properties", ["tag"]), ns_prefix, True)
-
                     def on_create_tag(tag_node, _label):
-                        for key, val in object.items():
-                            if not val:
-                                continue
-                            if key == "tag":
-                                for t_pred in tag_properties:
-                                    store.add(Quad(tag_node, safeNamedNode(t_pred), Literal(str(val)), graph_name=ENTITY_GRAPH_URI))
-                            else:
-                                store.add(Quad(tag_node, safeNamedNode(f"{ns_prefix}{key}"), Literal(str(val)), graph_name=ENTITY_GRAPH_URI))
+                        add_rdf_from_dict(
+                            store=store,
+                            subject=tag_node,
+                            data=object,
+                            ns_prefix=ns_prefix,
+                            base_uri=knowledge_base_graph,
+                            map=map,
+                            knowledge_base_graph=knowledge_base_graph,
+                            mapping_base_graph=mapping_base_graph,
+                            language=language
+                        )
 
                     (nodes, entries) = make_entity(
                         tag_value,
@@ -279,12 +307,19 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         on_create=on_create_tag,
                         return_entries=True
                     )
+
                     tag_node = nodes[0]
                     entry = entries[0]
 
                     for key, val in object.items():
                         if val and isinstance(val, str) and key != "tag":
-                            ensure_mapping_literal(store, entry, val, safeNamedNode(MAP_LABEL), MAP_GRAPH_URI)
+                            ensure_mapping_literal(
+                                store,
+                                entry,
+                                val,
+                                safeNamedNode(MAP_LABEL),
+                                MAP_GRAPH_URI
+                            )
 
                     return tag_node
                                 
@@ -295,26 +330,115 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     else:
                         label = f"{object.get('lastName', '')}, {object.get('firstName', '')}".strip().strip(",")
 
-                    type_nodes = make_iri(field_map.get("types", ["actor"]), ns_prefix, enforce_list=True)
-                    role_types = make_iri(field_map.get("role_types", ["creatorRole"]), ns_prefix, enforce_list=True)
-                    role_properties = make_iri(field_map.get("role_properties", ["hasCreator"]), ns_prefix, True)
+                    type_nodes = make_iri(
+                        field_map.get("types", ["actor"]),
+                        ns_prefix,
+                        enforce_list=True
+                    )
+
+                    # Keep raw values here so "_creatorType" can be resolved by apply_rdf_types().
+                    role_types = field_map.get("role_types", ["creatorRole"])
+                    role_types = role_types if isinstance(role_types, list) else [role_types]
+
+                    role_properties = make_iri(
+                        field_map.get("role_properties", ["hasCreator"]),
+                        ns_prefix,
+                        True
+                    )
+
+                    creator_type_properties_raw = (
+                        field_map["creator_type_properties"]
+                        if "creator_type_properties" in field_map
+                        else ["creatorType"]
+                    )
+
+                    creator_type_properties = (
+                        make_iri(creator_type_properties_raw, ns_prefix, True)
+                        if creator_type_properties_raw
+                        else []
+                    )
 
                     fuzzy_threshold_specific = field_map.get("fuzzy") or fuzzy_threshold
 
                     role_node = safeNamedNode(f"{base_uri}/{uuid4()}")
-                    apply_rdf_types(store, role_node, {}, role_types, "creatorRole", base_uri, ns_prefix)
 
-                    creator_type = object.get("creatorType")  # "author"
+                    apply_rdf_types(
+                        store,
+                        role_node,
+                        object,
+                        role_types,
+                        "creatorRole",
+                        base_uri,
+                        ns_prefix
+                    )
+
+                    creator_type = object.get("creatorType")  # e.g. "author"
                     if creator_type:
-                        store.add(Quad(role_node, NamedNode(RDFS_LABEL), Literal(str(creator_type)), graph_name=GRAPH_URI))
-                        store.add(Quad(role_node, safeNamedNode(f"{ns_prefix}creatorType"), safeNamedNode(f"{ns_prefix}{creator_type}"), graph_name=GRAPH_URI))
-                        store.add(Quad(role_node, NamedNode(RDF_TYPE), safeNamedNode(f"{ns_prefix}{creator_type}"), graph_name=GRAPH_URI))
+                        store.add(Quad(
+                            role_node,
+                            NamedNode(RDFS_LABEL),
+                            Literal(str(creator_type)),
+                            graph_name=GRAPH_URI
+                        ))
 
-                    def on_create_creator(creator_node, _label):
-                        for key, val in object.items():
-                            if not val or key == "creatorType":
+                        creator_type_objects = field_map.get("creator_type_objects", ["_creatorType"])
+                        creator_type_objects = creator_type_objects if isinstance(creator_type_objects, list) else [creator_type_objects]
+
+                        creator_type_types = field_map.get("creator_type_types", [])
+                        creator_type_types = creator_type_types if isinstance(creator_type_types, list) else [creator_type_types]
+
+                        creator_type_nodes = []
+
+                        for creator_type_object in creator_type_objects:
+                            resolved_object = resolve_template(
+                                creator_type_object,
+                                data=object,
+                                node=role_node.value
+                            )
+
+                            if not resolved_object:
                                 continue
-                            store.add(Quad(creator_node, safeNamedNode(f"{ns_prefix}{key}"), Literal(str(val)), graph_name=ENTITY_GRAPH_URI))
+
+                            creator_type_node = safeNamedNode(
+                                make_iri(str(resolved_object), ns_prefix)
+                            )
+
+                            creator_type_nodes.append(creator_type_node)
+
+                            for creator_type_property in creator_type_properties:
+                                store.add(Quad(
+                                    role_node,
+                                    safeNamedNode(creator_type_property),
+                                    creator_type_node,
+                                    graph_name=GRAPH_URI
+                                ))
+
+                            for creator_type_type in creator_type_types:
+                                store.add(Quad(
+                                    creator_type_node,
+                                    NamedNode(RDF_TYPE),
+                                    safeNamedNode(make_iri(creator_type_type, ns_prefix)),
+                                    graph_name=GRAPH_URI
+                                ))
+                                
+                    def on_create_creator(creator_node, _label):
+                        creator_data = {
+                            key: val
+                            for key, val in object.items()
+                            if val and key != "creatorType"
+                        }
+
+                        add_rdf_from_dict(
+                            store=store,
+                            subject=creator_node,
+                            data=creator_data,
+                            ns_prefix=ns_prefix,
+                            base_uri=knowledge_base_graph,
+                            map=map,
+                            knowledge_base_graph=knowledge_base_graph,
+                            mapping_base_graph=mapping_base_graph,
+                            language=language
+                        )
 
                     (nodes, entries) = make_entity(
                         label,
@@ -323,15 +447,27 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         on_create=on_create_creator,
                         return_entries=True
                     )
+
                     creator_node = nodes[0]
                     entry = entries[0]
 
                     ln, fn = object.get("lastName"), object.get("firstName")
                     if ln or fn:
-                        ensure_mapping_literal(store, entry, f"{fn} {ln}".strip(), safeNamedNode(MAP_LABEL), MAP_GRAPH_URI)
+                        ensure_mapping_literal(
+                            store,
+                            entry,
+                            f"{fn} {ln}".strip(),
+                            safeNamedNode(MAP_LABEL),
+                            MAP_GRAPH_URI
+                        )
 
                     for role_property in role_properties:
-                        store.add(Quad(role_node, safeNamedNode(role_property), creator_node, graph_name=GRAPH_URI))
+                        store.add(Quad(
+                            role_node,
+                            safeNamedNode(role_property),
+                            creator_node,
+                            graph_name=GRAPH_URI
+                        ))
 
                     return role_node
                 
@@ -393,6 +529,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 
                 return make_entity(object, ent_types,fuzzy_threshold_specific)                
 
+            # LITERALS #
             elif isinstance(object, (str, int, datetime, float)):
 
                 def is_datatype(predicate: str, field_map: dict, datatype: str, defaults: list[str]) -> bool:                    
@@ -439,6 +576,11 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         o = process_language_and_title(title=None, language_field=val,mapping=lang_map)
                         objects.append(o)
 
+                    # LangString #
+                    elif get_language_tag(field_map):
+                        o = Literal(val, language=get_language_tag(field_map))
+                        objects.append(o)
+
                     # URL #
                     elif is_datatype(predicate_str, field_map, "url", ["url", "dc:relation", "doi", "owl:sameAs", "href"]) and (val.startswith("http") or val.startswith("www.")): # url                    
                         o = safeNamedNode(val, enforce=True) 
@@ -480,7 +622,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     elif (field_map.get("datatyping", "str") == "str") and literal_dt:
                         o = Literal(val, datatype=resolve_literal_datatype(literal_dt))
                         objects.append(o)
-                    
+
                     # LITERAL #
                     else:
                         o = safeLiteral(val)
