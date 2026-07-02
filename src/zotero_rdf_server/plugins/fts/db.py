@@ -150,34 +150,34 @@ def provision_from_cfg(client: OpenSearch, cfg: dict) -> None:
 
     if plan:
         for step in plan:
-            logger.debug("starting step: %s", step)
+            logger.info("starting step: %s", step)
 
             if "put_component_templates" in step:
                 for name in step["put_component_templates"]:
-                    logger.debug("PUT component_template %s", name)
+                    logger.info("PUT component_template %s", name)
                     ensure_component_template(client, name=name, body=component_templates[name])
                     logger.debug("DONE component_template %s", name)
 
             elif "put_ingest_pipelines" in step:
                 for name in step["put_ingest_pipelines"]:
-                    logger.debug("PUT ingest_pipeline %s", name)
+                    logger.info("PUT ingest_pipeline %s", name)
                     ensure_ingest_pipeline(client, name=name, body=ingest_pipelines[name])
                     logger.debug("DONE ingest_pipeline %s", name)
 
             elif "put_index_templates" in step:
                 for name in step["put_index_templates"]:
-                    logger.debug("PUT index_template %s", name)
+                    logger.info("PUT index_template %s", name)
                     ensure_index_template(client, name=name, body=index_templates[name])
                     logger.debug("DONE index_template %s", name)
 
             elif "create_indices" in step:
                 for name in step["create_indices"]:
-                    logger.debug("CREATE index %s", name)
+                    logger.info("CREATE index %s", name)
                     ensure_index_from_schema(client, index=name, index_def=indices[name])
                     logger.debug("DONE index %s", name)
 
             elif "put_aliases" in step:
-                logger.debug("PUT aliases")
+                logger.info("PUT aliases")
                 ensure_aliases(client, aliases_cfg=aliases)
                 logger.debug("DONE aliases")
 
