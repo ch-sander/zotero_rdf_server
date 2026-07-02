@@ -170,6 +170,10 @@
         dash: "http://datashapes.org/dash#",
         dcterms: "http://purl.org/dc/terms/",
         skos: "http://www.w3.org/2004/02/skos/core#",
+        foaf: "http://xmlns.com/foaf/0.1/",
+        org: "http://www.w3.org/ns/org#",
+        wgs84: "http://www.w3.org/2003/01/geo/wgs84_pos#",
+        geosparql: "http://www.opengis.net/ont/geosparql#",
         scigma: "https://scigma.de/",
         smap: "https://scigma.de/mappings/",
         sent: "https://scigma.de/entities/",
@@ -186,15 +190,538 @@
         "http://www.w3.org/2002/07/owl#sameAs",
         "https://schema.org/keywords",
         RDF_TYPE,
-        MAP_LABEL_P, MAP_TARGET_P, MAP_TYPEHINT_P, PROV_GENERATED_AT, DCTERMS_CONFORMS_TO
+        MAP_LABEL_P, MAP_TARGET_P, MAP_TYPEHINT_P, PROV_GENERATED_AT, DCTERMS_CONFORMS_TO,
+        // place / coordinates
+        "http://www.w3.org/2003/01/geo/wgs84_pos#lat",
+        "http://www.w3.org/2003/01/geo/wgs84_pos#long",
+
+        // foaf
+        "http://xmlns.com/foaf/0.1/name",
+        "http://xmlns.com/foaf/0.1/givenName",
+        "http://xmlns.com/foaf/0.1/familyName",
+
+        // skos
+        "http://www.w3.org/2004/02/skos/core#prefLabel",
+        "http://www.w3.org/2004/02/skos/core#altLabel",
+        "http://www.w3.org/2004/02/skos/core#hiddenLabel",
+        "http://www.w3.org/2004/02/skos/core#definition",
+        "http://www.w3.org/2004/02/skos/core#note",
+        "http://www.w3.org/2004/02/skos/core#broader",
+        "http://www.w3.org/2004/02/skos/core#narrower",
+        "http://www.w3.org/2004/02/skos/core#related",
+        "http://www.w3.org/2004/02/skos/core#exactMatch",
+        "http://www.w3.org/2004/02/skos/core#closeMatch",
+
+        // org
+        "http://www.w3.org/ns/org#identifier",
+        "http://www.w3.org/ns/org#classification",
+        "http://www.w3.org/ns/org#hasSite",
+        "http://www.w3.org/ns/org#hasPrimarySite",
+        "http://www.w3.org/ns/org#subOrganizationOf",
+        "http://www.w3.org/ns/org#hasSubOrganization",
+        "http://www.w3.org/ns/org#linkedTo"
       ];
 
       const DB_NAME = "mapping_entity_editor_db";
       const DB_VERSION = 1;
       const SNAPSHOT_STORE = "snapshots";
       const SNAPSHOT_KEY = "main_local_snapshot";
+const SHAPES_TTL = `
+@prefix sh: <http://www.w3.org/ns/shacl#>.
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>.
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
+@prefix prov: <http://www.w3.org/ns/prov#>.
+@prefix schema: <https://schema.org/>.
+@prefix owl: <http://www.w3.org/2002/07/owl#>.
+@prefix map: <https://zotero-rdf-server.org/mapping/>.
+@prefix dash: <http://datashapes.org/dash#>.
+@prefix dcterms: <http://purl.org/dc/terms/>.
+@prefix skos: <http://www.w3.org/2004/02/skos/core#>.
+@prefix foaf: <http://xmlns.com/foaf/0.1/>.
+@prefix org: <http://www.w3.org/ns/org#>.
+@prefix wgs84: <http://www.w3.org/2003/01/geo/wgs84_pos#>.
+@prefix geo: <http://www.opengis.net/ont/geosparql#>.
+@prefix scigma: <https://scigma.de/>.
+@prefix smap: <https://scigma.de/mappings/>.
+@prefix sent: <https://scigma.de/entities/>.
+@prefix zot: <http://www.zotero.org/namespaces/export#>.
+@prefix sem: <https://semantic-html.org/>.
+@prefix sshap: <https://scigma.de/shapes/>.
 
-      const SHAPES_TTL = `
+#################################################################
+# Property groups
+#################################################################
+
+sshap:MappingGroup
+  a sh:PropertyGroup ;
+  rdfs:label "Mapping"@en, "Mapping"@de ;
+  sh:order 1 .
+
+sshap:CommonEntityGroup
+  a sh:PropertyGroup ;
+  rdfs:label "Common"@en, "Allgemein"@de ;
+  sh:order 1 .
+
+sshap:PlaceGroup
+  a sh:PropertyGroup ;
+  rdfs:label "Place"@en, "Ort"@de ;
+  sh:order 2 .
+
+sshap:AgentGroup
+  a sh:PropertyGroup ;
+  rdfs:label "Actor / Agent"@en, "Akteur / Agent"@de ;
+  sh:order 3 .
+
+sshap:SkosGroup
+  a sh:PropertyGroup ;
+  rdfs:label "SKOS Concept"@en, "SKOS-Konzept"@de ;
+  sh:order 4 .
+
+sshap:OrgGroup
+  a sh:PropertyGroup ;
+  rdfs:label "Publisher / Organization"@en, "Publisher / Organisation"@de ;
+  sh:order 5 .
+
+#################################################################
+# Mapping properties
+#################################################################
+
+sshap:MappingLabelProperty
+  a sh:PropertyShape ;
+  sh:path <${MAP_LABEL_P}> ;
+  sh:name "Mapping label"@en, "Mapping-Bezeichnung"@de ;
+  sh:datatype xsd:string ;
+  sh:minCount 1 ;
+  sh:group sshap:MappingGroup ;
+  sh:order 1 .
+
+sshap:MappingTypeHintProperty
+  a sh:PropertyShape ;
+  sh:path <${MAP_TYPEHINT_P}> ;
+  sh:name "Type hint"@en, "Typ-Hinweis"@de ;
+  sh:nodeKind sh:IRI ;
+  sh:group sshap:MappingGroup ;
+  sh:order 2 .
+
+sshap:MappingTargetProperty
+  a sh:PropertyShape ;
+  sh:path <${MAP_TARGET_P}> ;
+  sh:name "Target entity (IRI)"@en, "Ziel-Entität (IRI)"@de ;
+  sh:nodeKind sh:IRI ;
+  sh:pattern "^https?://.*" ;
+  sh:minCount 1 ;
+  sh:maxCount 1 ;
+  sh:message "Target must be an IRI!"@en, "Target muss eine IRI sein!"@de ;
+  sh:group sshap:MappingGroup ;
+  sh:order 4 .
+
+sshap:MappingGeneratedAtProperty
+  a sh:PropertyShape ;
+  sh:path prov:generatedAtTime ;
+  sh:name "Generated at"@en, "Erzeugt am"@de ;
+  sh:datatype xsd:dateTime ;
+  sh:maxCount 1 ;
+  sh:group sshap:MappingGroup ;
+  sh:order 3 .
+
+#################################################################
+# Common entity properties
+#################################################################
+
+sshap:EntityLabelProperty
+  a sh:PropertyShape ;
+  sh:path rdfs:label ;
+  sh:name "Label"@en, "Bezeichnung"@de ;
+  sh:datatype xsd:string ;
+  sh:group sshap:CommonEntityGroup ;
+  sh:order 1 .
+
+sshap:EntityTypeProperty
+  a sh:PropertyShape ;
+  sh:path rdf:type ;
+  sh:name "Types"@en, "Typen"@de ;
+  sh:nodeKind sh:IRI ;
+  sh:group sshap:CommonEntityGroup ;
+  sh:order 2 .
+
+sshap:EntityGeneratedAtProperty
+  a sh:PropertyShape ;
+  sh:path prov:generatedAtTime ;
+  sh:name "Generated at"@en, "Erzeugt am"@de ;
+  sh:datatype xsd:dateTime ;
+  sh:maxCount 1 ;
+  sh:group sshap:CommonEntityGroup ;
+  sh:order 3 .
+
+sshap:EntityCommentProperty
+  a sh:PropertyShape ;
+  sh:path rdfs:comment ;
+  sh:name "Comment"@en, "Kommentar"@de ;
+  sh:description "Add your comment"@en, "Kommentar hinzufügen"@de ;
+  sh:datatype rdf:langString ;
+  sh:languageIn ( "en" "de" "la") ;
+  sh:maxCount 1 ;
+  dash:singleLine false ;
+  sh:group sshap:CommonEntityGroup ;
+  sh:order 4 .
+
+sshap:EntitySameAsProperty
+  a sh:PropertyShape ;
+  sh:path owl:sameAs ;
+  sh:name "sameAs"@en, "Gleich wie"@de ;
+  sh:nodeKind sh:IRI ;
+  sh:group sshap:CommonEntityGroup ;
+  sh:order 5 .
+
+sshap:EntityKeywordsProperty
+  a sh:PropertyShape ;
+  sh:path schema:keywords ;
+  sh:name "Keywords"@en, "Schlagwörter"@de ;
+  sh:datatype xsd:string ;
+  sh:group sshap:CommonEntityGroup ;
+  sh:order 6 .
+
+#################################################################
+# Place properties for zot:place
+#################################################################
+
+sshap:PlaceLatitudeProperty
+  a sh:PropertyShape ;
+  sh:path wgs84:lat ;
+  sh:name "Latitude"@en, "Breitengrad"@de ;
+  sh:datatype xsd:decimal ;
+  sh:minInclusive -90 ;
+  sh:maxInclusive 90 ;
+  sh:maxCount 1 ;
+  sh:group sshap:PlaceGroup ;
+  sh:order 20 .
+
+sshap:PlaceLongitudeProperty
+  a sh:PropertyShape ;
+  sh:path wgs84:long ;
+  sh:name "Longitude"@en, "Längengrad"@de ;
+  sh:datatype xsd:decimal ;
+  sh:minInclusive -180 ;
+  sh:maxInclusive 180 ;
+  sh:maxCount 1 ;
+  sh:group sshap:PlaceGroup ;
+  sh:order 21 .
+
+sshap:PlaceWktProperty
+  a sh:PropertyShape ;
+  sh:path geo:asWKT ;
+  sh:name "WKT geometry"@en, "WKT-Geometrie"@de ;
+  sh:datatype geo:wktLiteral ;
+  dash:singleLine false ;
+  sh:group sshap:PlaceGroup ;
+  sh:order 22 .
+
+#################################################################
+# FOAF properties for zot:actor and foaf:Agent
+#################################################################
+
+sshap:FoafNameProperty
+  a sh:PropertyShape ;
+  sh:path foaf:name ;
+  sh:name "Name"@en, "Name"@de ;
+  sh:datatype xsd:string ;
+  sh:group sshap:AgentGroup ;
+  sh:order 30 .
+
+sshap:FoafGivenNameProperty
+  a sh:PropertyShape ;
+  sh:path foaf:givenName ;
+  sh:name "Given name"@en, "Vorname"@de ;
+  sh:datatype xsd:string ;
+  sh:group sshap:AgentGroup ;
+  sh:order 31 .
+
+sshap:FoafFamilyNameProperty
+  a sh:PropertyShape ;
+  sh:path foaf:familyName ;
+  sh:name "Family name"@en, "Nachname"@de ;
+  sh:datatype xsd:string ;
+  sh:group sshap:AgentGroup ;
+  sh:order 32 .
+
+#################################################################
+# SKOS properties for skos:Concept
+#################################################################
+
+sshap:SkosPrefLabelProperty
+  a sh:PropertyShape ;
+  sh:path skos:prefLabel ;
+  sh:name "Preferred label"@en, "Bevorzugte Bezeichnung"@de ;
+  sh:datatype rdf:langString ;
+  sh:languageIn ( "en" "de" "la") ;
+  sh:group sshap:SkosGroup ;
+  sh:order 40 .
+
+sshap:SkosAltLabelProperty
+  a sh:PropertyShape ;
+  sh:path skos:altLabel ;
+  sh:name "Alternative label"@en, "Alternative Bezeichnung"@de ;
+  sh:datatype rdf:langString ;
+  sh:languageIn ( "en" "de" "la") ;
+  sh:group sshap:SkosGroup ;
+  sh:order 41 .
+
+sshap:SkosHiddenLabelProperty
+  a sh:PropertyShape ;
+  sh:path skos:hiddenLabel ;
+  sh:name "Hidden label"@en, "Versteckte Bezeichnung"@de ;
+  sh:datatype rdf:langString ;
+  sh:languageIn ( "en" "de" "la") ;
+  sh:group sshap:SkosGroup ;
+  sh:order 42 .
+
+sshap:SkosDefinitionProperty
+  a sh:PropertyShape ;
+  sh:path skos:definition ;
+  sh:name "Definition"@en, "Definition"@de ;
+  sh:datatype rdf:langString ;
+  sh:languageIn ( "en" "de" "la") ;
+  dash:singleLine false ;
+  sh:group sshap:SkosGroup ;
+  sh:order 43 .
+
+sshap:SkosNoteProperty
+  a sh:PropertyShape ;
+  sh:path skos:note ;
+  sh:name "Note"@en, "Notiz"@de ;
+  sh:datatype rdf:langString ;
+  sh:languageIn ( "en" "de" "la") ;
+  dash:singleLine false ;
+  sh:group sshap:SkosGroup ;
+  sh:order 44 .
+
+sshap:SkosScopeNoteProperty
+  a sh:PropertyShape ;
+  sh:path skos:scopeNote ;
+  sh:name "Scope note"@en, "Geltungshinweis"@de ;
+  sh:datatype rdf:langString ;
+  sh:languageIn ( "en" "de" "la") ;
+  dash:singleLine false ;
+  sh:group sshap:SkosGroup ;
+  sh:order 45 .
+
+sshap:SkosBroaderProperty
+  a sh:PropertyShape ;
+  sh:path skos:broader ;
+  sh:name "Broader concept"@en, "Oberbegriff"@de ;
+  sh:nodeKind sh:IRI ;
+  sh:group sshap:SkosGroup ;
+  sh:order 46 .
+
+sshap:SkosNarrowerProperty
+  a sh:PropertyShape ;
+  sh:path skos:narrower ;
+  sh:name "Narrower concept"@en, "Unterbegriff"@de ;
+  sh:nodeKind sh:IRI ;
+  sh:group sshap:SkosGroup ;
+  sh:order 47 .
+
+sshap:SkosRelatedProperty
+  a sh:PropertyShape ;
+  sh:path skos:related ;
+  sh:name "Related concept"@en, "Verwandtes Konzept"@de ;
+  sh:nodeKind sh:IRI ;
+  sh:group sshap:SkosGroup ;
+  sh:order 48 .
+
+sshap:SkosInSchemeProperty
+  a sh:PropertyShape ;
+  sh:path skos:inScheme ;
+  sh:name "Concept scheme"@en, "Konzeptschema"@de ;
+  sh:nodeKind sh:IRI ;
+  sh:group sshap:SkosGroup ;
+  sh:order 49 .
+
+sshap:SkosExactMatchProperty
+  a sh:PropertyShape ;
+  sh:path skos:exactMatch ;
+  sh:name "Exact match"@en, "Exakte Entsprechung"@de ;
+  sh:nodeKind sh:IRI ;
+  sh:group sshap:SkosGroup ;
+  sh:order 50 .
+
+sshap:SkosCloseMatchProperty
+  a sh:PropertyShape ;
+  sh:path skos:closeMatch ;
+  sh:name "Close match"@en, "Nahe Entsprechung"@de ;
+  sh:nodeKind sh:IRI ;
+  sh:group sshap:SkosGroup ;
+  sh:order 51 .
+
+#################################################################
+# ORG properties for zot:publisher
+#################################################################
+
+sshap:OrgIdentifierProperty
+  a sh:PropertyShape ;
+  sh:path org:identifier ;
+  sh:name "Organization identifier"@en, "Organisations-ID"@de ;
+  sh:datatype xsd:string ;
+  sh:group sshap:OrgGroup ;
+  sh:order 60 .
+
+sshap:OrgClassificationProperty
+  a sh:PropertyShape ;
+  sh:path org:classification ;
+  sh:name "Organization classification"@en, "Organisationsklassifikation"@de ;
+  sh:nodeKind sh:IRI ;
+  sh:group sshap:OrgGroup ;
+  sh:order 61 .
+
+sshap:OrgHasSiteProperty
+  a sh:PropertyShape ;
+  sh:path org:hasSite ;
+  sh:name "Site"@en, "Standort"@de ;
+  sh:nodeKind sh:IRI ;
+  sh:group sshap:OrgGroup ;
+  sh:order 62 .
+
+sshap:OrgHasPrimarySiteProperty
+  a sh:PropertyShape ;
+  sh:path org:hasPrimarySite ;
+  sh:name "Primary site"@en, "Hauptstandort"@de ;
+  sh:nodeKind sh:IRI ;
+  sh:group sshap:OrgGroup ;
+  sh:order 63 .
+
+sshap:OrgSubOrganizationOfProperty
+  a sh:PropertyShape ;
+  sh:path org:subOrganizationOf ;
+  sh:name "Sub-organization of"@en, "Unterorganisation von"@de ;
+  sh:nodeKind sh:IRI ;
+  sh:group sshap:OrgGroup ;
+  sh:order 64 .
+
+sshap:OrgHasSubOrganizationProperty
+  a sh:PropertyShape ;
+  sh:path org:hasSubOrganization ;
+  sh:name "Has sub-organization"@en, "Hat Unterorganisation"@de ;
+  sh:nodeKind sh:IRI ;
+  sh:group sshap:OrgGroup ;
+  sh:order 65 .
+
+sshap:OrgLinkedToProperty
+  a sh:PropertyShape ;
+  sh:path org:linkedTo ;
+  sh:name "Linked organization"@en, "Verknüpfte Organisation"@de ;
+  sh:nodeKind sh:IRI ;
+  sh:group sshap:OrgGroup ;
+  sh:order 66 .
+
+#################################################################
+# NodeShapes with sh:targetClass
+#################################################################
+
+sshap:MappingShape
+  a sh:NodeShape ;
+  sh:targetClass <${MAP_ENTRY}> ;
+  sh:property
+    sshap:MappingLabelProperty,
+    sshap:MappingTypeHintProperty,
+    sshap:MappingGeneratedAtProperty,
+    sshap:MappingTargetProperty .
+
+sshap:GenericEntityShape
+  a sh:NodeShape ;
+  sh:targetClass owl:Thing ;
+  sh:property
+    sshap:EntityLabelProperty,
+    sshap:EntityTypeProperty,
+    sshap:EntityGeneratedAtProperty,
+    sshap:EntityCommentProperty,
+    sshap:EntitySameAsProperty,
+    sshap:EntityKeywordsProperty .
+
+sshap:PlaceShape
+  a sh:NodeShape ;
+  sh:targetClass zot:place ;
+  sh:property
+    sshap:EntityLabelProperty,
+    sshap:EntityTypeProperty,
+    sshap:EntityGeneratedAtProperty,
+    sshap:EntityCommentProperty,
+    sshap:EntitySameAsProperty,
+    sshap:EntityKeywordsProperty,
+    sshap:PlaceLatitudeProperty,
+    sshap:PlaceLongitudeProperty,
+    sshap:PlaceWktProperty .
+
+sshap:ActorShape
+  a sh:NodeShape ;
+  sh:targetClass zot:actor ;
+  sh:property
+    sshap:EntityLabelProperty,
+    sshap:EntityTypeProperty,
+    sshap:EntityGeneratedAtProperty,
+    sshap:EntityCommentProperty,
+    sshap:EntitySameAsProperty,
+    sshap:EntityKeywordsProperty,
+    sshap:FoafNameProperty,
+    sshap:FoafGivenNameProperty,
+    sshap:FoafFamilyNameProperty .
+
+sshap:AgentShape
+  a sh:NodeShape ;
+  sh:targetClass foaf:Agent ;
+  sh:property
+    sshap:EntityLabelProperty,
+    sshap:EntityTypeProperty,
+    sshap:EntityGeneratedAtProperty,
+    sshap:EntityCommentProperty,
+    sshap:EntitySameAsProperty,
+    sshap:EntityKeywordsProperty,
+    sshap:FoafNameProperty,
+    sshap:FoafGivenNameProperty,
+    sshap:FoafFamilyNameProperty .
+
+sshap:ConceptShape
+  a sh:NodeShape ;
+  sh:targetClass skos:Concept ;
+  sh:property
+    sshap:EntityLabelProperty,
+    sshap:EntityTypeProperty,
+    sshap:EntityGeneratedAtProperty,
+    sshap:EntityCommentProperty,
+    sshap:EntitySameAsProperty,
+    sshap:EntityKeywordsProperty,
+    sshap:SkosPrefLabelProperty,
+    sshap:SkosAltLabelProperty,
+    sshap:SkosHiddenLabelProperty,
+    sshap:SkosDefinitionProperty,
+    sshap:SkosNoteProperty,
+    sshap:SkosScopeNoteProperty,
+    sshap:SkosBroaderProperty,
+    sshap:SkosNarrowerProperty,
+    sshap:SkosRelatedProperty,
+    sshap:SkosInSchemeProperty,
+    sshap:SkosExactMatchProperty,
+    sshap:SkosCloseMatchProperty .
+
+sshap:PublisherShape
+  a sh:NodeShape ;
+  sh:targetClass zot:publisher ;
+  sh:property
+    sshap:EntityLabelProperty,
+    sshap:EntityTypeProperty,
+    sshap:EntityGeneratedAtProperty,
+    sshap:EntityCommentProperty,
+    sshap:EntitySameAsProperty,
+    sshap:EntityKeywordsProperty,
+    sshap:OrgIdentifierProperty,
+    sshap:OrgClassificationProperty,
+    sshap:OrgHasSiteProperty,
+    sshap:OrgHasPrimarySiteProperty,
+    sshap:OrgSubOrganizationOfProperty,
+    sshap:OrgHasSubOrganizationProperty,
+    sshap:OrgLinkedToProperty .
+`.trim();
+      const SHAPES_TTL_OLD = `
 @prefix sh: <http://www.w3.org/ns/shacl#>.
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>.
@@ -212,6 +739,10 @@
 @prefix zot: <http://www.zotero.org/namespaces/export#>.
 @prefix sem: <https://semantic-html.org/>.
 @prefix sshap: <https://scigma.de/shapes/>.
+@prefix foaf: <http://xmlns.com/foaf/0.1/>.
+@prefix org: <http://www.w3.org/ns/org#>.
+@prefix wgs84: <http://www.w3.org/2003/01/geo/wgs84_pos#>.
+@prefix geosparql: <http://www.opengis.net/ont/geosparql#>.
 
 <https://scigma.de/shapes/MappingShape>
 a sh:NodeShape ;
@@ -262,7 +793,7 @@ sh:property [
   ] ;
   sh:property [
     sh:datatype rdf:langString ;
-    sh:languageIn ( "en" "de" ) ;
+    sh:languageIn ( "en" "de" "la") ;
     sh:maxCount 1 ;
     sh:name "Comment"@en, "Kommentar"@de ;
     sh:description "Add your comment"@en, "Kommentar hinzufügen"@de ;
@@ -570,11 +1101,19 @@ sh:property [
         return { head: { vars: Array.from(varsSet) }, results: { bindings: rows } };
       }
 
-      function initForms() {
+      function initForms_old() {
         mappingForm.setAttribute("data-shapes", SHAPES_TTL);
         mappingForm.setAttribute("data-shape-subject", "https://scigma.de/shapes/MappingShape");
         entityForm.setAttribute("data-shapes", SHAPES_TTL);
         entityForm.setAttribute("data-shape-subject", "https://scigma.de/shapes/EntityShape");
+      }
+
+      function initForms() {
+        mappingForm.setAttribute("data-shapes", SHAPES_TTL);
+        mappingForm.setAttribute("data-shape-subject", "https://scigma.de/shapes/MappingShape");
+
+        entityForm.setAttribute("data-shapes", SHAPES_TTL);
+        entityForm.removeAttribute("data-shape-subject");
       }
 
       function guessFormat(text, fileName = "") {
@@ -652,11 +1191,11 @@ sh:property [
         setStatus("");
       }
 
-      async function importRemoteGraphsIntoLocal() {
+      async function importRemoteGraphsIntoLocal_Comunica() {
         const url = (endpointEl.value || "").trim();
         if (!url) throw new Error("Remote endpoint missing.");
         remoteEndpoint = url;
-
+        clearLocalStores();
         const DF = window.N3.DataFactory;
         const graphs = [G_MAPPINGS, G_ENTITIES];
         const imported = [];
@@ -689,6 +1228,73 @@ sh:property [
         setStatus("Remote snapshot imported.");
         setTimeout(() => setStatus(""), 1000);
       }
+
+
+async function fetchConstructGraph(graphIri) {
+  const DF = window.N3.DataFactory;
+
+  const query = `
+    CONSTRUCT { ?s ?p ?o }
+    WHERE { GRAPH <${graphIri}> { ?s ?p ?o } }
+  `.trim();
+
+  const res = await fetch(remoteEndpoint, {
+    method: "POST",
+    headers: {
+      "Accept": "application/n-triples,text/turtle;q=0.9,application/rdf+xml;q=0.1",
+      "Content-Type": "application/sparql-query"
+    },
+    body: query
+  });
+
+  if (!res.ok) {
+    throw new Error(`SPARQL import failed: ${res.status} ${res.statusText}`);
+  }
+
+  const text = await res.text();
+  const ct = res.headers.get("content-type") || "";
+
+  const format = ct.includes("turtle")
+    ? "text/turtle"
+    : "application/n-triples";
+
+  const parser = new window.N3.Parser({
+    format,
+    baseIRI: document.baseURI || window.location.href
+  });
+
+  const g = DF.namedNode(graphIri);
+  return parser.parse(text).map(q =>
+    DF.quad(q.subject, q.predicate, q.object, g)
+  );
+}
+
+async function importRemoteGraphsIntoLocal() {
+  const url = (endpointEl.value || "").trim();
+  if (!url) throw new Error("Remote endpoint missing.");
+  remoteEndpoint = url;
+
+  const graphs = [G_MAPPINGS, G_ENTITIES];
+
+  setStatus("Loading remote RDF dump…");
+
+  const graphQuads = await Promise.all(
+    graphs.map(g => fetchConstructGraph(g))
+  );
+
+  const imported = graphQuads.flat();
+
+  addQuadsToStores(imported);
+
+  loadedRemoteMeta = `${new Date().toLocaleString()} (${imported.length} quads)`;
+  updateSourceInfo();
+
+  setStatus("Remote snapshot imported.");
+
+  await saveSnapshotToIndexedDb();
+
+  setTimeout(() => setStatus(""), 1000);
+}
 
       async function loadTypeHints() {
         const query = `
@@ -1013,10 +1619,15 @@ SELECT ?target WHERE {
 
       newEntityBtn.addEventListener("click", async () => {
         const iri = mintIRI("https://scigma.de/entities");
-        const ttl = `
+        const ttl_old = `
 <${iri}> a <http://www.w3.org/2002/07/owl#Thing> ;
   <${DCTERMS_CONFORMS_TO}> <https://scigma.de/shapes/EntityShape> .
 `.trim() + "\n";
+        const ttl = `
+        <${iri}> a <http://www.w3.org/2002/07/owl#Thing> ;
+          <${PROV_GENERATED_AT}> "${new Date().toISOString()}"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
+        `.trim() + "\n";
+
         entityForm.setAttribute("data-values", ttl);
         entityForm.setAttribute("data-values-subject", iri);
         selectedTarget = iri;
