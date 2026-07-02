@@ -613,7 +613,7 @@ open-search:
   
     scigma_template_app_v1:
       index_patterns: ["scigma*"]
-      priority: 100
+      priority: 300
       composed_of:
         - ct_ocr_pages_v1
       template:
@@ -622,7 +622,7 @@ open-search:
           index:
             knn: true
             number_of_shards: 1
-            number_of_replicas: 1
+            number_of_replicas: 0
             default_pipeline: "ocr_meta_pipeline_v1"
         # aliases:
         #   scigma-all:
@@ -630,76 +630,76 @@ open-search:
         #   scigma-complete:
         #     is_write_index: false
 
-    scigma_template_public_v1:
-      index_patterns: ["scigma-main-corpus"]
-      priority: 200
-      composed_of:
-        - ct_ocr_pages_v1
-      template:
-        # Optional but useful defaults
-        settings:
-          index:
-            knn: false # !!
-            number_of_shards: 1
-            number_of_replicas: 1
-            default_pipeline: "ocr_meta_pipeline_v1"
-        # aliases:
-        #   scigma-public:
-        #     is_write_index: false
-        #     filter:
-        #       bool:
-        #         must:
-        #           - bool:
-        #               should:
-        #                 - term:
-        #                     meta.parent_tags: "*ingested"
-        #                 - term:
-        #                     meta.tags: "*ingested"
-        #                 - term:
-        #                     meta.collection_labels: "ingested"
-        #               minimum_should_match: 1
-        #         must_not:
-        #           - term:
-        #               meta.parent_tags: "*deprecated"
-        #           - term:
-        #               meta.tags: "*deprecated"
-        #           - term:
-        #               meta.parent_tags: "*excluded"
-        #           - term:
-        #               meta.tags: "*excluded"
-aliases:
-  scigma-complete:
-    actions:
-      - add:
-          indices: ["scigma*"]
-          alias: scigma-complete
+    # scigma_template_public_v1:
+    #   index_patterns: ["scigma-main-corpus"]
+    #   priority: 200
+    #   composed_of:
+    #     - ct_ocr_pages_v1
+    #   template:
+    #     # Optional but useful defaults
+    #     settings:
+    #       index:
+    #         knn: false # !!
+    #         number_of_shards: 1
+    #         number_of_replicas: 1
+    #         default_pipeline: "ocr_meta_pipeline_v1"
+    #     aliases:
+    #       scigma-public:
+    #         is_write_index: false
+    #         filter:
+    #           bool:
+    #             must:
+    #               - bool:
+    #                   should:
+    #                     - term:
+    #                         meta.parent_tags: "*ingested"
+    #                     - term:
+    #                         meta.tags: "*ingested"
+    #                     - term:
+    #                         meta.collection_labels: "ingested"
+    #                   minimum_should_match: 1
+    #             must_not:
+    #               - term:
+    #                   meta.parent_tags: "*deprecated"
+    #               - term:
+    #                   meta.tags: "*deprecated"
+    #               - term:
+    #                   meta.parent_tags: "*excluded"
+    #               - term:
+    #                   meta.tags: "*excluded"
+  aliases:
+    scigma-complete:
+      actions:
+        - add:
+            indices: ["scigma*"]
+            alias: scigma-complete
 
-  scigma-public:
-    actions:
-      - add:
-          index: scigma-main-corpus
-          alias: scigma-public
-          filter:
-            bool:
-              must:
-                - bool:
-                    should:
-                      - term:
-                          meta.parent_tags: "*ingested"
-                      - term:
-                          meta.tags: "*ingested"
-                      - term:
-                          meta.collection_labels: "ingested"
-                    minimum_should_match: 1
-              must_not:
-                - term:
-                    meta.parent_tags: "*deprecated"
-                - term:
-                    meta.tags: "*deprecated"
-                - term:
-                    meta.parent_tags: "*excluded"
-                - term:
-                    meta.tags: "*excluded"
+    scigma-public:
+      actions:
+        - add:
+            index: scigma-main-corpus
+            alias: scigma-public
+            filter:
+              bool:
+                must:
+                  - bool:
+                      should:
+                        - term:
+                            meta.parent_tags: "*ingested"
+                        - term:
+                            meta.tags: "*ingested"
+                        - term:
+                            meta.collection_labels: "ingested"
+                      minimum_should_match: 1
+                must_not:
+                  - term:
+                      meta.parent_tags: "*deprecated"
+                  - term:
+                      meta.tags: "*deprecated"
+                  - term:
+                      meta.parent_tags: "*excluded"
+                  - term:
+                      meta.tags: "*excluded"
 
   # indices:
   #   # Optional bootstrap index. Recommended if you want to write to an alias.
@@ -714,7 +714,7 @@ aliases:
         - ct_ocr_pages_v1
     - put_index_templates:
         - scigma_template_app_v1
-        - scigma_template_public_v1
+        # - scigma_template_public_v1
     - put_ingest_pipelines: [ocr_meta_pipeline_v1]
     # - create_indices:
     #     - scigma-main-corpus-000001
