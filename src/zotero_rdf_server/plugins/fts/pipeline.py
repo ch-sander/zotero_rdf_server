@@ -26,7 +26,7 @@ def ingest_pipeline(
     vector_kwargs: dict | None = None,
     llm_kwargs: dict | None = None,
     ingest: bool = True,
-    delete_index: bool = True,
+    delete_index: list = [],
     iter_pages_kwargs: dict = {},
     page_to_text_kwargs: dict = {},
     text_image_file_kwargs: dict = {},
@@ -182,7 +182,7 @@ def ingest_pipeline(
                         "llm":use_llm,
                         "ingest": False,
                         "error": str(e),
-                        "delete_index": False,
+                        "delete_index": delete_index,
                     })
                     continue
 
@@ -198,7 +198,7 @@ def ingest_pipeline(
                     "ocr_pages": len(pages),
                     "ingest": False,
                     "targets": targets,
-                    "delete_index": False,
+                    "delete_index": delete_index,
                 })
             logger.info(f"Pipeline finsihed with {len(results)} results!")
 
@@ -222,10 +222,10 @@ def ingest_pipeline(
             logger.critical(f"Open Search failed: {e}. Open Search running?")
 
         if delete_index:
-            targets_list = [targets] if isinstance(targets, str) else list(targets)
+            targets_list = [delete_index] if isinstance(delete_index, str) else list(delete_index)
             for t in targets_list:
                 response = client.indices.delete(index=str(t), ignore=[400, 404])
-                logger.warning(f"Deleted Index {t}: {response}")
+                logger.warning(f"\n\nDeleted Index {t}: {response}\n\n")
 
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc).isoformat()        
