@@ -287,7 +287,7 @@ def ingest_route(
         description="OCR backend: kraken, tesseract, or transformer. Choose 'none' to skip ATR/OCR",
     ),
     ingest: bool = Query(default=None, description="If true, ingest into Open Search"),
-    delete_index: bool = Query(default=None, description="If true, delete Open Search index before ingesting"),
+    delete_index: bool = Query(default=None, description="If true, deletes Open Search target index (or all, if no target given) before ingesting"),
     query: Optional[str] = Query(default=None, description="SPARQL SELECT query or path to file with query code (used when body is null)"),
     graph: str | None = Query(default=None, description="Named graph IRI containing the attachments or documents (optional)"),
     config_path: Optional[str] = Query(
@@ -434,6 +434,9 @@ def ingest_route(
             importlib.reload(zcfg)
             # from zotero_rdf_server.config import ZOTERO_LIBRARIES_CONFIGS
             selected_ids = set(pipeline_ids or [])
+            delete_targets: set[str] = set()
+
+
             for lib_cfg in zcfg.ZOTERO_LIBRARIES_CONFIGS:
                 lib = ZoteroLibrary(lib_cfg)
                 if not graph or graph == lib.base_url:
@@ -472,10 +475,9 @@ def ingest_route(
                         os_cfg = open_search_kwargs if open_search_kwargs is not None else (ncfg.get("open-search") or {})
                         pipeline_cfg = (ncfg.get("pipeline") or {})
                         targets_x = targets if targets is not None else os_cfg.get("targets")
-                        if isinstance(targets_x, list):
-                            targets_set.extend(targets_x)
-                        else:
-                            targets_set.append(targets_x)
+                        targets_x = targets_x if isinstance(targets_x, list) else [targets_x]
+                        targets_x = [str(t) for t in targets_x if t]
+                        targets_set.extend(targets_x)
 
                         ingest_x = ingest if ingest is not None else ncfg.get("ingest", True)
 
@@ -487,7 +489,29 @@ def ingest_route(
                             )
 
                         config_path_x = config_path or os_cfg.get("config_path")
-                        delete_x = delete_index if delete_index is not None else os_cfg.get("delete_index", False)
+
+
+                        if delete_index is not None:
+                            requested_delete_targets = targets_x if delete_index else []
+                        else:
+                            delete_cfg = os_cfg.get("delete_index", [])
+                            if delete_cfg is True:
+                                requested_delete_targets = targets_x
+                            elif delete_cfg is False or delete_cfg is None:
+                                requested_delete_targets = []
+                            elif isinstance(delete_cfg, str):
+                                requested_delete_targets = [delete_cfg]
+                            else:
+                                requested_delete_targets = list(delete_cfg)
+
+                        delete_x = [
+                            str(t)
+                            for t in requested_delete_targets
+                            if t and str(t) not in delete_targets
+                        ]
+
+                        delete_targets.update(delete_x)
+                        
                         query_x = query or ncfg.get("query")
                         sparql_endpoint_x = sparql_endpoint or ncfg.get("sparql_endpoint")
 
@@ -2410,11 +2434,7 @@ async def ollama_proxy(
 
 @open_router.get("/search-proxy/{index}/_mapping", tags=["Proxy"])
 async def get_mapping(index: str):
-    from .db import make_client, get_os_config, get_os_client
-    # from .helpers import resolve_config_path
-    # cfg_path = resolve_config_path()
-    # oscfg = get_os_config(cfg_path)
-    # client = make_client(oscfg)
+    from .db import get_os_client
     client = get_os_client()
     return client.indices.get_mapping(index=index)
 
@@ -2430,6 +2450,30 @@ async def msearch(request: Request):
         headers={"content-type": "application/x-ndjson"},
     )
     return resp
+
+
+@router.delete("/index-proxy", tags=["Proxy"])
+async def delete_os_indices(payload: dict = Body(...)):
+    from .db import get_os_client
+
+    client = get_os_client()
+
+    indices = payload.get("indices")
+    if isinstance(indices, str):
+        indices = [indices]
+
+    if not indices:
+        raise HTTPException(status_code=400, detail="Missing indices")
+
+    response = client.indices.delete(
+        index=",".join(indices),
+        ignore=[400, 404],
+    )
+
+    return {
+        "deleted": indices,
+        "response": response,
+    }
 
 ## Cleaning
 
