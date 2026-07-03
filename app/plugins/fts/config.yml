@@ -498,6 +498,7 @@ open-search:
             doc_id: { type: keyword }
             page: { type: integer }
             ingest_ts: { type: date }
+            date: { type: date }
             text:
               type: text
               term_vector: with_positions_offsets
@@ -621,6 +622,8 @@ open-search:
         settings:
           index:
             knn: true
+            mapping:
+              ignore_malformed: true
             number_of_shards: 1
             number_of_replicas: 0
             default_pipeline: "ocr_meta_pipeline_v1"
@@ -676,8 +679,12 @@ open-search:
 
     scigma-public:
       actions:
+        - remove:
+            index: "scigma*"
+            alias: "scigma-public"
+            must_exist: false
         - add:
-            index: scigma-main-corpus
+            index: ["scigma*"]
             alias: scigma-public
             filter:
               bool:
@@ -689,7 +696,13 @@ open-search:
                         - term:
                             meta.tags: "*ingested"
                         - term:
+                            meta.parent_tags: "*public"
+                        - term:
+                            meta.tags: "*public"
+                        - term:
                             meta.collection_labels: "ingested"
+                        - term:
+                            meta.collection_labels: "public"
                       minimum_should_match: 1
                 must_not:
                   - term:
@@ -700,6 +713,8 @@ open-search:
                       meta.parent_tags: "*excluded"
                   - term:
                       meta.tags: "*excluded"
+                  - term:
+                      meta.collection_labels: "excluded"
 
   # indices:
   #   # Optional bootstrap index. Recommended if you want to write to an alias.
