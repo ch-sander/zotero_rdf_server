@@ -32,3 +32,4 @@ src/zotero_rdf_server/plugins/fts/_explorer.py
 app/plugins/fts/pending-vpn.sparql
 /app/plugins/fts/queries/custom
 app/plugins/scigma.plugins.yaml
+/app/ui/partials
