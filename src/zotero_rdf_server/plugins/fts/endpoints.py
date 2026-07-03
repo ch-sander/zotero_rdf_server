@@ -2393,9 +2393,9 @@ def rerun_ocr(
         "framework": framework,
     })
 
-##Proxy
+# Proxies
 
-@router.post("/ollama-proxy", tags=["Proxy"],)
+@router.post("/proxy/ollama", tags=["Proxy"],)
 async def ollama_proxy(
     user_input: str = Body(..., embed=True),
     llm_kwargs: dict = Body(default_factory=dict, embed=True),
@@ -2432,13 +2432,13 @@ async def ollama_proxy(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ollama proxy failed: {e}")
 
-@open_router.get("/search-proxy/{index}/_mapping", tags=["Proxy"])
+@open_router.get("/proxy/search/{index}/_mapping", tags=["Proxy"])
 async def get_mapping(index: str):
     from .db import get_os_client
     client = get_os_client()
     return client.indices.get_mapping(index=index)
 
-@open_router.post("/search-proxy/_msearch", tags=["Proxy"])
+@open_router.post("/proxy/search/_msearch", tags=["Proxy"])
 async def msearch(request: Request):
     body = await request.body()
     from .db import get_os_client
@@ -2451,8 +2451,7 @@ async def msearch(request: Request):
     )
     return resp
 
-
-@router.delete("/index-proxy", tags=["Proxy"])
+@router.delete("/proxy/index", tags=["Proxy"])
 async def delete_os_indices(payload: dict = Body(...)):
     from .db import get_os_client
 

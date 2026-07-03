@@ -1,4 +1,4 @@
-const OPENSEARCH_HOST = "/plugin/fts/search-proxy";
+const OPENSEARCH_HOST = "/plugin/fts/proxy/search";
 
 const DEFAULT_INDEX_NAME = "scigma-main-corpus";
 
