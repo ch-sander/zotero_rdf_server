@@ -498,7 +498,6 @@ open-search:
             doc_id: { type: keyword }
             page: { type: integer }
             ingest_ts: { type: date }
-            date: { type: date }
             text:
               type: text
               term_vector: with_positions_offsets
@@ -520,6 +519,13 @@ open-search:
             meta:
               type: object
               dynamic: true
+              properties:
+                date:
+                  type: date
+                  format: yyyy||yyyy-MM-dd||yyyy-MM
+                year:
+                  type: short
+                  coerce: true
             llm:
               type: object
               dynamic: true   
