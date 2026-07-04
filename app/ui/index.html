@@ -126,30 +126,31 @@
 
   <!-- Citation -->
 
-  <div id="citation-popup" class="citation-popup">
+<div id="citationPopup" class="citation-popup" style="display:none">
   <h2>Citation Required</h2>
-  <p>
-    If you use any resources, data, text, visualizations, query results,
-    or derived outputs from this workbench, you must cite the corresponding
-    source properly.
-  </p>
-  <p>    
-    Proper attribution is required for reuse, publication, redistribution,
-    or derivative work.
-  </p>
-  <button class="popup-button" onclick="closeCitationPopup()">
-    I Comply
+  <p>If you use this workbench, please cite this software.</p>
+
+  <pre id="citationText" style="white-space: pre-wrap; overflow-wrap: anywhere;"></pre>
+
+  <button id="copyCitationButton" style="display:none" onclick="copyCitation()">
+    Copy citation
   </button>
+
+  <button onclick="citationPopup.style.display='none'">I Comply</button>
 </div>
 
 <script>
-  function closeCitationPopup() {
-    document.getElementById("citation-popup").style.display = "none";
-  }
+  fetch("/plugin/citation/render")
+    .then(r => r.ok ? r.text() : "")
+    .then(t => {
+      citationText.textContent = t.trim();
+      copyCitationButton.style.display = t.trim() ? "inline-block" : "none";
+      citationPopup.style.display = "block";
+    });
 
-  window.addEventListener("load", () => {
-    document.getElementById("citation-popup").style.display = "block";
-  });
+  function copyCitation() {
+    navigator.clipboard.writeText(citationText.textContent);
+  }
 </script>
 <script src="partials/load-partials.js" defer></script>
 </body>

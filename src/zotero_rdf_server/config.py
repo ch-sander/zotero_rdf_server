@@ -175,6 +175,12 @@ API_UI_URL = (
     or server_cfg.get("api_ui_url", "/")
     )
 
+CFF_PATH = safe_path(
+    os.getenv("CFF_PATH")
+    or server_cfg.get("cff_path")
+    or "app/plugins/citations/CITATION.cff"
+    )
+
 FASTAPI_META = server_cfg.get("fastapi", {})
 
 FASTAPI_APP_NAME = os.getenv("FASTAPI_APP_NAME")
