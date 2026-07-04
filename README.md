@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/974039137.svg)](https://doi.org/10.5281/zenodo.21197075)
+
 # Zotero RDF Server
 
 This server loads multiple Zotero libraries into an RDF graph,

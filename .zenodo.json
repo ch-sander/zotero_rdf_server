@@ -10,7 +10,6 @@
   "description": "A server for working with Zotero RDF data.",
   "license": "MIT",
   "access_right": "open",
-  "publication_date": "2025-10-01",
   "keywords": [
     "Zotero",
     "RDF",
@@ -19,14 +18,17 @@
     "bibliographic metadata",
     "Development Status: Active"
   ],
+  "grants": [
+    {
+      "id": "10.13039/501100000780::101164040"
+    }
+  ],
   "communities": [
     {
       "identifier": "scigma"
-    }
-  ],
-  "grants": [
+    },
     {
-      "id": "101164040"
+      "identifier": "eu"
     }
   ],
   "related_identifiers": [
@@ -34,11 +36,6 @@
       "identifier": "https://github.com/ch-sander/zotero_rdf_server",
       "relation": "isSupplementedBy",
       "resource_type": "software"
-    },
-    {
-      "identifier": "https://cordis.europa.eu/projects/101164040",
-      "relation": "isFundedBy",
-      "resource_type": "other"
     }
   ]
 }
