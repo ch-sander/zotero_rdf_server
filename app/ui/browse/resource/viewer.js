@@ -452,12 +452,15 @@ function renderRelated(bindings) {
 
     const a = document.createElement("a");
 
+    const value = binding.related.value;
+
     const isInternal =
-      Boolean(binding.relatedLabel);
+      Boolean(binding.relatedLabel) ||
+      value.startsWith("urn:");
 
     a.href = isInternal
-      ? "#" + encodeURIComponent(binding.related.value)
-      : binding.related.value;
+      ? "#" + encodeURIComponent(value)
+      : value;
 
     if (!isInternal) {
       a.target = "_blank";
@@ -494,12 +497,15 @@ function renderSameAs(bindings) {
 
     const a = document.createElement("a");
 
+    const value = binding.same.value;
+
     const isInternal =
-      Boolean(binding.sameLabel);
+      Boolean(binding.sameLabel) ||
+      value.startsWith("urn:");
 
     a.href = isInternal
-      ? "#" + encodeURIComponent(binding.same.value)
-      : binding.same.value;
+      ? "#" + encodeURIComponent(value)
+      : value;
 
     if (!isInternal) {
       a.target = "_blank";
