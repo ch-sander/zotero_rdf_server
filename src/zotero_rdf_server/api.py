@@ -318,14 +318,37 @@ async def optimize_store():
 def favicon():
     try:
         FAVICON = STATIC_UI_DIRECTORY / "favicon.ico"
+
         if not FAVICON.exists():
             from PIL import Image
-            img = Image.new("RGB", (64, 64), "#4a86e8")
-            img.save(FAVICON)
+            import random
+
+            orange = (0xFF, 0x99, 0x00)  # #ff9900
+            blue = (0x4A, 0x86, 0xE8)    # #4a86e8
+
+            small_size = 8
+            final_size = 64
+
+            img = Image.new("RGB", (small_size, small_size))
+            pixels = [
+                random.choice([orange, blue])
+                for _ in range(small_size * small_size)
+            ]
+            img.putdata(pixels)
+
+            img = img.resize((final_size, final_size), Image.Resampling.NEAREST)
+            buffer = BytesIO()
+            img.save(buffer, format="ICO")
+            
+            return Response(
+                content=buffer.getvalue(),
+                media_type="image/x-icon"
+            )
+
         return FileResponse(FAVICON)
-    except:
+
+    except Exception:
         return Response(status_code=204)
-    
 
 @router.get("/libs", summary="List of all libraries", description="Returns all available libraries with configuration.", tags=["Admin"])
 async def get_libs():
