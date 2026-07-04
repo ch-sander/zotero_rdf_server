@@ -34,3 +34,4 @@ app/plugins/fts/pending-vpn.sparql
 app/plugins/scigma.plugins.yaml
 app/ui/partials/custom-footer.html
 app/ui/partials/custom-header.html
+app/ui/_favicon.ico
