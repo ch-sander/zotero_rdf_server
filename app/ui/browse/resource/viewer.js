@@ -616,14 +616,20 @@ function renderIncomingProperty(binding) {
   return withCopy(span, binding.p.value);
 }
 function renderIncomingTriples(bindings) {
-  console.log("Incoming bindings:", bindings);
-  if (bindings.length === 0) {
+
+  const visibleBindings = bindings.filter(
+    binding => !HIDDEN_PROPERTIES.has(binding.p.value)
+  );
+
+
+  console.log("Incoming bindings:", visibleBindings);
+  if (visibleBindings.length === 0) {
     return;
   }
 
   incomingSectionEl.hidden = false;
 
-  for (const binding of bindings) {
+  for (const binding of visibleBindings) {
 
     const tr = document.createElement("tr");
 
