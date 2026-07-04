@@ -1,0 +1,44 @@
+{
+  "title": "Zotero RDF Server",
+  "upload_type": "software",
+  "creators": [
+    {
+      "name": "Sander, Christoph",
+      "orcid": "0000-0003-4452-0107"
+    }
+  ],
+  "description": "A server for working with Zotero RDF data.",
+  "license": "MIT",
+  "access_right": "open",
+  "publication_date": "2025-10-01",
+  "keywords": [
+    "Zotero",
+    "RDF",
+    "Linked Data",
+    "Semantic Web",
+    "bibliographic metadata",
+    "Development Status: Active"
+  ],
+  "communities": [
+    {
+      "identifier": "scigma"
+    }
+  ],
+  "grants": [
+    {
+      "id": "101164040"
+    }
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/ch-sander/zotero_rdf_server",
+      "relation": "isSupplementedBy",
+      "resource_type": "software"
+    },
+    {
+      "identifier": "https://cordis.europa.eu/projects/101164040",
+      "relation": "isFundedBy",
+      "resource_type": "other"
+    }
+  ]
+}
