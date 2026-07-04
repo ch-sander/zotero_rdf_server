@@ -4,6 +4,7 @@
   --scigma-text: #111111;
   --scigma-muted: #4f5f78;
   --scigma-accent: #4a86e8;
+  --scigma-banner-height: 120px;
 
   display: block;
   color: var(--scigma-text);
@@ -18,40 +19,76 @@
 }
 
 .site-header {
+  --scigma-banner-height: clamp(70px, 12vw, 120px);
   width: 100%;
   margin-bottom: 2rem;
+  padding-top: var(--scigma-banner-height);
   text-align: center;
 }
 
-.banner {
+.site-header {
+  --scigma-banner-height: clamp(70px, 12vw, 120px);
+
   width: 100%;
+  margin: 0 0 2rem;
+  padding-top: var(--scigma-banner-height);
+  text-align: center;
+}
+
+.site-header .banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+
+  width: 100vw;
+  width: 100dvw;
+  height: var(--scigma-banner-height);
+
+  z-index: 2147483000;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background-color: var(--scigma-accent);
   overflow: hidden;
+  text-decoration: none;
+  cursor: pointer;
 }
 
-.banner img {
+.site-header .banner img {
   width: 100%;
-  max-width: 1440px;
-  height: auto;
+  height: 100%;
+  object-fit: contain;
   display: block;
-  margin: 0 auto;
 }
 
-.site-header h1 {
-  margin: 1.25rem 1rem 0.25rem;
-  font-size: clamp(1.8rem, 4vw, 3rem);
-  line-height: 1.15;
+.scigma-hero {
+  width: 100%;
+}
+
+.scigma-hero-body {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 3rem 1.5rem 2rem;
+  text-align: center;
+}
+
+.scigma-hero h1 {
+  margin: 0 0 0.75rem;
+  font-size: clamp(2rem, 4vw, 3.5rem);
+  line-height: 1.1;
   font-weight: 700;
   color: var(--scigma-text);
 }
 
-.site-header h2 {
-  margin: 0 1rem 2rem;
-  font-size: clamp(1rem, 2vw, 1.4rem);
+.scigma-hero h2 {
+  margin: 0;
+  font-size: clamp(1.1rem, 2vw, 1.6rem);
   line-height: 1.35;
   font-weight: 400;
   color: var(--scigma-muted);
 }
-
 .erc-footer {
   max-width: 900px;
   margin: 1.5rem auto;
