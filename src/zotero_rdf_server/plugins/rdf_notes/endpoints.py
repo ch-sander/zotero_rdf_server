@@ -1,6 +1,6 @@
 from fastapi import Query, HTTPException, APIRouter, Depends
 from typing import Literal as TypeLiteral
-from zotero_rdf_server.store import *
+from zotero_rdf_server.global_store import *
 from zotero_rdf_server.logging_config import logger
 from zotero_rdf_server.config import *
 from zotero_rdf_server.models import ZoteroLibrary
@@ -34,8 +34,8 @@ async def znotes2rdf(
                                 "znotes_to_rdf",
                                 hint="Enable/install the 'znotes_to_rdf' plugin (and its dependencies).",
                                 )
-    from zotero_rdf_server.store import store
-
+    from zotero_rdf_server import global_store
+    store = global_store.get_store()
     checked_graph, all_graphs = get_graph(graph)    
 
     if graph and not checked_graph:
@@ -64,7 +64,7 @@ async def znotes2rdf(
                         store.clear_graph(target_graph)
                     store.bulk_extend(input) # .quads_for_pattern(None, None, None, target_graph))
                 else:
-                    EXPORT_DIRECTORY.mkdir(parents=True,exist_ok=True)
+                    # EXPORT_DIRECTORY.mkdir(parents=True,exist_ok=True)
                     rdf_format = ensure_rdf_format(format=output_format) # RdfFormat.from_extension(output_format.lower())
                     if rdf_format is None:
                         raise ValueError(f"Unsupported RDF format: {output_format}")
@@ -138,8 +138,10 @@ async def rdf2znotes(
     checked_graph, all_graphs = get_graph(graph)
     if graph and not checked_graph:
         raise HTTPException(status_code=400, detail=f"Invalid graph IRI: {checked_graph}. Use one of these or None: {all_graphs}")
-    from zotero_rdf_server.store import store
-    
+                                
+    from zotero_rdf_server import global_store
+    store = global_store.get_store()
+
     def run_export(api_key, library_id, library_type, collection_id=None):
         logger.info(f"Exporting RDF to Zotero Notes for library_id={library_id}, collection={collection_id}")
         source = open(input_file) if input_file else store
@@ -213,7 +215,8 @@ async def taxonomy(
     checked_graph, all_graphs = get_graph(graph)
     if graph and not checked_graph:
         raise HTTPException(status_code=400, detail=f"Invalid graph IRI: {checked_graph}. Use one of these or None: {all_graphs}")
-    from zotero_rdf_server.store import store
+    from zotero_rdf_server import global_store
+    store = global_store.get_store()
 
     if task == "writeStore":
         require_writable()

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Zotero RDF Server Workbench</title>
+  <link rel="stylesheet" href="styles.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+
+<body>
+
+  <main class="landing">
+    <div id="custom-header-container"></div>
+    <header class="hero">      
+      <h1>Zotero RDF Server Workbench</h1>
+      <p class="subtitle">
+        Edit, explore and search your RDF knowledge graph
+      </p>
+    </header>
+<section class="grid">
+
+  <!-- BROWSE -->
+  <div class="card">
+    <div class="card-header">/browse</div>
+    <h2>Ontology Browser</h2>
+    <p>
+      Explore relevant classes and browse their instances hierarchically.
+    </p>
+    <ul>
+      <li>OWL class hierarchy navigation</li>
+      <li>Live queries to SPARQL endpoint</li>
+      <li>Integrated RDF resource viewer</li>
+    </ul>
+    <a href="browse" target="_blank" class="cta">Browse Ontology →</a>
+    <div class="credit">
+      powered by
+      <a href="https://github.com/oxigraph/oxigraph" target="_blank" rel="noopener">Oxigraph</a>
+    </div>
+  </div>
+
+  <!-- QUERY -->
+  <div class="card">
+    <div class="card-header alt">/query</div>
+    <h2>Query Builder</h2>
+    <p>
+      Build SPARQL queries visually with a guided interface.
+    </p>
+    <ul>
+      <li>Visual ontology exploration</li>
+      <li>No SPARQL knowledge required</li>
+      <li>Direct connection to triple store</li>
+    </ul>
+    <a href="query" target="_blank" class="cta alt">Start Query →</a>
+    <div class="credit">
+      powered by
+      <a href="https://github.com/sparna-git/Sparnatural" target="_blank" rel="noopener">Sparnatural</a>
+    </div>
+  </div>
+
+  <!-- SEARCH -->
+  <div class="card">
+    <div class="card-header">/search</div>
+    <h2>Fulltext Search</h2>
+    <p>
+      Explore indexed data with clustering and semantic grouping.
+    </p>
+    <ul>
+      <li>Fast fulltext search</li>
+      <li>Filter through facets</li>
+      <li>Retrieve deterministic document IDs</li>
+    </ul>
+    <a href="search" target="_blank" class="cta">Search Data →</a>
+    <div class="credit">
+      powered by
+      <a href="https://github.com/opensearch-project/OpenSearch" target="_blank" rel="noopener">OpenSearch</a>
+      &
+      <a href="https://github.com/searchkit/searchkit" target="_blank" rel="noopener">SearchKit</a>
+    </div>
+  </div>
+
+  <!-- ANALYIZE -->
+  <div class="card">
+    <div class="card-header">/analyze</div>
+    <h2>Analyze Text</h2>
+    <p>
+      Explore and analyze text as embeddings and 2D projections.
+    </p>
+    <ul>
+      <li>Fast text embeddings</li>
+      <li>Clustered and projected results</li>
+      <li>Store query results</li>
+    </ul>
+    <a href="analyze" target="_blank" class="cta">Analyze Text →</a>
+    <div class="credit">
+      powered by
+      <a href="https://github.com/apple/embedding-atlas" target="_blank" rel="noopener">Embedding Atlas</a>
+      &
+      <a href="https://scipy.org/" target="_blank" rel="noopener">SciPy</a>
+    </div>
+  </div>
+
+  <!-- EDIT -->
+  <div class="card">
+    <div class="card-header">/edit</div>
+    <h2>RDF Editor</h2>
+    <p>
+      Create and maintain entities and mappings using SHACL.
+    </p>
+    <ul>
+      <li>Structured editing with validation</li>
+      <li>Entity & mapping management</li>
+      <li>Export RDF</li>
+    </ul>
+    <a href="edit" target="_blank" class="cta">Open Editor →</a>
+    <div class="credit">
+      powered by
+      <a href="https://github.com/ULB-Darmstadt/shacl-form" target="_blank" rel="noopener">SHACL-Form</a>
+    </div>
+  </div>
+
+</section>
+
+<div id="custom-footer-container"></div>
+
+  </main>
+
+  <!-- Citation -->
+
+<div id="citationPopup" class="citation-popup" style="display:none">
+  <h2>Citation Required</h2>
+  <p>If you use this workbench, please cite this software.</p>
+
+  <pre id="citationText" style="white-space: pre-wrap; overflow-wrap: anywhere;"></pre>
+
+  <button id="copyCitationButton" style="display:none" onclick="copyCitation()">
+    Copy citation
+  </button>
+
+  <button onclick="citationPopup.style.display='none'">I Comply</button>
+</div>
+
+<script>
+  fetch("/plugin/citation/render")
+    .then(r => r.ok ? r.text() : "")
+    .then(t => {
+      citationText.textContent = t.trim();
+      copyCitationButton.style.display = t.trim() ? "inline-block" : "none";
+      citationPopup.style.display = "block";
+    });
+
+  function copyCitation() {
+    navigator.clipboard.writeText(citationText.textContent);
+  }
+</script>
+<script src="partials/load-partials.js" defer></script>
+</body>
+</html>

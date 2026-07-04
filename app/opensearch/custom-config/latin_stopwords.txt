@@ -22,6 +22,9 @@ igitur
 ita
 sic
 ergo
+quia
+etiam
+illius
 
 # pronouns
 hic
@@ -50,7 +53,7 @@ quibus
 quorum
 quarum
 
-# common theological filler words
+# common words
 quidem
 vero
 tamen
@@ -66,9 +69,12 @@ itaque
 praeterea
 tunc
 nunc
+sine
 semper
 saepe
 iam
+ibid
+ibidem
 adhuc
 
 # weak verbs (very common)

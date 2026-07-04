@@ -2,7 +2,7 @@
 
 This server loads multiple Zotero libraries into an RDF graph,
 exposes a local SPARQL endpoint, and allows exporting the graph.
-A **visual query builder** is found in `/explorer` to explore the graph or go to [GitHub Pages](https://ch-sander.github.io/zotero_rdf_server/).
+A **visual query builder** is found in `/app/ui/query` and `/explorer` to explore the graph or go to [GitHub Pages](https://ch-sander.github.io/zotero_rdf_server/).
 
 ## Why this Tool?
 
@@ -85,7 +85,7 @@ Zotero only provides strings — but some fields deserve more: Creators, Places,
 
 ### Manual Reconciliation
 
-Fuzzy matching can't handle multilingual or semantically complex cases (e.g. “Aachen” vs. “Aix-la-Chapelle”). For that, manual cleanup is required — use the CSV export, edit, then re-import. If a Knowledge Base RDF file is loaded, this can set up all entities for libraries to match with. Basically, a skos:altLabel controls (in combination with the fuzzy threshold) which strings from Zotero's data are mapped to a Knowledge Base entity.
+Fuzzy matching can't handle multilingual or semantically complex cases (e.g. “Aachen” vs. “Aix-la-Chapelle”). For that, manual cleanup is required — use the CSV export, edit, then re-import. If a Knowledge Base RDF file is loaded, this can set up all entities for libraries to match with. Basically, a skos:altLabel controls (in combination with the fuzzy threshold) which strings from Zotero's data are mapped to a Knowledge Base entity. Mappings can be viewed and edited with the built-in [SHACL Form](https://github.com/ULB-Darmstadt/shacl-form) instance (static in `/ui/edit`).
 
 </details>
 
@@ -112,11 +112,15 @@ The FTS plugin reads URLs from the store via a SPARQL query (e.g. attachments of
 
 #### Kraken OCR
 
-Kraken can be used with custom models and typical parameters, as seen in API parameters and config files. Rudementary caching is possible. All processing is streamed, no need to store files locally.
+Kraken can be used with custom models and typical parameters, as seen in API parameters and config files. Rudementary caching is possible. All processing is streamed, no need to store files locally. Singe transcriptions can be edited in UI (the plugin's `/view` endpoint)
 
 #### Open Search indexing
 
-Target indices will ingest full text from OCR (or text passed as variable from query) and stores a metadata dictionnary from the initial SPARQL query. Further hints in the template SPARQL query file.
+Target indices will ingest full text from OCR (or text passed as variable from query) and stores a metadata dictionnary from the initial SPARQL query. Further hints in the template SPARQL query file. Review your search results in a UI (static in `/ui/search`)
+
+#### Embedding Atlas
+
+Open Search generated results can be explored with the built-in instance of Apple's [Embedding Atlas](https://github.com/apple/embedding-atlas). Each document emebdding relies on TFIDF and term statistics from Open Search, and the processing with the use of SVD, k-Means, and UMAP.
 
 </details>
 

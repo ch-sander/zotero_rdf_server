@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>OCR Search</title> 
+
+  <!-- <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/instantsearch.css@7/themes/algolia-min.css" /> -->
+  <link rel="stylesheet" href="algolia-min.css" />
+  <link rel="stylesheet" href="./styles.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- <script src="https://cdn.jsdelivr.net/npm/@searchkit/instantsearch-client@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/instantsearch.js@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/searchkit@latest"></script> -->
+  <script src="instantsearch-client.js"></script>
+  <script src="instantsearch.js"></script>
+  <script src="searchkit.js"></script>
+
+</head>
+<body>
+  <div id="custom-header-container"></div>
+
+  <div class="wrap">
+    <h1>OCR Search</h1>
+
+    <details class="index-settings">
+      <summary>Search settings</summary>
+      <label>
+        Index
+        <select id="index-select">
+          <option value="scigma-main-corpus" selected>Main Corpus Index</option>
+          <option value="scigma-complete" selected>Complete Index</option>
+          <option value="scigma-main-corpus-llm">LLM Index</option>
+          <option value="scigma-main-corpus-pending">Recent Index</option>
+          <option value="scigma-main-lit">Secondary Literature Index</option>
+          <option value="scigma-main-notes">Scholarly Notes Index</option>
+        </select>
+      </label>
+    </details>
+
+    <div id="searchbox"></div>
+    <div id="stats"></div>
+
+    <div class="layout">
+      <aside>
+        <h3>Filters</h3>
+
+        <div id="dynamic-facets"></div>
+
+        <div id="clear"></div>
+      </aside>
+
+      <main>
+        <div id="hits"></div>
+        <div id="pagination"></div>
+      </main>
+    </div>
+  </div>
+
+  <div id="custom-footer-container"></div>
+
+  <script src="../partials/load-partials.js" defer></script>
+  <script src="./app.js"></script>
+
+</body>
+</html>

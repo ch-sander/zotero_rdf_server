@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>RDF Class Instance Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <main>
+   <div id="custom-header-container"></div>
+    <header>
+      <h1>Ontology Classes</h1>
+      <h2 id="class-label" class="resource-label"></h2>
+      <p id="class-uri"></p>
+    </header>
+
+    <section id="comment-box" class="comment-box" hidden>
+      <div id="comment-text"></div>
+    </section>
+
+    <section id="status" class="status">Loading Classes …</section>
+
+    <section id="content" hidden>
+      <div class="layout">
+        <nav class="class-nav" aria-label="Class hierarchy">
+          <h4>Classes</h4>
+          <ul id="class-tree"></ul>
+        </nav>
+
+        <section class="class-content">
+          
+        <details open>
+          <summary>Instances</summary>
+
+          <div class="table-toolbar">
+            <input
+              id="instance-search"
+              type="search"
+              placeholder="Search instances..."
+            >
+
+            <span id="instance-count"></span>
+
+            <div class="pagination">
+              <button id="prev-page" type="button">Previous</button>
+              <span id="page-info"></span>
+              <button id="next-page" type="button">Next</button>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Instance</th>
+                <th>URI</th>
+              </tr>
+            </thead>
+            <tbody id="instances"></tbody>
+          </table>
+        </details>
+        </section>
+      </div>
+    </section>
+  </main>
+<div id="custom-footer-container"></div>
+  <script src="classes.js"></script>
+  <script src="../partials/load-partials.js" defer></script>
+</body>
+</html>

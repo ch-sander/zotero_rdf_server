@@ -1,0 +1,148 @@
+/* ui/partials/styles.css */
+
+:host {
+  --scigma-text: #111111;
+  --scigma-muted: #4f5f78;
+  --scigma-accent: #4a86e8;
+  --scigma-banner-height: 120px;
+
+  display: block;
+  color: var(--scigma-text);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  width: 100%;
+  clear: both;
+  /* all: initial; */
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.site-header {
+  --scigma-banner-height: clamp(70px, 12vw, 120px);
+  width: 100%;
+  margin-bottom: 2rem;
+  padding-top: var(--scigma-banner-height);
+  text-align: center;
+}
+
+.site-header {
+  --scigma-banner-height: clamp(70px, 12vw, 120px);
+
+  width: 100%;
+  margin: 0 0 2rem;
+  padding-top: var(--scigma-banner-height);
+  text-align: center;
+}
+
+.site-header .banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+
+  width: 100vw;
+  width: 100dvw;
+  height: var(--scigma-banner-height);
+
+  z-index: 2147483000;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background-color: var(--scigma-accent);
+  overflow: hidden;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.site-header .banner img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.scigma-hero {
+  width: 100%;
+}
+
+.scigma-hero-body {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 3rem 1.5rem 2rem;
+  text-align: center;
+}
+
+.scigma-hero h1 {
+  margin: 0 0 0.75rem;
+  font-size: clamp(2rem, 4vw, 3.5rem);
+  line-height: 1.1;
+  font-weight: 700;
+  color: var(--scigma-text);
+}
+
+.scigma-hero h2 {
+  margin: 0;
+  font-size: clamp(1.1rem, 2vw, 1.6rem);
+  line-height: 1.35;
+  font-weight: 400;
+  color: var(--scigma-muted);
+}
+.erc-footer {
+  max-width: 900px;
+  margin: 1.5rem auto;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  text-align: center;
+}
+
+.erc-logo {
+  margin: 0;
+}
+
+.erc-logo img {
+  max-width: 220px;
+  height: auto;
+  display: block;
+}
+
+.erc-text {
+  max-width: 620px;
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  text-align: left;
+  color: var(--scigma-text);
+}
+
+.muted {
+  width: 100%;
+  margin: 0.75rem 0 0;
+  color: var(--scigma-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+a {
+  color: var(--scigma-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 700px) {
+  .erc-footer {
+    flex-direction: column;
+  }
+
+  .erc-text {
+    text-align: center;
+  }
+}

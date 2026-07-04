@@ -589,7 +589,7 @@ def pipeline(lib:ZoteroLibrary | dict, source_store:Store, job:Literal["writeNot
         if not file:
             res = html_to_note(html=html_in, note_key=note_key, **lib_cfg)
         else:
-            EXPORT_DIRECTORY.mkdir(parents=True,exist_ok=True)
+            # EXPORT_DIRECTORY.mkdir(parents=True,exist_ok=True)
             html_file = EXPORT_DIRECTORY / file
             res = html_in
             with open(html_file, "w", encoding="utf-8") as f:

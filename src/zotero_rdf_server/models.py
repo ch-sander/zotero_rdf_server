@@ -23,7 +23,7 @@ class ZoteroLibrary:
         self.knowledge_base_graph = str(config.get("knowledge_base_graph", self.base_url)).strip("/#")
         self.mapping_base_graph = str(config.get("mapping_base_graph", self.knowledge_base_graph)).strip("/#")
 
-        self.load_from = safe_path(str(config.get("load_from",IMPORT_DIRECTORY / self.name)).replace("$",str(self.library_id)))
+        self.load_from = safe_path(str(config.get("load_from",IMPORT_DIRECTORY / self.name)).replace("$",str(self.library_id)),create=False)
 
         self.save_to = config.get("save_to")
         if self.save_to:
@@ -33,7 +33,7 @@ class ZoteroLibrary:
                         "Zotero-API-Version": "3",
                         "Accept": "application/json",
                         "User-Agent": self.user}
-        self.map = config.get("map") or {}
+        self.map = load_dict_like(config.get("map") or {}, label="Loading library map") #  TODO not tested
         self.sync = {}
 
         if (
@@ -46,7 +46,7 @@ class ZoteroLibrary:
             self.sync['base_uri'] = f"{ZOT_BASE_URL}{self.sync['library_type']}/{self.sync['library_id']}"
         
         # PLUG-IN Config
-        self.plugin = config.get("plugin") or {}
+        self.plugin = load_dict_like(config.get("plugin") or config.get("plugins") or {}, label="Loading library plugin config")
 
         # check settings
         if check:
@@ -83,7 +83,6 @@ class ZoteroLibrary:
 
     def fetch_paginated(self, endpoint: str) -> list:
         results = []
-        start = 0
         logger.info("Initialize session")
 
         retries = Retry(
@@ -93,72 +92,107 @@ class ZoteroLibrary:
             allowed_methods=["GET"]
         )
         adapter = HTTPAdapter(max_retries=retries)
-        params = dict(self.api_query_params)  # self.api_query_params.copy()
-        filter_collection = params.pop("collection", None)
 
-        if endpoint == "items" and isinstance(filter_collection, str) and filter_collection:
-            endpoint = f"collections/{filter_collection}/items"
-        if endpoint == "collections" and isinstance(filter_collection, str) and filter_collection:
-            endpoint = f"collections/{filter_collection}"
+        params = dict(self.api_query_params)
+        raw_filter_collection = params.pop("collection", None)
 
+        def normalize_collections(value) -> list[str]:
+            if value is None:
+                return []
+
+            if isinstance(value, str):
+                return [part.strip() for part in value.split(",") if part.strip()]
+
+            if isinstance(value, (list, tuple, set)):
+                collections = []
+                for item in value:
+                    if item is None:
+                        continue
+                    if isinstance(item, str):
+                        collections.extend(
+                            [part.strip() for part in item.split(",") if part.strip()]
+                        )
+                    else:
+                        collections.append(str(item).strip())
+                return [c for c in collections if c]
+
+            raise TypeError(
+                "Parameter 'collection' must be None, String, CSV-String or Liste/Tuple/Set."
+            )
+
+        collection_keys = normalize_collections(raw_filter_collection)
+
+        if endpoint == "items" and collection_keys:
+            endpoints_to_fetch = [f"collections/{key}/items" for key in collection_keys]
+        elif endpoint == "collections" and collection_keys:
+            endpoints_to_fetch = [f"collections/{key}" for key in collection_keys]
+        else:
+            endpoints_to_fetch = [endpoint]
 
         with requests.Session() as session:
             session.mount("https://", adapter)
             session.mount("http://", adapter)
 
-            while True:
-                is_single = endpoint.startswith("collections/") and "/items" not in endpoint
+            for current_endpoint in endpoints_to_fetch:
+                start = 0
 
-                request_params = {"format": "json", **params}
-                if not is_single:
-                    request_params.update({"limit": LIMIT, "start": start})
+                while True:
+                    is_single = (
+                        current_endpoint.startswith("collections/")
+                        and "/items" not in current_endpoint
+                    )
 
-                req = requests.Request(
-                    method="GET",
-                    url=f"{self.base_api_url}/{endpoint}",
-                    headers=self.headers,
-                    params=request_params
-                )
-                prepared = req.prepare()
-                logger.info(f"Sending API request: {prepared.method} {prepared.url}")
-                for k, v in prepared.headers.items():
-                    logger.debug(f"Header: {k}: {v}")
+                    request_params = {"format": "json", **params}
+                    if not is_single:
+                        request_params.update({"limit": LIMIT, "start": start})
 
-                try:
-                    response = session.send(prepared, timeout=(5, 30))
-                    response.raise_for_status()
-                    data = response.json()
-                except ReadTimeout:
-                    logger.error(f"Timeout after 30s at {prepared.url}")
-                    raise
-                except RequestException as e:
-                    logger.error(f"Request error: {e}")
-                    raise
-                
-                if isinstance(data, dict):
-                    results.append(data)
-                    logger.info("Non-paginated response (single object); stopping pagination.")
-                    break
+                    req = requests.Request(
+                        method="GET",
+                        url=f"{self.base_api_url}/{current_endpoint}",
+                        headers=self.headers,
+                        params=request_params
+                    )
+                    prepared = req.prepare()
 
-                if not data:
-                    logger.info(f"No more data (start={start})")
-                    break
+                    logger.info(f"Sending API request: {prepared.method} {prepared.url}")
+                    for k, v in prepared.headers.items():
+                        logger.debug(f"Header: {k}: {v}")
 
-                results.extend(data)
-                logger.info(f"Fetched {len(data)} items (start={start})")
-                start += LIMIT
-                # if self.max_data and int(self.max_data)>max_data:
-                #     logger.warning(f"Absolute max. of {max_data} items is less than maximum for this library (={int(self.max_data)}).")
-                    
-                # if (max_data and max_data > 0 and start >= max_data) or (self.max_data and int(self.max_data) > 0 and start >= self.max_data):
-                if self.max_data and int(self.max_data) > 0 and start >= self.max_data:
-                    logger.warning(f"Aborting pagination: max of {self.max_data} items reached.")
-                    break
+                    try:
+                        response = session.send(prepared, timeout=(5, 30))
+                        response.raise_for_status()
+                        data = response.json()
+                    except ReadTimeout:
+                        logger.error(f"Timeout after 30s at {prepared.url}")
+                        raise
+                    except RequestException as e:
+                        logger.error(f"Request error: {e}")
+                        raise
 
-                time.sleep(1)
+                    if isinstance(data, dict):
+                        results.append(data)
+                        logger.info(
+                            f"Non-paginated response for endpoint '{current_endpoint}'; stopping pagination."
+                        )
+                        break
 
+                    if not data:
+                        logger.info(f"No more data for endpoint '{current_endpoint}' (start={start})")
+                        break
+
+                    results.extend(data)
+                    logger.info(
+                        f"Fetched {len(data)} items from '{current_endpoint}' (start={start})"
+                    )
+                    start += LIMIT
+
+                    if self.max_data and int(self.max_data) > 0 and len(results) >= int(self.max_data):
+                        logger.warning(f"Aborting pagination: max of {self.max_data} items reached.")
+                        return results[:int(self.max_data)]
+
+                    time.sleep(1)
         return results
-
+    
     def fetch_items(self, json_path:str | Path = None) -> list:
         if self.load_mode == "manual_import":
             json_path = safe_path(json_path)

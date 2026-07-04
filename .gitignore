@@ -25,3 +25,16 @@ app/.sync_d71c4c954ce7.db
 /app/opensearch/snapshots
 docker-compose_scigma.yml
 app/.sync-exclude.lst
+src/zotero_rdf_server/plugins/fts/_explorer.py
+/app/opensearch/opensearch/nodes
+/app/opensearch/opensearch
+/app/ui/atlas
+app/plugins/fts/pending-vpn.sparql
+/app/plugins/fts/queries/custom
+app/plugins/scigma.plugins.yaml
+app/ui/partials/custom-footer.html
+app/ui/partials/custom-header.html
+app/ui/_favicon.ico
+app/ui/favicon.ico
+app/plugins/citations/data.cff
+app/plugins/citations/software.cff

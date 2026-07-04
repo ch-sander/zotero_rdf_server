@@ -1,0 +1,60 @@
+PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX zot:  <http://www.zotero.org/namespaces/export#>
+
+SELECT ?file
+       (SAMPLE(?date) AS ?date)
+       (SAMPLE(YEAR(?date)) AS ?year)
+       (SAMPLE(?parent) AS ?parent)
+       (SAMPLE(?parent_label) AS ?_label) # _label variable is optional
+       (SAMPLE(?parent_label) AS ?parent_label)
+       (SAMPLE(?parent_title) AS ?parent_title)
+       (SAMPLE(?url) AS ?_input) # _input variable is required
+       (GROUP_CONCAT(DISTINCT ?text_1724_9; SEPARATOR = "; ") AS ?parent_creators)
+       (SAMPLE(?library) AS ?library)
+       (SAMPLE(?library_label) AS ?library_label)
+       (GROUP_CONCAT(DISTINCT ?text_1724_13; SEPARATOR = "; ") AS ?parent_tags)
+       (GROUP_CONCAT(DISTINCT ?collection_label; SEPARATOR = "; ") AS ?collection_labels)
+       (SAMPLE(CONCAT(STR(?library_id), ":", STR(?_id))) AS ?_id) # _id variable is required
+       (SAMPLE(?parent_key) AS ?parent_key)
+       (SAMPLE(?file_label) AS ?file_label)
+       (SAMPLE(?link_type) AS ?link_type)
+WHERE {
+  ?file a zot:attachment;
+        zot:key ?_id;
+        zot:linkMode ?link_type;
+        rdfs:label ?file_label;
+        zot:parentItem ?parent.
+  FILTER(STR(?link_type) IN ( "linked_url", "imported_url" )). # filter on attachment types
+  OPTIONAL { ?parent rdfs:label ?parent_label . }
+  OPTIONAL { ?parent zot:date ?date . }
+  OPTIONAL { ?parent zot:title ?parent_title . }
+  OPTIONAL { ?parent zot:key ?parent_key . }
+  OPTIONAL { ?parent zot:collections/zot:name ?collection_label . }
+  OPTIONAL {
+    ?parent (zot:creators/zot:hasCreator) ?person_1742_8 .
+    ?person_1742_8 a zot:actor ;
+                  rdfs:label ?text_1724_9 .
+  }
+  OPTIONAL {
+    ?file zot:url ?url ;
+          zot:inLibrary ?library .
+  }
+  OPTIONAL {
+    ?library rdf:type zot:library ;
+            rdfs:label ?library_label ;
+            zot:id ?library_id .
+  }
+  OPTIONAL {
+    ?parent zot:tags ?tag_1502_13.
+    ?tag_1502_13 rdf:type zot:tag;
+                 zot:tag ?text_1724_13.
+  }
+
+# More here
+
+}
+GROUP BY ?file
+ORDER BY ?_input
+# OFFSET 50
+# LIMIT 50

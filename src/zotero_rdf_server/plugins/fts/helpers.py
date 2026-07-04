@@ -1,16 +1,31 @@
 import json
-import re
-from typing import Literal, Optional
+import re, os, threading
+from typing import Literal, Optional, Any
 from urllib.parse import urlparse
 import requests
 import subprocess, importlib, sys, os
-from typing import Optional
 from pathlib import Path
 import hashlib
+import datetime
 from functools import lru_cache
+from typing import Any
+from uuid import uuid4
 
 here = Path(__file__).resolve().parent
 requirements = here / "requirements.txt"
+
+def pipeline_log_prefix(meta: dict) -> str:
+    meta = meta or {}
+
+    return (
+        f"PID: {os.getpid()}; "
+        f"TID: {threading.get_ident()}; "
+        f"Thread: {threading.current_thread().name}; "
+        f"pipeline: {meta.get('id_pipeline')} "
+        f"{'(reverted); ' if meta.get('reverse') else '; '}"
+        f"worker: {meta.get('i_worker', 0)}/{meta.get('len_worker', 0)}; "
+        f"items: {meta.get('i_items', 0)}/{meta.get('len_items', 0)}"
+    )
 
 def plugin_logger(new:bool=False):
     if new:
@@ -30,44 +45,20 @@ def plugin_logger(new:bool=False):
         return logger
     else:
         from zotero_rdf_server.logging_config import logger as logger_z
+        logger_z.propagate = False
         return logger_z
 
+@lru_cache()
 def ensure_import(module, attr=None, requirements=requirements):
-    modname = re.split(r"(?:==|!=|<=|>=|<|>|~=)", module, 1)[0]
+    from zotero_rdf_server import utils
+    return utils.ensure_import(module=module,attr=attr,requirements=requirements)
 
-    try:
-        mod = importlib.import_module(modname)
-
-    except ImportError:
-        try:
-            plugin_logger().warning(
-                f"{modname} not found. Installing dependencies ({module})..."
-            )
-
-            if requirements:
-                subprocess.check_call([
-                    sys.executable, "-m", "pip",
-                    "install", "-r", str(requirements),
-                ])
-            else:
-                subprocess.check_call([
-                    sys.executable, "-m", "pip",
-                    "install", module,
-                ])
-
-            mod = importlib.import_module(modname)
-
-        except Exception as e:
-            plugin_logger().error(e, exc_info=True)
-            raise
-
-    return getattr(mod, attr) if attr else mod
 
 @lru_cache(maxsize=1)
 def resolve_config_path(config_path: Optional[str] = None) -> Path:
-    def is_url(s: str) -> bool:
-        u = urlparse(s)        
-        return u.scheme in ("http", "https") and bool(u.netloc)
+    # def is_url(s: str) -> bool:
+    #     u = urlparse(s)        
+    #     return u.scheme in ("http", "https") and bool(u.netloc)
 
     raw = config_path or os.getenv("FTS_CONFIG")
 
@@ -92,6 +83,16 @@ def resolve_config_path(config_path: Optional[str] = None) -> Path:
     fallback = Path(__file__).resolve().parent / "fts_config.yml"
     plugin_logger().info(f"Loading config from fallback: {str(fallback)}")
     return fallback
+  
+def write_data_to_file(data, filename):
+    with open(filename, "w", encoding="utf-8") as f:
+        if isinstance(data, (dict, list)):
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        else:
+            f.write(str(data))
+
+def ISO_ts():
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
 
 def _hash_file(path: Path, algo: str) -> str:
     h = hashlib.new(algo)
@@ -100,18 +101,96 @@ def _hash_file(path: Path, algo: str) -> str:
             h.update(chunk)
     return h.hexdigest()
 
-# def _download(url: str, dest: Path) -> None:
-#     import requests
-#     dest.parent.mkdir(parents=True, exist_ok=True)
-#     with requests.get(url, stream=True, timeout=60) as r:
-#         r.raise_for_status()
-#         tmp = dest.with_suffix(dest.suffix + ".part")
-#         with open(tmp, "wb") as f:
-#             for chunk in r.iter_content(chunk_size=1024 * 1024):
-#                 if chunk:
-#                     f.write(chunk)
-#         tmp.replace(dest)
+def make_json_safe(obj):
+    if isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    if isinstance(obj, dict):
+        return {k: make_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [make_json_safe(v) for v in obj]
+    return str(obj)  # fallback
 
+def get_worker_slice(items, worker_id, total_workers):
+    n = len(items)
+
+    start = (n * worker_id) // total_workers
+    end = (n * (worker_id + 1)) // total_workers
+
+    return items[start:end]
+
+def convert_bindings(bindings, reverse: bool = False):
+    def parse_number_if_exact(val):
+        try:
+            i = int(val)
+            if str(i) == val:
+                return i
+        except (ValueError, TypeError):
+            pass
+
+        try:
+            f = float(val)
+            if str(f) == val:
+                return f
+        except (ValueError, TypeError):
+            pass
+
+        return None
+
+    if isinstance(bindings, dict):
+        plugin_logger().info("Found SPARQL JSON as bindings!")
+        # SPARQL-JSON
+        var_names = bindings["head"]["vars"]
+        rows = bindings["results"]["bindings"]
+
+        def get_value(sol, name):
+            entry = sol.get(name)
+            return None if entry is None else entry.get("value")
+
+    elif isinstance(bindings, list):
+        plugin_logger().info("Found JSON list as bindings!")
+        rows = bindings
+        # var_names = list({k for row in rows for k in row.keys()})
+        var_names = list(dict.fromkeys(k for row in rows for k in row.keys()))
+
+        def get_value(sol, name):
+            return sol.get(name)
+
+    else:
+        plugin_logger().info("Found QueryResult as bindings!")
+        var_names = [v.value for v in bindings.variables]
+        rows = list(bindings)
+
+        def get_value(sol, name):
+            entry = sol[name]
+            return None if entry is None else entry.value
+
+    if reverse:
+        rows = list(rows)[::-1]
+        plugin_logger().warning("Reverse = True")
+
+    numeric_fields = set()
+    for name in var_names:
+        values = [
+            get_value(sol, name)
+            for sol in rows
+            if get_value(sol, name) is not None
+        ]
+
+        if values and all(parse_number_if_exact(v) is not None for v in values):
+            numeric_fields.add(name)
+
+    items = []
+    for sol in rows:
+        items.append({
+            name: (
+                None if get_value(sol, name) is None
+                else parse_number_if_exact(get_value(sol, name)) if name in numeric_fields
+                else get_value(sol, name)
+            )
+            for name in var_names
+        })
+
+    return items, var_names
 
 def _download(url: str, dest: Path) -> None:
     import requests
@@ -148,14 +227,43 @@ def _download(url: str, dest: Path) -> None:
 
     raise RuntimeError(f"Download failed for all variants of {url!r}") from last_exc
 
-Kind = Literal["pdf", "iiif", "xml", "html", "text", "json"]
+Kind = Literal["pdf", "iiif", "xml", "html", "text", "json", "csv"]
 
-def detect_file_kind(path: Path) -> Optional[Kind]:
+def detect_file_kind(
+    path: Path,
+    sniff_bytes: int = 16384,
+) -> Optional[Kind]:
+    try:
+        with path.open("rb") as f:
+            prefix = f.read(sniff_bytes)
+
+            if _looks_like_pdf(prefix):
+                return "pdf"
+
+            mk = _sniff_markup(prefix)
+            if mk:
+                return mk
+
+            jt = _sniff_text_vs_json(prefix)
+
+            if jt == "json" or path.suffix.lower() == ".json":
+                def fetch_more(step: int, offset: int) -> bytes:
+                    f.seek(offset)
+                    return f.read(step) or b""
+
+                return (
+                    "iiif"
+                    if _is_probably_iiif_json(prefix, fetch_more_cb=fetch_more)
+                    else "json"
+                )
+
+    except OSError:
+        return None
+
     ext = path.suffix.lower()
     return {
-        ".json": "json",
-        ".pdf": "pdf",
         ".txt": "text",
+        ".csv": "csv",
         ".html": "html",
         ".htm": "html",
         ".xml": "xml",
@@ -163,10 +271,14 @@ def detect_file_kind(path: Path) -> Optional[Kind]:
 
 def is_url(s: str) -> bool:
     try:
-        u = urlparse(s)
-        return u.scheme in ("http", "https")
+        from zotero_rdf_server.utils import is_url
+        return is_url(s)
     except Exception:
-        return False
+        try:
+            u = urlparse(s)
+            return u.scheme in ("http", "https")
+        except Exception:
+            return False
     
 def resolve_source(src: str) -> tuple[str, Path | None]:
     if is_url(src):
@@ -356,6 +468,30 @@ def detect_url_kind(
 
     except requests.RequestException:
         return "text"
+    
+def format_size(size: int) -> str:
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024:
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
+
+
+def _save_pil(im, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    im.save(path)
+
+    width, height = im.size
+    file_size = path.stat().st_size
+
+    logger.info(
+        "Stored image file: %s (%dx%d px, %s)",
+        path,
+        width,
+        height,
+        _format_size(file_size),
+    )
+
 
 def safe_doc_id(doc_id: str) -> str:
     s = doc_id.strip()
@@ -366,3 +502,122 @@ def clean_ocr(text: str) -> str:
     text = text.replace("\x0c", " ")
     text = re.sub(r"\s+", " ", text)
     return text.strip()
+
+
+def le_item_to_wadm_annotation(
+    item: dict[str, Any],
+    *,
+    source_uri: str,
+    annotation_id_base: str | None = None,
+    creator: str | None = "zotero-rdf-server",
+) -> dict[str, Any]:
+    """
+    Translate one grounded LangExtract item to a Web Annotation Data Model annotation.
+
+    Expected item:
+    {
+        "concept": "...",
+        "normalized": "...",
+        "translation": "...",
+        "start": 123,
+        "end": 145,
+        "evidence": "..."
+    }
+    """
+
+    start = item.get("start")
+    end = item.get("end")
+
+    if not isinstance(start, int) or not isinstance(end, int):
+        raise ValueError("WADM annotation requires integer start/end offsets.")
+
+    concept = item.get("concept")
+    if not isinstance(concept, str) or not concept.strip():
+        raise ValueError("WADM annotation requires a non-empty concept.")
+
+    annotation_id = (
+        f"{annotation_id_base.rstrip('/')}/{uuid4()}"
+        if annotation_id_base
+        else f"urn:uuid:{uuid4()}"
+    )
+
+    bodies: list[dict[str, Any]] = [
+        {
+            "type": "TextualBody",
+            "purpose": "tagging",
+            "value": concept,
+            "language": "la",
+        }
+    ]
+
+    normalized = item.get("normalized")
+    if isinstance(normalized, str) and normalized.strip():
+        bodies.append({
+            "type": "TextualBody",
+            "purpose": "normalizing",
+            "value": normalized,
+            "language": "la",
+        })
+
+    translation = item.get("translation")
+    if isinstance(translation, str) and translation.strip():
+        bodies.append({
+            "type": "TextualBody",
+            "purpose": "describing",
+            "value": translation,
+            "language": "en",
+        })
+
+    evidence = item.get("evidence")
+    if isinstance(evidence, str) and evidence.strip():
+        bodies.append({
+            "type": "TextualBody",
+            "purpose": "evidencing",
+            "value": evidence,
+            "language": "la",
+        })
+
+    annotation: dict[str, Any] = {
+        "@context": "http://www.w3.org/ns/anno.jsonld",
+        "id": annotation_id,
+        "type": "Annotation",
+        "motivation": "tagging",
+        "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "body": bodies,
+        "target": {
+            "source": source_uri,
+            "selector": {
+                "type": "TextPositionSelector",
+                "start": start,
+                "end": end,
+            },
+        },
+    }
+
+    if creator:
+        annotation["creator"] = {
+            "type": "Software",
+            "name": creator,
+        }
+
+    return annotation
+
+
+def le_output_to_wadm(
+    items: list[dict[str, Any]],
+    *,
+    source_uri: str,
+    annotation_id_base: str | None = None,
+    creator: str | None = "zotero-rdf-server",
+) -> list[dict[str, Any]]:
+    return [
+        le_item_to_wadm_annotation(
+            item,
+            source_uri=source_uri,
+            annotation_id_base=annotation_id_base,
+            creator=creator,
+        )
+        for item in items
+        if isinstance(item.get("start"), int)
+        and isinstance(item.get("end"), int)
+    ]

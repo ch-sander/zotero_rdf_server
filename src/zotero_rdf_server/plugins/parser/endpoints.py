@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
-from zotero_rdf_server.store import *
+from zotero_rdf_server.global_store import *
 from zotero_rdf_server.rdf import *
 from zotero_rdf_server.logging_config import logger, LogLevel
 from zotero_rdf_server.config import *
@@ -19,8 +19,10 @@ async def parse_notes(
     query: str | None = Query(default=None, description="Query to retrieve notes, requires ?s (=note item IRI) and ?o (=Note HTML) as bindings (optional)"),
     push: bool | None = Query(default=True, description="Push triples to store (true by default)")
     ):
-    from .parse_note import parse_all_notes
-    from zotero_rdf_server.store import store
+    from .parse_note import parse_all_notes                                
+    from zotero_rdf_server import global_store
+    store = global_store.get_store(force=True)
+    
 
     checked_graph, all_graphs = get_graph(graph)
     if graph and not checked_graph:
@@ -41,3 +43,5 @@ async def parse_notes(
         else:
             logger.warning(f"{graph} not yet supported but defined via config")
     return {"success":f"{result} notes parsed"}
+
+# END

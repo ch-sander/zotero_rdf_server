@@ -7,14 +7,260 @@ logging: # not implemented yet
     open-search:
       trig: ""
 
+vector:
+  embed:
+    SentenceTransformer:
+      model: "intfloat/multilingual-e5-large"
+    FastText:
+      model: "model.bin"
+  train:
+    FastText:
+      model: "model.bin"
+      source_dir:
+      source_file_ext: "txt"
+      train_kwargs:
+
+llm:
+  client:
+    host: http://ollama:11434 # "http://host.docker.internal:11434" # or ollama:11434 if in Docker Network
+
+  langextract:
+    concepts:
+      enabled: true
+      model: "qwen2.5:7b-instruct"
+      model_url: "http://ollama:11434" # or use client above?
+      temperature: 0.0
+      max_char_buffer: 1200
+      extraction_passes: 1
+      max_workers: 1
+      timeout: 300
+
+      prompt_description: |
+        Extract relevant Latin concepts from noisy OCR text of early modern theological works.
+
+        Rules:
+        - Extract only concepts that appear verbatim in the source text.
+        - Each extraction_text must be an exact substring of the source text.
+        - Extract concepts of 1 to 3 words.
+        - Prefer theological, philosophical, moral, metaphysical, legal, and scholastic terms.
+        - Do not extract full sentences.
+        - Do not invent anything.
+        - If uncertain, omit.
+        - Add attributes:
+          - normalized: corrected standard Latin form
+          - translation: concise English translation
+
+      examples:
+        - text: "anima rationalis appetit bonum divinum."
+          extractions:
+            - extraction_class: "concept"
+              extraction_text: "anima rationalis"
+              attributes:
+                normalized: "anima rationalis"
+                translation: "rational soul"
+            - extraction_class: "concept"
+              extraction_text: "bonum divinum"
+              attributes:
+                normalized: "bonum divinum"
+                translation: "divine good"
+
+  chats:
+    concepts:
+      model: "llama3.2:3b" #  "llama3.2:3b", "qwen2.5:7b", "nomic-embed-text:latest"
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 500
+      messages:
+        - role: system
+          content: |
+                You are given noisy OCR text from early modern Latin theological works.
+
+                Extract the most relevant concepts and translate them into English. Relevance is undertood as semantic description of the Latin text.
+
+                Return ONLY a valid JSON array of objects.
+                Each object must contain exactly these keys:
+                "concept", "normalized", "translation"
+
+                Rules:
+                - "concept" must be an exact substring from the source text.
+                - Do not correct OCR errors in "concept".
+                - "normalized" should correct OCR errors and provide a standard Latin form.
+                - "translation" should be concise.
+                - Extract only concepts of 1 to 3 words.
+                - Do not extract full sentences.
+                - Do not extract sentence fragments longer than 3 words.
+                - Prefer meaningful theological, philosophical, and moral terms.
+                - Ignore numbers, section labels, punctuation noise, and meaningless OCR fragments.
+                - Return at most 20 items.
+                - If nothing meaningful is found, return [].
+
+                Critical output rules:
+                - Output JSON only.
+                - Do not output markdown.
+                - Do not output prose.
+                - Do not output explanations.
+                - Do not output notes.
+                - Do not output comments.
+                - Do not output any text before the JSON array.
+                - Do not output any text after the JSON array.
+                - The first character of the response must be [
+                - The last character of the response must be ]
+
+                Invalid concepts (ONLY EXAMPLES):
+                - "peccatuin fit contra naturam intellectualem"
+                - "quia ratio iniuriæ eft folùm extrinfeca"
+                - "quod fit contra bonum intellectuale infinitum"
+
+                Valid concepts (ONLY EXAMPLES):
+                - "peccatuin"
+                - "naturam intellectualem"
+                - "ratio iniuriæ"
+                - "in peccato"
+                - "infinitum fecundùm quid"
+
+                Here are examples (but do not simply return the example but create a return given the specific input. Rather do not return any objects before simply returning the exmaple below, not matching the input text.)
+
+                Example input:
+                peccatuin fit contra naturam intellectualem , vt fic . folùm fequitur ,
+                quod fit contra bonum intellectuale infinitum , analogicè . Qui defendunt
+                effe folùm infinitum fecundùm quid , nituntur in duobus . Primò , quia
+                ratio iniuriæ eft folùm extrinfeca quædam denominatio in peccato .
+
+                Example output:
+                [
+                  {
+                    "concept": "peccatuin",
+                    "normalized": "peccatum",
+                    "translation": "sin"
+                  },
+                  {
+                    "concept": "naturam intellectualem",
+                    "normalized": "natura intellectualis",
+                    "translation": "intellectual nature"
+                  },
+                  {
+                    "concept": "bonum intellectuale infinitum",
+                    "normalized": "bonum intellectuale infinitum",
+                    "translation": "infinite intellectual good"
+                  },
+                  {
+                    "concept": "infinitum fecundùm quid",
+                    "normalized": "infinitum secundum quid",
+                    "translation": "infinite in a certain respect"
+                  },
+                  {
+                    "concept": "ratio iniuriæ",
+                    "normalized": "ratio iniuriae",
+                    "translation": "nature of injury"
+                  },
+                  {
+                    "concept": "in peccato",
+                    "normalized": "in peccato",
+                    "translation": "in sin"
+                  }
+                ]
+
+                Invalid output example:
+                [
+                  {
+                    "concept": "peccatuin",
+                    "normalized": "peccatum",
+                    "translation": "sin"
+                  }
+                ]
+                Note: The OCR is noisy.
+
+                The invalid example is wrong because it contains text after the JSON array.
+    contexts:
+      model: "qwen2.5:7b-instruct" #  "llama3.2:3b", "qwen2.5:7b", "nomic-embed-text:latest"
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 500
+      messages:
+        - role: system
+          content: |
+              Return an array of context terms the Latin text relates to. Focus on seventeenth-century disciplines.
+
+              Limit yourself to clear candidates, do not hallucinate! Never!
+
+              IMPORTANT: Return multiple terms if applicable.
+              You pay particular attention to many disciplines being involved, e.g. ["alchemy", "theology"] or ["medicine", "astronomy"]. Most will pertain to theology. I am particularly interested in interdisciplinary texts. In striking cases (ONLY), add the keyword "interdisciplinary"!
+
+              ONLY RETURN A LIST OF STRINGS IN [] THAT CAN BE PARSED BY A MACHINE. DO NOT PROVIDE FURTHER TEXT OR EXPLANATION
+
+rag:
+  working_dir: ./data/lightrag
+  workspace: default
+
+  storages:
+    kv: OpenSearchKVStorage
+    vector: OpenSearchVectorDBStorage
+    graph: OpenSearchGraphStorage
+    doc_status: OpenSearchDocStatusStorage
+
+  opensearch:
+    hosts: opensearch:9200
+    # user: admin # adjust
+    # password: changeme
+    use_ssl: false
+    verify_certs: false
+
+    # optional:
+    timeout: 30
+    max_retries: 3
+    number_of_shards: 1
+    number_of_replicas: 0
+    knn_ef_construction: 200
+    knn_m: 16
+    knn_ef_search: 100
+    use_ppl_graphlookup: true
+
+  llm:
+    binding: ollama
+    host: http://host.docker.internal:11434
+    model: qwen2.5:7b
+    options:
+      num_ctx: 8192 # 32768
+
+  embedding:
+    binding: ollama
+    host: http://host.docker.internal:11434
+    model: nomic-embed-text
+    dim: 768
+    max_token_size: 8192
+
+  query:
+    mode: mix
+    response_type: Multiple Paragraphs
+    top_k: 40
+    enable_rerank: true
+    only_need_context: false
+    only_need_prompt: false
+
 viewer:
   image_root: "/app/exports/kraken/images"
   text_root: "/app/exports/kraken/texts"
   image_ext: jpg
   text_ext: txt
-  dashboard_url: http://localhost:5601/app/discover#/doc/fe2dc870-1182-11f1-86a9-eb629f790cf7/zotero-ocr-vec-big?id=
-  default_alias: zotero-ocr-vec-big
-  base_url: "/plugin/fts/view"
+  # dashboard_url: http://localhost:5601/app/discover#/doc/fe2dc870-1182-11f1-86a9-eb629f790cf7/scigma-main-corpus?id=
+  # viewer_urls
+  #   view: /plugin/fts/view
+  #   ... defined best in app
+  # static_url: "/ui/view" # set by app to be dynamic
+  OpenSeadragon:
+    src: "https://cdn.jsdelivr.net/npm/openseadragon@5.0.1/build/openseadragon/openseadragon.min.js"
+    prefixUrl: "https://cdn.jsdelivr.net/npm/openseadragon@5.0.1/build/openseadragon/images/"
+    showNavigator: false
+    maxZoomPixelRatio: 2
+    visibilityRatio: 1
+    constrainDuringPan: true
+  ocr_frameworks:
+    - value: kraken
+      label: Kraken
+    - value: tesseract
+      label: Tesseract
+    - value: transformer
+      label: Transformer
 
 kraken:
   models_dir: "/app/plugins/fts/models"
@@ -25,7 +271,7 @@ kraken:
     segmentation: "BLLA"   # "BLLA" or name from models (e.g., "MySegModel")
 
   default_models:
-    print: "LatinIncunabulaEarlyPrints" # "CATMuS-Print-Large"
+    print: "CATMuS-Print-Large" # "LatinIncunabulaEarlyPrints" # "CATMuS-Print-Large"
     handwriting: "McCATMuS"
     medieval: "CATMuS-Medieval"
 
@@ -96,14 +342,15 @@ tesseract:
 open-search:
   client:
     hosts:
-      - host: opensearch # see in docker-compose.yml
+      - host:  opensearch # opensearch, see in docker-compose.yml, sometimes 172.17.0.1
         port: 9200
-    retry_on_timeout: false
-    timeout: 5
+    retry_on_timeout: true
+    timeout: 300
     max_retries: 2
   meta:
     owner: "zotero-rdf-server"
-    default_alias: zotero-ocr-vec-big
+    default_alias: scigma-main-corpus
+    max_size: 10000
     environment: "dev"
     # Minimum OpenSearch version this config is designed for
     opensearch_min_version: "2.0.0"
@@ -113,7 +360,7 @@ open-search:
     max_chunk_bytes: 5242880
     max_retries: 3
     initial_backoff: 1
-    max_backof: 32
+    max_backoff: 32
 
   component_templates:
     # Analysis settings for OCR indexing & search
@@ -126,6 +373,7 @@ open-search:
                 type: mapping
                 mappings:
                   - "ſ=>s"
+                  - "&=>et"
                   - "ﬁ=>fi"
                   - "ﬂ=>fl"
                   - "ﬀ=>ff"
@@ -170,8 +418,13 @@ open-search:
                 stopwords: ["et", "in", "ad", "de", "ut"]
               latin_stop_file:
                 type: stop
-                stopwords_path: latin_stopwords.txt
+                stopwords_path: custom/latin_stopwords.txt
                 lenient: true
+              latin_shingle_3_5:
+                type: shingle
+                min_shingle_size: 3
+                max_shingle_size: 5
+                output_unigrams: false
               latin_synonyms:
                 type: synonym_graph
                 expand: true
@@ -186,37 +439,79 @@ open-search:
                   - "liber, book"
               latin_synonyms_file:
                 type: synonym_graph
-                synonyms_path: latin_synonyms.txt
+                synonyms_path: custom/latin_synonyms.txt
                 expand: true
                 lenient: true
 
             analyzer:
               latin_ocr_index:
                 type: custom
-                char_filter: ["ocr_common_map", "ocr_dehyphenate_linebreak", "ocr_newlines_to_space", "ocr_dehyphenate_linebreak_not", "ocr_punctuation_soften"]
+                char_filter:
+                  - ocr_common_map
+                  - ocr_dehyphenate_linebreak
+                  - ocr_newlines_to_space
+                  - ocr_dehyphenate_linebreak_not
+                  - ocr_punctuation_soften
                 tokenizer: standard
-                filter: ["lowercase", "asciifolding"]
+                filter:
+                  - lowercase
+                  - asciifolding
+                  - latin_stop_minimal
+                  - latin_stop_file
+
               latin_ocr_search:
                 type: custom
-                char_filter: ["ocr_common_map", "ocr_dehyphenate_linebreak", "ocr_newlines_to_space", "ocr_search_extra_map", "ocr_punctuation_soften"]
+                char_filter:
+                  - ocr_common_map
+                  - ocr_dehyphenate_linebreak
+                  - ocr_newlines_to_space
+                  - ocr_search_extra_map
+                  - ocr_punctuation_soften
                 tokenizer: standard
-                filter: ["lowercase", "asciifolding", "latin_stop_minimal", "latin_stop_file", "latin_synonyms", "latin_synonyms_file"]
+                filter:
+                  - lowercase
+                  - asciifolding
+                  - latin_stop_minimal
+                  - latin_stop_file
+                  - latin_synonyms
+                  - latin_synonyms_file
+
+              latin_ocr_shingles:
+                type: custom
+                char_filter:
+                  - ocr_common_map
+                  - ocr_dehyphenate_linebreak
+                  - ocr_newlines_to_space
+                  - ocr_dehyphenate_linebreak_not
+                  - ocr_punctuation_soften
+                tokenizer: standard
+                filter: # No stop words?
+                  - lowercase
+                  - asciifolding
+                  - latin_shingle_3_5
 
         mappings:
           dynamic: false
           properties:
             source: { type: keyword }
+            label: { type: keyword }
             doc_id: { type: keyword }
             page: { type: integer }
             ingest_ts: { type: date }
             text:
               type: text
-              term_vector: "yes"
+              term_vector: with_positions_offsets
               analyzer: latin_ocr_index
               search_analyzer: latin_ocr_search
+              fields:
+                shingles:
+                  type: text
+                  analyzer: latin_ocr_shingles
+                  search_analyzer: latin_ocr_shingles
+                  term_vector: with_positions_offsets
             vector:
               type: knn_vector
-              dimension: 1024
+              dimension: 1024 # adjust
               method:
                 name: hnsw
                 space_type: cosinesimil
@@ -224,9 +519,61 @@ open-search:
             meta:
               type: object
               dynamic: true
+              properties:
+                date:
+                  type: date
+                  format: yyyy||yyyy-MM-dd||yyyy-MM
+                year:
+                  type: short
+                  coerce: true
+            llm:
+              type: object
+              dynamic: true   
+            contexts: { type: keyword }     
+            concepts: # llm
+              type: nested
+              properties:
+                concept:
+                  type: text
+                  fields:
+                    keyword:
+                      type: keyword
+                      ignore_above: 256
+                normalized:
+                  type: text
+                  fields:
+                    keyword:
+                      type: keyword
+                      ignore_above: 256
+                translation:
+                  type: text
+                  fields:
+                    keyword:
+                      type: keyword
+                      ignore_above: 256
+                evidence:
+                  type: text
+                start:
+                  type: integer
+                end:
+                  type: integer
+            concepts_flat:
+              type: object
+              dynamic: true
+
           dynamic_templates:
             - meta_as_keyword:
                 path_match: "meta.*"
+                mapping:
+                  type: keyword
+                  ignore_above: 256
+            - llm_as_keyword:
+                path_match: "llm.*"
+                mapping:
+                  type: keyword
+                  ignore_above: 256
+            - concepts_flat_as_keyword:
+                path_match: "concepts_flat.*"
                 mapping:
                   type: keyword
                   ignore_above: 256
@@ -241,23 +588,39 @@ open-search:
             separator: "\\s*;\\s*"
             ignore_missing: true
 
-        # remove leading '*' from each tag value (works on arrays too)
-        - gsub:
-            field: "meta.parent_tags"
-            pattern: "^\\*"
-            replacement: ""
+        - split:
+            field: "meta.collection_labels"
+            separator: "\\s*;\\s*"
             ignore_missing: true
+
+        - split:
+            field: "meta.parent_creators"
+            separator: "\\s*;\\s*"
+            ignore_missing: true
+
+        # remove leading '*' from each tag value (works on arrays too)
+        # - gsub:
+        #     field: "meta.parent_tags"
+        #     pattern: "^\\*"
+        #     replacement: ""
+        #     ignore_missing: true
 
         # trim whitespace on each element (optional but nice)
         - trim:
             field: "meta.parent_tags"
             ignore_missing: true
 
+        - html_strip:
+            field: "meta.html"
+            target_field: "text"
+            ignore_missing: true
+            if: "ctx.text == null"
+
   index_templates:
   
-    ocr_pages_template_v1:
-      index_patterns: ["zotero-ocr*"]
-      priority: 200
+    scigma_template_app_v1:
+      index_patterns: ["scigma*"]
+      priority: 300
       composed_of:
         - ct_ocr_pages_v1
       template:
@@ -265,33 +628,115 @@ open-search:
         settings:
           index:
             knn: true
+            mapping:
+              ignore_malformed: true
             number_of_shards: 1
-            number_of_replicas: 1
+            number_of_replicas: 0
             default_pipeline: "ocr_meta_pipeline_v1"
-        aliases:
-          ocr:
-            is_write_index: false
-            # filter:
-            #   bool:
-            #     must:
-            #       - term:
-            #           meta.parent_tags: "*public"
-            #     must_not:
-            #       - term:
-            #           meta.parent_tags: "*deprecated"
+        # aliases:
+        #   scigma-all:
+        #     is_write_index: false
+        #   scigma-complete:
+        #     is_write_index: false
+
+    # scigma_template_public_v1:
+    #   index_patterns: ["scigma-main-corpus"]
+    #   priority: 200
+    #   composed_of:
+    #     - ct_ocr_pages_v1
+    #   template:
+    #     # Optional but useful defaults
+    #     settings:
+    #       index:
+    #         knn: false # !!
+    #         number_of_shards: 1
+    #         number_of_replicas: 1
+    #         default_pipeline: "ocr_meta_pipeline_v1"
+    #     aliases:
+    #       scigma-public:
+    #         is_write_index: false
+    #         filter:
+    #           bool:
+    #             must:
+    #               - bool:
+    #                   should:
+    #                     - term:
+    #                         meta.parent_tags: "*ingested"
+    #                     - term:
+    #                         meta.tags: "*ingested"
+    #                     - term:
+    #                         meta.collection_labels: "ingested"
+    #                   minimum_should_match: 1
+    #             must_not:
+    #               - term:
+    #                   meta.parent_tags: "*deprecated"
+    #               - term:
+    #                   meta.tags: "*deprecated"
+    #               - term:
+    #                   meta.parent_tags: "*excluded"
+    #               - term:
+    #                   meta.tags: "*excluded"
+  aliases:
+    scigma-complete:
+      actions:
+        - add:
+            indices: ["scigma*"]
+            alias: scigma-complete
+
+    scigma-public:
+      actions:
+        - remove:
+            index: "scigma*"
+            alias: "scigma-public"
+            must_exist: false
+        - add:
+            index: ["scigma*"]
+            alias: scigma-public
+            filter:
+              bool:
+                must:
+                  - bool:
+                      should:
+                        - term:
+                            meta.parent_tags: "*ingested"
+                        - term:
+                            meta.tags: "*ingested"
+                        - term:
+                            meta.parent_tags: "*public"
+                        - term:
+                            meta.tags: "*public"
+                        - term:
+                            meta.collection_labels: "ingested"
+                        - term:
+                            meta.collection_labels: "public"
+                      minimum_should_match: 1
+                must_not:
+                  - term:
+                      meta.parent_tags: "*deprecated"
+                  - term:
+                      meta.tags: "*deprecated"
+                  - term:
+                      meta.parent_tags: "*excluded"
+                  - term:
+                      meta.tags: "*excluded"
+                  - term:
+                      meta.collection_labels: "excluded"
+
   # indices:
   #   # Optional bootstrap index. Recommended if you want to write to an alias.
-  #   zotero-ocr-000001:
+  #   scigma-main-corpus-000001:
   #     aliases:
-  #       zotero-ocr-write:
+  #       scigma-main-corpus-write:
   #         is_write_index: true
-  #       zotero-ocr-read: {}
+  #       scigma-main-corpus-read: {}
 
   plan:
     - put_component_templates:
         - ct_ocr_pages_v1
     - put_index_templates:
-        - ocr_pages_template_v1
+        - scigma_template_app_v1
+        # - scigma_template_public_v1
     - put_ingest_pipelines: [ocr_meta_pipeline_v1]
     # - create_indices:
-    #     - zotero-ocr-000001
+    #     - scigma-main-corpus-000001
+    - put_aliases: true

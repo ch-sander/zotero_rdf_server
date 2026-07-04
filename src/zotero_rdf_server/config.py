@@ -48,7 +48,8 @@ load_dotenv()
 
 setup_logging("INFO")
 try:
-    WORKDIR = Path(os.getenv("WORKDIR", Path())).resolve()
+    WORKDIR = Path(os.getenv("WORKDIR") or Path.cwd().parent).resolve()
+    logger.info(f"WORKDIR in ENV: {os.getenv('WORKDIR')}")
     logger.info(f"WORKDIR set to {WORKDIR}")    
 except Exception as e:
     logger.critical(f"Failed to set WORKDIR!")
@@ -69,17 +70,34 @@ def load_config(source):
             logger.error(f"Could not inject .env into {source}: {e}")
     return config
 
-def safe_path(path_str: str | Path | None, base_dir: Path | str = WORKDIR) -> Path:
-    if path_str:
-        p = Path(path_str) # if not isinstance(path_str, Path) else Path(path_str)
-        if base_dir:
-            base_dir = str(base_dir) if not isinstance(base_dir, Path) else Path(base_dir)
-        else:
-            base_dir = Path().resolve()
-            
-        return p if p.is_absolute() else (base_dir / p).resolve()
-    else:
+def normalize(value):
+    if value is None:
         return None
+    value = str(value).strip()
+    return value if value else None
+
+def safe_path(path_str: str | Path | None, base_dir: Path | str = WORKDIR, create: bool = True) -> Path | None:
+    if path_str:
+        p = Path(path_str)
+        
+        base_dir = Path(base_dir) if base_dir else Path.cwd().parent # Path().resolve()
+        result = p if p.is_absolute() else (base_dir / p).resolve()
+        
+        if create:
+            try:
+                result.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                logger.error(f"Failed creating safe path for {path_str}: {e}")
+        
+        return result
+    logger.warning(f"Path not valid: {path_str} in {base_dir}")
+    return None
+
+def env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 config_path = os.getenv("CONFIG_FILE", "config.yaml")
 zotero_config_path = os.getenv("ZOTERO_CONFIG_FILE", "zotero.yaml")
@@ -136,6 +154,59 @@ EXPORT_DIRECTORY = safe_path(
     or "/app/exports"
 )
 
+STATIC_UI_DIRECTORY = safe_path(
+    os.getenv("STATIC_UI_DIRECTORY")
+    or server_cfg.get("static_ui_directory")
+    or "/app/ui"
+)
+
+STATIC_UI_PREFIX = (
+    os.getenv("STATIC_UI_PREFIX")
+    or server_cfg.get("static_ui_prefix", "/ui")
+    )
+
+ROOT_REDIRECT = (
+    os.getenv("ROOT_REDIRECT")
+    or server_cfg.get("root_redirect", STATIC_UI_PREFIX)
+    )
+
+API_UI_URL = (
+    os.getenv("API_UI_URL")
+    or server_cfg.get("api_ui_url", "/")
+    )
+
+CFF_PATH = safe_path(
+    os.getenv("CFF_PATH")
+    or server_cfg.get("cff_path")
+    or "app/plugins/citations/CITATION.cff"
+    )
+
+FASTAPI_META = server_cfg.get("fastapi", {})
+
+FASTAPI_APP_NAME = os.getenv("FASTAPI_APP_NAME")
+
+if FASTAPI_APP_NAME:
+    FASTAPI_META['title'] = FASTAPI_APP_NAME
+
+STATIC_UI_PREFIX = f"/{STATIC_UI_PREFIX.lstrip('/').rstrip('/')}" if STATIC_UI_PREFIX else None
+
+ROOT_REDIRECT = f"/{ROOT_REDIRECT.lstrip('/').rstrip('/')}" if ROOT_REDIRECT else None
+
+INCLUDE_CLOSED_ROUTER = env_bool(
+    "INCLUDE_CLOSED_ROUTER",
+    server_cfg.get("include_closed_router", True),
+)
+
+INCLUDE_OPEN_ROUTER = env_bool(
+    "INCLUDE_OPEN_ROUTER",
+    server_cfg.get("include_open_router", True),
+)
+
+INCLUDE_PLUGINS = env_bool(
+    "INCLUDE_PLUGINS",
+    server_cfg.get("include_plugins", True),
+)
+
 IMPORT_DIRECTORY = safe_path(
     os.getenv("IMPORT_DIRECTORY")
     or server_cfg.get("import_directory")
@@ -153,6 +224,13 @@ STORE_MODE = os.getenv(
     server_cfg.get("store_mode", "directory_rw")
 ).strip().lower()
 
+ROOT_PATH = os.getenv(
+    "ROOT_PATH",
+    server_cfg.get("root_path", "")
+)
+
+ROOT_PATH = f"/{ROOT_PATH.lstrip('/').rstrip('/')}" if ROOT_PATH else None
+
 if STORE_MODE not in {"memory", "directory_rw", "directory_ro"}:
     STORE_MODE = "directory_rw"
 
@@ -162,19 +240,19 @@ STORE_DIRECTORY = safe_path(
     or "/app/data"
 )
 
-API_USER = (
-    os.getenv("API_USER")
-    or server_cfg.get("api_user")
-    or None
-)
+env_user = os.getenv("API_USER")
+env_password = os.getenv("API_PASSWORD")
 
-API_PASSWORD = (
-    os.getenv("API_PASSWORD")
-    or server_cfg.get("api_password")
-    or None
-)
+API_USER = normalize(env_user) if env_user is not None else normalize(server_cfg.get("api_user"))
+API_PASSWORD = normalize(env_password) if env_password is not None else normalize(server_cfg.get("api_password"))
 
 REFRESH = REFRESH_INTERVAL >= 0
+
+OS_MAX_SIZE = int(
+    os.getenv("OS_MAX_SIZE")
+    or server_cfg.get("os_max_size")
+    or 10000
+)
 
 if REFRESH_INTERVAL >= 30:
     logger.info(f"Refresh set to {REFRESH_INTERVAL} seconds")
@@ -221,7 +299,7 @@ for lib_cfg in zotero_config.get("libraries", []):
 ZOT_NS = ZOTERO_CONFIGS.get("vocab", "http://www.zotero.org/namespaces/export#")
 ZOT_API_URL = ZOTERO_CONFIGS.get("api_url", "https://api.zotero.org/")
 ZOT_API_USER = ZOTERO_CONFIGS.get("user", "Zotero RDF Server App")
-ZOT_BASE_URL = ZOTERO_CONFIGS.get("base_url", "https://www.zotero.org/")
+ZOT_BASE_URL = ZOTERO_CONFIGS.get("base_url", "https://zotero.org/")
 ZOT_SCHEMA = ZOTERO_CONFIGS.get("schema") # "https://api.zotero.org/schema"
 REGEX_PATTERN = f"{ZOT_NS}regex"
 

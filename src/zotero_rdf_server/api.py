@@ -1,12 +1,13 @@
 from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Depends, status
-from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse, FileResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-import secrets
+import secrets, shutil
 from typing import Any, Literal as TypingLiteral
 import logging
 from pathlib import Path
 # import asyncio
-from .store import *
+# from .global_store import *
+from . import global_store
 from .rdf import *
 from .logging_config import logger, LogLevel
 from .config import *
@@ -16,23 +17,31 @@ import pkgutil
 from importlib import import_module
 from importlib.util import find_spec
 
-app = FastAPI()
 security = HTTPBasic()
 
 def verify(credentials: HTTPBasicCredentials = Depends(security)):
-    if API_USER and API_PASSWORD:
-        correct_username = secrets.compare_digest(credentials.username, API_USER)
-        correct_password = secrets.compare_digest(credentials.password, API_PASSWORD)
+    if not API_USER or not API_PASSWORD:
+        logger.warning("No password set!")
+        return None
 
-        if not (correct_username and correct_password):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Unauthorized",
-                headers={"WWW-Authenticate": "Basic"},
-            )
-        return credentials.username
-    
-router = APIRouter(dependencies=[Depends(verify)])
+    correct_username = secrets.compare_digest(credentials.username, API_USER)
+    correct_password = secrets.compare_digest(credentials.password, API_PASSWORD)
+
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
+    return credentials.username
+
+
+protected_dependencies = (
+    [Depends(verify)] if API_USER and API_PASSWORD else []
+)
+
+router = APIRouter(dependencies=protected_dependencies)
 open_router = APIRouter()
 
 def require_writable():
@@ -43,6 +52,7 @@ def require_writable():
         )
     
 def include_plugins(app: FastAPI, plugins_pkg: str = "zotero_rdf_server.plugins", base_prefix: str = "/plugin") -> None:
+    from .config import INCLUDE_CLOSED_ROUTER, INCLUDE_OPEN_ROUTER
     pkg = import_module(plugins_pkg)
 
     for m in pkgutil.iter_modules(pkg.__path__, prefix=pkg.__name__ + "."):
@@ -65,12 +75,12 @@ def include_plugins(app: FastAPI, plugins_pkg: str = "zotero_rdf_server.plugins"
                 logger.warning("Plugin %s has endpoints.py but no routers", plugin_name)
                 continue
 
-            if prouter is not None:
-                prefix = getattr(mod, "PLUGIN_PREFIX", f"{base_prefix}/{plugin_name}")
+            prefix = getattr(mod, "PLUGIN_PREFIX", f"{base_prefix}/{plugin_name}")
+            if prouter is not None and INCLUDE_CLOSED_ROUTER:
                 app.include_router(prouter, prefix=prefix,
-                                    tags=["Plugin", display_name], dependencies=[Depends(verify)])
+                                    tags=["Plugin", display_name], dependencies=protected_dependencies)
                 
-            if open_router is not None:
+            if open_router is not None and INCLUDE_OPEN_ROUTER:
                 app.include_router(open_router, prefix=prefix,
                                     tags=["Plugin", display_name, "Open Endpoint"])
 
@@ -78,21 +88,17 @@ def include_plugins(app: FastAPI, plugins_pkg: str = "zotero_rdf_server.plugins"
         except Exception:
             logger.exception("Failed to load plugin %s (%s)", plugin_name, endpoints_mod)
 
-@router.get("/export", summary="Create export", tags=["Data"])
-async def export_graph(
-    format: str = Query("trig"),
-    graph: list[str] | None = Query(default=None, description="Named graph IRIs (repeat parameter)")
-):
-    from .store import store
-    
-    def build_subset_store(source_store, graphs):
-        temp_store = Store()
-        for graph in graphs:
-            temp_store.bulk_extend(source_store.quads_for_pattern(None, None, None, graph))
-        return temp_store
-    
-    EXPORT_DIRECTORY.mkdir(parents=True, exist_ok=True)
+from io import BytesIO
 
+def build_subset_store(source_store, graphs):
+    temp_store = Store()
+    for graph in graphs:
+        temp_store.bulk_extend(source_store.quads_for_pattern(None, None, None, graph))
+    return temp_store
+
+def prepare_export(format: str, graph: list[str] | None, ts_filename: bool = False):
+    # from .global_store import store
+    store = global_store.get_store()
     rdf_format = ensure_rdf_format(format=format)
     if rdf_format is None:
         raise HTTPException(status_code=400, detail=f"Unsupported RDF format: {format}")
@@ -102,7 +108,7 @@ async def export_graph(
 
     if graph:
         for g in graph:
-            checked_graph, all_graphs = get_graph(g)
+            checked_graph, all_graphs = global_store.get_graph(g)
             if not checked_graph:
                 raise HTTPException(
                     status_code=400,
@@ -116,18 +122,21 @@ async def export_graph(
     else:
         filename_base = "zotero_store" if not checked_graphs else "graph_subset"
 
-    path = EXPORT_DIRECTORY / f"{filename_base}.{extension}"
-    len_store = 0
-    logger.info(f"Create {path}")
-    logger.info(f"Checked graphs: {checked_graphs!r}")
+    filename = default_filename(filename_base, extension) if ts_filename else f"{filename_base}.{extension}"
+    path = EXPORT_DIRECTORY / filename
+    return store, rdf_format, checked_graphs, path
+
+
+def dump_export(store, rdf_format, checked_graphs, output=None):
+    data = None
 
     if not checked_graphs:
         len_store = len(store)
         if rdf_format.supports_datasets:
-            store.dump(output=path, format=rdf_format, prefixes=PREFIXES)            
+            data = store.dump(output=output, format=rdf_format, prefixes=PREFIXES)
         else:
-            store.dump(
-                output=path,
+            data = store.dump(
+                output=output,
                 format=rdf_format,
                 prefixes=PREFIXES,
                 from_graph=DefaultGraph(),
@@ -135,8 +144,8 @@ async def export_graph(
     elif len(checked_graphs) == 1:
         len_store = len(store)
         g = checked_graphs[0]
-        store.dump(
-            output=path,
+        data = store.dump(
+            output=output,
             format=rdf_format,
             prefixes=PREFIXES,
             from_graph=g,
@@ -144,36 +153,108 @@ async def export_graph(
         )
     else:
         subset_store = build_subset_store(store, checked_graphs)
-        subset_store.dump(output=path, format=rdf_format, prefixes=PREFIXES)
+        data = subset_store.dump(output=output, format=rdf_format, prefixes=PREFIXES)
         len_store = len(subset_store)
-    return {"success": f"Exported {[str(g) for g in checked_graphs] or [str(g) for g in store.named_graphs()]}", "len": len_store, "path":path}
 
-@router.get("/backup", summary="Create backup", description=f"Creates a complete backup of the store to {BACKUP_DIRECTORY}", tags=["Data"])
-async def backup_store():
-    from .store import store
+    return len_store, data
+
+
+@open_router.get("/export", summary="Create export", tags=["Data"])
+async def export_graph(
+    format: str = Query("trig"),
+    graph: list[str] | None = Query(default=None, description="Named graph IRIs (repeat parameter)")
+):
+    store, rdf_format, checked_graphs, path = prepare_export(format, graph, True)
+
+    len_store, data = dump_export(store, rdf_format, checked_graphs)
+
+    return StreamingResponse(
+        BytesIO(data),
+        media_type=getattr(rdf_format, "media_type", "application/octet-stream"),
+        headers={
+            "Content-Disposition": f'attachment; filename="{path.name}"',
+            "X-Export-Length": str(len_store),
+        },
+    )
+
+
+@router.get("/export/file", summary="Create export file", tags=["Data"])
+async def export_graph_file(
+    format: str = Query("trig"),
+    graph: list[str] | None = Query(default=None, description="Named graph IRIs (repeat parameter)"),
+    timestamp: bool | None = Query(default=False, description="Add Timestamp to filename")
+):
+    store, rdf_format, checked_graphs, path = prepare_export(format, graph, timestamp)
+
+    # EXPORT_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Create {path}")
+    logger.info(f"Checked graphs: {checked_graphs!r}")
+
+    len_store, _ = dump_export(store, rdf_format, checked_graphs, path)
+
+    return {
+        "success": f"Exported {[str(g) for g in checked_graphs] or [str(g) for g in store.named_graphs()]}",
+        "len": len_store,
+        "path": path,
+    }
+
+@router.get(
+    "/backup",
+    summary="Create backup",
+    description=f"Creates a complete backup of the store to {BACKUP_DIRECTORY}",
+    tags=["Data"],
+)
+async def backup_store(
+    timestamp: bool = Query(
+        default=False,
+        description="Add timestamp to backup directory name",
+    )
+):
+    store = global_store.get_store()
     backup_root = Path(BACKUP_DIRECTORY).resolve()
-    backup_path = backup_root / "Store"
+
+    backup_name = (
+        f"Store_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        if timestamp
+        else "Store"
+    )
+    backup_path = backup_root / backup_name
+
     log_file = backup_root / "backup.log"
 
     try:
         store_path = Path(STORE_DIRECTORY).resolve()
     except AttributeError:
-        return {"error": "The current store was not found in {STORE_DIRECTORY} (maybe in-memory DB?)"}
+        return {"error": f"The current store was not found in {STORE_DIRECTORY} (maybe in-memory DB?)"}
 
     if backup_path == store_path or backup_path in store_path.parents:
         raise RuntimeError("Cannot backup into the current store's own directory")
 
     if backup_path.exists():
         shutil.rmtree(backup_path, ignore_errors=True)
-        log_file.write_text(f"[{datetime.now().isoformat()}] Deleted old Store backup\n", encoding="utf-8")
+        log_file.write_text(
+            f"[{datetime.now().isoformat()}] Deleted old Store backup\n",
+            encoding="utf-8",
+        )
 
     store.backup(str(backup_path))
+
     backup_store = Store(str(backup_path))
     graphs = [str(g) for g in backup_store.named_graphs()]
-    with log_file.open("a", encoding="utf-8") as f:
-        f.write(f"[{datetime.now().isoformat()}] Created new backup in {backup_path}\n")
 
-    return {"status": "success", "backup store":{"path": backup_path,"named_graphs":graphs, "len":len(store)}}
+    with log_file.open("a", encoding="utf-8") as f:
+        f.write(
+            f"[{datetime.now().isoformat()}] Created new backup in {backup_path}\n"
+        )
+
+    return {
+        "status": "success",
+        "backup store": {
+            "path": backup_path,
+            "named_graphs": graphs,
+            "len": len(backup_store),
+        },
+    }
 
 @router.get("/reload", summary="Reload app", description="Will trigger a reload, even if not set in config.", tags=["Data"])
 async def reload(
@@ -202,16 +283,15 @@ async def reload(
         logger.setLevel(new_level)
 
     try:
-        if reload_config:
-            from . import config as config_module
-            importlib.reload(config_module)
+        # if reload_config: # TODO
+        #     from . import config as config_module
+        #     importlib.reload(config_module)
+        #     logger.warning("CONFIG reloaded!")
 
-        if reload_libraries:
-            refresh_store(True, remove_store=remove_store)
-        else:
-            refresh_store(False, remove_store=remove_store)
+        global_store.refresh_store(reload_libraries, remove_store=remove_store)
 
-        from .store import store
+        # from .global_store import store
+        store = global_store.get_store()
         graphs = [str(g) for g in store.named_graphs()]
         return {
             "status": "success",
@@ -228,19 +308,143 @@ async def reload(
 
 @router.get("/optimize", summary="Optimize Store", description="Will optimize the oxigraph store", tags=["Data"])
 async def optimize_store():
-    from .store import store
-    store.optimize()
-    return {"success":"Store optimized"}
+    with global_store._store_lock:
+        store = global_store.get_store()
+        store.optimize()
 
+    return {"success": "Store optimized"}
 
-@open_router.get("/libs", summary="List of all libraries", description="Returns all available libraries with configuration.", tags=["Admin"])
+@open_router.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    try:
+        FAVICON = STATIC_UI_DIRECTORY / "favicon.ico"
+
+        if not FAVICON.exists():
+            ensure_import("pillow==12.1.1")
+            from PIL import Image, ImageDraw
+            import random
+
+            orange = (0xFF, 0x99, 0x00)  # #ff9900
+            blue = (0x4A, 0x86, 0xE8)    # #4a86e8
+
+            size = 64
+            block = 8
+            cells = size // block
+
+            base, accent = random.choice([(orange, blue), (blue, orange)])
+
+            img = Image.new("RGB", (size, size), base)
+            draw = ImageDraw.Draw(img)
+
+            def fill_cell(cx, cy, color):
+                x0 = cx * block
+                y0 = cy * block
+                x1 = x0 + block - 1
+                y1 = y0 + block - 1
+                draw.rectangle([x0, y0, x1, y1], fill=color)
+
+            motif = random.choice([
+                "checker",
+                "diagonal",
+                "cross",
+                "frame",
+                "quadrants",
+                "rings",
+            ])
+
+            if motif == "checker":
+                offset = random.randint(0, 1)
+                for y in range(cells):
+                    for x in range(cells):
+                        if (x + y + offset) % 2 == 0:
+                            fill_cell(x, y, accent)
+
+            elif motif == "diagonal":
+                width = random.choice([1, 2])
+                direction = random.choice([1, -1])
+                for y in range(cells):
+                    for x in range(cells):
+                        d = (x - y) if direction == 1 else (x + y - (cells - 1))
+                        if abs(d) <= width or abs(d) % 4 == 0:
+                            fill_cell(x, y, accent)
+
+            elif motif == "cross":
+                thickness = random.choice([1, 2])
+                mid = cells // 2
+                for y in range(cells):
+                    for x in range(cells):
+                        if abs(x - mid) < thickness or abs(y - mid) < thickness:
+                            fill_cell(x, y, accent)
+
+            elif motif == "frame":
+                thickness = random.choice([1, 2])
+                for y in range(cells):
+                    for x in range(cells):
+                        if (
+                            x < thickness
+                            or y < thickness
+                            or x >= cells - thickness
+                            or y >= cells - thickness
+                        ):
+                            fill_cell(x, y, accent)
+
+                inner = random.choice([True, False])
+                if inner:
+                    c0 = cells // 2 - 1
+                    for y in range(c0, c0 + 2):
+                        for x in range(c0, c0 + 2):
+                            fill_cell(x, y, accent)
+
+            elif motif == "quadrants":
+                chosen = random.choice([
+                    {(0, 0), (1, 1)},
+                    {(1, 0), (0, 1)},
+                    {(0, 0), (1, 0)},
+                    {(0, 1), (1, 1)},
+                ])
+                half = cells // 2
+                for qx, qy in chosen:
+                    for y in range(qy * half, (qy + 1) * half):
+                        for x in range(qx * half, (qx + 1) * half):
+                            fill_cell(x, y, accent)
+
+            elif motif == "rings":
+                rings = random.choice([1, 2, 3])
+                for r in range(rings):
+                    for i in range(r, cells - r):
+                        fill_cell(i, r, accent)
+                        fill_cell(i, cells - 1 - r, accent)
+                        fill_cell(r, i, accent)
+                        fill_cell(cells - 1 - r, i, accent)
+                    accent, base = base, accent
+
+            buffer = BytesIO()
+            img.save(buffer, format="ICO")
+
+            return Response(
+                content=buffer.getvalue(),
+                media_type="image/x-icon",
+                headers={"Cache-Control": "no-store"}
+            )
+
+        return FileResponse(FAVICON)
+
+    except Exception as e:
+        logger.error(e)
+        return Response(status_code=204)
+
+@router.get("/libs", summary="List of all libraries", description="Returns all available libraries with configuration.", tags=["Admin"])
 async def get_libs():
-    result = [ZoteroLibrary(cfg) for cfg in ZOTERO_LIBRARIES_CONFIGS]
+    import importlib
+    from . import config
+    importlib.reload(config)
+    result = [ZoteroLibrary(cfg) for cfg in config.ZOTERO_LIBRARIES_CONFIGS]
     return {"success": result}
 
 @open_router.get("/graphs", summary="List of all named graphs", description="Returns all available named graphs.", tags=["RDF"])
 async def list_graphs():
-    from .store import store
+    # from .global_store import store
+    store = global_store.get_store()
     graphs = [str(g) for g in store.named_graphs()]
     return {"status": "success", "store":{"named_graphs":graphs, "len":len(store)}}
 
@@ -261,9 +465,10 @@ async def delete_mapping_targets(
         description="If true, performs the deletion. If false, only returns how many triples would be removed.",
     ),
 ) -> dict:    
-    from .store import store
+    # from .global_store import store
+    store = global_store.get_store()
 
-    map_graph, all_graphs = get_graph(map_graph_iri)
+    map_graph, all_graphs = global_store.get_graph(map_graph_iri)
     if map_graph_iri is not None and not map_graph:
         raise HTTPException(
             status_code=400,
@@ -281,7 +486,8 @@ async def delete_mapping_targets(
         }
 
     for q in target_quads:
-        store.remove(q)
+        with global_store._store_lock:
+            store.remove(q)
 
     return {
         "execute": True,
@@ -344,8 +550,8 @@ async def purge(
         description="Mappings mode only: if true, includes mapping entries whose target does not exist in the entity graph.",
     ),
 ) -> list:
-    from .store import store
-
+    from .global_store import get_graph
+    store = global_store.get_store()
     checked_graph, all_graphs = get_graph(graph_iri)
     if graph_iri is not None and not checked_graph:
         raise HTTPException(
@@ -409,7 +615,6 @@ async def purge(
         "facts in the mapping graph.\n\n"
         "If `only_redirect=true`, the old subject facts are kept and a `new owl:sameAs old` triple is added "
         "to the knowledge base graph. Otherwise, subject facts of `old` in the knowledge base graph are deleted.\n\n"
-        "By default this endpoint runs in dry-run mode (`execute=false`)."
     ),
     tags=["RDF", "Semantics"], dependencies=[Depends(require_writable)]
 )
@@ -427,7 +632,8 @@ async def merge(
         description="If true, deduplicate and merge all mappings targeting new_iri",
     )    ,
 ) -> dict:
-    from .store import store
+    from .global_store import get_graph
+    store = global_store.get_store()
 
     old = safeNamedNode(old_iri)
     new = safeNamedNode(new_iri)
@@ -508,7 +714,8 @@ async def kb_map_sync(
         description="If true, performs the synchronization. If false, returns only checks and resolved direction.",
     ),
 ) -> dict[str, Any]:
-    from .store import store
+    from .global_store import get_graph
+    store = global_store.get_store()
 
     entity_graph, _ = get_graph(entity_graph_iri)
     map_graph, _ = get_graph(map_graph_iri)
@@ -593,7 +800,8 @@ async def delete_graph(
         description="If true, performs the deletion. If false, only checks existence.",
     ),
 ) -> dict[str, Any]:
-    from .store import store
+    from .global_store import get_graph, _store_lock
+    store = global_store.get_store()
 
     # Resolve graph object
     if graph_iri is None or graph_iri.lower() == "default":
@@ -645,11 +853,12 @@ async def get_csv(
     from collections import defaultdict
     import csv
 
-    EXPORT_DIRECTORY.mkdir(parents=True,exist_ok=True)
+    # EXPORT_DIRECTORY.mkdir(parents=True,exist_ok=True)
     output_file = EXPORT_DIRECTORY / "export.csv"
     delimiter = " | "
 
-    from .store import store
+    from .global_store import get_graph
+    store = global_store.get_store()
 
     checked_graph, all_graphs = get_graph(graph)
     if graph and not checked_graph:

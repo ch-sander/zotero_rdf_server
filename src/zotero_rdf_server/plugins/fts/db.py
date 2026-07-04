@@ -1,11 +1,8 @@
-from __future__ import annotations
-from .helpers import ensure_import, resolve_config_path, plugin_logger
+from .helpers import ensure_import, resolve_config_path, plugin_logger, safe_doc_id
 ensure_import("opensearchpy")
-import os
-import yaml
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Iterator, Tuple, Any, Iterable, Callable
+from typing import Dict, Iterator, Tuple, Any, Iterable, Callable, Optional
 from opensearchpy import OpenSearch
 from opensearchpy.helpers import streaming_bulk
 from functools import lru_cache
@@ -15,29 +12,34 @@ import logging
 
 logger=plugin_logger()
 
-
 @lru_cache(maxsize=8)
 def get_os_config(config_path: Path) -> dict[str, Any]:
     # import yaml
     from zotero_rdf_server.utils import load_dict_like
-    cfg = load_dict_like(config_path,label="Open Search Config",verbose=True)
-    path = Path(config_path).expanduser().resolve()
+    cfg = load_dict_like(config_path,label="Open Search Config",verbose=False)
+    # path = Path(config_path).expanduser().resolve()
     # with path.open("r", encoding="utf-8") as f:
     #     cfg = yaml.safe_load(f) or {}
     # cfg = load_dict_like(path, "Open Search YAML")
     return cfg.get("open-search") or cfg
 
 
+@lru_cache(maxsize=1)
+def get_os_client():
+    cfg_path = resolve_config_path()
+    oscfg = get_os_config(cfg_path)
+    return make_client(oscfg)
+
 def make_client(cfg: dict) -> OpenSearch:
     if "client" not in cfg:
         raise ValueError("Missing 'client' configuration")
     try:
         cli = OpenSearch(**cfg["client"])
-        logger.debug("OS client created")
+        logger.info("OS client created")
         return cli
-    except Exception as e:
-        logger.critical("Client failed. Service running?")
-        logger.info(e)
+    except Exception:
+        logger.exception("Failed to create OpenSearch client")
+        raise
 
 def ensure_ingest_pipeline(client: OpenSearch, *, name: str, body: dict) -> None:
     logger.debug("putting ingest_pipeline")
@@ -74,6 +76,14 @@ def ensure_index_template(client: OpenSearch, *, name: str, body: dict) -> None:
             body=body,
         )
 
+def ensure_aliases(client: OpenSearch, *, aliases_cfg: dict) -> None:
+    actions = []
+
+    for _, alias_def in aliases_cfg.items():
+        actions.extend(alias_def.get("actions", []))
+
+    if actions:
+        client.indices.update_aliases(body={"actions": actions})
 
 def ensure_index_from_schema(client: OpenSearch, *, index: str, index_def: dict) -> None:
     """
@@ -118,7 +128,8 @@ def provision_from_cfg(client: OpenSearch, cfg: dict) -> None:
     ingest_pipelines: dict = cfg.get("ingest_pipelines", {}) or {}
     index_templates: dict = cfg.get("index_templates", {}) or {}
     indices: dict = cfg.get("indices", {}) or {}
-
+    aliases: dict = cfg.get("aliases", {}) or {}
+    
     plan = cfg.get("plan")
 
     def put_component_templates(names: Iterable[str]) -> None:
@@ -138,20 +149,38 @@ def provision_from_cfg(client: OpenSearch, cfg: dict) -> None:
             ensure_index_from_schema(client, index=name, index_def=indices[name])
 
     if plan:
-        # Execute declarative provisioning steps
         for step in plan:
+            logger.info("starting step: %s", step)
+
             if "put_component_templates" in step:
-                put_component_templates(step["put_component_templates"])
+                for name in step["put_component_templates"]:
+                    logger.info("PUT component_template %s", name)
+                    ensure_component_template(client, name=name, body=component_templates[name])
+                    logger.debug("DONE component_template %s", name)
+
             elif "put_ingest_pipelines" in step:
-                put_ingest_pipelines(step["put_ingest_pipelines"])
+                for name in step["put_ingest_pipelines"]:
+                    logger.info("PUT ingest_pipeline %s", name)
+                    ensure_ingest_pipeline(client, name=name, body=ingest_pipelines[name])
+                    logger.debug("DONE ingest_pipeline %s", name)
+
             elif "put_index_templates" in step:
-                put_index_templates(step["put_index_templates"])
+                for name in step["put_index_templates"]:
+                    logger.info("PUT index_template %s", name)
+                    ensure_index_template(client, name=name, body=index_templates[name])
+                    logger.debug("DONE index_template %s", name)
+
             elif "create_indices" in step:
-                create_indices(step["create_indices"])
-            else:
-                # Unknown step: ignore to keep this minimal and non-breaking
-                continue
-        logger.debug("putting plan")
+                for name in step["create_indices"]:
+                    logger.info("CREATE index %s", name)
+                    ensure_index_from_schema(client, index=name, index_def=indices[name])
+                    logger.debug("DONE index %s", name)
+
+            elif "put_aliases" in step:
+                logger.info("PUT aliases")
+                ensure_aliases(client, aliases_cfg=aliases)
+                logger.debug("DONE aliases")
+
         return
 
     # Fallback: best-effort default order (safe for most cases)
@@ -163,7 +192,8 @@ def provision_from_cfg(client: OpenSearch, cfg: dict) -> None:
         put_index_templates(index_templates.keys())
     if indices:
         create_indices(indices.keys())
-
+    if aliases:
+        ensure_aliases(client, aliases_cfg=aliases)
 
 def apply_ingest_tuning(client: OpenSearch, *, index: str, refresh_interval: str, replicas: int) -> None:
     client.indices.put_settings(
@@ -171,29 +201,213 @@ def apply_ingest_tuning(client: OpenSearch, *, index: str, refresh_interval: str
         body={"index": {"refresh_interval": refresh_interval, "number_of_replicas": replicas}},
     )
 
+try:
+    from zotero_rdf_server.config import EXPORT_DIRECTORY
+    EXPORT_DIRECTORY = Path(EXPORT_DIRECTORY)
+except Exception:    
+    EXPORT_DIRECTORY = Path().resolve()
+
+def run_llm_tasks(
+    *,
+    text: str,
+    doc_id: str | None,
+    sequence: int,
+    llm_kwargs: dict,
+) -> dict:
+    from .analysis.llm import llm, get_llm_config
+    from .helpers import clean_ocr, make_json_safe
+    from zotero_rdf_server.utils import load_dict_like
+    import json
+
+    get_llm_config.cache_clear()
+
+    _doc_id = safe_doc_id(doc_id)
+    def _resolve_out(p: Optional[str], doc_dir:str|None = _doc_id) -> Optional[Path]:
+
+        if not p:
+            return None
+        pp = Path(p)
+        if pp.is_absolute():
+            logger.error(f"Absolute paths are not allowed: {pp}")
+            return (EXPORT_DIRECTORY / doc_dir).resolve()
+        result_path = (EXPORT_DIRECTORY / pp / doc_dir).resolve() if doc_dir else (EXPORT_DIRECTORY / pp ).resolve()
+        logger.debug(f"Export path set: {result_path}")
+        return result_path
+
+    llm_dict = {}
+    llm_tasks = llm_kwargs.get("tasks") or []
+
+    for llm_task in llm_tasks:        
+        llm_meta = dict(llm_task or {})
+        llm_task_kwargs = dict(llm_task or {"task": "task"})
+        
+        llm_datatype = str(llm_task_kwargs.pop("datatype", "json")).lower().strip()
+        llm_task_kwargs["config_path"] = (
+            llm_task_kwargs.get("config_path") or llm_kwargs.get("config_path")
+        )
+        llm_mapping_key = llm_task_kwargs.pop("mapping_key", "llm")
+        llm_mapping_keys = llm_task_kwargs.pop('mapping_keys', None) or [llm_mapping_key]
+        llm_file_kwargs = llm_task_kwargs.pop("file_kwargs", {}) or {}
+        llm_out = llm_file_kwargs.get("llm_out")
+        save_llm = str(llm_file_kwargs.get("save_llm", "skip")).lower().strip()
+        framework = str(llm_meta.get("framework", "ollama")).lower().strip()
+        wadm_out = llm_file_kwargs.get("wadm_out")
+
+        wadm_file = None    
+        llm_file = None
+        llm_response = None
+        cache_exists = False
+        used_cache = False
+
+        if llm_out:
+            llm_file = _resolve_out(llm_out, _doc_id) / f"{sequence:04d}.json"
+            cache_exists = llm_file.exists()
+
+        should_read_cache = (
+            llm_file is not None
+            and save_llm in {"skip", "active"}
+            and cache_exists
+        )
+
+        if should_read_cache:
+            try:
+                llm_response_file = json.loads(llm_file.read_text(encoding="utf-8"))
+                llm_response = llm_response_file.get("response")
+                used_cache = True
+                logger.info(f"Used Cache\nTask {str(llm_task.get('task', 'n/a')).upper()}\nDocument {doc_id}:{sequence}")
+            except Exception:
+                llm_response = None
+                used_cache = False
+
+        if llm_response is None:
+            try:
+
+                llm_response = llm(clean_ocr(text), llm_task_kwargs)
+                logger.debug(
+                    "Raw LLM response\nTask %s\nDocument %s:%s\n%s",
+                    llm_task.get("task", "n/a"),
+                    doc_id,
+                    sequence,
+                    repr(llm_response[:500] if isinstance(llm_response, str) else llm_response),
+                )
+            except Exception as e:
+                logger.exception(
+                    "LLM task failed\nTask %s\nDocument %s:%s",
+                    llm_task.get("task", "n/a"),
+                    doc_id,
+                    sequence,
+                )
+                llm_response = []
+            logger.info(f"LLM Processing\nTask {str(llm_task.get('task', 'n/a')).upper()}\nDocument {doc_id}:{sequence}\nModel {llm_task_kwargs.get('model', 'n/a')}\nFramework {framework}")
+
+        if llm_datatype == "json":
+            llm_result = load_dict_like(
+                llm_response,
+                label=f"LLM page response for {doc_id}:{sequence}",
+                default=[],
+                verbose=not used_cache or framework!="langextract", # TODO omitting verbose...? Maybe make lenghth-dependent?
+            )        
+        else:
+            llm_result = llm_response or []
+
+        for key in llm_mapping_keys:
+            llm_dict[key] = llm_result
+
+        should_write_cache = (
+            llm_file is not None
+            and not used_cache
+            and (
+                save_llm == "overwrite"
+                or (save_llm == "active" and not cache_exists)
+            )
+        )
+
+        if should_write_cache:
+            llm_result_file = {"config": llm_meta, "response": llm_result or [], 'generated':datetime.now(timezone.utc).isoformat(), 'input':{'text':text, 'doc_id':doc_id,'sequence':sequence}}
+            llm_safe = make_json_safe(llm_result_file)
+            llm_file.parent.mkdir(parents=True, exist_ok=True)
+            llm_file.write_text(
+                json.dumps(llm_safe, indent=4, default=str),
+                encoding="utf-8",
+            )
+            logger.info(f"Stored {llm_file}...")
+
+        if framework == "langextract" and wadm_out:
+            from .helpers import le_output_to_wadm            
+            source_uri = f"urn:{_doc_id}:{sequence}"
+
+            wadm_result = le_output_to_wadm(
+                llm_result if isinstance(llm_result, list) else [],
+                source_uri=source_uri,
+                annotation_id_base=None,
+                creator=framework
+            )
+
+            if wadm_out:
+                wadm_file = _resolve_out(wadm_out, _doc_id) / f"{sequence:04d}.json"
+
+            if wadm_file is not None:
+                full = {
+                    "config": llm_meta,
+                    "response": wadm_result,
+                    "generated": datetime.now(timezone.utc).isoformat(),
+                    "input": {
+                        "text": text,
+                        "doc_id": doc_id,
+                        "sequence": sequence,
+                    },
+                }
+                wadm_file.parent.mkdir(parents=True, exist_ok=True)
+                wadm_file.write_text(
+                    json.dumps(full, indent=4, default=str),
+                    encoding="utf-8",
+                )   
+                logger.info(f"Stored WADM sidecar {wadm_file}...")
+    
+    return llm_dict
 
 def page_docs(
     *,
     targets: Iterable[str],
     input: str,
     doc_id: str | None,
+    label: str | None,
     pages: Iterator[Tuple[int, str]],
-    meta: dict, 
-    vector: bool = False
+    meta: dict = {}, 
+    vector_kwargs: dict | None = None,
+    llm_kwargs: dict | None = None,
+    # config_path: str | None = None,
 ) -> Iterator[Dict[str, Any]]:
+
     now = datetime.now(timezone.utc).isoformat()
+    vector = isinstance(vector_kwargs, dict) and vector_kwargs.get('framework')
+    use_llm = isinstance(llm_kwargs, (dict)) and llm_kwargs.get('tasks')
+
     if vector:
-        from .vector import embed
-        from .helpers import clean_ocr        
+        from .analysis.vector import embed
+        from .helpers import clean_ocr
+        vector_doc = None   
 
     for sequence, text in pages:
-        vector_doc = None
+        label_s = f"{label.rstrip(',.:')}: {sequence}"
+        
         if vector:
-            vector_doc = embed(clean_ocr(text))
+            vector_doc = embed(clean_ocr(text),**vector_kwargs)
+
+        llm_dict = {}
+        if use_llm and text:
+            llm_dict = run_llm_tasks(
+                text=text,
+                doc_id=doc_id,
+                llm_kwargs=llm_kwargs,
+                sequence=sequence,
+            )
+
         for index_name in targets:            
             source = {
                 "source": input,
                 "doc_id": doc_id,
+                "label": label_s,
                 "page": sequence,
                 "text": text,
                 "ingest_ts": now,
@@ -201,6 +415,9 @@ def page_docs(
             }
             if vector:
                 source["vector"] = vector_doc
+
+            if use_llm and llm_dict and isinstance(llm_dict,dict):
+                source.update(llm_dict)
 
             action = {
                 "_op_type": "index",
@@ -336,24 +553,23 @@ PagesFn = Callable[[str], Iterator[Tuple[int, str]]]
 
 def index_stream(
     *,
-    config_path: str | None = None,
+    client,
+    oscfg: dict,
     input: str | None = None,
     doc_id: str | None = None,
+    label: str | None = None,
     url_to_text_pages_fn: PagesFn | None = None,
     targets: str | Iterable[str],
-    ocr_kwargs: dict | None = None,
+    source_kwargs: dict | None = None,
     meta: dict | None = None,
     doc: Any | None = None,
-    vector: bool = False
+    vector_kwargs: dict | None = None,
+    llm_kwargs: dict | None = None
 ) -> dict:
     logger.debug(f"OS index_stream started...")
-    cfg_path = resolve_config_path(config_path)
-    oscfg = get_os_config(cfg_path)
-    client = make_client(oscfg)
-    try:
-        provision_from_cfg(client, oscfg)
-    except Exception as e:
-        logger.critical(f"Open Search failed: {e}. Open Search running?")
+    # cfg_path = resolve_config_path(config_path)
+    # oscfg = get_os_config(cfg_path)
+    # client = make_client(oscfg)
 
     # Normalize targets
     if isinstance(targets, str):
@@ -377,15 +593,17 @@ def index_stream(
         if url_to_text_pages_fn is None:
             raise ValueError("url_to_text_pages_fn is required when doc is None")
 
-        pages_iter = url_to_text_pages_fn(input, **(ocr_kwargs or {}))
+        pages_iter = url_to_text_pages_fn(input, **(source_kwargs or {}))
 
         actions = page_docs(
             targets=targets_list,
             input=input,
             doc_id=doc_id,
+            label=label,
             pages=pages_iter,
             meta=meta or {},
-            vector=vector
+            vector_kwargs=vector_kwargs,
+            llm_kwargs=llm_kwargs,
         )
 
     # IMPORTANT: index=None so per-action _index is respected
@@ -409,8 +627,10 @@ def index_stream(
     run_id = run.get("run_id") or run.get("error") or "no id/error"
 
     logger.info(
-        "OS index_stream for run %s completed for %s...",
+        "from OCOS index_stream for run %s completed for %s...",
         run_id,
         doc_id,
     )
     return run
+
+# END

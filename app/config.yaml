@@ -1,11 +1,25 @@
-inject_env: true # replacing ${VAR} in this YAML from .env. Use for secrets
-server: # all values are overwritten by capititalized .env variables
-  refresh_interval: 0 # seconds (min. 30), 0 = refresh at startup, -1 = do not refresh
-  store_mode: "directory_rw"  # or "directory_rw", "directory_rw", or "memory"
-  # host directory variables will be primarily set in .env
-  delay: 60 # delay at startup in seconds
-  store_directory: "/app/data"
-  export_directory: "/app/exports"  
-  import_directory: "/app/import"
-  backup_directory: "/app/backup"
+server:
+  refresh_interval: -1 # seconds (min. 30), 0 = refresh at startup, -1 = do not refresh
+  # store_mode: "memory"  # or "directory"
+  delay: 1 # delay at startup in seconds
+  store_directory: "./app/data"  
+  export_directory: "./app/exports"  
+  import_directory: "./app/import"
+  backup_directory: "./app/backup"
+  static_ui_directory: "/app/ui"
+  api_ui_url: "/api"
+  static_ui_prefix: "/"
+  include_closed_router: true
+  include_open_router: true
+  include_plugins: true
+  root_path: ""
   log_level: "info"  # "debug", "info", "warning", "error"
+
+  fastapi:
+    title: "Zotero RDF Server"
+    summary: "(c) Christoph Sander, 2026"
+    description: |
+          <strong>GitHub</strong>: <img class="avatar mr-2 d-none d-md-block avatar-user" alt="Owner avatar" src="https://avatars.githubusercontent.com/u/74921235?s=48&amp;v=4" width="24" height="24">
+          <a href="https://github.com/ch-sander/zotero_rdf_server" target="_blank" rel="noopener noreferrer">
+            zotero_rdf_server
+          </a>

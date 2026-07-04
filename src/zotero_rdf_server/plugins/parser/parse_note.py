@@ -5,7 +5,7 @@ import json, re
 from datetime import datetime
 from dateutil import parser
 from pathlib import Path
-from zotero_rdf_server.store import Store, Quad, NamedNode, Literal, RdfFormat, BlankNode
+from zotero_rdf_server.global_store import Store, Quad, NamedNode, Literal, RdfFormat, BlankNode
 from zotero_rdf_server.logging_config import logger
 from zotero_rdf_server.config import *
 from zotero_rdf_server.models import ZoteroLibrary

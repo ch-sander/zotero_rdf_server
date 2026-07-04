@@ -3,4 +3,5 @@ network.host: 0.0.0.0
 discovery.type: single-node
 
 path.repo: ["/usr/share/opensearch/snapshots"]
-plugins.security.disabled: true
+# plugins.security.disabled: true
+indices.query.bool.max_clause_count: 4096

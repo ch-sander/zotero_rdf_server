@@ -1,7 +1,10 @@
 # version: "3.8"
 services:
   zotero-rdf:
-    build: .
+    build:
+      context: .
+      args:
+        WITH_TESSERACT: ${WITH_TESSERACT:-false}
     container_name: ${ZOTERO_RDF_SERVER_CONTAINER}
     working_dir: /src
     command: uvicorn zotero_rdf_server.main:app --host 0.0.0.0 --port 8000
@@ -13,15 +16,15 @@ services:
       - ./src:/src # dev (no reloading, though)
       - "${CONFIG_FILE_HOST:-./app/config.yaml}:${CONFIG_FILE:-/app/config.yaml}"
       - "${ZOTERO_CONFIG_FILE_HOST:-./app/zotero.yaml}:${ZOTERO_CONFIG_FILE:-/app/zotero.yaml}"
-      - "${STORE_DIRECTORY_HOST:-./app/data}:/app/data"
-      - "${PLUGINS_DIRECTORY_HOST:-./app/plugins}:/app/plugins"
-      - "${EXPORT_DIRECTORY_HOST:-./app/exports}:/app/exports"
-      - "${IMPORT_DIRECTORY_HOST:-./app/exports}:/app/import"
-      - "${BACKUP_DIRECTORY_HOST:-./app/backup}:/app/backup"
+      - "${APP_DIRECTORY_HOST:-./app}:/app"
+
     restart: unless-stopped
 
   zotero-rdf-workers:
-    build: .
+    build:
+      context: .
+      args:
+        WITH_TESSERACT: ${WITH_TESSERACT:-false}
     container_name: ${ZOTERO_RDF_WORKERS_CONTAINER:-zotero-rdf-workers}
     working_dir: /src
     profiles:
@@ -36,11 +39,8 @@ services:
     volumes:
       - "${CONFIG_FILE_HOST:-./app/config.yaml}:${CONFIG_FILE:-/app/config.yaml}"
       - "${ZOTERO_CONFIG_FILE_HOST:-./app/zotero.yaml}:${ZOTERO_CONFIG_FILE:-/app/zotero.yaml}"
-      - "${STORE_DIRECTORY_HOST:-./app/data}:/app/data"
-      - "${PLUGINS_DIRECTORY_HOST:-./app/plugins}:/app/plugins"
-      - "${EXPORT_DIRECTORY_HOST:-./app/exports}:/app/exports"
-      - "${IMPORT_DIRECTORY_HOST:-./app/exports}:/app/import"
-      - "${BACKUP_DIRECTORY_HOST:-./app/backup}:/app/backup"
+      - "${APP_DIRECTORY_HOST:-./app}:/app"
+      
     restart: unless-stopped
 
   oxigraph:
@@ -89,7 +89,8 @@ services:
       - "${OPENSEARCH_TRANSPORT_PORT:-9600}:9600"
 
     volumes:
-      - "${OPENSEARCH_DATA_DIR_HOST:-opensearch}:/usr/share/opensearch/data"
+      - "${OPENSEARCH_DATA_DIR_HOST:-opensearch}/data:/usr/share/opensearch/data"
+      - "${OPENSEARCH_DATA_DIR_HOST:-opensearch}/custom-config:/usr/share/opensearch/config/custom"
       - "${OPENSEARCH_DATA_DIR_HOST:-opensearch}/opensearch.yml:/usr/share/opensearch/config/opensearch.yml:ro"
       - "${OPENSEARCH_DATA_DIR_HOST:-opensearch}/snapshots:/usr/share/opensearch/snapshots"
 

@@ -33,13 +33,16 @@ defaults:
     fts: # Full Text Search Plugin. Loads text from URL, performs OCR, ingests to Open Search index (see docker compose configuration). Lists of dictionnaries are possible, too.
       logging: # not deployed, yet
         ingest_into_graph: "" # whether the logging store shall be stored in the main store in a named graph by this IRI
-      query: "/app/plugins/fts/fts.sparql" # SPARQL query to retrieve URLs for OCR/ingesting
-      ocr: true
+      query: "/app/plugins/fts/queries/fts.sparql" # SPARQL query to retrieve URLs for OCR/ingesting
+      from_source: true
+      vector:
+        framework: null # "SentenceTransformer" or null or "FastText"
+        config_path: "/app/plugins/fts/config.yml"
       open-search:
         targets: ["zotero-ocr"] # indices to target        
         config_path: "/app/plugins/fts/config.yml" # fallback FTS_CONFIG in ENV
-      kraken:          
-        model_kwargs:
+      pipeline:          
+        framework_kwargs:
           domain: print
           model_name:
           segmenter:
@@ -47,7 +50,8 @@ defaults:
           config_path: "/app/plugins/fts/config.yml"
           # save_images: "/app/plugins/fts/data" # creates folder per processed file
           # save_text: "/app/plugins/fts/data" # creates folder per processed file
-        ocr_kwargs:
+          # seg_blur_radius: 1.0
+        source_kwargs:
           file_formats: ["pdf", "iiif"]
           iiif_max_width: 2000
           iiif_format: "jpg"
