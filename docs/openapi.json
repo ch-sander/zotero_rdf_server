@@ -5,18 +5,13 @@
     "version": "0.1.0"
   },
   "paths": {
-    "/export": {
+    "/export/file": {
       "get": {
         "tags": [
           "Data"
         ],
-        "summary": "Create export",
-        "operationId": "export_graph_export_get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
+        "summary": "Create export file",
+        "operationId": "export_graph_file_export_file_get",
         "parameters": [
           {
             "name": "format",
@@ -48,6 +43,25 @@
               "title": "Graph"
             },
             "description": "Named graph IRIs (repeat parameter)"
+          },
+          {
+            "name": "timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Add Timestamp to filename",
+              "default": false,
+              "title": "Timestamp"
+            },
+            "description": "Add Timestamp to filename"
           }
         ],
         "responses": {
@@ -80,6 +94,20 @@
         "summary": "Create backup",
         "description": "Creates a complete backup of the store to /home/runner/work/zotero_rdf_server/zotero_rdf_server/local/backup",
         "operationId": "backup_store_backup_get",
+        "parameters": [
+          {
+            "name": "timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Add timestamp to backup directory name",
+              "default": false,
+              "title": "Timestamp"
+            },
+            "description": "Add timestamp to backup directory name"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -88,13 +116,18 @@
                 "schema": {}
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
-        },
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ]
+        }
       }
     },
     "/reload": {
@@ -105,11 +138,6 @@
         "summary": "Reload app",
         "description": "Will trigger a reload, even if not set in config.",
         "operationId": "reload_reload_get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
         "parameters": [
           {
             "name": "reload_libraries",
@@ -198,12 +226,27 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "HTTPBasic": []
+        }
+      }
+    },
+    "/libs": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "List of all libraries",
+        "description": "Returns all available libraries with configuration.",
+        "operationId": "get_libs_libs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           }
-        ]
+        }
       }
     },
     "/delete_mapping_targets": {
@@ -214,11 +257,6 @@
         "summary": "Delete all mapping target triples from a mapping graph",
         "description": "Deletes all triples of the form `?entry zmap:target ?entity` from the given mapping graph.\n\nBy default this endpoint runs in dry-run mode (`execute=false`).",
         "operationId": "delete_mapping_targets_delete_mapping_targets_delete",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
         "parameters": [
           {
             "name": "map_graph_iri",
@@ -278,11 +316,6 @@
         "summary": "Purge orphan entities or dangling mapping entries",
         "description": "Finds inconsistent resources in the configured libraries and optionally deletes them.\n\nmode=entities:\n- An entity is considered an orphan if it is not a mapping target.\n- If `not_mapped_only=false`, the entity must additionally not be referenced as an object in the selected graphs.\n\nmode=mappings:\n- A mapping entry is considered dangling if it has no target.\n- Optionally, entries can also be treated as dangling if their target does not exist in the knowledge base graph.\n\nBy default this endpoint runs in dry-run mode (`delete=false`).",
         "operationId": "purge_purge_get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
         "parameters": [
           {
             "name": "graph_iri",
@@ -412,13 +445,8 @@
           "Semantics"
         ],
         "summary": "Merge two entities in the knowledge base graph and retarget mapping entries",
-        "description": "Moves facts from `old` to `new` in the knowledge base graph, replaces all occurrences of `old` as an object across the store, retargets mapping entries in the mapping graph, and migrates facts in the mapping graph.\n\nIf `only_redirect=true`, the old subject facts are kept and a `new owl:sameAs old` triple is added to the knowledge base graph. Otherwise, subject facts of `old` in the knowledge base graph are deleted.\n\nBy default this endpoint runs in dry-run mode (`execute=false`).",
+        "description": "Moves facts from `old` to `new` in the knowledge base graph, replaces all occurrences of `old` as an object across the store, retargets mapping entries in the mapping graph, and migrates facts in the mapping graph.\n\nIf `only_redirect=true`, the old subject facts are kept and a `new owl:sameAs old` triple is added to the knowledge base graph. Otherwise, subject facts of `old` in the knowledge base graph are deleted.",
         "operationId": "merge_merge_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
         "parameters": [
           {
             "name": "old_iri",
@@ -523,11 +551,6 @@
         "summary": "Synchronize knowledge base entities and mapping entries",
         "description": "Synchronizes entities in the knowledge base graph with mapping entries in the mapping graph.\n\n- direction=auto chooses a direction based on whether mapping/entities exist.\n- execute=false performs only validation and direction resolution (dry run).\n- execute=true performs the actual synchronization and returns counters.",
         "operationId": "kb_map_sync_kb_map_sync_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
         "parameters": [
           {
             "name": "entity_graph_iri",
@@ -661,11 +684,6 @@
         "summary": "Remove or clear a graph from the RDF store",
         "description": "Removes a named graph from the store. If the default graph is specified, it will be cleared but not removed.\n\nBy default this endpoint performs a dry run (`execute=false`).",
         "operationId": "delete_graph_remove_graph_delete",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
         "parameters": [
           {
             "name": "graph_iri",
@@ -733,11 +751,6 @@
         "summary": "Export CSV",
         "description": "Exports a named graph or the entire store as CSV or loads a CSV as RDF into the store",
         "operationId": "get_csv_csv_get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
         "parameters": [
           {
             "name": "graph",
@@ -839,12 +852,7 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ]
+        }
       }
     },
     "/logs/clear": {
@@ -863,12 +871,7 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ]
+        }
       }
     },
     "/logs/level": {
@@ -879,11 +882,6 @@
         "summary": "Set log level",
         "description": "Sets the application log level at runtime.",
         "operationId": "set_log_level_logs_level_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
         "parameters": [
           {
             "name": "logging_level",
@@ -918,20 +916,62 @@
         }
       }
     },
-    "/libs": {
+    "/export": {
       "get": {
         "tags": [
-          "Admin"
+          "Data"
         ],
-        "summary": "List of all libraries",
-        "description": "Returns all available libraries with configuration.",
-        "operationId": "get_libs_libs_get",
+        "summary": "Create export",
+        "operationId": "export_graph_export_get",
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "trig",
+              "title": "Format"
+            }
+          },
+          {
+            "name": "graph",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Named graph IRIs (repeat parameter)",
+              "title": "Graph"
+            },
+            "description": "Named graph IRIs (repeat parameter)"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -958,6 +998,64 @@
         }
       }
     },
+    "/plugin/citation/render": {
+      "get": {
+        "tags": [
+          "Plugin",
+          "Citation",
+          "Open Endpoint",
+          "Citation"
+        ],
+        "summary": "Citation",
+        "operationId": "citation_plugin_citation_render_get",
+        "parameters": [
+          {
+            "name": "method",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "method for cffconvert package",
+              "default": "as_apalike",
+              "title": "Method"
+            },
+            "description": "method for cffconvert package"
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Path to CITATION.cff",
+              "default": "/home/runner/work/zotero_rdf_server/zotero_rdf_server/app/plugins/citations/CITATION.cff",
+              "title": "Path"
+            },
+            "description": "Path to CITATION.cff"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/plugin/fts/ocr": {
       "get": {
         "tags": [
@@ -967,11 +1065,6 @@
         "summary": "OCR a URL (PDF or IIIF) and return text per page",
         "description": "Iterates pages from a PDF/IIIF URL and runs OCR. Output can be JSON, NDJSON (one JSON object per line), or ZIP. If `domain/model_name/segmenter` are omitted, defaults are resolved from YAML/ENV.",
         "operationId": "ocr_url_plugin_fts_ocr_get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
         "parameters": [
           {
             "name": "input",
@@ -1018,6 +1111,25 @@
               "title": "Config Path"
             },
             "description": "Path to YAML config. If omitted: ENV FTS_CONFIG, otherwise ./config.yml"
+          },
+          {
+            "name": "framework",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "kraken",
+                "tesseract",
+                "transformer",
+                "source",
+                "none"
+              ],
+              "type": "string",
+              "description": "OCR backend: kraken, tesseract, or transformer. Choose 'none' to skip ATR/OCR",
+              "default": "kraken",
+              "title": "Framework"
+            },
+            "description": "OCR backend: kraken, tesseract, or transformer. Choose 'none' to skip ATR/OCR"
           },
           {
             "name": "domain",
@@ -1072,6 +1184,44 @@
               "title": "Segmenter"
             },
             "description": "Segmenter override: \"BLLA\" (package fallback) or a model name from YAML."
+          },
+          {
+            "name": "tesseract_lang",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Tesseract language override, e.g. deu, eng, deu+eng.",
+              "default": "lat",
+              "title": "Tesseract Lang"
+            },
+            "description": "Tesseract language override, e.g. deu, eng, deu+eng."
+          },
+          {
+            "name": "tesseract_config",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Extra Tesseract config, e.g. \"--psm 6 --oem 3\".",
+              "default": "--oem 3",
+              "title": "Tesseract Config"
+            },
+            "description": "Extra Tesseract config, e.g. \"--psm 6 --oem 3\"."
           },
           {
             "name": "binarize",
@@ -1203,6 +1353,24 @@
             "description": "Relative directory (under EXPORT_DIRECTORY) to store page texts."
           },
           {
+            "name": "meta_out",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Relative directory (under EXPORT_DIRECTORY) to store metadata report as JSON.",
+              "title": "Meta Out"
+            },
+            "description": "Relative directory (under EXPORT_DIRECTORY) to store metadata report as JSON."
+          },
+          {
             "name": "img_ext",
             "in": "query",
             "required": false,
@@ -1227,28 +1395,39 @@
             "description": "Text file extension."
           },
           {
-            "name": "safe_text",
+            "name": "save_text",
             "in": "query",
             "required": false,
             "schema": {
+              "enum": [
+                "skip",
+                "overwrite",
+                "active"
+              ],
               "type": "string",
-              "pattern": "^(skip|overwrite|active)$",
               "description": "What to do if text file already exists.",
               "default": "skip",
-              "title": "Safe Text"
+              "title": "Save Text"
             },
             "description": "What to do if text file already exists."
           },
           {
-            "name": "safe_image",
+            "name": "save_image",
             "in": "query",
             "required": false,
             "schema": {
+              "enum": [
+                "skip",
+                "cache",
+                "overwrite",
+                "active",
+                "smart",
+                "sniff"
+              ],
               "type": "string",
-              "pattern": "^(skip|overwrite|active)$",
               "description": "What to do if image file already exists.",
               "default": "skip",
-              "title": "Safe Image"
+              "title": "Save Image"
             },
             "description": "What to do if image file already exists."
           },
@@ -1257,8 +1436,13 @@
             "in": "query",
             "required": false,
             "schema": {
+              "enum": [
+                "log",
+                "raise",
+                "skip",
+                "empty"
+              ],
               "type": "string",
-              "pattern": "^(log|raise|skip|empty)$",
               "description": "Behaviour if OCR/text extraction fails.",
               "default": "raise",
               "title": "On Error"
@@ -1292,51 +1476,6 @@
         }
       }
     },
-    "/plugin/fts/opensearch": {
-      "post": {
-        "tags": [
-          "Plugin",
-          "Fts"
-        ],
-        "summary": "Ingest Opensearch",
-        "operationId": "ingest_opensearch_plugin_fts_opensearch_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/OpenSearchDocRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ]
-      }
-    },
     "/plugin/fts/pipeline": {
       "post": {
         "tags": [
@@ -1345,11 +1484,6 @@
         ],
         "summary": "Ingest Route",
         "operationId": "ingest_route_plugin_fts_pipeline_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
         "parameters": [
           {
             "name": "targets",
@@ -1371,39 +1505,33 @@
             "description": "Index or alias"
           },
           {
-            "name": "ocr",
+            "name": "from_source",
             "in": "query",
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "If true, run OCR pages ingest via pages_fn",
-              "default": true,
-              "title": "Ocr"
+              "description": "If true, generates input from external source (either produced via OCR or read from cache). If false, you must provide text in input directly.",
+              "title": "From Source"
             },
-            "description": "If true, run OCR pages ingest via pages_fn"
+            "description": "If true, generates input from external source (either produced via OCR or read from cache). If false, you must provide text in input directly."
           },
           {
-            "name": "vector",
+            "name": "framework",
             "in": "query",
             "required": false,
             "schema": {
-              "type": "boolean",
-              "description": "If true, vectorizes text with sentence transformer (1024 dimensions)",
-              "default": true,
-              "title": "Vector"
+              "enum": [
+                "kraken",
+                "tesseract",
+                "transformer",
+                "source",
+                "none"
+              ],
+              "type": "string",
+              "description": "OCR backend: kraken, tesseract, or transformer. Choose 'none' to skip ATR/OCR",
+              "title": "Framework"
             },
-            "description": "If true, vectorizes text with sentence transformer (1024 dimensions)"
-          },
-          {
-            "name": "transformer",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "description": "If true, run transformer pipeline (doi:10.3390/electronics14153083)",
-              "title": "Transformer"
-            },
-            "description": "If true, run transformer pipeline (doi:10.3390/electronics14153083)"
+            "description": "OCR backend: kraken, tesseract, or transformer. Choose 'none' to skip ATR/OCR"
           },
           {
             "name": "ingest",
@@ -1412,10 +1540,20 @@
             "schema": {
               "type": "boolean",
               "description": "If true, ingest into Open Search",
-              "default": true,
               "title": "Ingest"
             },
             "description": "If true, ingest into Open Search"
+          },
+          {
+            "name": "delete_index",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, deletes Open Search target index (or all, if no target given) before ingesting",
+              "title": "Delete Index"
+            },
+            "description": "If true, deletes Open Search target index (or all, if no target given) before ingesting"
           },
           {
             "name": "query",
@@ -1472,7 +1610,7 @@
             "description": "Path to YAML config. If omitted: ENV FTS_CONFIG, otherwise ./config.yml"
           },
           {
-            "name": "store_path",
+            "name": "triple_store",
             "in": "query",
             "required": false,
             "schema": {
@@ -1484,10 +1622,66 @@
                   "type": "null"
                 }
               ],
-              "description": "Oxigraph store path (defaults to main store)",
-              "title": "Store Path"
+              "description": "Oxigraph store path (defaults to main store) or SPARQL endpoint (POST)",
+              "title": "Triple Store"
             },
-            "description": "Oxigraph store path (defaults to main store)"
+            "description": "Oxigraph store path (defaults to main store) or SPARQL endpoint (POST)"
+          },
+          {
+            "name": "pipeline_ids",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Pipeline IDs to run. If provided, only these pipelines are executed, even if inactive.",
+              "title": "Pipeline Ids"
+            },
+            "description": "Pipeline IDs to run. If provided, only these pipelines are executed, even if inactive."
+          },
+          {
+            "name": "reverse",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, reverses order of item results",
+              "title": "Reverse"
+            },
+            "description": "If true, reverses order of item results"
+          },
+          {
+            "name": "worker_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Worker index, 0-based",
+              "title": "Worker Id"
+            },
+            "description": "Worker index, 0-based"
+          },
+          {
+            "name": "total_workers",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Total number of workers",
+              "title": "Total Workers"
+            },
+            "description": "Total number of workers"
           }
         ],
         "requestBody": {
@@ -1498,6 +1692,264 @@
               }
             }
           }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugin/fts/opensearch": {
+      "post": {
+        "tags": [
+          "Plugin",
+          "Fts"
+        ],
+        "summary": "Ingest Opensearch",
+        "operationId": "ingest_opensearch_plugin_fts_opensearch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenSearchDocRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugin/fts/edit-view/{os_doc_id}": {
+      "get": {
+        "tags": [
+          "Plugin",
+          "Fts",
+          "Viewer"
+        ],
+        "summary": "Edit-View",
+        "operationId": "edit_view_plugin_fts_edit_view__os_doc_id__get",
+        "parameters": [
+          {
+            "name": "os_doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Os Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugin/fts/save-view/{os_doc_id}": {
+      "post": {
+        "tags": [
+          "Plugin",
+          "Fts",
+          "Viewer"
+        ],
+        "summary": "Save OCR text",
+        "operationId": "save_view_plugin_fts_save_view__os_doc_id__post",
+        "parameters": [
+          {
+            "name": "os_doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Os Doc Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_save_view_plugin_fts_save_view__os_doc_id__post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugin/fts/proxy/ollama": {
+      "post": {
+        "tags": [
+          "Plugin",
+          "Fts",
+          "Proxy"
+        ],
+        "summary": "Ollama Proxy",
+        "operationId": "ollama_proxy_plugin_fts_proxy_ollama_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_ollama_proxy_plugin_fts_proxy_ollama_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugin/fts/proxy/index": {
+      "delete": {
+        "tags": [
+          "Plugin",
+          "Fts",
+          "Proxy"
+        ],
+        "summary": "Delete Os Indices",
+        "operationId": "delete_os_indices_plugin_fts_proxy_index_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Payload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugin/fts/clean-files": {
+      "post": {
+        "tags": [
+          "Plugin",
+          "Fts"
+        ],
+        "summary": "Clean Files Endpoint",
+        "operationId": "clean_files_endpoint_plugin_fts_clean_files_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CleanRequest"
+              }
+            }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -1547,10 +1999,11 @@
           {
             "name": "q",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "description": "Search query. Comma-separated expressions unless lucene=true.",
+              "default": "*",
               "title": "Q"
             },
             "description": "Search query. Comma-separated expressions unless lucene=true."
@@ -1609,13 +2062,13 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 2000,
+              "maximum": 10000,
               "minimum": 1,
-              "description": "Number of documents returned in hits.hits (top-level hits). Hard-capped at 2000 for cluster safety. Does NOT limit aggregation bucket counts.",
+              "description": "Number of documents returned in hits.hits (top-level hits). Hard-capped at 10000 for cluster safety. Does NOT limit aggregation bucket counts.",
               "default": 10,
               "title": "Size"
             },
-            "description": "Number of documents returned in hits.hits (top-level hits). Hard-capped at 2000 for cluster safety. Does NOT limit aggregation bucket counts."
+            "description": "Number of documents returned in hits.hits (top-level hits). Hard-capped at 10000 for cluster safety. Does NOT limit aggregation bucket counts."
           },
           {
             "name": "offset",
@@ -1629,6 +2082,44 @@
               "title": "Offset"
             },
             "description": "Starting offset for hits.hits via 'from'. Use together with 'size' for basic pagination. Does NOT affect aggregations."
+          },
+          {
+            "name": "use_shingles",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Use Shingles"
+            }
+          },
+          {
+            "name": "shingle_field",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Shingle Field"
+            }
+          },
+          {
+            "name": "phrase_slop",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20,
+              "minimum": 0,
+              "default": 2,
+              "title": "Phrase Slop"
+            }
           },
           {
             "name": "lucene",
@@ -1690,10 +2181,10 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 500,
+              "maximum": 10000,
               "minimum": 20,
               "description": "Size of each highlight fragment.",
-              "default": 160,
+              "default": 500,
               "title": "Fragment Size"
             },
             "description": "Size of each highlight fragment."
@@ -1704,10 +2195,10 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 10,
+              "maximum": 100,
               "minimum": 0,
               "description": "Number of highlight fragments to return (0 disables fragments).",
-              "default": 2,
+              "default": 10,
               "title": "Fragments"
             },
             "description": "Number of highlight fragments to return (0 disables fragments)."
@@ -1751,49 +2242,6 @@
             "description": "If >0: truncate plain text when no highlight is present."
           },
           {
-            "name": "agg_field",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "If set, compute an aggregation over this field and return it under 'aggregations.by_field'. Use a keyword field (e.g. meta.parent_key). Aggregation does NOT group hits.hits.",
-              "title": "Agg Field"
-            },
-            "description": "If set, compute an aggregation over this field and return it under 'aggregations.by_field'. Use a keyword field (e.g. meta.parent_key). Aggregation does NOT group hits.hits."
-          },
-          {
-            "name": "agg_size",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 1000,
-              "minimum": 1,
-              "description": "Number of aggregation buckets (groups) to return. For agg_type=terms: top-N buckets by doc_count. For agg_type=composite: buckets per page.",
-              "default": 10,
-              "title": "Agg Size"
-            },
-            "description": "Number of aggregation buckets (groups) to return. For agg_type=terms: top-N buckets by doc_count. For agg_type=composite: buckets per page."
-          },
-          {
-            "name": "format",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/OutputFormat",
-              "description": "Response format. json: structured API response. csv: flat table from hits.hits. md/markdown: human-readable document blocks from hits.hits.",
-              "default": "json"
-            },
-            "description": "Response format. json: structured API response. csv: flat table from hits.hits. md/markdown: human-readable document blocks from hits.hits."
-          },
-          {
             "name": "columns",
             "in": "query",
             "required": false,
@@ -1812,16 +2260,146 @@
             "description": "Comma-separated list of fields to include from _source."
           },
           {
-            "name": "debug",
+            "name": "context",
             "in": "query",
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Include generated OpenSearch query in the response.",
-              "default": false,
-              "title": "Debug"
+              "description": "Include query context in the response.",
+              "default": true,
+              "title": "Context"
             },
-            "description": "Include generated OpenSearch query in the response."
+            "description": "Include query context in the response."
+          },
+          {
+            "name": "agg_field",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Field to aggregate on. For terms, keyword fields are usually best. Text fields are allowed, but terms on text requires fielddata=true.",
+              "title": "Agg Field"
+            },
+            "description": "Field to aggregate on. For terms, keyword fields are usually best. Text fields are allowed, but terms on text requires fielddata=true."
+          },
+          {
+            "name": "agg_mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AggMode"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Aggregation mode: terms or significant_text.",
+              "title": "Agg Mode"
+            },
+            "description": "Aggregation mode: terms or significant_text."
+          },
+          {
+            "name": "agg_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Number of buckets/terms to return.",
+              "default": 10,
+              "title": "Agg Size"
+            },
+            "description": "Number of buckets/terms to return."
+          },
+          {
+            "name": "agg_shard_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 10000,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional shard_size for terms/significant_text.",
+              "title": "Agg Shard Size"
+            },
+            "description": "Optional shard_size for terms/significant_text."
+          },
+          {
+            "name": "agg_min_doc_count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000000,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional min_doc_count.",
+              "title": "Agg Min Doc Count"
+            },
+            "description": "Optional min_doc_count."
+          },
+          {
+            "name": "agg_shard_min_doc_count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000000,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional shard_min_doc_count for significant_text.",
+              "title": "Agg Shard Min Doc Count"
+            },
+            "description": "Optional shard_min_doc_count for significant_text."
+          },
+          {
+            "name": "agg_sampler_shard_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 100000,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional sampler shard_size. If set, wraps aggregation in sampler.",
+              "title": "Agg Sampler Shard Size"
+            },
+            "description": "Optional sampler shard_size. If set, wraps aggregation in sampler."
           },
           {
             "name": "header_json",
@@ -1881,6 +2459,24 @@
             "description": "Repeatable key:value pairs. Example: header_kv=createdBy:Zotero RDF&header_kv=job:123"
           },
           {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/OutputFormat"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Response format. json: structured API response. csv: flat table from hits.hits. html: human-readable HTML document hits.hits. md/markdown: human-readable document blocks from hits.hits.",
+              "title": "Format"
+            },
+            "description": "Response format. json: structured API response. csv: flat table from hits.hits. html: human-readable HTML document hits.hits. md/markdown: human-readable document blocks from hits.hits."
+          },
+          {
             "name": "filter_field",
             "in": "query",
             "required": false,
@@ -1933,6 +2529,734 @@
               "title": "Filter Values"
             },
             "description": "CSV list of exact filter values"
+          },
+          {
+            "name": "ingest_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Lower bound for ingest_ts (inclusive), ISO-8601. ",
+              "title": "Ingest From"
+            },
+            "description": "Lower bound for ingest_ts (inclusive), ISO-8601. "
+          },
+          {
+            "name": "ingest_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-04T19:17:49Z",
+              "title": "Ingest To"
+            },
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-04T19:17:49Z"
+          },
+          {
+            "name": "perform_analysis",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Perform NLP analysis on hits.",
+              "default": false,
+              "title": "Perform Analysis"
+            },
+            "description": "Perform NLP analysis on hits."
+          },
+          {
+            "name": "analyze_field",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Field used for per-hit TF-IDF analysis. Defaults to the search field.",
+              "title": "Analyze Field"
+            },
+            "description": "Field used for per-hit TF-IDF analysis. Defaults to the search field."
+          },
+          {
+            "name": "analysis_mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "index_documents",
+                "hits_documents",
+                "both"
+              ],
+              "type": "string",
+              "description": "TF-IDF mode: index_documents, hits_documents, or both.",
+              "default": "both",
+              "title": "Analysis Mode"
+            },
+            "description": "TF-IDF mode: index_documents, hits_documents, or both."
+          },
+          {
+            "name": "analyze_top_terms",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20,
+              "minimum": 1,
+              "description": "Number of top TF-IDF terms per hit.",
+              "default": 5,
+              "title": "Analyze Top Terms"
+            },
+            "description": "Number of top TF-IDF terms per hit."
+          },
+          {
+            "name": "analyze_min_token_length",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "description": "Minimum token length.",
+              "default": 4,
+              "title": "Analyze Min Token Length"
+            },
+            "description": "Minimum token length."
+          },
+          {
+            "name": "analyze_max_tokens_per_doc",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 5000,
+              "minimum": 0,
+              "description": "Maximum number of tokens per document. 0 means unlimited.",
+              "default": 0,
+              "title": "Analyze Max Tokens Per Doc"
+            },
+            "description": "Maximum number of tokens per document. 0 means unlimited."
+          },
+          {
+            "name": "analyze_use_char_ngrams",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Use character n-grams instead of word tokens.",
+              "default": true,
+              "title": "Analyze Use Char Ngrams"
+            },
+            "description": "Use character n-grams instead of word tokens."
+          },
+          {
+            "name": "analyze_char_ngram_min",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10,
+              "minimum": 1,
+              "description": "Min n for char n-grams.",
+              "default": 3,
+              "title": "Analyze Char Ngram Min"
+            },
+            "description": "Min n for char n-grams."
+          },
+          {
+            "name": "analyze_char_ngram_max",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10,
+              "minimum": 1,
+              "description": "Max n for char n-grams.",
+              "default": 5,
+              "title": "Analyze Char Ngram Max"
+            },
+            "description": "Max n for char n-grams."
+          },
+          {
+            "name": "analyze_tfidf_max_features",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Max TF-IDF features.",
+              "title": "Analyze Tfidf Max Features"
+            },
+            "description": "Max TF-IDF features."
+          },
+          {
+            "name": "analyze_tfidf_min_df",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Min document frequency.",
+              "default": 1,
+              "title": "Analyze Tfidf Min Df"
+            },
+            "description": "Min document frequency."
+          },
+          {
+            "name": "analyze_tfidf_max_df",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 1.0,
+              "exclusiveMinimum": 0.0,
+              "description": "Max document frequency.",
+              "default": 1.0,
+              "title": "Analyze Tfidf Max Df"
+            },
+            "description": "Max document frequency."
+          },
+          {
+            "name": "cluster_enabled",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Cluster hits based on analysis vectors.",
+              "default": false,
+              "title": "Cluster Enabled"
+            },
+            "description": "Cluster hits based on analysis vectors."
+          },
+          {
+            "name": "cluster_count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "description": "Requested number of clusters for KMeans.",
+              "default": 5,
+              "title": "Cluster Count"
+            },
+            "description": "Requested number of clusters for KMeans."
+          },
+          {
+            "name": "cluster_source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "hits_documents",
+                "index_documents"
+              ],
+              "type": "string",
+              "description": "Which analysis branch to use for clustering.",
+              "default": "hits_documents",
+              "title": "Cluster Source"
+            },
+            "description": "Which analysis branch to use for clustering."
+          },
+          {
+            "name": "cluster_label_source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "hits_documents",
+                "index_documents"
+              ],
+              "type": "string",
+              "description": "Which analysis branch to use for cluster labels.",
+              "default": "hits_documents",
+              "title": "Cluster Label Source"
+            },
+            "description": "Which analysis branch to use for cluster labels."
+          },
+          {
+            "name": "cluster_use_svd",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Apply SVD before clustering.",
+              "default": true,
+              "title": "Cluster Use Svd"
+            },
+            "description": "Apply SVD before clustering."
+          },
+          {
+            "name": "cluster_svd_components",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Number of SVD components.",
+              "default": 100,
+              "title": "Cluster Svd Components"
+            },
+            "description": "Number of SVD components."
+          },
+          {
+            "name": "cluster_label_top_terms",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Number of terms used for cluster labels.",
+              "default": 3,
+              "title": "Cluster Label Top Terms"
+            },
+            "description": "Number of terms used for cluster labels."
+          },
+          {
+            "name": "cluster_projection_method",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "umap",
+                "tsne",
+                "pca"
+              ],
+              "type": "string",
+              "description": "Which projection method for projection.",
+              "default": "umap",
+              "title": "Cluster Projection Method"
+            },
+            "description": "Which projection method for projection."
+          },
+          {
+            "name": "projection_source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "cluster_matrix",
+                "meta_onehot",
+                "neighbors"
+              ],
+              "type": "string",
+              "description": "Projection source: cluster_matrix, meta_onehot, or neighbors.",
+              "default": "cluster_matrix",
+              "title": "Projection Source"
+            },
+            "description": "Projection source: cluster_matrix, meta_onehot, or neighbors."
+          },
+          {
+            "name": "projection_neighbors_mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "knn_vector",
+                "os_knn",
+                "mlt",
+                "page_parent",
+                "meta_onehot",
+                "hybrid"
+              ],
+              "type": "string",
+              "description": "Neighbor mode used when projection_source='neighbors'.",
+              "default": "knn_vector",
+              "title": "Projection Neighbors Mode"
+            },
+            "description": "Neighbor mode used when projection_source='neighbors'."
+          },
+          {
+            "name": "projection_distance_fill_value",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "minimum": 0.0,
+              "description": "Fallback distance for missing neighbor pairs in projection distance matrices.",
+              "default": 1.0,
+              "title": "Projection Distance Fill Value"
+            },
+            "description": "Fallback distance for missing neighbor pairs in projection distance matrices."
+          },
+          {
+            "name": "projection_distance_symmetrize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Symmetrize projection distance matrix.",
+              "default": true,
+              "title": "Projection Distance Symmetrize"
+            },
+            "description": "Symmetrize projection distance matrix."
+          },
+          {
+            "name": "neighbors_enabled",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Compute neighbors for each hit.",
+              "default": false,
+              "title": "Neighbors Enabled"
+            },
+            "description": "Compute neighbors for each hit."
+          },
+          {
+            "name": "neighbors_mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "knn_vector",
+                "os_knn",
+                "mlt",
+                "page_parent",
+                "meta_onehot",
+                "hybrid"
+              ],
+              "type": "string",
+              "description": "Neighbor computation mode.",
+              "default": "knn_vector",
+              "title": "Neighbors Mode"
+            },
+            "description": "Neighbor computation mode."
+          },
+          {
+            "name": "neighbors_k",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Number of neighbors per hit.",
+              "default": 10,
+              "title": "Neighbors K"
+            },
+            "description": "Number of neighbors per hit."
+          },
+          {
+            "name": "neighbors_metric",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "cosine",
+                "euclidean"
+              ],
+              "type": "string",
+              "description": "Distance metric for knn_vector mode.",
+              "default": "cosine",
+              "title": "Neighbors Metric"
+            },
+            "description": "Distance metric for knn_vector mode."
+          },
+          {
+            "name": "neighbors_row_id_field",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Field path used as external id for MLT/os_knn mode. Defaults to _id.",
+              "title": "Neighbors Row Id Field"
+            },
+            "description": "Field path used as external id for MLT/os_knn mode. Defaults to _id."
+          },
+          {
+            "name": "neighbors_mlt_index",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "OpenSearch index used for MLT mode.",
+              "title": "Neighbors Mlt Index"
+            },
+            "description": "OpenSearch index used for MLT mode."
+          },
+          {
+            "name": "neighbors_mlt_fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Fields used for MLT mode.",
+              "title": "Neighbors Mlt Fields"
+            },
+            "description": "Fields used for MLT mode."
+          },
+          {
+            "name": "neighbors_mlt_min_term_freq",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 0,
+              "description": "MLT min_term_freq.",
+              "default": 1,
+              "title": "Neighbors Mlt Min Term Freq"
+            },
+            "description": "MLT min_term_freq."
+          },
+          {
+            "name": "neighbors_mlt_min_doc_freq",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 0,
+              "description": "MLT min_doc_freq.",
+              "default": 1,
+              "title": "Neighbors Mlt Min Doc Freq"
+            },
+            "description": "MLT min_doc_freq."
+          },
+          {
+            "name": "neighbors_mlt_max_query_terms",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "MLT max_query_terms.",
+              "default": 25,
+              "title": "Neighbors Mlt Max Query Terms"
+            },
+            "description": "MLT max_query_terms."
+          },
+          {
+            "name": "neighbors_mlt_minimum_should_match",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "MLT minimum_should_match.",
+              "default": "30%",
+              "title": "Neighbors Mlt Minimum Should Match"
+            },
+            "description": "MLT minimum_should_match."
+          },
+          {
+            "name": "neighbors_os_knn_index",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "OpenSearch index used for os_knn mode.",
+              "title": "Neighbors Os Knn Index"
+            },
+            "description": "OpenSearch index used for os_knn mode."
+          },
+          {
+            "name": "neighbors_os_knn_vector_field",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "OpenSearch knn_vector field used for os_knn mode.",
+              "default": "vector",
+              "title": "Neighbors Os Knn Vector Field"
+            },
+            "description": "OpenSearch knn_vector field used for os_knn mode."
+          },
+          {
+            "name": "neighbors_os_knn_k",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 10000,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "k parameter for OpenSearch kNN query. Falls back to neighbors_k.",
+              "title": "Neighbors Os Knn K"
+            },
+            "description": "k parameter for OpenSearch kNN query. Falls back to neighbors_k."
+          },
+          {
+            "name": "neighbors_os_knn_ef_search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional ef_search for OpenSearch kNN mode.",
+              "title": "Neighbors Os Knn Ef Search"
+            },
+            "description": "Optional ef_search for OpenSearch kNN mode."
+          },
+          {
+            "name": "neighbors_parent_field",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Parent field used for page_parent mode.",
+              "default": "meta.parent",
+              "title": "Neighbors Parent Field"
+            },
+            "description": "Parent field used for page_parent mode."
+          },
+          {
+            "name": "neighbors_page_field",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Page field used for page_parent mode.",
+              "default": "page",
+              "title": "Neighbors Page Field"
+            },
+            "description": "Page field used for page_parent mode."
+          },
+          {
+            "name": "neighbors_meta_onehot_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Meta key used for meta_onehot mode. Empty means meta key in _source.",
+              "default": "meta",
+              "title": "Neighbors Meta Onehot Key"
+            },
+            "description": "Meta key used for meta_onehot mode. Empty means meta key in _source."
+          },
+          {
+            "name": "neighbors_meta_onehot_fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Meta fields used for meta_onehot mode. Empty means all meta fields.",
+              "title": "Neighbors Meta Onehot Fields"
+            },
+            "description": "Meta fields used for meta_onehot mode. Empty means all meta fields."
+          },
+          {
+            "name": "neighbors_hybrid_modes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Neighbor modes combined when neighbors_mode='hybrid'.",
+              "title": "Neighbors Hybrid Modes"
+            },
+            "description": "Neighbor modes combined when neighbors_mode='hybrid'."
+          },
+          {
+            "name": "neighbors_hybrid_weights_json",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "JSON object with per-mode weights, e.g. {\"knn_vector\": 1.0, \"mlt\": 1.0}",
+              "title": "Neighbors Hybrid Weights Json"
+            },
+            "description": "JSON object with per-mode weights, e.g. {\"knn_vector\": 1.0, \"mlt\": 1.0}"
           }
         ],
         "responses": {
@@ -2095,17 +3419,6 @@
             }
           },
           {
-            "name": "format",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/OutputFormat",
-              "description": "Response format. json: structured API response. csv: flat table from hits.hits. md/markdown: human-readable document blocks from hits.hits.",
-              "default": "json"
-            },
-            "description": "Response format. json: structured API response. csv: flat table from hits.hits. md/markdown: human-readable document blocks from hits.hits."
-          },
-          {
             "name": "columns",
             "in": "query",
             "required": false,
@@ -2124,16 +3437,16 @@
             "description": "Optional CSV list of columns to include"
           },
           {
-            "name": "debug",
+            "name": "context",
             "in": "query",
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Include debug_query (JSON only)",
+              "description": "Include context",
               "default": false,
-              "title": "Debug"
+              "title": "Context"
             },
-            "description": "Include debug_query (JSON only)"
+            "description": "Include context"
           },
           {
             "name": "filter_field",
@@ -2188,6 +3501,62 @@
               "title": "Filter Values"
             },
             "description": "CSV list of exact filter values"
+          },
+          {
+            "name": "ingest_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Lower bound for ingest_ts (inclusive), ISO-8601. ",
+              "title": "Ingest From"
+            },
+            "description": "Lower bound for ingest_ts (inclusive), ISO-8601. "
+          },
+          {
+            "name": "ingest_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-04T19:17:49Z",
+              "title": "Ingest To"
+            },
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-04T19:17:49Z"
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/OutputFormat"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Response format. json: structured API response. csv: flat table from hits.hits. html: human-readable HTML document hits.hits. md/markdown: human-readable document blocks from hits.hits.",
+              "title": "Format"
+            },
+            "description": "Response format. json: structured API response. csv: flat table from hits.hits. html: human-readable HTML document hits.hits. md/markdown: human-readable document blocks from hits.hits."
           },
           {
             "name": "header_json",
@@ -2367,17 +3736,6 @@
             }
           },
           {
-            "name": "format",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/OutputFormat",
-              "description": "Response format. json: structured API response. csv: flat table from hits.hits. md/markdown: human-readable document blocks from hits.hits.",
-              "default": "json"
-            },
-            "description": "Response format. json: structured API response. csv: flat table from hits.hits. md/markdown: human-readable document blocks from hits.hits."
-          },
-          {
             "name": "columns",
             "in": "query",
             "required": false,
@@ -2396,16 +3754,16 @@
             "description": "Optional CSV list of columns to include"
           },
           {
-            "name": "debug",
+            "name": "context",
             "in": "query",
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Include debug_query (JSON only)",
-              "default": false,
-              "title": "Debug"
+              "description": "Include query context in the response.",
+              "default": true,
+              "title": "Context"
             },
-            "description": "Include debug_query (JSON only)"
+            "description": "Include query context in the response."
           },
           {
             "name": "filter_field",
@@ -2460,6 +3818,62 @@
               "title": "Filter Values"
             },
             "description": "CSV list of exact filter values"
+          },
+          {
+            "name": "ingest_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Lower bound for ingest_ts (inclusive), ISO-8601. ",
+              "title": "Ingest From"
+            },
+            "description": "Lower bound for ingest_ts (inclusive), ISO-8601. "
+          },
+          {
+            "name": "ingest_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-04T19:17:49Z",
+              "title": "Ingest To"
+            },
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-04T19:17:49Z"
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/OutputFormat"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Response format. json: structured API response. csv: flat table from hits.hits. html: human-readable HTML document hits.hits. md/markdown: human-readable document blocks from hits.hits.",
+              "title": "Format"
+            },
+            "description": "Response format. json: structured API response. csv: flat table from hits.hits. html: human-readable HTML document hits.hits. md/markdown: human-readable document blocks from hits.hits."
           },
           {
             "name": "header_json",
@@ -2656,17 +4070,6 @@
             }
           },
           {
-            "name": "format",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/OutputFormat",
-              "description": "Response format. json: structured API response. csv: flat table from hits.hits. md/markdown: human-readable document blocks from hits.hits.",
-              "default": "json"
-            },
-            "description": "Response format. json: structured API response. csv: flat table from hits.hits. md/markdown: human-readable document blocks from hits.hits."
-          },
-          {
             "name": "columns",
             "in": "query",
             "required": false,
@@ -2685,16 +4088,16 @@
             "description": "Optional CSV list of columns to include"
           },
           {
-            "name": "debug",
+            "name": "context",
             "in": "query",
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Include debug_query (JSON only)",
-              "default": false,
-              "title": "Debug"
+              "description": "Include query context in the response.",
+              "default": true,
+              "title": "Context"
             },
-            "description": "Include debug_query (JSON only)"
+            "description": "Include query context in the response."
           },
           {
             "name": "filter_field",
@@ -2749,6 +4152,62 @@
               "title": "Filter Values"
             },
             "description": "CSV list of exact filter values"
+          },
+          {
+            "name": "ingest_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Lower bound for ingest_ts (inclusive), ISO-8601. ",
+              "title": "Ingest From"
+            },
+            "description": "Lower bound for ingest_ts (inclusive), ISO-8601. "
+          },
+          {
+            "name": "ingest_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-04T19:17:49Z",
+              "title": "Ingest To"
+            },
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-04T19:17:49Z"
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/OutputFormat"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Response format. json: structured API response. csv: flat table from hits.hits. html: human-readable HTML document hits.hits. md/markdown: human-readable document blocks from hits.hits.",
+              "title": "Format"
+            },
+            "description": "Response format. json: structured API response. csv: flat table from hits.hits. html: human-readable HTML document hits.hits. md/markdown: human-readable document blocks from hits.hits."
           },
           {
             "name": "header_json",
@@ -2831,7 +4290,7 @@
       }
     },
     "/plugin/fts/search/mlt/by-text": {
-      "get": {
+      "post": {
         "tags": [
           "Plugin",
           "Fts",
@@ -2840,7 +4299,7 @@
         ],
         "summary": "Token similarity search by free text (More Like This)",
         "description": "Runs a More Like This query using input text to find token-similar documents.",
-        "operationId": "mlt_by_text_plugin_fts_search_mlt_by_text_get",
+        "operationId": "mlt_by_text_plugin_fts_search_mlt_by_text_post",
         "parameters": [
           {
             "name": "index",
@@ -2852,17 +4311,6 @@
               "title": "Index"
             },
             "description": "OpenSearch index name. Default alias can be set in configuration"
-          },
-          {
-            "name": "like_text",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "Reference text, sentence, or paragraph",
-              "title": "Like Text"
-            },
-            "description": "Reference text, sentence, or paragraph"
           },
           {
             "name": "fields",
@@ -2935,17 +4383,6 @@
             }
           },
           {
-            "name": "format",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/OutputFormat",
-              "description": "Response format. json: structured API response. csv: flat table from hits.hits. md/markdown: human-readable document blocks from hits.hits.",
-              "default": "json"
-            },
-            "description": "Response format. json: structured API response. csv: flat table from hits.hits. md/markdown: human-readable document blocks from hits.hits."
-          },
-          {
             "name": "columns",
             "in": "query",
             "required": false,
@@ -2964,16 +4401,16 @@
             "description": "Optional CSV list of columns to include"
           },
           {
-            "name": "debug",
+            "name": "context",
             "in": "query",
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Include debug_query (JSON only)",
-              "default": false,
-              "title": "Debug"
+              "description": "Include query context in the response.",
+              "default": true,
+              "title": "Context"
             },
-            "description": "Include debug_query (JSON only)"
+            "description": "Include query context in the response."
           },
           {
             "name": "filter_field",
@@ -3028,6 +4465,62 @@
               "title": "Filter Values"
             },
             "description": "CSV list of exact filter values"
+          },
+          {
+            "name": "ingest_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Lower bound for ingest_ts (inclusive), ISO-8601. ",
+              "title": "Ingest From"
+            },
+            "description": "Lower bound for ingest_ts (inclusive), ISO-8601. "
+          },
+          {
+            "name": "ingest_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-04T19:17:49Z",
+              "title": "Ingest To"
+            },
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-04T19:17:49Z"
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/OutputFormat"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Response format. json: structured API response. csv: flat table from hits.hits. html: human-readable HTML document hits.hits. md/markdown: human-readable document blocks from hits.hits.",
+              "title": "Format"
+            },
+            "description": "Response format. json: structured API response. csv: flat table from hits.hits. html: human-readable HTML document hits.hits. md/markdown: human-readable document blocks from hits.hits."
           },
           {
             "name": "header_json",
@@ -3087,6 +4580,22 @@
             "description": "Repeatable key:value pairs. Example: header_kv=createdBy:Zotero RDF&header_kv=job:123"
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "text/plain": {
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20000,
+                "examples": [
+                  "Similis simili gaudet"
+                ],
+                "title": "Like Text"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3109,6 +4618,283 @@
         }
       }
     },
+    "/plugin/fts/image/{os_doc_id}": {
+      "get": {
+        "tags": [
+          "Plugin",
+          "Fts",
+          "Open Endpoint",
+          "Viewer"
+        ],
+        "summary": "Return image for one page",
+        "operationId": "image_plugin_fts_image__os_doc_id__get",
+        "parameters": [
+          {
+            "name": "os_doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Os Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugin/fts/text/{os_doc_id}": {
+      "get": {
+        "tags": [
+          "Plugin",
+          "Fts",
+          "Open Endpoint",
+          "Viewer"
+        ],
+        "summary": "Return text for one page",
+        "operationId": "text_plugin_fts_text__os_doc_id__get",
+        "parameters": [
+          {
+            "name": "os_doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Os Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugin/fts/view": {
+      "get": {
+        "tags": [
+          "Plugin",
+          "Fts",
+          "Open Endpoint",
+          "Viewer"
+        ],
+        "summary": "Viewer start page",
+        "operationId": "view_root_plugin_fts_view_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugin/fts/view/{os_doc_id}": {
+      "get": {
+        "tags": [
+          "Plugin",
+          "Fts",
+          "Open Endpoint",
+          "Viewer"
+        ],
+        "summary": "View image page and OCR",
+        "description": "Indicate root directories and file extensions in configuration under 'viewer'.",
+        "operationId": "view_plugin_fts_view__os_doc_id__get",
+        "parameters": [
+          {
+            "name": "os_doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Os Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugin/fts/ocr-view/{os_doc_id}": {
+      "get": {
+        "tags": [
+          "Plugin",
+          "Fts",
+          "Open Endpoint",
+          "Viewer"
+        ],
+        "summary": "Run OCR again for page image",
+        "operationId": "ocr_view_plugin_fts_ocr_view__os_doc_id__get",
+        "parameters": [
+          {
+            "name": "os_doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Os Doc Id"
+            }
+          },
+          {
+            "name": "framework",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "kraken",
+                "tesseract",
+                "transformer",
+                "source",
+                "none"
+              ],
+              "type": "string",
+              "default": "kraken",
+              "title": "Framework"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugin/fts/proxy/search/{index}/_mapping": {
+      "get": {
+        "tags": [
+          "Plugin",
+          "Fts",
+          "Open Endpoint",
+          "Proxy"
+        ],
+        "summary": "Get Mapping",
+        "operationId": "get_mapping_plugin_fts_proxy_search__index___mapping_get",
+        "parameters": [
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Index"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugin/fts/proxy/search/_msearch": {
+      "post": {
+        "tags": [
+          "Plugin",
+          "Fts",
+          "Open Endpoint",
+          "Proxy"
+        ],
+        "summary": "Msearch",
+        "operationId": "msearch_plugin_fts_proxy_search__msearch_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/plugin/parser/parse_notes": {
       "get": {
         "tags": [
@@ -3120,11 +4906,6 @@
         "summary": "Parse notes",
         "description": "Triggers the parsing of all Zotero notes with semantic-html plugin",
         "operationId": "parse_notes_plugin_parser_parse_notes_get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
         "parameters": [
           {
             "name": "delete",
@@ -3246,11 +5027,6 @@
         "summary": "Zotero Notes to RDF",
         "description": "Writes all RDF blocks in Zotero Notes HTML into RDF, either Store or file.",
         "operationId": "znotes2rdf_plugin_rdf_notes_znotes2rdf_get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
         "parameters": [
           {
             "name": "graph",
@@ -3430,11 +5206,6 @@
         "summary": "RDF to Zotero Notes",
         "description": "Creates Zotero Notes with RDF dump block from Store or RDF dataset",
         "operationId": "rdf2znotes_plugin_rdf_notes_rdf2znotes_get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
         "parameters": [
           {
             "name": "clear_collection",
@@ -3632,11 +5403,6 @@
         "summary": "Parses taxonomy between Knowledge Base and Zotero",
         "description": "Creates a structured HTML from RDF taxonomies, and parses structured HTML back as RDF",
         "operationId": "taxonomy_plugin_rdf_notes_taxonomy_get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
         "parameters": [
           {
             "name": "graph",
@@ -3793,6 +5559,15 @@
   },
   "components": {
     "schemas": {
+      "AggMode": {
+        "type": "string",
+        "enum": [
+          "terms",
+          "significant_text",
+          "composite"
+        ],
+        "title": "AggMode"
+      },
       "Body_ingest_route_plugin_fts_pipeline_post": {
         "properties": {
           "input": {
@@ -3813,6 +5588,7 @@
               }
             ],
             "title": "Input",
+            "description": "Provide JSON List or SPARQL query result bindings. If none, runs query to get input from results.",
             "examples": [
               null
             ]
@@ -3833,7 +5609,7 @@
               null
             ]
           },
-          "ocr_kwargs": {
+          "source_kwargs": {
             "anyOf": [
               {
                 "additionalProperties": true,
@@ -3843,13 +5619,13 @@
                 "type": "null"
               }
             ],
-            "title": "Ocr Kwargs",
+            "title": "Source Kwargs",
             "description": "Keyword Arguments for OCR Config",
             "examples": [
               null
             ]
           },
-          "model_kwargs": {
+          "framework_kwargs": {
             "anyOf": [
               {
                 "additionalProperties": true,
@@ -3859,8 +5635,8 @@
                 "type": "null"
               }
             ],
-            "title": "Model Kwargs",
-            "description": "Keyword Arguments for Kraken Config",
+            "title": "Framework Kwargs",
+            "description": "Keyword Arguments for OCR Backend Config",
             "examples": [
               null
             ]
@@ -3878,17 +5654,148 @@
             "title": "File Kwargs",
             "description": "Keyword Arguments for File Output",
             "examples": [
+              null
+            ]
+          },
+          "vector_kwargs": {
+            "anyOf": [
               {
-                "img_out": "kraken/images",
-                "save_image": "skip",
-                "save_text": "active",
-                "txt_out": "kraken/texts"
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
               }
+            ],
+            "title": "Vector Kwargs",
+            "description": "Keyword Arguments for embedding Backend Config",
+            "examples": [
+              null
+            ]
+          },
+          "llm_kwargs": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Kwargs",
+            "description": "Keyword Arguments for LLM Backend Config",
+            "examples": [
+              null
             ]
           }
         },
         "type": "object",
         "title": "Body_ingest_route_plugin_fts_pipeline_post"
+      },
+      "Body_ollama_proxy_plugin_fts_proxy_ollama_post": {
+        "properties": {
+          "user_input": {
+            "type": "string",
+            "title": "User Input"
+          },
+          "llm_kwargs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Llm Kwargs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_input"
+        ],
+        "title": "Body_ollama_proxy_plugin_fts_proxy_ollama_post"
+      },
+      "Body_save_view_plugin_fts_save_view__os_doc_id__post": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "Body_save_view_plugin_fts_save_view__os_doc_id__post"
+      },
+      "CleanRequest": {
+        "properties": {
+          "root_dir": {
+            "type": "string",
+            "title": "Root Dir"
+          },
+          "extension": {
+            "type": "string",
+            "title": "Extension"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "delete",
+              "move",
+              "copy"
+            ],
+            "title": "Action",
+            "default": "delete"
+          },
+          "move_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move To"
+          },
+          "min_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Bytes"
+          },
+          "min_content_len": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Content Len"
+          },
+          "all_files": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "All Files",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "root_dir",
+          "extension"
+        ],
+        "title": "CleanRequest"
       },
       "HTTPValidationError": {
         "properties": {
@@ -4091,7 +5998,11 @@
         "enum": [
           "json",
           "csv",
-          "markdown"
+          "csv-analysis",
+          "json-analysis",
+          "markdown",
+          "html",
+          "atlas"
         ],
         "title": "OutputFormat"
       },
@@ -4118,13 +6029,6 @@
           "type": {
             "type": "string",
             "title": "Error Type"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "ctx": {
-            "type": "object",
-            "title": "Context"
           }
         },
         "type": "object",
@@ -4134,12 +6038,6 @@
           "type"
         ],
         "title": "ValidationError"
-      }
-    },
-    "securitySchemes": {
-      "HTTPBasic": {
-        "type": "http",
-        "scheme": "basic"
       }
     }
   }
