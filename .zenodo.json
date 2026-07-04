@@ -23,14 +23,14 @@
       "id": "10.13039/501100000780::101164040"
     }
   ],
-  "communities": [
-    {
-      "identifier": "scigma"
-    },
-    {
-      "identifier": "eu"
-    }
-  ],
+"communities": [
+  {
+    "id": "scigma"
+  },
+  {
+    "id": "eu"
+  }
+],
   "related_identifiers": [
     {
       "identifier": "https://github.com/ch-sander/zotero_rdf_server",
