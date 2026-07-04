@@ -320,34 +320,117 @@ def favicon():
         FAVICON = STATIC_UI_DIRECTORY / "favicon.ico"
 
         if not FAVICON.exists():
-            from PIL import Image
+            ensure_import("pillow==12.1.1")
+            from PIL import Image, ImageDraw
             import random
 
             orange = (0xFF, 0x99, 0x00)  # #ff9900
             blue = (0x4A, 0x86, 0xE8)    # #4a86e8
 
-            small_size = 8
-            final_size = 64
+            size = 64
+            block = 8
+            cells = size // block
 
-            img = Image.new("RGB", (small_size, small_size))
-            pixels = [
-                random.choice([orange, blue])
-                for _ in range(small_size * small_size)
-            ]
-            img.putdata(pixels)
+            base, accent = random.choice([(orange, blue), (blue, orange)])
 
-            img = img.resize((final_size, final_size), Image.Resampling.NEAREST)
+            img = Image.new("RGB", (size, size), base)
+            draw = ImageDraw.Draw(img)
+
+            def fill_cell(cx, cy, color):
+                x0 = cx * block
+                y0 = cy * block
+                x1 = x0 + block - 1
+                y1 = y0 + block - 1
+                draw.rectangle([x0, y0, x1, y1], fill=color)
+
+            motif = random.choice([
+                "checker",
+                "diagonal",
+                "cross",
+                "frame",
+                "quadrants",
+                "rings",
+            ])
+
+            if motif == "checker":
+                offset = random.randint(0, 1)
+                for y in range(cells):
+                    for x in range(cells):
+                        if (x + y + offset) % 2 == 0:
+                            fill_cell(x, y, accent)
+
+            elif motif == "diagonal":
+                width = random.choice([1, 2])
+                direction = random.choice([1, -1])
+                for y in range(cells):
+                    for x in range(cells):
+                        d = (x - y) if direction == 1 else (x + y - (cells - 1))
+                        if abs(d) <= width or abs(d) % 4 == 0:
+                            fill_cell(x, y, accent)
+
+            elif motif == "cross":
+                thickness = random.choice([1, 2])
+                mid = cells // 2
+                for y in range(cells):
+                    for x in range(cells):
+                        if abs(x - mid) < thickness or abs(y - mid) < thickness:
+                            fill_cell(x, y, accent)
+
+            elif motif == "frame":
+                thickness = random.choice([1, 2])
+                for y in range(cells):
+                    for x in range(cells):
+                        if (
+                            x < thickness
+                            or y < thickness
+                            or x >= cells - thickness
+                            or y >= cells - thickness
+                        ):
+                            fill_cell(x, y, accent)
+
+                inner = random.choice([True, False])
+                if inner:
+                    c0 = cells // 2 - 1
+                    for y in range(c0, c0 + 2):
+                        for x in range(c0, c0 + 2):
+                            fill_cell(x, y, accent)
+
+            elif motif == "quadrants":
+                chosen = random.choice([
+                    {(0, 0), (1, 1)},
+                    {(1, 0), (0, 1)},
+                    {(0, 0), (1, 0)},
+                    {(0, 1), (1, 1)},
+                ])
+                half = cells // 2
+                for qx, qy in chosen:
+                    for y in range(qy * half, (qy + 1) * half):
+                        for x in range(qx * half, (qx + 1) * half):
+                            fill_cell(x, y, accent)
+
+            elif motif == "rings":
+                rings = random.choice([1, 2, 3])
+                for r in range(rings):
+                    for i in range(r, cells - r):
+                        fill_cell(i, r, accent)
+                        fill_cell(i, cells - 1 - r, accent)
+                        fill_cell(r, i, accent)
+                        fill_cell(cells - 1 - r, i, accent)
+                    accent, base = base, accent
+
             buffer = BytesIO()
             img.save(buffer, format="ICO")
-            
+
             return Response(
                 content=buffer.getvalue(),
-                media_type="image/x-icon"
+                media_type="image/x-icon",
+                headers={"Cache-Control": "no-store"}
             )
 
         return FileResponse(FAVICON)
 
-    except Exception:
+    except Exception as e:
+        logger.error(e)
         return Response(status_code=204)
 
 @router.get("/libs", summary="List of all libraries", description="Returns all available libraries with configuration.", tags=["Admin"])
