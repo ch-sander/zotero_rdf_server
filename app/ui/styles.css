@@ -597,8 +597,8 @@ shacl-form {
   bottom: 24px;
   max-width: 420px;
   padding: 24px 28px;
-  background: #111827;
-  color: #ffffff;
+  background: var(--accent-2);
+  color: black;
   border-radius: 16px;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
   z-index: 9999;
