@@ -7,7 +7,9 @@
  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <div id="custom-header-container"></div>
   <div class="layout">
+  
     <aside class="sidebar">
       <div class="sidebar-section">
         <div class="sidebar-title" id="sidebarTitle">Analysis Search Explorer</div>
@@ -128,7 +130,10 @@
       <div id="content"></div>
 
       <div class="footer-note">Generated without external frontend dependencies.</div>
+      
+      <div id="custom-footer-container"></div>
     </main>
+    
   </div>
 
   <script>
@@ -233,5 +238,6 @@
   </script>
     <script src="./analysis_search_explorer.js"></script>
     <script src="./meta_facets_addon.js"></script>
+    <script src="../partials/load-partials.js" defer></script>
 </body>
 </html>

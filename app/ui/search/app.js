@@ -511,13 +511,19 @@ const searchClient = SearchkitInstantsearchClient(sk, {
     ];
 
     console.log("Search input:", query);
-    console.log("Generated OpenSearch query:");
-    console.log(JSON.stringify(queryDsl, null, 2));
-
     return queryDsl;
+  },
+  hooks: {
+    beforeSearch: async (searchRequests) => {
+      searchRequests.forEach((sr, i) => {
+        console.log(`Final OpenSearch Query ${i}`);
+        console.log(JSON.stringify(sr.body, null, 2));
+      });
+
+      return searchRequests;
+    }
   }
 });
-
 
     const search = instantsearch({
       indexName: indexName,

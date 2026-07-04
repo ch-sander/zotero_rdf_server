@@ -120,13 +120,7 @@
 
 </section>
 
-    <footer class="footer">
-      <div class="divider"></div>
-      <div id="custom-footer-container"></div>
-        <p class="muted">
-        Developed by <a href="https://orcid.org/0000-0003-4452-0107" target="_blank">Christoph Sander</a>, 2026. See code on <a href="https://github.com/ch-sander/zotero_rdf_server" target="_blank">GitHub</a>
-        </p>
-    </footer>
+<div id="custom-footer-container"></div>
 
   </main>
 
@@ -156,25 +150,7 @@
   window.addEventListener("load", () => {
     document.getElementById("citation-popup").style.display = "block";
   });
-
-  function loadPartial(containerId, url) {
-    fetch(url)
-      .then(response => {
-        if (!response.ok) {
-          console.log(`Could not load ${url}`);
-        }
-        return response.text();
-      })
-      .then(html => {
-        document.getElementById(containerId).innerHTML = html;
-      })
-      .catch(error => console.error(error));
-  }
-
-  loadPartial("custom-header-container", "partials/custom-header.html");
-  loadPartial("custom-footer-container", "partials/custom-footer.html");
-
 </script>
-
+<script src="partials/load-partials.js" defer></script>
 </body>
 </html>
