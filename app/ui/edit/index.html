@@ -124,7 +124,7 @@
             data-use-shadow-root="false"
             data-dense="true"
             data-collapse="open"
-            data-values-graph="https://scigma.de/mappings"
+            data-values-graph="https://data.scigma.de/resources/mappings"
           ></shacl-form>
         </details>
 
@@ -140,7 +140,7 @@
             data-use-shadow-root="false"
             data-dense="true"
             data-collapse="open"
-            data-values-graph="https://scigma.de/entities"
+            data-values-graph="https://data.scigma.de/resources/entities"
           ></shacl-form>
         </details>
       </div>
@@ -148,8 +148,8 @@
     <!-- <div id="custom-footer-container"></div>
     <script src="../partials/load-partials.js" defer></script> -->
     <script type="module">
-      const G_MAPPINGS = "https://scigma.de/mappings";
-      const G_ENTITIES = "https://scigma.de/entities";
+      const G_MAPPINGS = "https://data.scigma.de/resources/mappings";
+      const G_ENTITIES = "https://data.scigma.de/resources/entities";
 
       const MAP_NS         = "https://zotero-rdf-server.org/mapping/";
       const MAP_ENTRY      = MAP_NS + "Entry";
@@ -177,12 +177,12 @@
         org: "http://www.w3.org/ns/org#",
         wgs84: "http://www.w3.org/2003/01/geo/wgs84_pos#",
         geosparql: "http://www.opengis.net/ont/geosparql#",
-        scigma: "https://scigma.de/",
-        smap: "https://scigma.de/mappings/",
-        sent: "https://scigma.de/entities/",
+        scigma: "https://data.scigma.de/resources/",
+        smap: "https://data.scigma.de/resources/mappings/",
+        sent: "https://data.scigma.de/resources/entities/",
         zot: "http://www.zotero.org/namespaces/export#",
         sem: "https://semantic-html.org/",
-        sshap: "https://scigma.de/shapes/"
+        sshap: "https://data.scigma.de/resources/shapes/"
       };
 
       const PAGE_SIZE = 25;
@@ -245,12 +245,12 @@ const SHAPES_TTL = `
 @prefix org: <http://www.w3.org/ns/org#>.
 @prefix wgs84: <http://www.w3.org/2003/01/geo/wgs84_pos#>.
 @prefix geo: <http://www.opengis.net/ont/geosparql#>.
-@prefix scigma: <https://scigma.de/>.
-@prefix smap: <https://scigma.de/mappings/>.
-@prefix sent: <https://scigma.de/entities/>.
+@prefix scigma: <https://data.scigma.de/resources/>.
+@prefix smap: <https://data.scigma.de/resources/mappings/>.
+@prefix sent: <https://data.scigma.de/resources/entities/>.
 @prefix zot: <http://www.zotero.org/namespaces/export#>.
 @prefix sem: <https://semantic-html.org/>.
-@prefix sshap: <https://scigma.de/shapes/>.
+@prefix sshap: <https://data.scigma.de/resources/shapes/>.
 
 #################################################################
 # Property groups
@@ -736,18 +736,18 @@ sshap:PublisherShape
 @prefix dash: <http://datashapes.org/dash#>.
 @prefix dcterms: <http://purl.org/dc/terms/>.
 @prefix skos: <http://www.w3.org/2004/02/skos/core#>.
-@prefix scigma: <https://scigma.de/>.
-@prefix smap: <https://scigma.de/mappings/>.
-@prefix sent: <https://scigma.de/entities/>.
+@prefix scigma: <https://data.scigma.de/resources/>.
+@prefix smap: <https://data.scigma.de/resources/mappings/>.
+@prefix sent: <https://data.scigma.de/resources/entities/>.
 @prefix zot: <http://www.zotero.org/namespaces/export#>.
 @prefix sem: <https://semantic-html.org/>.
-@prefix sshap: <https://scigma.de/shapes/>.
+@prefix sshap: <https://data.scigma.de/resources/shapes/>.
 @prefix foaf: <http://xmlns.com/foaf/0.1/>.
 @prefix org: <http://www.w3.org/ns/org#>.
 @prefix wgs84: <http://www.w3.org/2003/01/geo/wgs84_pos#>.
 @prefix geosparql: <http://www.opengis.net/ont/geosparql#>.
 
-<https://scigma.de/shapes/MappingShape>
+<https://data.scigma.de/resources/shapes/MappingShape>
 a sh:NodeShape ;
 sh:property [
   sh:path <${MAP_LABEL_P}> ;
@@ -780,7 +780,7 @@ sh:property [
   sh:message "Target must be an IRI!"@en, "Target muss eine IRI sein!"@de ;
 ] .
 
-<https://scigma.de/shapes/EntityShape>
+<https://data.scigma.de/resources/shapes/EntityShape>
   a sh:NodeShape ;
   sh:property [
     sh:path rdfs:label ;
@@ -1106,14 +1106,14 @@ sh:property [
 
       function initForms_old() {
         mappingForm.setAttribute("data-shapes", SHAPES_TTL);
-        mappingForm.setAttribute("data-shape-subject", "https://scigma.de/shapes/MappingShape");
+        mappingForm.setAttribute("data-shape-subject", "https://data.scigma.de/resources/shapes/MappingShape");
         entityForm.setAttribute("data-shapes", SHAPES_TTL);
-        entityForm.setAttribute("data-shape-subject", "https://scigma.de/shapes/EntityShape");
+        entityForm.setAttribute("data-shape-subject", "https://data.scigma.de/resources/shapes/EntityShape");
       }
 
       function initForms() {
         mappingForm.setAttribute("data-shapes", SHAPES_TTL);
-        mappingForm.setAttribute("data-shape-subject", "https://scigma.de/shapes/MappingShape");
+        mappingForm.setAttribute("data-shape-subject", "https://data.scigma.de/resources/shapes/MappingShape");
 
         entityForm.setAttribute("data-shapes", SHAPES_TTL);
         entityForm.removeAttribute("data-shape-subject");
@@ -1601,13 +1601,13 @@ SELECT ?target WHERE {
       }
 
       newMappingBtn.addEventListener("click", async () => {
-        const iri = mintIRI("https://scigma.de/mappings");
+        const iri = mintIRI("https://data.scigma.de/resources/mappings");
         const now = new Date().toISOString();
         const ttl = `
 <${iri}> a <${MAP_ENTRY}> ;
   <${MAP_LABEL_P}> "New mapping" ;
   <${PROV_GENERATED_AT}> "${now}"^^<http://www.w3.org/2001/XMLSchema#dateTime> ;
-  <${DCTERMS_CONFORMS_TO}> <https://scigma.de/shapes/MappingShape> .
+  <${DCTERMS_CONFORMS_TO}> <https://data.scigma.de/resources/shapes/MappingShape> .
 `.trim() + "\n";
         mappingForm.setAttribute("data-values", ttl);
         mappingForm.setAttribute("data-values-subject", iri);
@@ -1621,10 +1621,10 @@ SELECT ?target WHERE {
       });
 
       newEntityBtn.addEventListener("click", async () => {
-        const iri = mintIRI("https://scigma.de/entities");
+        const iri = mintIRI("https://data.scigma.de/resources/entities");
         const ttl_old = `
 <${iri}> a <http://www.w3.org/2002/07/owl#Thing> ;
-  <${DCTERMS_CONFORMS_TO}> <https://scigma.de/shapes/EntityShape> .
+  <${DCTERMS_CONFORMS_TO}> <https://data.scigma.de/resources/shapes/EntityShape> .
 `.trim() + "\n";
         const ttl = `
         <${iri}> a <http://www.w3.org/2002/07/owl#Thing> ;
