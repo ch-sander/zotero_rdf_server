@@ -20,7 +20,7 @@ SELECT ?file
        (SAMPLE(?file_label) AS ?file_label)
        (SAMPLE(?link_type) AS ?link_type)
 WHERE {
-  ?file a zot:attachment;
+  ?file a zot:Attachment;
         zot:key ?_id;
         zot:linkMode ?link_type;
         rdfs:label ?file_label;
@@ -33,7 +33,7 @@ WHERE {
   OPTIONAL { ?parent zot:collections/zot:name ?collection_label . }
   OPTIONAL {
     ?parent (zot:creators/zot:hasCreator) ?person_1742_8 .
-    ?person_1742_8 a zot:actor ;
+    ?person_1742_8 a zot:Actor ;
                   rdfs:label ?text_1724_9 .
   }
   OPTIONAL {
@@ -41,13 +41,13 @@ WHERE {
           zot:inLibrary ?library .
   }
   OPTIONAL {
-    ?library rdf:type zot:library ;
+    ?library rdf:type zot:Library ;
             rdfs:label ?library_label ;
             zot:id ?library_id .
   }
   OPTIONAL {
     ?parent zot:tags ?tag_1502_13.
-    ?tag_1502_13 rdf:type zot:tag;
+    ?tag_1502_13 rdf:type zot:Tag;
                  zot:tag ?text_1724_13.
   }
 
