@@ -577,11 +577,21 @@ def add_timestamp(store: Store, node: NamedNode, graph: NamedNode, predicate:Nam
 
 def library_href(library_meta: dict):
     return (
-        library_meta.get("library", {})
+        library_meta
         .get("links", {})
         .get("alternate", {})
         .get("href")
     )
+
+def merge_with_prefix(base: dict, extra: dict, prefix: str) -> dict:
+    return {
+        **base,
+        **{f"{prefix}{key}": value for key, value in extra.items()},
+    }
+
+def ucfirst(value: object) -> str:
+    s = str(value)
+    return s[:1].upper() + s[1:] if s else s
 
 def ensure_import(module, attr=None, requirements=None):
     modname = re.split(r"(?:==|!=|<=|>=|<|>|~=)", module, 1)[0]
