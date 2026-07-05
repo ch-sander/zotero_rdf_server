@@ -133,11 +133,11 @@
                 }, {
                     "operator": "OR",
                     "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-                    "targetObject": "http://www.zotero.org/namespaces/export#actor"
+                    "targetObject": "http://www.zotero.org/namespaces/export#Agent"
                 }, {
                     "operator": "OR",
                     "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-                    "targetObject": "http://www.zotero.org/namespaces/export#place"
+                    "targetObject": "http://www.zotero.org/namespaces/export#Place"
                 }, {
                     "operator": "OR",
                     "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
@@ -153,8 +153,8 @@
             "allowCreate": true,
             "mapProperty": "http://www.w3.org/2002/07/owl#sameAs",
             "mapLabel": "https://zotero-rdf-server.org/mapping/label",
-            "knowledgeBaseGraph": "https://scigma.de/entities",
-            "mappingBaseGraph": "https://scigma.de/mappings",
+            "knowledgeBaseGraph": "https://data.scigma.de/resources/entities",
+            "mappingBaseGraph": "https://data.scigma.de/resources/mappings",
             "ADD": {
                 "http://www.w3.org/2000/01/rdf-schema#comment": {
                     "@value": "Auto-generated entity from semantic note",
@@ -179,7 +179,7 @@
                 }, {
                     "operator": "OR",
                     "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-                    "targetObject": "http://www.zotero.org/namespaces/export#tag"
+                    "targetObject": "http://www.zotero.org/namespaces/export#Tag"
                 }, {
                     "operator": "OR",
                     "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
@@ -194,8 +194,8 @@
             "allowCreate": true,
             "mapProperty": "http://www.w3.org/2002/07/owl#sameAs",
             "mapLabel": "https://zotero-rdf-server.org/mapping/label",
-            "knowledgeBaseGraph": "https://scigma.de/entities",
-            "mappingBaseGraph": "https://scigma.de/mappings",
+            "knowledgeBaseGraph": "https://data.scigma.de/resources/entities",
+            "mappingBaseGraph": "https://data.scigma.de/resources/mappings",
             "ADD": {
                 "http://www.w3.org/2000/01/rdf-schema#comment": {
                     "@value": "Auto-generated concept from semantic note",
@@ -205,7 +205,7 @@
                     "@id": "https://semantic-html.org"
                 },
                 "http://www.w3.org/2004/02/skos/core#inScheme": [{
-                    "@id": "https://scigma.de/conceptScheme"
+                    "@id": "https://data.scigma.de/resources/conceptScheme"
                 },
                 {
                     "@id": "https://semantic-html.org/conceptScheme"
