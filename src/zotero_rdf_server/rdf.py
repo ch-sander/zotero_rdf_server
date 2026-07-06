@@ -279,7 +279,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 ### TAGS ###
                 if predicate_str == "tags" and isinstance(object, dict) and "tag" in object:
                     type_nodes = make_iri(
-                        field_map.get("types", ["tag"]),
+                        field_map.get("types", ["Tag"]),
                         ns_prefix,
                         enforce_list=True
                     )
@@ -525,7 +525,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             # ENTITY #
             elif isinstance(object, str) and (field_map.get('fuzzy') or field_map.get('types')):
                 logger.debug(f"UUID Entity for {predicate_str}: {object}")
-                ent_types = make_iri(field_map.get("types", [predicate_str]), ns_prefix, True)
+                ent_types = make_iri(field_map.get("types", [ucfirst(predicate_str)]), ns_prefix, True)
                 
                 return make_entity(object, ent_types,fuzzy_threshold_specific)                
 
@@ -742,18 +742,22 @@ def apply_rdf_types(store: Store, node: NamedNode, data: dict, type_fields: list
                 logger.error(f"Invalid rdf:type at {node} for value '{type_str}': {e}")
                 continue
 
+import re
+
+
 _TEMPLATE_RE = re.compile(
     r"""
     (?:
-        \{\{\s*(?P<braces>[A-Za-z0-9]+)\s*\}\}
+        \{\{\s*(?P<braces_cap>\^?)(?P<braces>[A-Za-z_][A-Za-z0-9_-]*)\s*\}\}
     )
     |
     (?:
-        \$\{\s*(?P<dollar>[A-Za-z0-9]+)\s*\}
+        \$\{\s*(?P<dollar_cap>\^?)(?P<dollar>[A-Za-z_][A-Za-z0-9_-]*)\s*\}
     )
     """,
     re.VERBOSE
 )
+
 
 def resolve_template(
     s: str,
@@ -765,14 +769,30 @@ def resolve_template(
         return s
 
     s = str(s)
-
     data = data or {}
+
     # exact _field shortcut
-    m = re.fullmatch(r"_([A-Za-z0-9_-]+)", s)
+    #
+    # _publisher -> data["publisher"]
+    # _Publisher -> ucfirst(data["publisher"])
+    #               fallback: data["Publisher"]
+    m = re.fullmatch(r"_([A-Za-z][A-Za-z0-9_-]*)", s)
     if m:
-        key = m.group(1)
-        return data.get(key) # do not return variable
-    
+        token = m.group(1)
+
+        if token[:1].isupper():
+            key = token[:1].lower() + token[1:]
+
+            if key in data:
+                return ucfirst(data.get(key))
+
+            if token in data:
+                return data.get(token)
+
+            return None
+
+        return data.get(token)
+
     def repl(m: re.Match) -> str:
 
         key = (
@@ -780,12 +800,20 @@ def resolve_template(
             or m.group("dollar")
         )
 
+        capitalize = bool(
+            m.group("braces_cap")
+            or m.group("dollar_cap")
+        )
+
         if key == "node":
-            return str(node) if node is not None else m.group(0)
+            value = node
+        else:
+            value = data.get(key)
 
-        value = data.get(key)
+        if value is None:
+            return m.group(0)
 
-        return str(value) if value is not None else m.group(0)
+        return ucfirst(value) if capitalize else str(value)
 
     return _TEMPLATE_RE.sub(repl, s)
 
@@ -976,7 +1004,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
             path = Path(lib.save_to) #.join(EXPORT_DIRECTORY, "Zotero JSON", lib.name)
             path.mkdir(parents=True, exist_ok=True)
             path=path.resolve()
-            if items:
+            if items:                
                 with (path / f"{lib.library_id}_items.json").open("w", encoding="utf-8") as f:
                     json.dump(items, f, ensure_ascii=False, indent=2)
 
@@ -989,20 +1017,20 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
 
     map = lib.map
     sample_entry = (items or collections or [None])[0]
+    library_data = sample_entry.get("library", {})
 
-    if sample_entry is not None:
-        a_library_href = library_href(sample_entry) or lib.base_url
+    if sample_entry is not None:        
         logger.debug(f"Example JSON: {sample_entry}")
     else:
-        a_library_href = lib.base_url
         logger.warning(f"No items or collections found for library {lib.name}")
 
+    a_library_href = library_href(library_data) or lib.base_url
     logger.info(f"[{lib.name} at {a_library_href}] Fetched {len(items) if items else 0} items and {len(collections) if collections else 0} collections.")
 
     GRAPH_URI = safeNamedNode(lib.base_url)
 
-    if lib.map.get("named_library") and sample_entry and sample_entry.get("library"):
-        store.add(Quad(safeNamedNode(a_library_href), NamedNode(RDF_TYPE), safeNamedNode(f"{ZOT_NS}library"), graph_name=GRAPH_URI))
+    if lib.map.get("named_library") and sample_entry and sample_entry.get("library"): # TODO write_to_store
+        store.add(Quad(safeNamedNode(a_library_href), NamedNode(RDF_TYPE), safeNamedNode(f"{ZOT_NS}Library"), graph_name=GRAPH_URI))
         add_rdf_from_dict(
             store,
             safeNamedNode(a_library_href),
@@ -1023,9 +1051,10 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
             "library"
         )
 
-    if collections:
+    if collections: # TODO write_to_store
         for col in collections:
             col_data = col["data"]
+            col_data_long = merge_with_prefix(col_data, library_data, "library_")
             key = col_data.get("key", uuid4())
             node_uri = NamedNode(f"{lib.base_url}/collections/{key}")
             if lib.map.get("named_library"):
@@ -1033,10 +1062,10 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
                 store.add(Quad(node_uri, safeNamedNode(property_str) if property_str.startswith("http") else safeNamedNode(f"{ZOT_NS}{property_str}"), safeNamedNode(a_library_href), graph_name=GRAPH_URI))
 
             collection_type_fields = map.get("collection_type") or []
-            apply_rdf_types(store, node_uri, col_data, collection_type_fields, "collection", lib.base_url, ZOT_NS)
+            apply_rdf_types(store, node_uri, col_data, collection_type_fields, "Collection", lib.base_url, ZOT_NS)           
 
             collection_additional = map.get("additional") or []
-            apply_additional_properties(store, node_uri, col_data, collection_additional, lib.base_url, ZOT_NS,"collection")
+            apply_additional_properties(store, node_uri, col_data_long, collection_additional, lib.base_url, ZOT_NS,"collection")
 
             add_rdf_from_dict(store, node_uri, col_data, ZOT_NS, lib.base_url, map, lib.knowledge_base_graph, mapping_base_graph=lib.mapping_base_graph)
             add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
@@ -1053,6 +1082,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
             node_uri = None
             try:
                 item_data = item.get("data", {})
+                item_data_long = merge_with_prefix(item_data, library_data, "library_")
                 item_bib = item.get("bib")
 
                 item_citation = item.get("citation")
@@ -1114,10 +1144,10 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
                     if item_bib:
                         store.add(Quad(node_uri, safeNamedNode(f"{ZOT_NS}bib"), Literal(item_bib, datatype=NamedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#HTML")), graph_name=GRAPH_URI))
 
-                    apply_rdf_types(store, node_uri, item_data, item_type_fields, "item", lib.base_url, ZOT_NS)
+                    apply_rdf_types(store, node_uri, item_data, item_type_fields, "Item", lib.base_url, ZOT_NS)
 
                     item_additional = map.get("additional") or []
-                    apply_additional_properties(store, node_uri, item_data, item_additional, lib.base_url, ZOT_NS,"item")
+                    apply_additional_properties(store, node_uri, item_data_long, item_additional, lib.base_url, ZOT_NS,"item")
 
                     add_rdf_from_dict(store, node_uri, item_data, ZOT_NS, lib.base_url, map, lib.knowledge_base_graph,mapping_base_graph=lib.mapping_base_graph,language=language)
                     add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
