@@ -57,7 +57,7 @@ except Exception as e:
 def load_config(source):
     from .utils import load_dict_like    
     from string import Template
-    config =  load_dict_like(source, label="Loading initial config")
+    config =  load_dict_like(source, label="Loading initial config", verbose=True)
     logger.debug(json.dumps(config,indent=4))
     if config.get("inject_env"):
         try:
@@ -175,7 +175,7 @@ API_UI_URL = (
     or server_cfg.get("api_ui_url", "/")
     )
 
-CFF_PATH = safe_path(
+CFF_PATH = (
     os.getenv("CFF_PATH")
     or server_cfg.get("cff_path")
     or "app/plugins/citations/CITATION.cff"
