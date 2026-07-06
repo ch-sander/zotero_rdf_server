@@ -19,7 +19,7 @@ class ZoteroLibrary:
         self.rdf_export_format = config.get("rdf_export_format", "rdf_zotero")
         self.api_query_params = config.get("api_query_params") or {}
         self.base_api_url = f"{ZOT_API_URL}{self.library_type}/{self.library_id}".strip("#/")
-        self.base_url = str(config.get("base_uri", f"{ZOT_BASE_URL}{self.library_type}/{self.library_id}")).strip("/#")
+        self.base_url = str(config.get("base_uri", f"{ZOT_BASE_URL}{self.library_type}/{self.library_id}")).strip("/#") # TODO make dynamic ?
         self.knowledge_base_graph = str(config.get("knowledge_base_graph", self.base_url)).strip("/#")
         self.mapping_base_graph = str(config.get("mapping_base_graph", self.knowledge_base_graph)).strip("/#")
 
@@ -191,11 +191,19 @@ class ZoteroLibrary:
                         return results[:int(self.max_data)]
 
                     time.sleep(1)
+
+        if endpoint == "items" and collection_keys:
+            before = len(results)
+            results = dedupe_zotero_objects(results, collection_keys)
+            logger.warning(
+                f"Deduplicated and restricted collection items: {before} -> {len(results)}"
+            )
+
         return results
     
     def fetch_items(self, json_path:str | Path = None) -> list:
         if self.load_mode == "manual_import":
-            json_path = safe_path(json_path)
+            json_path = safe_path(json_path,create=False)
             if not json_path or not json_path.is_file():
                 raise FileNotFoundError(f"JSON path not found: {json_path}")
 
@@ -213,7 +221,7 @@ class ZoteroLibrary:
 
     def fetch_collections(self, json_path:str | Path = None) -> list:
         if self.load_mode == "manual_import":
-            json_path = safe_path(json_path)
+            json_path = safe_path(json_path,create=False)
             if not json_path or not json_path.is_file():
                 raise FileNotFoundError(f"JSON path not found: {json_path}")
 
