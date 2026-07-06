@@ -206,7 +206,7 @@ def refresh_store(force_reload:bool = False, remove_store:bool=True):
                                     store.bulk_load(
                                         path=tmp_path,
                                         format=RdfFormat.RDF_XML,
-                                        base_iri=f"{lib.base_url}/items/",
+                                        base_iri=f"{lib.base_url}/items/", # TODO why items?
                                         to_graph=safeNamedNode(lib.base_url)
                                     )
                                     after = len(store)
