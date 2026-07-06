@@ -382,7 +382,7 @@ async function resolveUri(uri) {
 }
 
 async function queryRelated(uri) {
-  const query = `
+  const query_old = `
     PREFIX dc:   <http://purl.org/dc/elements/1.1/>
     PREFIX dct:  <http://purl.org/dc/terms/>
     PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -411,6 +411,58 @@ async function queryRelated(uri) {
     LIMIT ${LIMIT}
   `;
 
+  const query = `
+    PREFIX owl:  <http://www.w3.org/2002/07/owl#>
+    PREFIX dc:   <http://purl.org/dc/elements/1.1/>
+    PREFIX dct:  <http://purl.org/dc/terms/>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+    SELECT
+      (IRI(MIN(STR(?variant))) AS ?related)
+      (SAMPLE(?label) AS ?relatedLabel)
+      (GROUP_CONCAT(DISTINCT STR(?type); separator=" · ") AS ?relatedType)
+      (MAX(?knownInt) AS ?isKnown)
+    WHERE {
+      <${escapeSparqlIri(uri)}>
+        (owl:sameAs|^owl:sameAs)* ?source .
+
+      ?source
+        (dc:relation|^dc:relation|dct:relation|^dct:relation)
+        ?rawRelated .
+
+      FILTER(isIRI(?rawRelated))
+
+      ?rawRelated
+        (owl:sameAs|^owl:sameAs)* ?variant .
+
+      FILTER(isIRI(?variant))
+
+      {
+        SELECT ?rawRelated (MIN(STR(?same)) AS ?cluster)
+        WHERE {
+          ?rawRelated (owl:sameAs|^owl:sameAs)* ?same .
+          FILTER(isIRI(?same))
+        }
+        GROUP BY ?rawRelated
+      }
+
+      OPTIONAL {
+        ?variant rdfs:label ?label .
+      }
+
+      OPTIONAL {
+        ?variant rdf:type ?type .
+      }
+
+      BIND(IF(EXISTS { ?variant ?anyP ?anyO }, 1, 0) AS ?knownInt)
+    }
+
+    GROUP BY ?cluster
+    ORDER BY LCASE(STR(COALESCE(SAMPLE(?label), MIN(STR(?variant)))))
+    LIMIT ${LIMIT}
+  `;
+
   const response = await fetch(ENDPOINT, {
     method: "POST",
     headers: {
@@ -426,6 +478,8 @@ async function queryRelated(uri) {
 
   return response.json();
 }
+
+
 
 function appendTypeBadge(anchor, typeBinding) {
   if (!typeBinding?.value) return;
@@ -454,8 +508,15 @@ function renderRelated(bindings) {
 
     const value = binding.related.value;
 
-    const isInternal =
+    const isInternal_old =
       Boolean(binding.relatedLabel) ||
+      value.startsWith("urn:");
+
+    const isInternal =
+      binding.isKnown?.value === "1" ||
+      binding.isKnown?.value === "true" ||
+      Boolean(binding.relatedLabel) ||
+      Boolean(binding.relatedType?.value) ||
       value.startsWith("urn:");
 
     a.href = isInternal
@@ -499,28 +560,50 @@ function renderSameAs(bindings) {
 
     const value = binding.same.value;
 
-    const isInternal =
-      Boolean(binding.sameLabel) ||
-      value.startsWith("urn:");
-
-    a.href = isInternal
-      ? "#" + encodeURIComponent(value)
-      : value;
-
-    if (!isInternal) {
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
-    }
-
+    a.href = "#" + encodeURIComponent(value);
     a.textContent =
       binding.sameLabel?.value ||
-      shortenIri(binding.same.value);
+      shortenIri(value);
+
     appendTypeBadge(a, binding.sameType);
-    a.title = binding.same.value;
+    a.title = value;
 
     li.appendChild(
-      withCopy(a, binding.same.value)
+      withCopy(a, value)
     );
+
+    const external = document.createElement("a");
+    external.href = value;
+    external.target = "_blank";
+    external.rel = "noopener noreferrer";
+    external.textContent = " ↗";
+    external.title = "Open original URI";
+    external.setAttribute("aria-label", "Open original URI in new tab");
+
+    li.appendChild(external);
+
+    // const isInternal =
+    //   Boolean(binding.sameLabel) ||
+    //   value.startsWith("urn:");
+
+    // a.href = isInternal
+    //   ? "#" + encodeURIComponent(value)
+    //   : value;
+
+    // if (!isInternal) {
+    //   a.target = "_blank";
+    //   a.rel = "noopener noreferrer";
+    // }
+
+    // a.textContent =
+    //   binding.sameLabel?.value ||
+    //   shortenIri(binding.same.value);
+    // appendTypeBadge(a, binding.sameType);
+    // a.title = binding.same.value;
+
+    // li.appendChild(
+    //   withCopy(a, binding.same.value)
+    // );
 
     sameAsListEl.appendChild(li);
   }
