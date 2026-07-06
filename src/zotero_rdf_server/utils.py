@@ -575,6 +575,44 @@ def process_language_and_title(
 def add_timestamp(store: Store, node: NamedNode, graph: NamedNode, predicate:NamedNode=NamedNode(PROV_TIMESTAMP)):
     store.add(Quad(node, predicate, Literal(datetime.now(timezone.utc).isoformat(),datatype=NamedNode(f"{XSD_NS}dateTime")), graph_name=graph))
 
+def dedupe_zotero_objects(
+    items: list[dict],
+    collection_keys: list[str] | None = None,
+) -> list[dict]:
+    if not collection_keys:
+        return items
+
+    allowed = set(collection_keys)
+    by_key: dict[str, dict] = {}
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+
+        key = item.get("key") or item.get("data", {}).get("key")
+        if not key:
+            continue
+
+        data = item.setdefault("data", {})
+        item_collections = set(data.get("collections") or [])
+
+        filtered_collections = item_collections & allowed
+
+        if key not in by_key:
+            copied_item = dict(item)
+            copied_data = dict(data)
+            copied_data["collections"] = sorted(filtered_collections)
+            copied_item["data"] = copied_data
+            by_key[key] = copied_item
+        else:
+            existing_data = by_key[key].setdefault("data", {})
+            existing_collections = set(existing_data.get("collections") or [])
+            existing_data["collections"] = sorted(
+                existing_collections | filtered_collections
+            )
+
+    return list(by_key.values())
+
 def library_href(library_meta: dict):
     return (
         library_meta
