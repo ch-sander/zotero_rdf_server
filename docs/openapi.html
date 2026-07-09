@@ -259,6 +259,55 @@
         }
       }
     },
+    "/sparql_update": {
+      "post": {
+        "tags": [
+          "RDF",
+          "Proxy"
+        ],
+        "summary": "Run a SPARQL UPDATE against the RDF store",
+        "description": "Executes a SPARQL UPDATE against the global RDF store.\n\nThe request body must be plain text. It may contain either a SPARQL UPDATE query directly or a path that `load_text_like()` can resolve.",
+        "operationId": "sparql_update_sparql_update_post",
+        "requestBody": {
+          "content": {
+            "text/plain": {
+              "schema": {
+                "type": "string",
+                "maxLength": 20000,
+                "minLength": 1,
+                "title": "Update Query",
+                "description": "SPARQL UPDATE query or path to a SPARQL UPDATE file."
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Sparql Update Sparql Update Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/delete_mapping_targets": {
       "delete": {
         "tags": [
@@ -1038,7 +1087,7 @@
             "schema": {
               "type": "string",
               "description": "Path to CITATION.cff",
-              "default": "/home/runner/work/zotero_rdf_server/zotero_rdf_server/app/plugins/citations/CITATION.cff",
+              "default": "app/plugins/citations/CITATION.cff",
               "title": "Path"
             },
             "description": "Path to CITATION.cff"
@@ -2573,10 +2622,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-04T19:17:49Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-09T07:59:00Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-04T19:17:49Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-09T07:59:00Z"
           },
           {
             "name": "perform_analysis",
@@ -3545,10 +3594,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-04T19:17:49Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-09T07:59:00Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-04T19:17:49Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-09T07:59:00Z"
           },
           {
             "name": "format",
@@ -3862,10 +3911,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-04T19:17:49Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-09T07:59:00Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-04T19:17:49Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-09T07:59:00Z"
           },
           {
             "name": "format",
@@ -4196,10 +4245,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-04T19:17:49Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-09T07:59:00Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-04T19:17:49Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-09T07:59:00Z"
           },
           {
             "name": "format",
@@ -4509,10 +4558,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-04T19:17:49Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-09T07:59:00Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-04T19:17:49Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-09T07:59:00Z"
           },
           {
             "name": "format",
