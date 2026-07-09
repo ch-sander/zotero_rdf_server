@@ -33,7 +33,7 @@ WHERE {
   OPTIONAL { ?parent zot:collections/zot:name ?collection_label . }
   OPTIONAL {
     ?parent (zot:creators/zot:hasCreator) ?person_1742_8 .
-    ?person_1742_8 a zot:Actor ;
+    ?person_1742_8 a zot:Agent ;
                   rdfs:label ?text_1724_9 .
   }
   OPTIONAL {
