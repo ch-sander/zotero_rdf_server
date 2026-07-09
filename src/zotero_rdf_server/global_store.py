@@ -223,7 +223,7 @@ def refresh_store(force_reload:bool = False, remove_store:bool=True):
                                 logger.error(f"Error loading from file import for {lib.name}: {e}")
                         elif lib.load_mode == "json":
                             logger.warning(f"Importing from local Zotero JSON")
-                            if lib.library_type not in ["knowledge base","mapping", "dataset"]:
+                            if lib.library_type not in ["knowledge base","mapping", "dataset", "query", "update"]:
                                 try:
                                     build_graph_for_library(lib, store)
                                 except Exception as e:
@@ -251,6 +251,8 @@ def refresh_store(force_reload:bool = False, remove_store:bool=True):
                                 logger.error(f"Error parsing notes: {e}")
                         else:
                             logger.info(f"No notes parsing for {lib.name}")
+                        
+                        run_update_queries(lib,store)
 
                     logger.info(f"Zotero data refreshed successfully. {len(store)} triples, graphs: {list(store.named_graphs())}")
                     ensure_store(store)

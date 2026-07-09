@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Depends, status
+from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Depends, status, Body
 from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse, FileResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import secrets, shutil
@@ -448,6 +448,76 @@ async def list_graphs():
     graphs = [str(g) for g in store.named_graphs()]
     return {"status": "success", "store":{"named_graphs":graphs, "len":len(store)}}
 
+@router.post(
+    "/sparql_update",
+    summary="Run a SPARQL UPDATE against the RDF store",
+    description=(
+        "Executes a SPARQL UPDATE against the global RDF store.\n\n"
+        "The request body must be plain text. It may contain either a SPARQL UPDATE query "
+        "directly or a path that `load_text_like()` can resolve."
+    ),
+    tags=["RDF", "Proxy"],
+    dependencies=[Depends(require_writable)],
+)
+async def sparql_update(
+    update_query: str = Body(
+        ...,
+        min_length=1,
+        max_length=20_000,
+        examples=None,
+        media_type="text/plain",
+        description="SPARQL UPDATE query or path to a SPARQL UPDATE file.",
+    ),
+) -> dict:
+    store = global_store.get_store()
+
+    try:
+        update = load_text_like(update_query, label="SPARQL UPDATE query")
+    except Exception as e:
+        logger.error("Could not load SPARQL UPDATE query: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not load SPARQL UPDATE query: {e}",
+        )
+
+    try:
+        with global_store._store_lock:
+            before = len(store)
+
+            logger.warning(
+                "Running SPARQL UPDATE; store size before=%s",
+                before,
+            )
+
+            store.update(update=update)
+
+            after = len(store)
+
+            logger.warning(
+                "Finished SPARQL UPDATE; store size before=%s; after=%s; delta=%+d",
+                before,
+                after,
+                after - before,
+            )
+
+    except Exception as e:
+        logger.error(
+            "SPARQL UPDATE failed: %s\n\n%s",
+            e,
+            update,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"SPARQL UPDATE failed: {e}",
+        )
+
+    return {
+        "success": True,
+        "store_size_before": before,
+        "store_size_after": after,
+        "delta": after - before,
+    }
 
 @router.delete(
     "/delete_mapping_targets",
