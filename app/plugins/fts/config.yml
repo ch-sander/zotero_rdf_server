@@ -690,7 +690,7 @@ open-search:
             alias: "scigma-public"
             must_exist: false
         - add:
-            index: ["scigma*"]
+            indices: ["scigma*"]
             alias: scigma-public
             filter:
               bool:
