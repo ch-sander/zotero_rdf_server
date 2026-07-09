@@ -64,7 +64,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
     if len(parser_cfgs)>1:
         logger.warning(f"Running {len(parser_cfgs)} Notes Parser configurations for library {lib.base_url}")
     for parser_cfg in parser_cfgs: # allow multiple runs per library    
-        SEMANTIC_HTML_GRAPH = safeNamedNode(parser_cfg.get("base_uri", lib.base_url)) # graph to store RDF parsed from notes
+        SEMANTIC_HTML_GRAPH = safeNamedNode(parser_cfg.get("to_graph", parser_cfg.get("base_uri", lib.base_url))) # graph to store RDF parsed from notes
         
         mapping = load_dict_like(
             parser_cfg.get("mapping"),
@@ -280,7 +280,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
 
                                 elif allow_create: # TODO uuid4 because same literal may have multiple types?
                                     ENTITY_UUID = uuid5(NAMESPACE_URL, str(entity_graph_uri.value))
-                                    iri_suffix = uuid5(ENTITY_UUID, lit_value)
+                                    iri_suffix = uuid4() or uuid5(ENTITY_UUID, lit_value)
                                     base_uri = parser_cfg.get('base_uri', f"{str(entity_graph_uri.value).rstrip('/')}") 
                                     new_node = safeNamedNode(f"{base_uri}/{iri_suffix}") # {KB_graph}/semantic_html/{iri_suffix}
 
