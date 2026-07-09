@@ -386,7 +386,7 @@ sshap:EntityKeywordsProperty
   sh:order 6 .
 
 #################################################################
-# Place properties for zot:place
+# Place properties for zot:Place
 #################################################################
 
 sshap:PlaceLatitudeProperty
@@ -420,8 +420,18 @@ sshap:PlaceWktProperty
   sh:group sshap:PlaceGroup ;
   sh:order 22 .
 
+# sshap:PlaceWktViaGeometryProperty
+#  a sh:PropertyShape ;
+#  sh:path ( geo:hasGeometry geo:asWKT ) ;
+#  sh:name "WKT geometry (Feature)"@en, "WKT-Geometrie (Feature)"@de ;
+#  sh:datatype geo:wktLiteral ;
+#  sh:maxCount 1 ;
+#  dash:singleLine false ;
+#  sh:group sshap:PlaceGroup ;
+#  sh:order 22 .
+
 #################################################################
-# FOAF properties for zot:actor and foaf:Agent
+# FOAF properties for zot:Agent and foaf:Agent
 #################################################################
 
 sshap:FoafNameProperty
@@ -558,7 +568,7 @@ sshap:SkosCloseMatchProperty
   sh:order 51 .
 
 #################################################################
-# ORG properties for zot:publisher
+# ORG properties for zot:Publisher
 #################################################################
 
 sshap:OrgIdentifierProperty
@@ -643,7 +653,7 @@ sshap:GenericEntityShape
 
 sshap:PlaceShape
   a sh:NodeShape ;
-  sh:targetClass zot:place ;
+  sh:targetClass zot:Place ;
   sh:property
     sshap:EntityLabelProperty,
     sshap:EntityTypeProperty,
@@ -651,13 +661,14 @@ sshap:PlaceShape
     sshap:EntityCommentProperty,
     sshap:EntitySameAsProperty,
     sshap:EntityKeywordsProperty,
-    sshap:PlaceLatitudeProperty,
-    sshap:PlaceLongitudeProperty,
+  # sshap:PlaceLatitudeProperty,
+  # sshap:PlaceLongitudeProperty,
+  # sshap:PlaceWktViaGeometryProperty,
     sshap:PlaceWktProperty .
 
 sshap:ActorShape
   a sh:NodeShape ;
-  sh:targetClass zot:actor ;
+  sh:targetClass zot:Agent ;
   sh:property
     sshap:EntityLabelProperty,
     sshap:EntityTypeProperty,
@@ -708,7 +719,7 @@ sshap:ConceptShape
 
 sshap:PublisherShape
   a sh:NodeShape ;
-  sh:targetClass zot:publisher ;
+  sh:targetClass zot:Publisher ;
   sh:property
     sshap:EntityLabelProperty,
     sshap:EntityTypeProperty,
