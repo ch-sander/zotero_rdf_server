@@ -7,8 +7,8 @@ spiritus sanctus, spiritus-sanctus
 deus, dominus
 dominus, dns
 spiritus sanctus, spiritus
-gratia, misericordia
-peccatum, culpa
+# gratia, misericordia
+# peccatum, culpa
 fides, credere
 salus, salvatio
 redemptio, redemptor
