@@ -471,6 +471,67 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
 
                     return role_node
                 
+                ### Metadata: Creator ###
+                if predicate_str in {"lastModifiedByUser", "createdByUser" } and isinstance(object, dict) and "id" in object:
+                    try:
+                        type_nodes = make_iri(
+                            field_map.get("types", ["User"]),
+                            ns_prefix,
+                            enforce_list=True
+                        )
+
+                        user_id = object.get("id") or uuid4()
+                        user_label = object.get("name") or user_id
+                        user_node = safeNamedNode(f"{knowledge_base_graph}/users/{user_id}")
+                        pool_store = quads_by_type(store, type_nodes, safeNamedNode(knowledge_base_graph))
+                        # ORCiD
+
+                                
+                        if any(pool_store.quads_for_pattern(user_node, None, None, None)):
+                            return user_node
+                        
+                        orcid_user_nodes = list(pool_store.quads_for_pattern(None, NamedNode(OWL_SAME_AS), user_node, None))
+                        if any(orcid_user_nodes):
+                             for orcid_user_node in orcid_user_nodes:
+                                if orcid_user_node.subject.value.startswith("https://orcid.org"):
+                                    logger.warning(f"Set {user_node} to {orcid_user_node}")
+                                    user_node=orcid_user_node
+                                    return user_node   
+                     
+                        apply_rdf_types(
+                            store=store,
+                            node=user_node,
+                            data={},
+                            type_fields=type_nodes,
+                            default_type="User",
+                            base_ns=knowledge_base_graph,
+                            prefix_ns=ns_prefix
+                        )
+
+                        store.add(Quad(
+                            user_node,
+                            NamedNode(RDFS_LABEL),
+                            Literal(user_label),
+                            graph_name=safeNamedNode(knowledge_base_graph)
+                        ))
+                        add_rdf_from_dict(
+                            store=store,
+                            subject=user_node,
+                            data=object,
+                            ns_prefix=ns_prefix,
+                            base_uri=knowledge_base_graph,
+                            map=map,
+                            knowledge_base_graph=knowledge_base_graph,
+                            mapping_base_graph=mapping_base_graph,
+                        )
+                        add_timestamp(store=store, node=user_node, 
+                        graph=safeNamedNode(knowledge_base_graph))
+                    except Exception as e:
+                        logger.error(f"Adding metadata failed: {e}")
+                        raise
+
+                    return user_node
+                                
                 ### RELATIONS ###
 
                 elif predicate_str == "relations" and ("dc:relation" in object or "owl:sameAs" in object or "dc:replaces" in object):
@@ -712,6 +773,85 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             logger.error(f"Invalid data for: [{field}, {value}]: {e}")
             continue   
 
+def run_update_queries(lib: ZoteroLibrary, store: Store):
+    if not lib.update_queries:
+        return
+
+    total = len(lib.update_queries)
+    before_all = len(store)
+
+    logger.warning(
+        "Running %s SPARQL UPDATE queries for %s; store size before=%s",
+        total,
+        lib.base_url,
+        before_all,
+    )
+
+    for i, q in enumerate(lib.update_queries, start=1):
+        update = None
+        before = len(store)
+
+        try:
+            if not isinstance(q, dict) or "query" not in q:
+                logger.warning(
+                    "Skipping invalid SPARQL UPDATE config entry #%s for %s: %r",
+                    i,
+                    lib.base_url,
+                    q,
+                )
+                continue
+
+            update = load_text_like(q["query"], label="SPARQL UPDATE query")
+
+            logger.warning(
+                "Running SPARQL UPDATE #%s/%s for %s; store size before=%s",
+                i,
+                total,
+                lib.base_url,
+                before,
+            )
+
+            store.update(update=update)
+
+            after = len(store)
+
+            logger.warning(
+                "Finished SPARQL UPDATE #%s/%s for %s; store size after=%s; delta=%+d",
+                i,
+                total,
+                lib.base_url,
+                after,
+                after - before,
+            )
+
+        except Exception as e:
+            failed_size = None
+            try:
+                failed_size = len(store)
+            except Exception:
+                pass
+
+            logger.error(
+                "SPARQL UPDATE #%s/%s for %s failed: %s; store size now=%s\n\n%s",
+                i,
+                total,
+                lib.base_url,
+                e,
+                failed_size,
+                update or q,
+                exc_info=True,
+            )
+            raise
+
+    after_all = len(store)
+
+    logger.warning(
+        "Finished all SPARQL UPDATE queries for %s; store size before=%s; after=%s; delta=%+d",
+        lib.base_url,
+        before_all,
+        after_all,
+        after_all - before_all,
+    )
 
 def apply_rdf_types(store: Store, node: NamedNode, data: dict, type_fields: list[str], default_type: str, base_ns: str, prefix_ns: str = ZOT_NS):
     GRAPH_URI = NamedNode(base_ns)
@@ -1053,7 +1193,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
 
     if collections: # TODO write_to_store
         for col in collections:
-            col_data = col["data"]
+            col_data = col["data"]            
             col_data_long = merge_with_prefix(col_data, library_data, "library_")
             key = col_data.get("key", uuid4())
             node_uri = NamedNode(f"{lib.base_url}/collections/{key}")
@@ -1064,11 +1204,21 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
             collection_type_fields = map.get("collection_type") or []
             apply_rdf_types(store, node_uri, col_data, collection_type_fields, "Collection", lib.base_url, ZOT_NS)           
 
-            collection_additional = map.get("additional") or []
-            apply_additional_properties(store, node_uri, col_data_long, collection_additional, lib.base_url, ZOT_NS,"collection")
+            additional = map.get("additional") or []
+            apply_additional_properties(store, node_uri, col_data_long, additional, lib.base_url, ZOT_NS,"collection")
 
             add_rdf_from_dict(store, node_uri, col_data, ZOT_NS, lib.base_url, map, lib.knowledge_base_graph, mapping_base_graph=lib.mapping_base_graph)
             add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
+
+            metadata = col.get("meta")
+            if metadata and isinstance(metadata,dict) and lib.metadata_graph:
+                additional = lib.metadata_map.get("additional") or []
+                logger.debug(f"Adding collection metadata to {lib.metadata_graph} for {str(node_uri)}")
+                apply_additional_properties(store, node_uri, metadata, additional, lib.metadata_graph, ZOT_NS, "metadata")
+
+                add_rdf_from_dict(store, node_uri, metadata, ZOT_NS, lib.metadata_graph,lib.metadata_map, lib.metadata_graph, mapping_base_graph=lib.metadata_graph)
+                add_timestamp(store=store, node=node_uri, graph=safeNamedNode(lib.metadata_graph))
+
         logger.info(f"--> Loaded {len(collections)} collections for {lib.name} to store")
     else:
         logger.warning("No collections!") if not json_path_items else None
@@ -1146,12 +1296,21 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
 
                     apply_rdf_types(store, node_uri, item_data, item_type_fields, "Item", lib.base_url, ZOT_NS)
 
-                    item_additional = map.get("additional") or []
-                    apply_additional_properties(store, node_uri, item_data_long, item_additional, lib.base_url, ZOT_NS,"item")
+                    additional = map.get("additional") or []
+                    apply_additional_properties(store, node_uri, item_data_long, additional, lib.base_url, ZOT_NS,"item")
 
                     add_rdf_from_dict(store, node_uri, item_data, ZOT_NS, lib.base_url, map, lib.knowledge_base_graph,mapping_base_graph=lib.mapping_base_graph,language=language)
                     add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
-        
+
+                    metadata = item.get("meta")
+                    if metadata and isinstance(metadata,dict) and lib.metadata_graph:
+                        additional = lib.metadata_map.get("additional") or []
+                        logger.debug(f"Adding item metadata to {lib.metadata_graph} for {str(node_uri)}")
+                        apply_additional_properties(store, node_uri, metadata, additional, lib.metadata_graph, ZOT_NS, "metadata")
+
+                        add_rdf_from_dict(store, node_uri, metadata, ZOT_NS, lib.metadata_graph,lib.metadata_map, lib.metadata_graph, mapping_base_graph=lib.metadata_graph)
+                        add_timestamp(store=store, node=node_uri, graph=safeNamedNode(lib.metadata_graph))
+                        
                 except Exception as e:
                     logger.error(f"Invalid data at {node_uri}. See next errors for details!")
                     continue
