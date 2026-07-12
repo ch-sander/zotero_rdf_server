@@ -148,7 +148,11 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
         
         def parse_date(text, dayfirst=True):
             text = text.strip()
-            RANGE_SEPARATORS = r"\s*[-–—]\s*"
+            if re.fullmatch(r"\d{4}", text):
+                year = int(text)
+                return datetime(year, 1, 1)
+            # RANGE_SEPARATORS = r"\s*[-–—]\s*"
+            RANGE_SEPARATORS = r"(?:\s+-\s+|\s*[–—]\s*)" # more restrictive
             if re.search(RANGE_SEPARATORS, text):
                 parts = re.split(RANGE_SEPARATORS, text)
                 if len(parts) == 2:
@@ -671,14 +675,25 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         elif match:
                             o = Literal(match.group(1), datatype=NamedNode(f"{XSD_NS}gYear"))                             
                         elif isinstance(date_val, datetime):
-                            o =      Literal(str(date_val.date().isoformat()), datatype=NamedNode(f"{XSD_NS}dateTime"))                         
+                            o =      Literal(str(date_val.date().isoformat()), datatype=NamedNode(f"{XSD_NS}date"))                         
                         else:
                             o = Literal(val)
                         objects.append(o)
                         
                     elif is_datatype(predicate_str, field_map, "datetime", ["dateModified", "accessDate", "dateAdded"]): # dateTime
-                        o = Literal(val,datatype=NamedNode(f"{XSD_NS}dateTime"))
-                        objects.append(o)
+                        date_val = parse_date(val)
+
+                        if isinstance(date_val, datetime):
+                            o = Literal(
+                                date_val.isoformat(timespec="seconds"),
+                                datatype=NamedNode(f"{XSD_NS}dateTime")
+                            )
+                        else:
+                            o = Literal(val)
+
+                        objects.append(o)                        
+                        # o = Literal(val,datatype=NamedNode(f"{XSD_NS}dateTime"))
+                        # objects.append(o)
                     
                     elif (field_map.get("datatyping", "str") == "str") and literal_dt:
                         o = Literal(val, datatype=resolve_literal_datatype(literal_dt))
