@@ -309,14 +309,11 @@ zotsn:castmember_1607 a sh:NodeShape ;
 
 zotsn:collection_of a owl:ObjectProperty ;
     rdfs:label "collection of"@en ;
-    sparnatural:sparqlString "^<http://www.zotero.org/namespaces/export#collections>"@en,
-        "^<http://www.zotero.org/namespaces/export#parentCollection>"@en ;
+    sparnatural:sparqlString "^<http://www.zotero.org/namespaces/export#collections>"@en ;
     sparnatural:tooltip "Tooltip for collection of (This is only a query pattern)"@en ;
     rdfs:domain zot:Collection ;
-    rdfs:range zot:Collection,
-        zot:Item ;
-    owl:inverseOf zot:collections,
-        zot:parentCollection .
+    rdfs:range zot:Item ;
+    owl:inverseOf zot:collections .
 
 zotsn:commenter_1594 a sh:NodeShape ;
     rdfs:label "Commenter"@en ;
@@ -709,6 +706,17 @@ zotsn:hearing_1561 a sh:NodeShape ;
         zotsn:property_1715,
         zotsn:property_1722 ;
     sh:targetClass zot:Hearing .
+
+zotsn:in_collection a owl:ObjectProperty ;
+    rdfs:label "in collection"@en ;
+    sparnatural:sparqlString "^<http://www.zotero.org/namespaces/export#parentCollection>"@en ;
+    sparnatural:tooltip "Tooltip for in collection (This is only a query pattern)"@en ;
+    rdfs:domain [ a owl:Class ;
+            grace:unionOf zot:Collection,
+                zot:Item,
+                semz:SemanticNote ] ;
+    rdfs:range zot:Collection ;
+    owl:inverseOf zot:parentCollection .
 
 zotsn:in_creator_role a owl:ObjectProperty ;
     rdfs:label "in creator role"@en ;
@@ -1713,7 +1721,7 @@ grace: a owl:Ontology ;
     rdfs:label "Graceful17 Ontology"@en ;
     ns3:status <bibo:status/draft> ;
     ns4:title "Graceful17 Ontology"@en ;
-    ns1:created "2026-07-05T16:11:04"@en ;
+    ns1:created "2026-07-10T09:03:06"@en ;
     ns1:creator "Bruno Boute"@en,
         "Christoph Sander"@en ;
     ns1:license <http://creativecommons.org/licenses/by/4.0/> ;
@@ -1721,7 +1729,7 @@ grace: a owl:Ontology ;
     owl:imports <http://www.opengis.net/ont/geosparql> ;
     owl:priorVersion grace:1.0.0 ;
     owl:versionIRI grace:1.0.1 ;
-    prov:generatedAtTime "2026-07-05T16:11:04"^^xsd:dateTime ;
+    prov:generatedAtTime "2026-07-10T09:03:06"^^xsd:dateTime ;
     schema:citation "Sander, Christoph; Boute, Bruno. (2025). The Graceful17 Ontology, https://w3id.org/g17/ontology (Version 1.0.1)"@en ;
     ns2:preferredNamespacePrefix "grace"@en ;
     ns2:preferredNamespaceUri "https://w3id.org/grace/ontology/"@en .
@@ -3543,6 +3551,7 @@ zotsn:property_1732 a sh:PropertyShape ;
 zotsn:property_1734 a sh:PropertyShape ;
     rdfs:label "in Collection(s)"@en ;
     volipi:message "Tooltip for collections"@en ;
+    dash:searchWidget sparnatural:ListProperty ;
     sh:class zot:Collection ;
     sh:name "in Collection(s)"@en ;
     sh:node zotsn:collection_1501 ;
@@ -3674,22 +3683,13 @@ zotsn:property_1751 a sh:PropertyShape ;
 
 zotsn:property_1752 a sh:PropertyShape ;
     rdfs:label "in Collection"@en ;
-    volipi:message "Tooltip for parentCollection"@en ;
+    volipi:message "Tooltip for parentCollection (transitive property)"@en ;
+    dash:searchWidget sparnatural:ListProperty ;
     sh:class zot:Collection ;
     sh:name "in Collection"@en ;
     sh:node zotsn:collection_1501 ;
     sh:nodeKind sh:IRI ;
-    sh:path zot:parentCollection .
-
-zotsn:property_1753 a sh:PropertyShape ;
-    rdfs:label "Collection of"@en ;
-    volipi:message "Tooltip for collection of (This is only a query pattern)"@en ;
-    dash:searchWidget sparnatural:NonSelectableProperty ;
-    sh:class zot:Collection ;
-    sh:name "Collection of"@en ;
-    sh:node zotsn:collection_1501 ;
-    sh:nodeKind sh:IRI ;
-    sh:path [ sh:inversePath zot:parentCollection ] .
+    sh:path [ sh:zeroOrMorePath zot:parentCollection ] .
 
 zotsn:property_1771 a sh:PropertyShape ;
     rdfs:label "Note HTML"@en ;
@@ -4383,12 +4383,6 @@ zmap:label a owl:DatatypeProperty ;
     rdfs:domain zmap:Entry ;
     rdfs:range zotsn:Text .
 
-zot:collections a owl:ObjectProperty ;
-    rdfs:label "collections"@en ;
-    sparnatural:tooltip "Tooltip for collections"@en ;
-    rdfs:domain zot:Item ;
-    rdfs:range zot:Collection .
-
 zot:inLibrary a owl:ObjectProperty ;
     rdfs:label "inLibrary"@en ;
     sparnatural:tooltip "Tooltip for inLibrary"@en ;
@@ -4399,7 +4393,8 @@ zot:inLibrary a owl:ObjectProperty ;
 
 zot:parentCollection a owl:ObjectProperty ;
     rdfs:label "parentCollection"@en ;
-    sparnatural:tooltip "Tooltip for parentCollection"@en ;
+    sparnatural:sparqlString "<http://www.zotero.org/namespaces/export#parentCollection>+"@en ;
+    sparnatural:tooltip "Tooltip for parentCollection (transitive property)"@en ;
     rdfs:domain zot:Collection ;
     rdfs:range zot:Collection .
 
@@ -4535,6 +4530,16 @@ zotsn:property_1737 a sh:PropertyShape ;
     sh:nodeKind sh:Literal ;
     sh:path zot:name .
 
+zotsn:property_1753 a sh:PropertyShape ;
+    rdfs:label "in Collection (transitive)"@en ;
+    volipi:message "Tooltip for in collection (This is only a query pattern)"@en ;
+    dash:searchWidget sparnatural:NonSelectableProperty ;
+    sh:class zot:Collection ;
+    sh:name "in Collection (transitive)"@en ;
+    sh:node zotsn:collection_1501 ;
+    sh:nodeKind sh:IRI ;
+    sh:path ( [ sh:zeroOrOnePath zot:parentItem ] zot:collections [ sh:zeroOrMorePath zot:parentCollection ] ) .
+
 zotsn:property_1967 a sh:PropertyShape ;
     rdfs:label "Concept Label"@en ;
     sparnatural:enableOptional true ;
@@ -4559,6 +4564,12 @@ zot:Attachment a owl:Class ;
     sparnatural:faIcon "fa-paperclip"@en ;
     sparnatural:tooltip "Tooltip for Attachment"@en ;
     rdfs:subClassOf zot:Item .
+
+zot:collections a owl:ObjectProperty ;
+    rdfs:label "collections"@en ;
+    sparnatural:tooltip "Tooltip for collections"@en ;
+    rdfs:domain zot:Item ;
+    rdfs:range zot:Collection .
 
 zot:publisher a owl:DatatypeProperty ;
     rdfs:label "publisher"@en ;
@@ -4673,6 +4684,7 @@ zotsn:semanticnote_1755 a sh:NodeShape ;
     sh:name "Semantic Note"@en ;
     sh:nodeKind sh:IRI ;
     sh:property zotsn:property_1735,
+        zotsn:property_1753,
         zotsn:property_1764,
         zotsn:property_1856,
         zotsn:property_1857,
@@ -5013,14 +5025,6 @@ zmap:Entry a owl:Class ;
     sparnatural:tooltip "A mapping entry (admin)"@en ;
     rdfs:comment "A mapping entry (admin)"@en .
 
-zot:parentItem a owl:ObjectProperty ;
-    rdfs:label "parentItem"@en ;
-    sparnatural:tooltip "Tooltip for parentItem"@en ;
-    rdfs:domain [ a owl:Class ;
-            grace:unionOf zot:Item,
-                semz:SemanticNote ] ;
-    rdfs:range zot:Item .
-
 zotsn:annotation_1759 a sh:NodeShape ;
     rdfs:label "Annotation"@en ;
     volipi:iconName "fa-solid fa-highlighter"@en ;
@@ -5229,6 +5233,14 @@ semz:inNote a owl:ObjectProperty ;
             grace:unionOf zot:Note,
                 semz:SemanticNote ] .
 
+zot:parentItem a owl:ObjectProperty ;
+    rdfs:label "parentItem"@en ;
+    sparnatural:tooltip "Tooltip for parentItem"@en ;
+    rdfs:domain [ a owl:Class ;
+            grace:unionOf zot:Item,
+                semz:SemanticNote ] ;
+    rdfs:range zot:Item .
+
 zotsn:concept_1761 a sh:NodeShape ;
     rdfs:label "Concept"@en ;
     volipi:iconName "fa-solid fa-lightbulb"@en ;
@@ -5297,11 +5309,11 @@ zotsn:property_1868 a sh:PropertyShape ;
     sh:path ( [ sh:zeroOrOnePath semz:inNote ] [ sh:zeroOrMorePath zot:parentItem ] ) .
 
 zotsn:property_2067 a sh:PropertyShape ;
-    rdfs:label "referred to"@en ;
+    rdfs:label "is referred to in"@en ;
     volipi:message "A knowledge base resource that is refered to (This is only a query pattern)"@en ;
     dash:searchWidget sparnatural:AutocompleteProperty ;
     sh:description "A knowledge base resource that is refered to"@en ;
-    sh:name "referred to"@en ;
+    sh:name "is referred to in"@en ;
     sh:nodeKind sh:IRI ;
     sh:or ( [ sh:class zot:Item ;
                 sh:node zotsn:item_1498 ] [ sh:class zot:Note ;
@@ -5598,6 +5610,7 @@ zotsn:item_1498 a sh:NodeShape ;
         zotsn:property_1746,
         zotsn:property_1749,
         zotsn:property_1751,
+        zotsn:property_1753,
         zotsn:property_1803,
         zotsn:property_1857,
         zotsn:property_1952,
@@ -5635,11 +5648,6 @@ zotsn:property_1867 a sh:PropertyShape ;
     sh:nodeKind sh:Literal ;
     sh:path rdfs:label .
 
-zot:Collection a owl:Class ;
-    rdfs:label "Collection"@en ;
-    sparnatural:faIcon "fa-solid fa-crop-simple"@en ;
-    sparnatural:tooltip "Tooltip for Collection"@en .
-
 zot:Document a owl:Class ;
     rdfs:label "Document"@en ;
     sparnatural:faIcon "fa-file-alt"@en ;
@@ -5663,6 +5671,11 @@ zotsn:Number a rdfs:Datatype ;
     sparnatural:faIcon "fa-solid fa-hashtag"@en ;
     sparnatural:tooltip "A search value for numbers (This is only a query pattern)"@en ;
     rdfs:comment "A search value for numbers"@en .
+
+zot:Collection a owl:Class ;
+    rdfs:label "Collection"@en ;
+    sparnatural:faIcon "fa-solid fa-crop-simple"@en ;
+    sparnatural:tooltip "Tooltip for Collection"@en .
 
 zot:Interview a owl:Class ;
     rdfs:label "Interview"@en ;
@@ -5711,13 +5724,6 @@ zot:Statute a owl:Class ;
     sparnatural:tooltip "Tooltip for Statute"@en ;
     rdfs:subClassOf zot:Item .
 
-semz:SemanticNote a owl:Class ;
-    rdfs:label "SemanticNote"@en ;
-    sparnatural:faIcon "fa-solid fa-note-sticky"@en ;
-    sparnatural:tooltip "A note that has semantic annotation. It is probably a Zotero note."@en ;
-    rdfs:comment "A note that has semantic annotation. It is probably a Zotero note."@en ;
-    rdfs:subClassOf semz:Semantics .
-
 zot:Bill a owl:Class ;
     rdfs:label "Bill"@en ;
     sparnatural:faIcon "fa-file-invoice"@en ;
@@ -5751,6 +5757,13 @@ zot:Thesis a owl:Class ;
     sparnatural:faIcon "fa-user-graduate"@en ;
     sparnatural:tooltip "Tooltip for Thesis"@en ;
     rdfs:subClassOf zot:Item .
+
+semz:SemanticNote a owl:Class ;
+    rdfs:label "SemanticNote"@en ;
+    sparnatural:faIcon "fa-solid fa-note-sticky"@en ;
+    sparnatural:tooltip "A note that has semantic annotation. It is probably a Zotero note."@en ;
+    rdfs:comment "A note that has semantic annotation. It is probably a Zotero note."@en ;
+    rdfs:subClassOf semz:Semantics .
 
 zot:MagazineArticle a owl:Class ;
     rdfs:label "MagazineArticle"@en ;
@@ -6064,3 +6077,4 @@ zot:Item a owl:Class ;
     rdfs:label "Item"@en ;
     sparnatural:faIcon "fa-solid fa-circle"@en ;
     sparnatural:tooltip "Tooltip for Item"@en .
+
