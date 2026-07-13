@@ -38,3 +38,4 @@ app/ui/_favicon.ico
 app/ui/favicon.ico
 app/plugins/citations/data.cff
 app/plugins/citations/software.cff
+app/mapping.yaml
