@@ -522,7 +522,7 @@ open-search:
               properties:
                 date:
                   type: date
-                  format: yyyy||yyyy-MM-dd||yyyy-MM
+                  format: strict_date_optional_time||yyyy||yyyy-MM
                 year:
                   type: short
                   coerce: true
@@ -598,6 +598,14 @@ open-search:
             separator: "\\s*;\\s*"
             ignore_missing: true
 
+        # - script:
+        #     lang: painless
+        #     source: >
+        #       if (ctx.meta != null && ctx.meta.parent_tags != null) {
+        #         ctx.meta.parent_tags.removeIf(tag ->
+        #           tag != null && tag instanceof String && tag.startsWith('*')
+        #         );
+        #       }
         # remove leading '*' from each tag value (works on arrays too)
         # - gsub:
         #     field: "meta.parent_tags"
