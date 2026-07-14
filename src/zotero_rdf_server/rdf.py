@@ -128,23 +128,26 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
     white = map.get("white") or []
     black = map.get("black") or []
     lang_map = map.get("language_map", LANG_MAP)
-    rdf_mapping = map.get("rdf_mapping") or {}    
+    rdf_mapping = load_dict_like(map.get("rdf_mapping"),default={},label="RDF Mappiing",required=True)    
     fuzzy_threshold = map.get("fuzzy", FUZZY)
 
-    def get_field_map(key: str) -> dict:
+    def get_field_map(key: str):
         return rdf_mapping.get(key) or {}
+
+    def get_field_maps(key: str) -> list[dict]:
+        result = get_field_map(key)
+        return result if isinstance(result, list) else [result]
     
-    def get_properties(key: str) -> list:        
-        field_map = get_field_map(key)        
-        props = field_map.get("properties") or [key]        
-        if len(props)>1:
+    def get_properties(key: str, field_map: dict) -> list:
+        props = field_map.get("properties") or [key]
+
+        if len(props) > 1:
             logger.debug(f"{len(props)} properties added for {key}: {props}")
+
         return make_iri(props, pref=ns_prefix, enforce_list=True)
 
     
-    def zotero_property_map(predicate_str: str, object: str | dict | list, map: dict):
-        
-        field_map = get_field_map(predicate_str)
+    def zotero_property_map(predicate_str: str, object: str | dict | list, map: dict, field_map: dict):        
         
         def parse_date(text, dayfirst=True):
             text = text.strip()
@@ -496,12 +499,12 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         
                         orcid_user_nodes = list(pool_store.quads_for_pattern(None, NamedNode(OWL_SAME_AS), user_node, None))
                         if any(orcid_user_nodes):
-                             for orcid_user_node in orcid_user_nodes:
+                            for orcid_user_node in orcid_user_nodes:
                                 if orcid_user_node.subject.value.startswith("https://orcid.org"):
                                     logger.warning(f"Set {user_node} to {orcid_user_node}")
                                     user_node=orcid_user_node
                                     return user_node   
-                     
+                    
                         apply_rdf_types(
                             store=store,
                             node=user_node,
@@ -621,7 +624,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 
                 literal_dt = field_map.get("datatype")                 
                 objects = []
-                          
+                        
                 logger.debug("%s: %s %.100r", predicate_str, type(object), object)
 
                 # ZOTERO Links #
@@ -718,75 +721,76 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
     #############################################
 
     for field, value in data.items():
-        try:
-            predicates = get_properties(field)
-            if white:
-                if field not in white and not rdf_mapping.get(field):
-                    logger.debug(f"Skipping {field} (not in whitelist)")
+        for field_map in get_field_maps(field):
+            try:
+                predicates = get_properties(field, field_map)
+                if white:
+                    if field not in white and not rdf_mapping.get(field):
+                        logger.debug(f"Skipping {field} (not in whitelist)")
+                        continue
+                elif black and field in black:
+                    logger.debug(f"Skipping {field} (in blacklist)")
                     continue
-            elif black and field in black:
-                logger.debug(f"Skipping {field} (in blacklist)")
-                continue
 
-            values = value if isinstance(value, list) else [value]
+                values = value if isinstance(value, list) else [value]
 
-            for item in values:
-                obj = zotero_property_map(field, item, map) or None
+                for item in values:
+                    obj = zotero_property_map(field, item, map, field_map=field_map) or None
 
-                if obj:
-                    obj = obj if isinstance(obj, list) else [obj]
+                    if obj:
+                        obj = obj if isinstance(obj, list) else [obj]
 
-                    for o in obj:
-                        field_map = get_field_map(field)
-                        load_spec = field_map.get("load")
+                        for o in obj:
+                            # field_map = get_field_maps(field)
+                            load_spec = field_map.get("load")
 
-                        if load_spec and isinstance(o, (BlankNode, NamedNode, Literal)):
-                            input_ = load_spec.get("input", None)
-                            path_ = load_spec.get("path", None)
+                            if load_spec and isinstance(o, (BlankNode, NamedNode, Literal)):
+                                input_ = load_spec.get("input", None)
+                                path_ = load_spec.get("path", None)
 
-                            if input_ is not None:
-                                input_ = resolve_template(input_, data=data, node=o.value)
+                                if input_ is not None:
+                                    input_ = resolve_template(input_, data=data, node=o.value)
 
-                            if path_ is not None:
-                                resolved_path = resolve_template(path_, data=data, node=o.value)
+                                if path_ is not None:
+                                    resolved_path = resolve_template(path_, data=data, node=o.value)
 
-                                input_ = resolve_template(
-                                    load_text_like(resolved_path, label="RDF loading"),
-                                    data=data,
-                                    node=o.value,
-                                )
+                                    input_ = resolve_template(
+                                        load_text_like(resolved_path, label="RDF loading"),
+                                        data=data,
+                                        node=o.value,
+                                    )
 
-                                path_ = None
+                                    path_ = None
 
-                            fmt = ensure_rdf_format(load_spec.get("format", RdfFormat.TURTLE))
+                                fmt = ensure_rdf_format(load_spec.get("format", RdfFormat.TURTLE))
 
-                            base_iri = load_spec.get("base_iri")
-                            
-                            to_graph = load_spec.get("to_graph")
-                            to_graph = safeNamedNode(to_graph) if to_graph else ENTITY_GRAPH_URI
-                            lenient = bool(load_spec.get("lenient", False))
+                                base_iri = load_spec.get("base_iri")
+                                
+                                to_graph = load_spec.get("to_graph")
+                                to_graph = safeNamedNode(to_graph) if to_graph else ENTITY_GRAPH_URI
+                                lenient = bool(load_spec.get("lenient", False))
 
-                            store.load(
-                                input=input_,
-                                format=fmt,
-                                path=path_,
-                                base_iri=base_iri,
-                                to_graph=to_graph,
-                                lenient=lenient,
-                            )                            
-                            logger.debug(f"Add data for {field} in {o.value}")
-                        for pred in predicates:                    
-                            predicate = safeNamedNode(pred)
-                            if isinstance(o, (BlankNode, NamedNode, Literal)):
-                                store.add(Quad(subject, predicate, o, graph_name=GRAPH_URI))
-                                if isinstance(item, dict) and isinstance(o, (BlankNode)):                  
-                                    # Recurse if unexpected dict that return BlankNode
-                                    add_rdf_from_dict(store, o, item, ns_prefix, base_uri, map, knowledge_base_graph, mapping_base_graph=mapping_base_graph)
-                            else:
-                                logger.warning(f"Received unexpected item in mapping for {pred}: {o}")
-        except Exception as e:
-            logger.error(f"Invalid data for: [{field}, {value}]: {e}")
-            continue   
+                                store.load(
+                                    input=input_,
+                                    format=fmt,
+                                    path=path_,
+                                    base_iri=base_iri,
+                                    to_graph=to_graph,
+                                    lenient=lenient,
+                                )                            
+                                logger.debug(f"Add data for {field} in {o.value}")
+                            for pred in predicates:                    
+                                predicate = safeNamedNode(pred)
+                                if isinstance(o, (BlankNode, NamedNode, Literal)):
+                                    store.add(Quad(subject, predicate, o, graph_name=GRAPH_URI))
+                                    if isinstance(item, dict) and isinstance(o, (BlankNode)):                  
+                                        # Recurse if unexpected dict that return BlankNode
+                                        add_rdf_from_dict(store, o, item, ns_prefix, base_uri, map, knowledge_base_graph, mapping_base_graph=mapping_base_graph)
+                                else:
+                                    logger.warning(f"Received unexpected item in mapping for {pred}: {o}")
+            except Exception as e:
+                logger.error(f"Invalid data for: [{field}, {value}]: {e}")
+                continue   
 
 def run_update_queries(lib: ZoteroLibrary, store: Store):
     if not lib.update_queries:
@@ -897,9 +901,6 @@ def apply_rdf_types(store: Store, node: NamedNode, data: dict, type_fields: list
                 logger.error(f"Invalid rdf:type at {node} for value '{type_str}': {e}")
                 continue
 
-import re
-
-
 _TEMPLATE_RE = re.compile(
     r"""
     (?:
@@ -912,7 +913,6 @@ _TEMPLATE_RE = re.compile(
     """,
     re.VERBOSE
 )
-
 
 def resolve_template(
     s: str,
@@ -1436,7 +1436,6 @@ def purge_orphan_entities(
         "deleted": len(orphans) if delete else 0,
     }
 
-
 def merge_entities(
     store: Store,
     old: NamedNode,
@@ -1465,7 +1464,6 @@ def merge_entities(
         store.add(Quad(new, NamedNode(OWL_SAME_AS), old, KB_graph))
     else:
         delete_subject_facts(store, old, KB_graph)
-
 
 def sync_kb_mapping(
     store: Store,
@@ -1554,3 +1552,4 @@ def sync_kb_mapping(
         "created_entries": created_entries,
         "seeded_labels": seeded_labels,
     }
+# End
