@@ -1,0 +1,17 @@
+{
+    "http://purl.org/dc/terms/description": {
+        "@value": "Automatically generated from a Semantic HTML annotation.",
+        "@language": "en"
+    },
+    "http://www.w3.org/ns/prov#wasAttributedTo": [
+        {
+            "@id": "https://data.scigma.de/resources/meta/projects/SCIGMA"
+        },
+        {
+            "@id": "https://data.scigma.de/resources/meta/users/551508"
+        }
+    ],
+    "http://www.w3.org/ns/prov#wasGeneratedBy": {
+        "@id": "https://data.scigma.de/resources/meta/activities/semantic-note-creation"
+    }
+}
