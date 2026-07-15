@@ -488,7 +488,7 @@ async def sparql_update(
                 "Running SPARQL UPDATE; store size before=%s",
                 before,
             )
-
+            logger.info(update)
             store.update(update=update)
 
             after = len(store)
