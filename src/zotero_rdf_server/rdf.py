@@ -1289,7 +1289,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
                         "language": language,
                         "key": key,
                         "node_uri": node_uri.value,
-                        "item_type":  item_data.get("itemType") or "item",
+                        "item_type":  item_data.get("itemType") or "Item",
                         "item_tags":  item_data.get("tags") or [],
                         "item_raw": item,
                     })
