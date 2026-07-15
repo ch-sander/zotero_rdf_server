@@ -79,6 +79,7 @@
         "prov": "http://www.w3.org/ns/prov#",
         "owl": "http://www.w3.org/2002/07/owl#",
         "xsd": "http://www.w3.org/2001/XMLSchema#",
+        "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
         "@vocab": "https://semantic-html.org/vocab#",
         "note": {
             "@id": "inNote",
@@ -156,12 +157,20 @@
             "knowledgeBaseGraph": "https://data.scigma.de/resources/entities",
             "mappingBaseGraph": "https://data.scigma.de/resources/mappings",
             "ADD": {
-                "http://www.w3.org/2000/01/rdf-schema#comment": {
-                    "@value": "Auto-generated entity from semantic note",
-                    "@language": "en"
-                },
-                "http://purl.org/dc/terms/source": {
-                    "@id": "https://semantic-html.org"
+                    "http://purl.org/dc/terms/description": {
+                        "@value": "Automatically generated from a Semantic HTML annotation.",
+                        "@language": "en"
+                    },
+                "http://www.w3.org/ns/prov#wasAttributedTo": [
+                    {
+                        "@id": "https://data.scigma.de/resources/meta/projects/SCIGMA"
+                    },
+                    {
+                        "@id": "https://data.scigma.de/resources/meta/users/551508"
+                    }
+                ],
+                "http://www.w3.org/ns/prov#wasGeneratedBy": {
+                    "@id": "https://data.scigma.de/resources/meta/activities/semantic-note-mapping"
                 }
             }
         }, {
@@ -197,19 +206,29 @@
             "knowledgeBaseGraph": "https://data.scigma.de/resources/entities",
             "mappingBaseGraph": "https://data.scigma.de/resources/mappings",
             "ADD": {
-                "http://www.w3.org/2000/01/rdf-schema#comment": {
-                    "@value": "Auto-generated concept from semantic note",
-                    "@language": "en"
+                    "http://purl.org/dc/terms/description": {
+                        "@value": "Automatically generated from a Semantic HTML annotation.",
+                        "@language": "en"
+                    },
+                "http://www.w3.org/ns/prov#wasAttributedTo": [
+                    {
+                        "@id": "https://data.scigma.de/resources/meta/projects/SCIGMA"
+                    },
+                    {
+                        "@id": "https://data.scigma.de/resources/meta/users/551508"
+                    }
+                ],
+                "http://www.w3.org/ns/prov#wasGeneratedBy": {
+                    "@id": "https://data.scigma.de/resources/meta/activities/semantic-note-mapping"
                 },
-                "http://purl.org/dc/terms/source": {
-                    "@id": "https://semantic-html.org"
-                },
-                "http://www.w3.org/2004/02/skos/core#inScheme": [{
-                    "@id": "https://data.scigma.de/resources/conceptScheme"
-                },
-                {
-                    "@id": "https://semantic-html.org/conceptScheme"
-                }]
+                "http://www.w3.org/2004/02/skos/core#inScheme": [
+                    {
+                        "@id": "https://data.scigma.de/resources/conceptSchemes/SCIGMA"
+                    },
+                    {
+                        "@id": "https://data.scigma.de/resources/conceptSchemes/Semantic-HTML"
+                    }
+                ]
             }
         }
     ]
