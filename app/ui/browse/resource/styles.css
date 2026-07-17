@@ -362,3 +362,30 @@ details table {
   opacity: 0.7;
   letter-spacing: 0.04em;
 }
+
+.external-iri-row {
+  background: rgba(255, 180, 0, 0.08);
+}
+
+.external-iri-row:hover {
+  background: rgba(255, 180, 0, 0.15);
+}
+
+.external-iri {
+  text-decoration-style: dotted;
+}
+
+.external-link-icon {
+  font-size: 0.85em;
+  margin-left: 0.2em;
+}
+
+tbody tr.external-iri-row,
+tbody tr.external-iri-row:nth-child(even),
+tbody tr.external-iri-row:nth-child(odd) {
+  background: #fff8e8;
+}
+
+tbody tr.external-iri-row > td {
+  background: #fff8e8;
+}

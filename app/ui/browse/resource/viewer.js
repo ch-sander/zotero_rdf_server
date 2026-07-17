@@ -284,20 +284,25 @@ function buildQuery(uri) {
     SELECT ?p (MIN(?pl) AS ?pLabel)
           ?o (MIN(?ol) AS ?oLabel)
           (GROUP_CONCAT(DISTINCT STR(?type); separator=" · ") AS ?oType)
+          (MAX(?knownInt) AS ?isKnown)
     WHERE {
       <${escapeSparqlIri(uri)}> ?p ?o .
 
-      FILTER(
-        !isIRI(?o)
-        || ?p = rdf:type
-        || ?p = owl:sameAs
-        || EXISTS { ?o ?anyP ?anyO }
+      BIND(
+        IF(
+          !isIRI(?o) || EXISTS { ?o ?anyP ?anyO },
+          1,
+          0
+        )
+        AS ?knownInt
       )
 
       ${propertyLabelBlock}
+
       OPTIONAL {
         ?o rdf:type ?type .
       }
+
       OPTIONAL {
         ?o rdfs:label ?ol .
         FILTER(lang(?ol) = "${LANGUAGE}" || lang(?ol) = "")
@@ -659,21 +664,29 @@ function renderTriples(bindings) {
     }
   }
 
-  for (const binding of normalRows) {
+for (const binding of normalRows) {
+  const tr = document.createElement("tr");
 
-    const tr = document.createElement("tr");
+  const isExternal =
+    binding.o?.type === "uri" &&
+    binding.isKnown?.value !== "1" &&
+    binding.isKnown?.value !== "true";
 
-    const propertyTd = document.createElement("td");
-    propertyTd.appendChild(renderProperty(binding));
-
-    const objectTd = document.createElement("td");
-    objectTd.appendChild(renderObject(binding));
-
-    tr.appendChild(propertyTd);
-    tr.appendChild(objectTd);
-
-    triplesEl.appendChild(tr);
+  if (isExternal) {
+    tr.classList.add("external-iri-row");
   }
+
+  const propertyTd = document.createElement("td");
+  propertyTd.appendChild(renderProperty(binding));
+
+  const objectTd = document.createElement("td");
+  objectTd.appendChild(renderObject(binding));
+
+  tr.appendChild(propertyTd);
+  tr.appendChild(objectTd);
+
+  triplesEl.appendChild(tr);
+}
 }
 function renderIncomingSubject(binding) {
   const link = document.createElement("a");
@@ -758,15 +771,43 @@ function renderObject(binding) {
 
     return withCopy(div, object.value);
   }
-  if (object.type === "uri" || object.type === "bnode") {
-    const link = document.createElement("a");
-    link.href = "#" + encodeURIComponent(object.value);
-    link.textContent = binding.oLabel?.value || shortenIri(object.value);
-    appendTypeBadge(link, binding.oType);
-    link.title = object.value;
+if (object.type === "uri" || object.type === "bnode") {
+  const isExternal =
+    object.type === "uri" &&
+    binding.isKnown?.value !== "1" &&
+    binding.isKnown?.value !== "true";
 
-    return withCopy(link, object.value);
+  const wrap = document.createElement("span");
+  wrap.className = "iri-object";
+
+  const link = document.createElement("a");
+
+  link.href = isExternal
+    ? object.value
+    : "#" + encodeURIComponent(object.value);
+
+  link.textContent =
+    binding.oLabel?.value || shortenIri(object.value);
+
+  appendTypeBadge(link, binding.oType);
+  link.title = object.value;
+
+  if (isExternal) {
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.classList.add("external-iri");
+
+    const icon = document.createElement("span");
+    icon.className = "external-link-icon";
+    icon.textContent = " ↗";
+    icon.setAttribute("aria-hidden", "true");
+
+    link.appendChild(icon);
   }
+
+  wrap.appendChild(withCopy(link, object.value));
+  return wrap;
+}
 
   const wrap = document.createElement("span");
   wrap.className = "literal-wrap";
