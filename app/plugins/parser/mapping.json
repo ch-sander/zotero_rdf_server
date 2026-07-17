@@ -163,9 +163,6 @@
                     },
                 "http://www.w3.org/ns/prov#wasAttributedTo": [
                     {
-                        "@id": "https://data.scigma.de/resources/meta/projects/SCIGMA"
-                    },
-                    {
                         "@id": "https://data.scigma.de/resources/meta/users/551508"
                     }
                 ],

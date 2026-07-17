@@ -1233,7 +1233,7 @@ class AggregationParams(BaseModel):
         default=AggMode.terms,
         description=(
             "Aggregation mode. "
-            "'terms' returns the most frequent buckets. "
+            "'terms' returns the most frequent buckets."
             "'significant_text' returns statistically significant terms from text."
         ),
     )
