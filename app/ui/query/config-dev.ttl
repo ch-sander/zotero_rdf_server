@@ -1,9 +1,9 @@
 @prefix dash: <http://datashapes.org/dash#> .
 @prefix grace: <https://w3id.org/grace/ontology/> .
 @prefix ns1: <dcterms:> .
-@prefix ns2: <vann:> .
-@prefix ns3: <bibo:> .
-@prefix ns4: <dc:> .
+@prefix ns2: <bibo:> .
+@prefix ns3: <dc:> .
+@prefix ns4: <vann:> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix prov: <http://www.w3.org/ns/prov#> .
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
@@ -1338,7 +1338,9 @@ zotsn:tag_of a owl:ObjectProperty ;
     sparnatural:sparqlString "^<http://www.zotero.org/namespaces/export#tags>"@en ;
     sparnatural:tooltip "Tooltip for tag of (This is only a query pattern)"@en ;
     rdfs:domain zot:Tag ;
-    rdfs:range zot:Item ;
+    rdfs:range [ a owl:Class ;
+            grace:unionOf zot:Agent,
+                zot:Item ] ;
     owl:inverseOf zot:tags .
 
 zotsn:thesis_1572 a sh:NodeShape ;
@@ -1719,9 +1721,9 @@ semz:sameAs a owl:ObjectProperty ;
 
 grace: a owl:Ontology ;
     rdfs:label "Graceful17 Ontology"@en ;
-    ns3:status <bibo:status/draft> ;
-    ns4:title "Graceful17 Ontology"@en ;
-    ns1:created "2026-07-10T09:03:06"@en ;
+    ns2:status <bibo:status/draft> ;
+    ns3:title "Graceful17 Ontology"@en ;
+    ns1:created "2026-07-17T13:04:35"@en ;
     ns1:creator "Bruno Boute"@en,
         "Christoph Sander"@en ;
     ns1:license <http://creativecommons.org/licenses/by/4.0/> ;
@@ -1729,10 +1731,10 @@ grace: a owl:Ontology ;
     owl:imports <http://www.opengis.net/ont/geosparql> ;
     owl:priorVersion grace:1.0.0 ;
     owl:versionIRI grace:1.0.1 ;
-    prov:generatedAtTime "2026-07-10T09:03:06"^^xsd:dateTime ;
+    prov:generatedAtTime "2026-07-17T13:04:35"^^xsd:dateTime ;
     schema:citation "Sander, Christoph; Boute, Bruno. (2025). The Graceful17 Ontology, https://w3id.org/g17/ontology (Version 1.0.1)"@en ;
-    ns2:preferredNamespacePrefix "grace"@en ;
-    ns2:preferredNamespaceUri "https://w3id.org/grace/ontology/"@en .
+    ns4:preferredNamespacePrefix "grace"@en ;
+    ns4:preferredNamespaceUri "https://w3id.org/grace/ontology/"@en .
 
 zmap:has_mapping_label a owl:DatatypeProperty ;
     rdfs:label "has mapping label"@en ;
@@ -3538,16 +3540,6 @@ zotsn:property_1730 a sh:PropertyShape ;
     sh:nodeKind sh:IRI ;
     sh:path zot:creators .
 
-zotsn:property_1732 a sh:PropertyShape ;
-    rdfs:label "has the Tag(s)"@en ;
-    volipi:message "Tooltip for tags"@en ;
-    dash:searchWidget sparnatural:ListProperty ;
-    sh:class zot:Tag ;
-    sh:name "has the Tag(s)"@en ;
-    sh:node zotsn:tag_1502 ;
-    sh:nodeKind sh:IRI ;
-    sh:path zot:tags .
-
 zotsn:property_1734 a sh:PropertyShape ;
     rdfs:label "in Collection(s)"@en ;
     volipi:message "Tooltip for collections"@en ;
@@ -3562,10 +3554,11 @@ zotsn:property_1738 a sh:PropertyShape ;
     rdfs:label "Tag of"@en ;
     volipi:message "Tooltip for tag of (This is only a query pattern)"@en ;
     dash:searchWidget sparnatural:NonSelectableProperty ;
-    sh:class zot:Item ;
     sh:name "Tag of"@en ;
-    sh:node zotsn:item_1498 ;
     sh:nodeKind sh:IRI ;
+    sh:or ( [ sh:class zot:Item ;
+                sh:node zotsn:item_1498 ] [ sh:class zot:Agent ;
+                sh:node zotsn:agent_1742 ] ) ;
     sh:path [ sh:inversePath zot:tags ] .
 
 zotsn:property_1739 a sh:PropertyShape ;
@@ -4330,6 +4323,16 @@ zotsn:property_1731 a sh:PropertyShape ;
     sh:nodeKind sh:IRI ;
     sh:path zot:inLibrary .
 
+zotsn:property_1732 a sh:PropertyShape ;
+    rdfs:label "has the Tag(s)"@en ;
+    volipi:message "Tooltip for tags"@en ;
+    dash:searchWidget sparnatural:ListProperty ;
+    sh:class zot:Tag ;
+    sh:name "has the Tag(s)"@en ;
+    sh:node zotsn:tag_1502 ;
+    sh:nodeKind sh:IRI ;
+    sh:path zot:tags .
+
 zotsn:property_1735 a sh:PropertyShape ;
     rdfs:label "has Parent Item"@en ;
     volipi:message "Tooltip for parentItem"@en ;
@@ -4428,7 +4431,9 @@ zot:place a owl:DatatypeProperty ;
 zot:tags a owl:ObjectProperty ;
     rdfs:label "tags"@en ;
     sparnatural:tooltip "Tooltip for tags"@en ;
-    rdfs:domain zot:Item ;
+    rdfs:domain [ a owl:Class ;
+            grace:unionOf zot:Agent,
+                zot:Item ] ;
     rdfs:range zot:Tag .
 
 zotsn:date_1727 a sh:NodeShape ;
@@ -4823,27 +4828,6 @@ zotsn:Date a rdfs:Datatype ;
     sparnatural:tooltip "A search value for dates (This is only a query pattern)"@en ;
     rdfs:comment "A search value for dates"@en .
 
-zotsn:agent_1742 a sh:NodeShape ;
-    rdfs:label "Agent"@en ;
-    volipi:iconName "fa-solid fa-user"@en ;
-    volipi:message "A creator of an item, usually a person"@en ;
-    sh:description "A creator of an item, usually a person"@en ;
-    sh:name "Agent"@en ;
-    sh:nodeKind sh:IRI ;
-    sh:property zotsn:property_1729,
-        zotsn:property_1737,
-        zotsn:property_1744,
-        zotsn:property_1745,
-        zotsn:property_1747,
-        zotsn:property_1750,
-        zotsn:property_1803,
-        zotsn:property_1867,
-        zotsn:property_1871,
-        zotsn:property_1963,
-        zotsn:property_1966,
-        zotsn:property_2067 ;
-    sh:targetClass zot:Agent .
-
 zotsn:property_1673 a sh:PropertyShape ;
     rdfs:label "seriesNumber"@en ;
     volipi:message "Tooltip for seriesNumber"@en ;
@@ -4944,6 +4928,28 @@ skos:ConceptScheme a owl:Class ;
     rdfs:label "ConceptScheme"@en ;
     sparnatural:faIcon "fa-solid fa-question"@en ;
     sparnatural:tooltip "Tooltip for ConceptScheme"@en .
+
+zotsn:agent_1742 a sh:NodeShape ;
+    rdfs:label "Agent"@en ;
+    volipi:iconName "fa-solid fa-user"@en ;
+    volipi:message "A creator of an item, usually a person"@en ;
+    sh:description "A creator of an item, usually a person"@en ;
+    sh:name "Agent"@en ;
+    sh:nodeKind sh:IRI ;
+    sh:property zotsn:property_1729,
+        zotsn:property_1732,
+        zotsn:property_1737,
+        zotsn:property_1744,
+        zotsn:property_1745,
+        zotsn:property_1747,
+        zotsn:property_1750,
+        zotsn:property_1803,
+        zotsn:property_1867,
+        zotsn:property_1871,
+        zotsn:property_1963,
+        zotsn:property_1966,
+        zotsn:property_2067 ;
+    sh:targetClass zot:Agent .
 
 zotsn:number_1726 a sh:NodeShape ;
     rdfs:label "Number"@en ;
@@ -5858,12 +5864,6 @@ zotsn:text_1724 a sh:NodeShape ;
     sh:nodeKind sh:Literal ;
     sh:property zotsn:property_148 .
 
-zot:Agent a owl:Class ;
-    rdfs:label "Agent"@en ;
-    sparnatural:faIcon "fa-solid fa-user"@en ;
-    sparnatural:tooltip "A creator of an item, usually a person"@en ;
-    rdfs:comment "A creator of an item, usually a person"@en .
-
 zot:Standard a owl:Class ;
     rdfs:label "Standard"@en ;
     sparnatural:faIcon "fa-certificate"@en ;
@@ -5899,6 +5899,12 @@ zot:Book a owl:Class ;
     sparnatural:faIcon "fa-book"@en ;
     sparnatural:tooltip "Tooltip for Book"@en ;
     rdfs:subClassOf zot:Item .
+
+zot:Agent a owl:Class ;
+    rdfs:label "Agent"@en ;
+    sparnatural:faIcon "fa-solid fa-user"@en ;
+    sparnatural:tooltip "A creator of an item, usually a person"@en ;
+    rdfs:comment "A creator of an item, usually a person"@en .
 
 zot:ConferencePaper a owl:Class ;
     rdfs:label "ConferencePaper"@en ;
@@ -6077,4 +6083,3 @@ zot:Item a owl:Class ;
     rdfs:label "Item"@en ;
     sparnatural:faIcon "fa-solid fa-circle"@en ;
     sparnatural:tooltip "Tooltip for Item"@en .
-
