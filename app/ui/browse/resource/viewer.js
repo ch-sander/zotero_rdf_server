@@ -387,36 +387,8 @@ async function resolveUri(uri) {
 }
 
 async function queryRelated(uri) {
-  const query_old = `
-    PREFIX dc:   <http://purl.org/dc/elements/1.1/>
-    PREFIX dct:  <http://purl.org/dc/terms/>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-    SELECT ?related
-          (MIN(?label) AS ?relatedLabel)
-          (GROUP_CONCAT(DISTINCT STR(?type); separator=" · ") AS ?relatedType)
-    WHERE {
-      <${escapeSparqlIri(uri)}>
-        (dc:relation|^dc:relation|dct:relation|^dct:relation) ?related .
 
-      FILTER(isIRI(?related))
-
-      OPTIONAL {
-        ?related rdf:type ?type .
-      }
-
-      OPTIONAL {
-        ?related rdfs:label ?label .
-        FILTER(lang(?label) = "${LANGUAGE}" || lang(?label) = "")
-      }
-    }
-
-    GROUP BY ?related
-    ORDER BY LCASE(STR(COALESCE(MIN(?label), ?related)))
-    LIMIT ${LIMIT}
-  `;
-
-  const query = `
+  const query_oxigraph = `
     PREFIX owl:  <http://www.w3.org/2002/07/owl#>
     PREFIX dc:   <http://purl.org/dc/elements/1.1/>
     PREFIX dct:  <http://purl.org/dc/terms/>
@@ -467,7 +439,86 @@ async function queryRelated(uri) {
     ORDER BY LCASE(STR(COALESCE(SAMPLE(?label), MIN(STR(?variant)))))
     LIMIT ${LIMIT}
   `;
+  const query = `
+    PREFIX owl:  <http://www.w3.org/2002/07/owl#>
+    PREFIX dc:   <http://purl.org/dc/elements/1.1/>
+    PREFIX dct:  <http://purl.org/dc/terms/>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 
+    SELECT
+      (IRI(MIN(STR(?variant))) AS ?related)
+      (SAMPLE(?labels) AS ?relatedLabel)
+      (GROUP_CONCAT(
+        DISTINCT STR(?type);
+        separator=" · "
+      ) AS ?relatedType)
+      (MAX(?knownInt) AS ?isKnown)
+    WHERE {
+      <${escapeSparqlIri(uri)}>
+        (owl:sameAs|^owl:sameAs)* ?source .
+
+      ?source
+        (dc:relation|^dc:relation|dct:relation|^dct:relation)
+        ?rawRelated .
+
+      FILTER(isIRI(?rawRelated))
+
+      ?rawRelated
+        (owl:sameAs|^owl:sameAs)* ?variant .
+
+      FILTER(isIRI(?variant))
+
+      {
+        SELECT ?rawRelated
+              (MIN(STR(?same)) AS ?cluster)
+        WHERE {
+          ?rawRelated
+            (owl:sameAs|^owl:sameAs)* ?same .
+
+          FILTER(isIRI(?same))
+        }
+        GROUP BY ?rawRelated
+      }
+
+      OPTIONAL {
+        {
+          SELECT ?rawRelated
+                (GROUP_CONCAT(
+                    DISTINCT STR(?labelValue);
+                    separator=" · "
+                  ) AS ?labels)
+          WHERE {
+            ?rawRelated
+              (owl:sameAs|^owl:sameAs)* ?labelVariant .
+
+            ?labelVariant rdfs:label ?labelValue .
+          }
+          GROUP BY ?rawRelated
+        }
+      }
+
+      OPTIONAL {
+        ?variant rdf:type ?type .
+      }
+
+      BIND(
+        IF(EXISTS { ?variant ?anyP ?anyO }, 1, 0)
+        AS ?knownInt
+      )
+    }
+    GROUP BY ?cluster
+    ORDER BY LCASE(
+      STR(
+        COALESCE(
+          SAMPLE(?labels),
+          MIN(STR(?variant))
+        )
+      )
+    )
+    LIMIT ${LIMIT}
+  `;
+  
   const response = await fetch(ENDPOINT, {
     method: "POST",
     headers: {
