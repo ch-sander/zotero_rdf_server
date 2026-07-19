@@ -213,9 +213,14 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             items = normalize_split_list(object_value, field_map.get("re_split"))
             nodes = []
             entries = []
-
             pool_store = quads_by_type(store, [MAP_ENTRY_TYPE], MAP_GRAPH_URI)
-
+            my_rdf_types = my_rdf_types = [
+                    make_iri(type_str, ns_prefix, False)
+                    for field in my_types
+                    if (type_str := resolve_template(field, data=data))
+                ]
+            pool_store = quads_by_type(pool_store, my_rdf_types, MAP_GRAPH_URI,type=NamedNode(MAP_TYPE_HINT))
+            
             for item in items:
                 node, score, matched_label = fuzzy_match_label(
                     pool_store,
@@ -227,13 +232,13 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 )
 
                 if not node:
-                    iri_suffix = uuid5(ENTITY_UUID, item) if specific_threshold >= 100 else uuid4()
+                    iri_suffix = uuid5(ENTITY_UUID, item) if specific_threshold < 100 else uuid4()
                     node = safeNamedNode(f"{knowledge_base_graph}/{iri_suffix}")
 
                     apply_rdf_types(
                         store=store,
                         node=node,
-                        data={},
+                        data=data,
                         type_fields=my_types,
                         default_type=predicate_str,
                         base_ns=ENTITY_GRAPH_URI.value,
@@ -257,7 +262,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 else:
                     logger.debug(f"{my_types[0].capitalize()} '{item}' matched as '{matched_label}' (score {score})")
 
-                entry = ensure_entry(store, node, map_graph=MAP_GRAPH_URI, type_hints=my_types)
+                entry = ensure_entry(store, node, map_graph=MAP_GRAPH_URI, type_hints=my_rdf_types)
                 ensure_mapping_literal(store, entry, item, safeNamedNode(MAP_LABEL), MAP_GRAPH_URI)
 
                 nodes.append(node)
@@ -285,11 +290,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
 
                 ### TAGS ###
                 if predicate_str == "tags" and isinstance(object, dict) and "tag" in object:
-                    type_nodes = make_iri(
-                        field_map.get("types", ["Tag"]),
-                        ns_prefix,
-                        enforce_list=True
-                    )
+                    type_nodes = field_map.get("types", ["Tag"])
 
                     tag_value = object.get("tag")
                     fuzzy_threshold_specific = field_map.get("fuzzy") or 100
@@ -337,11 +338,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     else:
                         label = f"{object.get('lastName', '')}, {object.get('firstName', '')}".strip().strip(",")
 
-                    type_nodes = make_iri(
-                        field_map.get("types", ["actor"]),
-                        ns_prefix,
-                        enforce_list=True
-                    )
+                    type_nodes = field_map.get("types", ["Agent"])
 
                     # Keep raw values here so "_creatorType" can be resolved by apply_rdf_types().
                     role_types = field_map.get("role_types", ["creatorRole"])
@@ -593,7 +590,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             # ENTITY #
             elif isinstance(object, str) and (field_map.get('fuzzy') or field_map.get('types')):
                 logger.debug(f"UUID Entity for {predicate_str}: {object}")
-                ent_types = make_iri(field_map.get("types", [ucfirst(predicate_str)]), ns_prefix, True)
+                ent_types = field_map.get("types", [ucfirst(predicate_str)])
                 
                 return make_entity(object, ent_types,fuzzy_threshold_specific)                
 
@@ -1178,18 +1175,22 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
         logger.debug(f"Example JSON: {sample_entry}")
     else:
         logger.warning(f"No items or collections found for library {lib.name}")
-
-    a_library_href = library_href(library_data) or lib.base_url
+    library_property = lib.map.get("named_library")
+    library_uri = safeNamedNode(lib.base_url)
+    a_library_href = library_href(library_data)
     logger.info(f"[{lib.name} at {a_library_href}] Fetched {len(items) if items else 0} items and {len(collections) if collections else 0} collections.")
 
     GRAPH_URI = safeNamedNode(lib.base_url)
 
-    if lib.map.get("named_library") and sample_entry and sample_entry.get("library"): # TODO write_to_store
-        store.add(Quad(safeNamedNode(a_library_href), NamedNode(RDF_TYPE), safeNamedNode(f"{ZOT_NS}Library"), graph_name=GRAPH_URI))
+    if library_property and sample_entry and sample_entry.get("library"): # TODO write_to_store
+        library_type = map.get("library_type") or []
+        apply_rdf_types(store, library_uri, library_data, library_type, "Library", lib.base_url, ZOT_NS)   
+        # store.add(Quad(library_uri, NamedNode(RDF_TYPE), safeNamedNode(f"{ZOT_NS}Library"), graph_name=GRAPH_URI))
+        # store.add(Quad(library_uri, NamedNode(OWL_SAME_AS), safeNamedNode(a_library_href), graph_name=GRAPH_URI))
         add_rdf_from_dict(
             store,
-            safeNamedNode(a_library_href),
-            sample_entry["library"],
+            library_uri,
+            library_data,
             ZOT_NS,
             lib.base_url,
             map,
@@ -1198,8 +1199,8 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
         )
         apply_additional_properties(
             store,
-            safeNamedNode(a_library_href),
-            sample_entry["library"],
+            library_uri,
+            library_data,
             map.get("additional", []),
             lib.base_url,
             ZOT_NS,
@@ -1208,13 +1209,16 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
 
     if collections: # TODO write_to_store
         for col in collections:
-            col_data = col["data"]            
+            col_data = col["data"]
+            if library_property:
+                col_data[library_property] = str(library_uri.value)       
             col_data_long = merge_with_prefix(col_data, library_data, "library_")
             key = col_data.get("key", uuid4())
             node_uri = NamedNode(f"{lib.base_url}/collections/{key}")
-            if lib.map.get("named_library"):
-                property_str = lib.map.get("named_library", "inLibrary")
-                store.add(Quad(node_uri, safeNamedNode(property_str) if property_str.startswith("http") else safeNamedNode(f"{ZOT_NS}{property_str}"), safeNamedNode(a_library_href), graph_name=GRAPH_URI))
+            # if library_property:
+            #     col_data_long[library_property] = str(library_uri.value)
+                # property_str = lib.map.get("named_library", "inLibrary")
+                # store.add(Quad(node_uri, safeNamedNode(property_str) if property_str.startswith("http") else safeNamedNode(f"{ZOT_NS}{property_str}"), library_uri, graph_name=GRAPH_URI))
 
             collection_type_fields = map.get("collection_type") or []
             apply_rdf_types(store, node_uri, col_data, collection_type_fields, "Collection", lib.base_url, ZOT_NS)           
@@ -1247,6 +1251,8 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
             node_uri = None
             try:
                 item_data = item.get("data", {})
+                if library_property:
+                        item_data[library_property] = str(library_uri.value)
                 item_data_long = merge_with_prefix(item_data, library_data, "library_")
                 item_bib = item.get("bib")
 
@@ -1299,9 +1305,10 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
             
             if write_to_store:
                 try:
-                    if lib.map.get("named_library"):
-                        property_str = lib.map.get("named_library", "inLibrary")
-                        store.add(Quad(node_uri, safeNamedNode(property_str) if property_str.startswith("http") else safeNamedNode(f"{ZOT_NS}{property_str}"), safeNamedNode(a_library_href), graph_name=GRAPH_URI))
+                    # if library_property:
+                    #     item_data_long[library_property] = str(library_uri.value)
+                    #     property_str = lib.map.get("named_library", "inLibrary")
+                    #     store.add(Quad(node_uri, safeNamedNode(property_str) if property_str.startswith("http") else safeNamedNode(f"{ZOT_NS}{property_str}"), library_uri, graph_name=GRAPH_URI))
 
                     if label:
                         store.add(Quad(node_uri, NamedNode(RDFS_LABEL), Literal(label), graph_name=GRAPH_URI))

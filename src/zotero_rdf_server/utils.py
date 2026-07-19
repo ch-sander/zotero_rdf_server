@@ -444,12 +444,12 @@ def ensure_mapping_literal(
         logger.debug(f"[MAP] Added {prop.value} '{lit_value}' to {subject}")
 
 
-def quads_by_type(store:Store,type_nodes:list, graph:NamedNode):
+def quads_by_type(store:Store,type_nodes:list, graph:NamedNode, type:NamedNode = NamedNode(RDF_TYPE)):
     result_store = Store()
     for t in type_nodes:
         for quad in store.quads_for_pattern(
             None,
-            NamedNode(RDF_TYPE),
+            type,
             safeNamedNode(t),
             graph
         ):
@@ -464,7 +464,7 @@ def fuzzy_match_label(
     predicates: list = [MAP_LABEL],
     regex: bool = False,
     max_matches: int = 1
-):
+): # TODO include typeHint?
     logger.debug(
         f"Fuzzy matching '{label}' against existing pool of {len(pool_store)} quads "
         f"(threshold: {threshold}, max_matches={max_matches}, graph: {graph_name})"
