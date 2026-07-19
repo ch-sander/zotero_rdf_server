@@ -62,6 +62,18 @@
               "title": "Timestamp"
             },
             "description": "Add Timestamp to filename"
+          },
+          {
+            "name": "gzip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Compress RDF export using Gzip",
+              "default": false,
+              "title": "Gzip"
+            },
+            "description": "Compress RDF export using Gzip"
           }
         ],
         "responses": {
@@ -1003,6 +1015,18 @@
               "title": "Graph"
             },
             "description": "Named graph IRIs (repeat parameter)"
+          },
+          {
+            "name": "zip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Package RDF export as ZIP",
+              "default": false,
+              "title": "Zip"
+            },
+            "description": "Package RDF export as ZIP"
           }
         ],
         "responses": {
@@ -2612,10 +2636,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-15T22:24:25Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-19T07:44:29Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-15T22:24:25Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-19T07:44:29Z"
           },
           {
             "name": "perform_analysis",
@@ -3584,10 +3608,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-15T22:24:25Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-19T07:44:29Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-15T22:24:25Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-19T07:44:29Z"
           },
           {
             "name": "format",
@@ -3901,10 +3925,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-15T22:24:25Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-19T07:44:29Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-15T22:24:25Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-19T07:44:29Z"
           },
           {
             "name": "format",
@@ -4235,10 +4259,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-15T22:24:25Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-19T07:44:29Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-15T22:24:25Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-19T07:44:29Z"
           },
           {
             "name": "format",
@@ -4548,10 +4572,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-15T22:24:25Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-19T07:44:29Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-15T22:24:25Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-19T07:44:29Z"
           },
           {
             "name": "format",
