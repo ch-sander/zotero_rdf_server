@@ -96,6 +96,15 @@ def build_subset_store(source_store, graphs):
         temp_store.bulk_extend(source_store.quads_for_pattern(None, None, None, graph))
     return temp_store
 
+def create_zip(rdf_data: bytes, rdf_filename: str) -> bytes:
+    from zipfile import ZIP_DEFLATED, ZipFile
+    buffer = BytesIO()
+
+    with ZipFile(buffer, mode="w", compression=ZIP_DEFLATED) as archive:
+        archive.writestr(rdf_filename, rdf_data)
+
+    return buffer.getvalue()
+
 def prepare_export(format: str, graph: list[str] | None, ts_filename: bool = False):
     # from .global_store import store
     store = global_store.get_store()
@@ -162,15 +171,31 @@ def dump_export(store, rdf_format, checked_graphs, output=None):
 @open_router.get("/export", summary="Create export", tags=["Data"])
 async def export_graph(
     format: str = Query("trig"),
-    graph: list[str] | None = Query(default=None, description="Named graph IRIs (repeat parameter)")
+    graph: list[str] | None = Query(default=None, description="Named graph IRIs (repeat parameter)"),
+    as_zip: bool = Query(
+        default=False,
+        alias="zip",
+        description="Package RDF export as ZIP",
+    ),
 ):
     store, rdf_format, checked_graphs, path = prepare_export(format, graph, True)
 
     len_store, data = dump_export(store, rdf_format, checked_graphs)
 
+    if as_zip:
+        data = create_zip(data, path.name)
+        path = path.with_suffix(".zip")
+        media_type = "application/zip"
+    else:
+        media_type = getattr(
+            rdf_format,
+            "media_type",
+            "application/octet-stream",
+        )
+
     return StreamingResponse(
         BytesIO(data),
-        media_type=getattr(rdf_format, "media_type", "application/octet-stream"),
+        media_type=media_type,
         headers={
             "Content-Disposition": f'attachment; filename="{path.name}"',
             "X-Export-Length": str(len_store),
@@ -182,18 +207,44 @@ async def export_graph(
 async def export_graph_file(
     format: str = Query("trig"),
     graph: list[str] | None = Query(default=None, description="Named graph IRIs (repeat parameter)"),
-    timestamp: bool | None = Query(default=False, description="Add Timestamp to filename")
+    timestamp: bool | None = Query(default=False, description="Add Timestamp to filename"),
+    as_gzip: bool = Query(
+        default=False,
+        alias="gzip",
+        description="Compress RDF export using Gzip",
+    )
 ):
     store, rdf_format, checked_graphs, path = prepare_export(format, graph, timestamp)
 
     # EXPORT_DIRECTORY.mkdir(parents=True, exist_ok=True)
-    logger.info(f"Create {path}")
-    logger.info(f"Checked graphs: {checked_graphs!r}")
 
-    len_store, _ = dump_export(store, rdf_format, checked_graphs, path)
+    if as_gzip:
+        import gzip
+        path = path.with_suffix(path.suffix + ".gz")
+
+        with gzip.open(path, mode="wb") as output:
+            len_store, _ = dump_export(
+                store,
+                rdf_format,
+                checked_graphs,
+                output=output,
+            )
+    else:
+        logger.info(f"Create {path}")
+        logger.info(f"Checked graphs: {checked_graphs!r}")
+
+        len_store, _ = dump_export(
+            store,
+            rdf_format,
+            checked_graphs,
+            path,
+        )
 
     return {
-        "success": f"Exported {[str(g) for g in checked_graphs] or [str(g) for g in store.named_graphs()]}",
+        "success": (
+            f"Exported "
+            f"{[str(g) for g in checked_graphs] or [str(g) for g in store.named_graphs()]}"
+        ),
         "len": len_store,
         "path": path,
     }
