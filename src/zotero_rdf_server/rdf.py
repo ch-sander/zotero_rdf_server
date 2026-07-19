@@ -1206,6 +1206,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
             ZOT_NS,
             "library"
         )
+        add_timestamp(store=store, node=library_uri, graph=GRAPH_URI)
 
     if collections: # TODO write_to_store
         for col in collections:
