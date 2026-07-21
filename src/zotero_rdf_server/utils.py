@@ -374,7 +374,7 @@ def html_to_string(text: str) -> str:
 def load_text_like(
     raw: str | Path | None,
     default: str | None = None,
-    label: str = "text",
+    label: str | None = "text",
     timeout: float = 10.0,
     required: bool = False,
 ) -> str:
@@ -395,7 +395,8 @@ def load_text_like(
             path = raw.expanduser().resolve()
             if not path.exists():
                 return _fallback(f"file not found: {path}")
-            logger.info(f"{label}: loaded from file {path}")
+            if label is not None:
+                logger.info(f"{label}: loaded from file {path}")
             return path.read_text(encoding="utf-8")
 
         if isinstance(raw, str):
@@ -404,18 +405,21 @@ def load_text_like(
                 try:
                     resp = requests.get(raw, timeout=timeout, headers=APP_USER)
                     resp.raise_for_status()
-                    logger.info(f"{label}: loaded from URL {raw}")
+                    if label is not None:
+                        logger.info(f"{label}: loaded from URL {raw}")
                     return resp.text
                 except requests.RequestException as e:
                     return _fallback(f"failed to fetch URL {raw}: {e}")
 
             path = Path(raw).expanduser().resolve()
             if path.exists():
-                logger.info(f"{label}: loaded from file {path}")
+                if label is not None:
+                    logger.info(f"{label}: loaded from file {path}")
                 return path.read_text(encoding="utf-8")
 
             # plain string
-            logger.info(f"{label}: using raw string")
+            if label is not None:
+                logger.info(f"{label}: using raw string")
             return raw
 
         return _fallback(f"unsupported input type: {type(raw)}")
@@ -725,6 +729,7 @@ def ensure_entry(
     target: NamedNode,
     map_graph: NamedNode,
     type_hints: list[str] | None = None,
+    entry_spec: dict | None = None,
 ) -> NamedNode:
 
     entries = find_entries_for_target(store, target, map_graph)
@@ -754,7 +759,21 @@ def ensure_entry(
         for th in type_hints:
             store.add(Quad(entry, MAP_TYPE_HINT_NODE, safeNamedNode(th), map_graph))
 
-    add_timestamp(store=store, node=entry, graph=map_graph)
+    if entry_spec: # TODO
+        from .rdf import load_rdf_from_spec
+        load_rdf_from_spec(
+            entry_spec,
+            context=None,
+            data={                
+                "target": target.value,
+                "types": type_hints or [],
+            },
+            node_value=entry.value,
+            store=store,
+            default_graph_uri=map_graph,
+        )
+    else:
+        add_timestamp(store=store, node=entry, graph=map_graph)
     return entry
 
 def iter_entities(store: Store, entity_graph: NamedNode):

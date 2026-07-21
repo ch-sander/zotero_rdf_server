@@ -4,7 +4,7 @@ from datetime import datetime
 from dateutil import parser
 from pathlib import Path
 from requests.exceptions import RequestException
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Any
 
 from .global_store import Store, Quad, NamedNode, Literal, RdfFormat, BlankNode
 from .logging_config import logger
@@ -113,6 +113,157 @@ def import_rdf(lib: ZoteroLibrary, store: Store):
                     src.cleanup()
                 except Exception:
                     pass
+
+def resolve_value_spec(value_spec: str, data: dict | None = None, node: str | None = None) -> str | None:
+    """
+    Resolve a value specification using the global template resolver.
+    Supports _field, {{field}}, ${field}, and {{node}} placeholders.
+    """
+    if value_spec is None:
+        return None
+
+    resolved = resolve_template(str(value_spec), data=data, node=node)
+
+    if resolved is None:
+        return None
+
+    resolved = resolved.strip()
+
+    return resolved if resolved != "" else None
+    
+def resolve_rdf_format(fmt) -> RdfFormat | None:
+    if not fmt:
+        return None
+
+    if isinstance(fmt, RdfFormat):
+        return fmt
+
+    s = str(fmt).strip()
+
+    s = s.replace("-", "_").upper()
+
+    if hasattr(RdfFormat, s):
+        return getattr(RdfFormat, s)
+
+
+    rf = RdfFormat.from_extension(s.lower())
+    if rf:
+        return rf
+
+    rf = RdfFormat.from_media_type(s)
+    if rf:
+        return rf
+
+    raise ValueError(f"Unknown RDF format: {fmt}")
+
+def resolve_to_graph(
+    g,
+    data: dict | None = None,
+    node: str | None = None,
+) -> NamedNode | BlankNode | DefaultGraph | None:
+    if g is None or g == "":
+        return None
+
+    g = resolve_value_spec(g, data=data, node=node)
+
+    if not g:
+        return None
+
+    value = str(g)
+
+    if value.lower() in {"default", "defaultgraph", "default_graph"}:
+        return DefaultGraph()
+
+    if value.startswith("_:"):
+        return BlankNode(value[2:])
+
+    return safeNamedNode(value, enforce=True)
+
+def load_rdf_from_spec(
+    spec,
+    *,
+    context,
+    data,
+    node_value,
+    store,
+    default_graph_uri,
+):
+    load_block = spec.get("load")
+    if not load_block:
+        return False
+
+    load_specs = load_block if isinstance(load_block, list) else [load_block]
+    loaded = False
+
+    for load_spec in load_specs:
+        load_spec = load_spec or {}
+
+        restrict_to = load_spec.get(
+            "add_to",
+            ["item", "collection", "library"],
+        )
+
+        if context is not None and context not in restrict_to:
+            continue
+
+        input_ = load_spec.get("input")
+        path_ = load_spec.get("path")
+
+        if input_ is not None:
+            input_ = resolve_template(
+                input_,
+                data=data,
+                node=node_value,
+            )
+
+        if path_ is not None:
+            resolved_path = resolve_template(
+                path_,
+                data=data,
+                node=node_value,
+            )
+
+            input_ = resolve_template(
+                load_text_like(
+                    resolved_path,
+                    label=None,
+                ),
+                data=data,
+                node=node_value,
+            )
+
+            path_ = path_ if not input_ else None
+
+        fmt = ensure_rdf_format(
+            load_spec.get("format", RdfFormat.TURTLE)
+        )
+
+        base_iri = load_spec.get("base_iri")
+        
+        graph_spec = load_spec.get("to_graph")
+        if graph_spec in (None, ""):
+            to_graph = default_graph_uri
+        else:
+            to_graph = resolve_to_graph(
+                graph_spec,
+                data=data,
+                node=node_value,
+            )
+
+        lenient = bool(load_spec.get("lenient", False))
+
+        store.load(
+            input=input_,
+            format=fmt,
+            path=path_,
+            base_iri=base_iri,
+            to_graph=to_graph,
+            lenient=lenient,
+        )
+
+        loaded = True
+
+    return loaded
 
 def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, ns_prefix: str, base_uri: str, map: dict, knowledge_base_graph: str = None, mapping_base_graph: str = None,language: str = None):
     GRAPH_URI = safeNamedNode(base_uri)
@@ -253,7 +404,21 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         graph_name=ENTITY_GRAPH_URI
                     ))
 
-                    add_timestamp(store=store, node=node, graph=ENTITY_GRAPH_URI)
+                    entity_spec = map.get("entity", {})
+
+                    load_rdf_from_spec(
+                        entity_spec,
+                        context=None,
+                        data={
+                            **data,
+                            "value": item,
+                            "label": item,
+                        },
+                        node_value=node.value,
+                        store=store,
+                        default_graph_uri=ENTITY_GRAPH_URI,
+                    )
+                    # add_timestamp(store=store, node=node, graph=ENTITY_GRAPH_URI)
 
                     if on_create:
                         on_create(node, item)
@@ -374,6 +539,21 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         "creatorRole",
                         base_uri,
                         ns_prefix
+                    )
+                    entity_spec = field_map.get("role_add", map.get("entity", {}))
+
+                    load_rdf_from_spec(
+                        entity_spec,
+                        context=None,
+                        data={
+                            **data,
+                            **object,
+                            "value": label,
+                            "label": label,
+                        },
+                        node_value=role_node.value,
+                        store=store,
+                        default_graph_uri=GRAPH_URI,
                     )
 
                     creator_type = object.get("creatorType")  # e.g. "author"
@@ -528,8 +708,25 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                             knowledge_base_graph=knowledge_base_graph,
                             mapping_base_graph=mapping_base_graph,
                         )
-                        add_timestamp(store=store, node=user_node, 
-                        graph=safeNamedNode(knowledge_base_graph))
+
+                        # TODO
+                        # user_spec = map.get("entity", {})
+
+                        # load_rdf_from_spec(
+                        #     user_spec,
+                        #     context=None,
+                        #     data={
+                        #         **data,
+                        #         **object,
+                        #         "value": user_label,
+                        #         "label": user_label,
+                        #         "user_id": str(user_id),
+                        #     },
+                        #     node_value=user_node.value,
+                        #     store=store,
+                        #     default_graph_uri=safeNamedNode(knowledge_base_graph),
+                        # )
+                        add_timestamp(store=store, node=user_node,graph=safeNamedNode(knowledge_base_graph))
                     except Exception as e:
                         logger.error(f"Adding metadata failed: {e}")
                         raise
@@ -738,44 +935,18 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         obj = obj if isinstance(obj, list) else [obj]
 
                         for o in obj:
-                            # field_map = get_field_maps(field)
-                            load_spec = field_map.get("load")
+                            if isinstance(o, (BlankNode, NamedNode, Literal)):
+                                loaded = load_rdf_from_spec(
+                                    field_map,
+                                    context=None,
+                                    data=data,
+                                    node_value=o.value,
+                                    store=store,
+                                    default_graph_uri=ENTITY_GRAPH_URI,
+                                )
 
-                            if load_spec and isinstance(o, (BlankNode, NamedNode, Literal)):
-                                input_ = load_spec.get("input", None)
-                                path_ = load_spec.get("path", None)
-
-                                if input_ is not None:
-                                    input_ = resolve_template(input_, data=data, node=o.value)
-
-                                if path_ is not None:
-                                    resolved_path = resolve_template(path_, data=data, node=o.value)
-
-                                    input_ = resolve_template(
-                                        load_text_like(resolved_path, label="RDF loading"),
-                                        data=data,
-                                        node=o.value,
-                                    )
-
-                                    path_ = None
-
-                                fmt = ensure_rdf_format(load_spec.get("format", RdfFormat.TURTLE))
-
-                                base_iri = load_spec.get("base_iri")
-                                
-                                to_graph = load_spec.get("to_graph")
-                                to_graph = safeNamedNode(to_graph) if to_graph else ENTITY_GRAPH_URI
-                                lenient = bool(load_spec.get("lenient", False))
-
-                                store.load(
-                                    input=input_,
-                                    format=fmt,
-                                    path=path_,
-                                    base_iri=base_iri,
-                                    to_graph=to_graph,
-                                    lenient=lenient,
-                                )                            
-                                logger.debug(f"Add data for {field} in {o.value}")
+                                if loaded:
+                                    logger.debug("Add data for %s in %s", field, o.value)
                             for pred in predicates:                    
                                 predicate = safeNamedNode(pred)
                                 if isinstance(o, (BlankNode, NamedNode, Literal)):
@@ -946,11 +1117,7 @@ def resolve_template(
         return data.get(token)
 
     def repl(m: re.Match) -> str:
-
-        key = (
-            m.group("braces")
-            or m.group("dollar")
-        )
+        key = m.group("braces") or m.group("dollar")
 
         capitalize = bool(
             m.group("braces_cap")
@@ -959,6 +1126,13 @@ def resolve_template(
 
         if key == "node":
             value = node
+        elif key == "now":
+            value =  (
+                        datetime.now(timezone.utc)
+                        .replace(microsecond=0)
+                        .isoformat()
+                        .replace("+00:00", "Z")
+                    )
         else:
             value = data.get(key)
 
@@ -966,7 +1140,7 @@ def resolve_template(
             return m.group(0)
 
         return ucfirst(value) if capitalize else str(value)
-
+    
     return _TEMPLATE_RE.sub(repl, s)
 
 def apply_additional_properties(
@@ -980,110 +1154,20 @@ def apply_additional_properties(
 ):
     GRAPH_URI = NamedNode(base_ns)
 
-    def resolve_value_spec(value_spec: str, data: dict | None = None, node: str | None = None) -> str | None:
-        """
-        Resolve a value specification using the global template resolver.
-        Supports _field, {{field}}, ${field}, and {{node}} placeholders.
-        """
-        if value_spec is None:
-            return None
-
-        resolved = resolve_template(str(value_spec), data=data, node=node)
-
-        if resolved is None:
-            return None
-
-        resolved = resolved.strip()
-
-        return resolved if resolved != "" else None
-        
-    def resolve_rdf_format(fmt) -> RdfFormat | None:
-        if not fmt:
-            return None
-
-        if isinstance(fmt, RdfFormat):
-            return fmt
-
-        s = str(fmt).strip()
-
-        s = s.replace("-", "_").upper()
-
-        if hasattr(RdfFormat, s):
-            return getattr(RdfFormat, s)
-
-
-        rf = RdfFormat.from_extension(s.lower())
-        if rf:
-            return rf
-
-        rf = RdfFormat.from_media_type(s)
-        if rf:
-            return rf
-
-        raise ValueError(f"Unknown RDF format: {fmt}")
-
-    def resolve_to_graph(g) -> NamedNode | BlankNode | DefaultGraph | None:
-        if g is None or g == "":
-            return None
-
-        g = resolve_value_spec(g, data=data, node=node.value)
-        if not g:
-            return None
-
-        if str(g).lower() in {"default", "defaultgraph", "default_graph"}:
-            return DefaultGraph()
-
-        if str(g).startswith("_:"):
-            return BlankNode(str(g)[2:])
-        return safeNamedNode(str(g), enforce=True)
-
     for spec in specs:
         raw_value = None
         restrict_to = spec.get("add_to", ["item", "collection", "library"])
         if context and context in restrict_to:
             try:
-                if spec.get("load"):
-                    load_block = spec["load"] or []
-
-                    load_specs = load_block if isinstance(load_block, list) else [load_block]
-
-                    for load_spec in load_specs:
-                        load_spec = load_spec or {}
-                        restrict_to = load_spec.get("add_to", ["item", "collection", "library"])
-                        
-                        if context and context in restrict_to:
-                            input_ = load_spec.get("input", None)
-                            path_ = load_spec.get("path", None)
-                            if input_ is not None:
-                                input_ = resolve_template(input_, data=data, node=node.value)
-
-                            if path_ is not None:
-                                resolved_path = resolve_template(path_, data=data, node=node.value)
-                                input_ = resolve_template(
-                                    load_text_like(resolved_path, label="RDF loading"),
-                                    data=data,
-                                    node=node.value,
-                                )
-                                path_ = None
-
-                            fmt = resolve_rdf_format(load_spec.get("format", None))
-
-                            base_iri = load_spec.get("base_iri", None)
-                            if base_iri is not None:
-                                base_iri = resolve_value_spec(base_iri)
-
-                            to_graph = resolve_to_graph(load_spec.get("to_graph", GRAPH_URI.value))
-                            lenient = bool(load_spec.get("lenient", False))
-
-                            store.load(
-                                input=input_,
-                                format=fmt,
-                                path=path_,
-                                base_iri=base_iri,
-                                to_graph=to_graph,
-                                lenient=lenient,
-                            )
-
+                loaded = load_rdf_from_spec(
+                    spec,
+                    context=context,
+                    data=data,
+                    node_value=node.value,
+                    store=store,
+                    default_graph_uri=GRAPH_URI,
+                )
+                if loaded:
                     logger.debug("Loaded RDF via store.load() (one or many specs)")
                     continue
 
@@ -1206,7 +1290,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
             ZOT_NS,
             "library"
         )
-        add_timestamp(store=store, node=library_uri, graph=GRAPH_URI)
+        # add_timestamp(store=store, node=library_uri, graph=GRAPH_URI)
 
     if collections: # TODO write_to_store
         for col in collections:
@@ -1228,16 +1312,16 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
             apply_additional_properties(store, node_uri, col_data_long, additional, lib.base_url, ZOT_NS,"collection")
 
             add_rdf_from_dict(store, node_uri, col_data, ZOT_NS, lib.base_url, map, lib.knowledge_base_graph, mapping_base_graph=lib.mapping_base_graph)
-            add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
+            # add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
 
             metadata = col.get("meta")
             if metadata and isinstance(metadata,dict) and lib.metadata_graph:
-                additional = lib.metadata_map.get("additional") or []
-                logger.debug(f"Adding collection metadata to {lib.metadata_graph} for {str(node_uri)}")
+                # additional = lib.metadata_map.get("additional") or []
+                logger.info(f"Adding collection metadata to {lib.metadata_graph} for {str(node_uri)}")
                 apply_additional_properties(store, node_uri, metadata, additional, lib.metadata_graph, ZOT_NS, "metadata")
 
-                add_rdf_from_dict(store, node_uri, metadata, ZOT_NS, lib.metadata_graph,lib.metadata_map, lib.metadata_graph, mapping_base_graph=lib.metadata_graph)
-                add_timestamp(store=store, node=node_uri, graph=safeNamedNode(lib.metadata_graph))
+                add_rdf_from_dict(store, node_uri, metadata, ZOT_NS, lib.metadata_graph,map, lib.metadata_graph, mapping_base_graph=lib.metadata_graph)
+                # add_timestamp(store=store, node=node_uri, graph=safeNamedNode(lib.metadata_graph))
 
         logger.info(f"--> Loaded {len(collections)} collections for {lib.name} to store")
     else:
@@ -1323,16 +1407,16 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
                     apply_additional_properties(store, node_uri, item_data_long, additional, lib.base_url, ZOT_NS,"item")
 
                     add_rdf_from_dict(store, node_uri, item_data, ZOT_NS, lib.base_url, map, lib.knowledge_base_graph,mapping_base_graph=lib.mapping_base_graph,language=language)
-                    add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
+                    # add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
 
                     metadata = item.get("meta")
                     if metadata and isinstance(metadata,dict) and lib.metadata_graph:
-                        additional = lib.metadata_map.get("additional") or []
+                        # additional = lib.metadata_map.get("additional") or []
                         logger.debug(f"Adding item metadata to {lib.metadata_graph} for {str(node_uri)}")
                         apply_additional_properties(store, node_uri, metadata, additional, lib.metadata_graph, ZOT_NS, "metadata")
 
-                        add_rdf_from_dict(store, node_uri, metadata, ZOT_NS, lib.metadata_graph,lib.metadata_map, lib.metadata_graph, mapping_base_graph=lib.metadata_graph)
-                        add_timestamp(store=store, node=node_uri, graph=safeNamedNode(lib.metadata_graph))
+                        add_rdf_from_dict(store, node_uri, metadata, ZOT_NS, lib.metadata_graph,map, lib.metadata_graph, mapping_base_graph=lib.metadata_graph)
+                        # add_timestamp(store=store, node=node_uri, graph=safeNamedNode(lib.metadata_graph))
                         
                 except Exception as e:
                     logger.error(f"Invalid data at {node_uri}. See next errors for details!")
@@ -1482,6 +1566,7 @@ def sync_kb_mapping(
     seed_mapping_labels: bool = True,
     create_missing_entities: bool = True,
     default_entity_types: list[str] | None = None,
+    entity_spec: dict | None = None,
 ):
 
     has_mapping = any(True for _ in iter_mapping_entries(store, map_graph))
@@ -1527,7 +1612,23 @@ def sync_kb_mapping(
                 base_ns=entity_graph.value,
             )
             store.add(Quad(target, RDFS_LABEL_NODE, Literal(lbl), graph_name=entity_graph))
-            add_timestamp(store=store, node=target, graph=entity_graph)
+
+            # TODO
+            if entity_spec:
+                load_rdf_from_spec(
+                    entity_spec,
+                    context=None,
+                    data={
+                        "value": lbl,
+                        "label": lbl,
+                        "types": type_fields,
+                    },
+                    node_value=target.value,
+                    store=store,
+                    default_graph_uri=entity_graph,
+                )
+            else:
+                add_timestamp(store=store, node=target, graph=entity_graph)
 
             created_entities += 1
             logger.info(f"[SYNC] created missing entity {target} (label='{lbl}') from mapping")
