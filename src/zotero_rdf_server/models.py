@@ -38,7 +38,7 @@ class ZoteroLibrary:
                         "Accept": "application/json",
                         "User-Agent": self.user}
         self.map = load_dict_like(config.get("map") or {}, label="Loading library map")
-        self.metadata_map = load_dict_like(config.get("metadata_map"), default=self.map,label="Loading metadata map")
+        # self.metadata_map = load_dict_like(self.map.get("metadata_map"), default=self.map,label="Loading metadata map")
         self.sync = {}
 
         if (

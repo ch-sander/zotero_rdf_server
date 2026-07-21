@@ -880,6 +880,7 @@ async def kb_map_sync(
         }
 
     # Execute synchronization (mutating)
+
     result = sync_kb_mapping(
         store,
         entity_graph=entity_graph,
