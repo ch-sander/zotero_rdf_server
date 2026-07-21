@@ -2,6 +2,10 @@
 const scriptUrl = new URL(document.currentScript.src);
 const partialsBaseUrl = new URL("./", scriptUrl);
 
+const script = document.createElement("script");
+script.src = new URL("custom.js", partialsBaseUrl);
+document.head.appendChild(script);
+
 async function loadPartialShadow(containerId, htmlFileName) {
   const container = document.getElementById(containerId);
 

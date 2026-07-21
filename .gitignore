@@ -40,3 +40,4 @@ app/plugins/citations/data.cff
 app/plugins/citations/software.cff
 app/mapping.yaml
 app/scigma.mapping.yaml
+app/ui/partials/custom.js
