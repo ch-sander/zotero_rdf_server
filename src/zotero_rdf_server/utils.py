@@ -8,7 +8,7 @@ from copy import deepcopy
 from pathlib import Path
 from .logging_config import logger
 # from .config import *
-from uuid import uuid4, uuid5
+from uuid import uuid4, uuid5, UUID
 
 from .config import MAP_TYPE_HINT, MAP_ENTRY_TYPE, RDF_TYPE, LANG_MAP, PROV_TIMESTAMP, XSD_NS, MAP_LABEL, MAP_TARGET, MAP_REGEX, RDFS_LABEL, APP_USER
 
@@ -33,7 +33,8 @@ def canonicalize_types(my_types) -> tuple[str, ...]:
     return tuple(sorted(str(type_) for type_ in my_types))
 
 
-def stable_entity_uuid(item: str, my_types, ENTITY_UUID = None) -> str:
+
+def stable_entity_uuid(item: str, my_types, ENTITY_UUID:UUID) -> str:
     identity = {
         "version": 1,
         "label": canonicalize_label(item),
