@@ -25,11 +25,13 @@ const yasqe = new Yasqe(document.getElementById("yasqe"), {
 Yasr.registerPlugin("TableX",SparnaturalYasguiPlugins.TableX);
 Yasr.registerPlugin("Grid",SparnaturalYasguiPlugins.GridPlugin);
 Yasr.registerPlugin("Stats",SparnaturalYasguiPlugins.StatsPlugin);
+Yasr.registerPlugin("Map",SparnaturalYasguiPlugins.MapPlugin);
+
 delete Yasr.plugins['table'];
 delete Yasr.plugins['response'];
 
 const yasr = new Yasr(document.getElementById("yasr"), {
-	pluginOrder: ["TableX", "Grid", "Stats"],
+	pluginOrder: ["TableX", "Grid", "Stats", "Map"],
 	defaultPlugin: "TableX",
 	persistencyExpire: 0,
 	maxPersistentResponseSize: 0
