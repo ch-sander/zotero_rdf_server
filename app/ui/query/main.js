@@ -56,6 +56,13 @@ sparnatural.addEventListener("init", (event) => {
 	}
 });
 
+document.getElementById('export').onclick = function(event) {
+	event.preventDefault();
+	const jsonString = JSON.stringify(JSON.parse(document.getElementById('query-json').value), null, 2);
+	document.getElementById('export-json').value = jsonString;
+	new bootstrap.Modal(document.getElementById('exportModal')).show();
+};
+
 // listener when sparnatural updates the query
 // see http://docs.sparnatural.eu/Javascript-integration.html#sparnatural-events
 sparnatural.addEventListener("queryUpdated", (event) => {
@@ -100,6 +107,22 @@ Object.assign(tableXConfig.config, {
 });
 tableXConfig.persistentConfig.compact = true;
 
+
+const importModal = new bootstrap.Modal(document.getElementById('importModal'));
+
+document.getElementById('import').addEventListener('click', function(event) {
+	event.preventDefault();
+	importModal.show();
+});
+
+document.getElementById('importButton').addEventListener('click', function() {
+	const importJson = document.getElementById('import-json').value;
+	const json = JSON.parse(importJson);
+	importModal.hide();
+	sparnatural.loadQuery(json);
+});
+
+
 // hide/show yasQE
 document.getElementById('sparql-toggle').onclick = function() {
 	if(document.getElementById('yasqe').style.display == 'none') {
@@ -111,3 +134,4 @@ document.getElementById('sparql-toggle').onclick = function() {
 	}
 	return false;        
 } ;
+bindSparnaturalWithYasrPlugins(sparnatural, yasr);

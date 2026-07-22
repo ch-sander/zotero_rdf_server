@@ -69,6 +69,41 @@
          "https://dataria.dhi-roma.it/file/results/rdf/zotero_config.ttl"
         
         -->
+         
+      <div class="modal fade" id="exportModal" tabindex="-1" aria-labelledby="jsonModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="jsonModalLabel">Query JSON</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" style="overflow:hidden;">
+                    <textarea class="form-control" rows="20" id="export-json" style="width:100%" readonly></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+      </div>
+      
+      <div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="jsonModelLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="jsonModelLabel" data-i18n="import.modal.title">Import JSON</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <textarea class="form-control" rows="20" id="import-json" style="width:100%"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" id="importButton" data-i18n="import.modal.import">Load</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
         <spar-natural 
             src="config-dev.ttl"
             endpoint="/sparql/query"
