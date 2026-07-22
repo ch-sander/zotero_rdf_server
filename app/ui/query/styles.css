@@ -78,33 +78,53 @@ a:hover {
 }
 
 /* SPARQL Toggle Button (JETZT KLAR SICHTBAR) */
-#sparql-toggle {
+.query-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
   margin-top: 1.5rem;
+  flex-wrap: wrap;
+}
+
+#sparql-toggle,
+.button-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+
+  margin: 0;
+  min-height: 3rem;
+  padding: 0.6rem 1.2rem;
+
+  border-radius: 0;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+#sparql-toggle {
   background-color: var(--btn-blue);
   border: 2px solid #2f5fb3;
-  color: #ffffff;
-  font-weight: 700;
-  border-radius: 0;
-  padding: 0.6rem 1.2rem;
-  cursor: pointer;
+  color: #fff;
 }
 
 #sparql-toggle:hover {
   background-color: var(--btn-blue-hover);
 }
 
-/* Alternative Button (falls du mal orange willst) */
 .button-secondary {
   background-color: var(--btn-orange);
   border: 2px solid #cc7a00;
   color: #111;
-  font-weight: 700;
 }
 
 .button-secondary:hover {
   background-color: var(--btn-orange-hover);
+  color: #111;
 }
-
 /* YASQE / YASR */
 #yasqe,
 #yasr {

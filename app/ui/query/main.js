@@ -38,23 +38,23 @@ const yasr = new Yasr(document.getElementById("yasr"), {
   });
 
 // link yasqe and yasr
-yasqe.on("queryResponse", function(_yasqe, response, duration) {
-	yasr.setResponse(response, duration);
-	// when response is received, enable the button
-	sparnatural.enablePlayBtn();
-});
+// yasqe.on("queryResponse", function(_yasqe, response, duration) {
+// 	yasr.setResponse(response, duration);
+// 	// when response is received, enable the button
+// 	sparnatural.enablePlayBtn();
+// });
 
 
-sparnatural.addEventListener("init", (event) => {
-	// notify the specification to yasr plugins
-	for (const plugin in yasr.plugins) {
-	  if (yasr.plugins[plugin].notifyConfiguration) {
-	    yasr.plugins[plugin].notifyConfiguration(
-	      event.detail.config
-	    );
-	  }
-	}
-});
+// sparnatural.addEventListener("init", (event) => {
+// 	// notify the specification to yasr plugins
+// 	for (const plugin in yasr.plugins) {
+// 	  if (yasr.plugins[plugin].notifyConfiguration) {
+// 	    yasr.plugins[plugin].notifyConfiguration(
+// 	      event.detail.config
+// 	    );
+// 	  }
+// 	}
+// });
 
 document.getElementById('export').onclick = function(event) {
 	event.preventDefault();
@@ -65,37 +65,37 @@ document.getElementById('export').onclick = function(event) {
 
 // listener when sparnatural updates the query
 // see http://docs.sparnatural.eu/Javascript-integration.html#sparnatural-events
-sparnatural.addEventListener("queryUpdated", (event) => {
-	// get the SPARQL query string, and pass it to yasQE
-	queryString = sparnatural.expandSparql(event.detail.queryString);
-	yasqe.setValue(queryString);
-	// display the JSON query on the console
-	console.log("Sparnatural JSON query structure:");
-	console.dir(event.detail.queryJson);
+// sparnatural.addEventListener("queryUpdated", (event) => {
+// 	// get the SPARQL query string, and pass it to yasQE
+// 	const queryString = sparnatural.expandSparql(event.detail.queryString);
+// 	yasqe.setValue(queryString);
+// 	// display the JSON query on the console
+// 	console.log("Sparnatural JSON query structure:");
+// 	console.dir(event.detail.queryJson);
 
-	// notify the query to yasr plugins
-	for (const plugin in yasr.plugins) {
-	  if (yasr.plugins[plugin].notifyQuery) {
-	    yasr.plugins[plugin].notifyQuery(event.detail.queryJson);
-	  }
-	}
-});
+// 	// notify the query to yasr plugins
+// 	// for (const plugin in yasr.plugins) {
+// 	//   if (yasr.plugins[plugin].notifyQuery) {
+// 	//     yasr.plugins[plugin].notifyQuery(event.detail.queryJson);
+// 	//   }
+// 	// }
+// });
 
 // listener when the sparnatural submit button is clicked
 // see http://docs.sparnatural.eu/Javascript-integration.html#sparnatural-events
-sparnatural.addEventListener("submit", (event) => {
-	// enable loader on button
-	sparnatural.disablePlayBtn() ; 
-	// trigger the query from YasQE
-	yasqe.query();
-});
+// sparnatural.addEventListener("submit", (event) => {
+// 	// enable loader on button
+// 	sparnatural.disablePlayBtn() ; 
+// 	// trigger the query from YasQE
+// 	yasqe.query();
+// });
 
 // listener when the sparnatural reset button is clicked
 // see http://docs.sparnatural.eu/Javascript-integration.html#sparnatural-events
-sparnatural.addEventListener("reset", (event) => {
-	// empties the SPARQL query on yasQE
-	yasqe.setValue("");
-});
+// sparnatural.addEventListener("reset", (event) => {
+// 	// empties the SPARQL query on yasQE
+// 	yasqe.setValue("");
+// });
 
 const tableXConfig = yasr.plugins["TableX"];
 Object.assign(tableXConfig.config, {
@@ -135,3 +135,4 @@ document.getElementById('sparql-toggle').onclick = function() {
 	return false;        
 } ;
 bindSparnaturalWithYasrPlugins(sparnatural, yasr);
+bindSparnaturalWithItself(sparnatural, yasqe, yasr);

@@ -54,7 +54,7 @@
       <div class="col-lg-12 px-0">
 
         <p>Queries are sent to <a href="#" id="displayEndpoint">...</a></p>
-        
+        <textarea id="query-json" style="display:none;"></textarea>
         <!-- uncomment to enable links to load sample queries
         <p>
           Load example queries :
@@ -70,43 +70,60 @@
         
         -->
          
-      <div class="modal fade" id="exportModal" tabindex="-1" aria-labelledby="jsonModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="jsonModalLabel">Query JSON</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body" style="overflow:hidden;">
-                    <textarea class="form-control" rows="20" id="export-json" style="width:100%" readonly></textarea>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-        </div>
+<div class="modal fade" id="exportModal" tabindex="-1" aria-labelledby="jsonModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-md modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="jsonModalLabel">Query JSON</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      
-      <div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="jsonModelLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="jsonModelLabel" data-i18n="import.modal.title">Import JSON</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <textarea class="form-control" rows="20" id="import-json" style="width:100%"></textarea>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-primary" id="importButton" data-i18n="import.modal.import">Load</button>
-                </div>
-            </div>
-        </div>
+
+      <div class="modal-body">
+        <textarea
+          class="form-control"
+          rows="10"
+          id="export-json"
+          readonly
+        ></textarea>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          Close
+        </button>
+      </div>
     </div>
+  </div>
+</div>
+      
+<div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="jsonModelLabel" aria-hidden="true">
+  <div class="modal-dialog modal-md modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="jsonModelLabel">Import JSON</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+        <textarea
+          class="form-control"
+          rows="10"
+          id="import-json"
+        ></textarea>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" id="importButton">
+          Load
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
         <spar-natural 
             src="config-dev.ttl"
-            endpoint="/sparql/query"
+            endpoint="http://localhost:7879/sparql"
             lang="en"
             defaultLang="en"
             distinct="true"
@@ -115,8 +132,21 @@
             prefixes="zot:http://www.zotero.org/namespaces/export# semz:https://semantic-html.org/vocab# owl:http://www.w3.org/2002/07/owl# skos:http://www.w3.org/2004/02/skos/core#"
         ></spar-natural>
 
-        <span class="btn btn-primary" id="sparql-toggle">Toggle SPARQL query</span>
+<div class="query-actions">
+  <span class="btn btn-primary" id="sparql-toggle">
+    Toggle SPARQL query
+  </span>
 
+  <a href="#" id="export" class="button-secondary">
+    <i class="fas fa-file-export"></i>
+    <span>Export</span>
+  </a>
+
+  <a href="#" id="import" class="button-secondary">
+    <i class="fas fa-file-import"></i>
+    <span>Import</span>
+  </a>
+</div>
 
       </div>
     </div>
@@ -147,6 +177,7 @@
 
     <!-- Sparnatural Custom YASR plugins -->
     <script src="sparnatural-yasgui-plugins.js"></script>
+    <script src="sparnatural-bindings.js"></script>
 
     <!-- File containing example queries -->
     <script src="example-queries.js"></script>
