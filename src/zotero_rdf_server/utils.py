@@ -3,13 +3,12 @@ from datetime import datetime, timezone
 from urllib.parse import quote, urlparse
 from pyoxigraph import Store, Quad, NamedNode, Literal, RdfFormat, DefaultGraph, BlankNode
 from rapidfuzz import fuzz, process
-import re, json, requests, yaml
+import re, json, requests, yaml, unicodedata, subprocess, importlib, sys
 from copy import deepcopy
 from pathlib import Path
 from .logging_config import logger
 # from .config import *
-import subprocess, importlib, sys
-from uuid import uuid4
+from uuid import uuid4, uuid5
 
 from .config import MAP_TYPE_HINT, MAP_ENTRY_TYPE, RDF_TYPE, LANG_MAP, PROV_TIMESTAMP, XSD_NS, MAP_LABEL, MAP_TARGET, MAP_REGEX, RDFS_LABEL, APP_USER
 
@@ -24,6 +23,32 @@ CT_TO_EXT = {
     "application/xml": "rdf",
 }
 URL_SCHEMES = {"http", "https"}
+
+def canonicalize_label(value: str) -> str:
+    value = unicodedata.normalize("NFKC", value)
+    return " ".join(value.casefold().split())
+
+
+def canonicalize_types(my_types) -> tuple[str, ...]:
+    return tuple(sorted(str(type_) for type_ in my_types))
+
+
+def stable_entity_uuid(item: str, my_types, ENTITY_UUID = None) -> str:
+    identity = {
+        "version": 1,
+        "label": canonicalize_label(item),
+        "types": canonicalize_types(my_types),
+    }
+
+    canonical_identity = json.dumps(
+        identity,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+    return str(uuid5(ENTITY_UUID, canonical_identity))
+
 
 def is_url(s: str) -> bool:
     try:

@@ -383,7 +383,8 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 )
 
                 if not node:
-                    iri_suffix = uuid5(ENTITY_UUID, item) if specific_threshold < 100 else uuid4()
+                    # iri_suffix = uuid5(ENTITY_UUID, item) if specific_threshold < 100 else uuid4()
+                    iri_suffix = stable_entity_uuid(item, my_types)
                     node = safeNamedNode(f"{knowledge_base_graph}/{iri_suffix}")
 
                     apply_rdf_types(
