@@ -39,6 +39,10 @@ const PREVIEW_PREFIXES = {
 
 const PAGE_SIZE = 25;
 
+const FOLLOWED_PREDICATES = new Set([
+    "http://www.opengis.net/ont/geosparql#hasGeometry"
+]);
+
 const FORM_PROPS = [
     "http://www.w3.org/2000/01/rdf-schema#label",
     "http://www.w3.org/2000/01/rdf-schema#comment",
@@ -284,7 +288,7 @@ sshap:PlaceGeometryProperty
 a sh:PropertyShape ;
 sh:path geo:hasGeometry ;
 sh:name "Geometry"@en, "Geometrie"@de ;
-sh:nodeKind sh:BlankNode ;
+sh:nodeKind sh:IRI ;
 sh:node sshap:GeometryShape ;
 sh:minCount 1 ;
 sh:maxCount 1 ;
@@ -1259,24 +1263,62 @@ function collectBlankNodeClosureFromStore(
 function collectSubjectClosureFromStore(
     store,
     graphIri,
-    subjectIri
+    subjectIri,
+    options = {}
 ) {
-    const g = graphTerm(graphIri);
+    const {
+        maxDepth = 2,
+        followNamedNodes = false,
+        followedPredicates = new Set()
+    } = options;
+
+    const graph = graphTerm(graphIri);
     const root = subjectTerm(subjectIri);
-    const direct = store.getQuads(root, null, null, g);
 
-    const blankNodeSeeds = direct
-        .map(q => q.object)
-        .filter(term => term?.termType === "BlankNode");
+    const visited = new Set();
+    const result = [];
+    const queue = [{ term: root, depth: 0 }];
 
-    return [
-        ...direct,
-        ...collectBlankNodeClosureFromStore(
-            store,
-            graphIri,
-            blankNodeSeeds
-        )
-    ];
+    while (queue.length > 0) {
+        const { term, depth } = queue.shift();
+        const key = `${term.termType}:${term.value}`;
+
+        if (visited.has(key)) continue;
+        visited.add(key);
+
+        const quads = store.getQuads(term, null, null, graph);
+        result.push(...quads);
+
+        if (depth >= maxDepth) continue;
+
+        for (const quad of quads) {
+            const object = quad.object;
+
+            if (object.termType === "BlankNode") {
+                queue.push({
+                    term: object,
+                    depth: depth + 1
+                });
+                continue;
+            }
+
+            const mayFollowNamedNode =
+                object.termType === "NamedNode" &&
+                (
+                    followNamedNodes ||
+                    followedPredicates.has(quad.predicate.value)
+                );
+
+            if (mayFollowNamedNode) {
+                queue.push({
+                    term: object,
+                    depth: depth + 1
+                });
+            }
+        }
+    }
+
+    return result;
 }
 
 function collectSubjectClosureFromQuads(quads, subjectIri) {
@@ -1332,7 +1374,11 @@ function removeSubjectWithBlankNodeClosure(
     const quads = collectSubjectClosureFromStore(
         store,
         graphIri,
-        subjectIri
+        subjectIri,
+    {
+        maxDepth: 2,
+        followedPredicates: FOLLOWED_PREDICATES
+    }
     );
 
     if (quads.length) {
@@ -1348,7 +1394,11 @@ async function subjectFromStoreToTurtle(
     const quads = collectSubjectClosureFromStore(
         store,
         graphIri,
-        subjectIri
+        subjectIri,
+    {
+        maxDepth: 2,
+        followedPredicates: FOLLOWED_PREDICATES
+    }
     );
 
     const writer = new window.N3.Writer({
