@@ -571,26 +571,34 @@ async def sparql_update(
     }
 
 @router.delete(
-    "/delete_mapping_targets",
-    summary="Delete all mapping target triples from a mapping graph",
+    "/mapping-targets",
+    summary="Delete all target statements from a mapping graph",
     description=(
-        "Deletes all triples of the form `?entry zmap:target ?entity` from the given mapping graph.\n\n"
-        "By default this endpoint runs in dry-run mode (`execute=false`)."
+        "Finds all statements of the form `?entry zmap:target ?entity` in the selected mapping graph.\n\n"
+        "Only the target statements are removed. The mapping entries and their remaining statements "
+        "are preserved.\n\n"
+        "By default, the endpoint performs a dry run. Set `execute=true` to remove the statements."
     ),
-    tags=["RDF"], dependencies=[Depends(require_writable)]
+    tags=["RDF", "Maintenance"],
+    dependencies=[Depends(require_writable)],
 )
 async def delete_mapping_targets(
-    map_graph_iri: str = Query(..., description="Named graph IRI of the mapping graph."),
+    mapping_graph_iri: str = Query(
+        ...,
+        description="Named graph IRI from which mapping target statements are to be removed.",
+    ),
     execute: bool = Query(
         default=False,
-        description="If true, performs the deletion. If false, only returns how many triples would be removed.",
+        description=(
+            "If false, return the number of matching statements without modifying the store. "
+            "If true, remove all matching target statements."
+        ),
     ),
-) -> dict:    
-    # from .global_store import store
+) -> dict[str, Any]:  
     store = global_store.get_store()
 
-    map_graph, all_graphs = global_store.get_graph(map_graph_iri)
-    if map_graph_iri is not None and not map_graph:
+    map_graph, all_graphs = global_store.get_graph(mapping_graph_iri)
+    if mapping_graph_iri is not None and not map_graph:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid graph IRI. Use one of these or None: {all_graphs}",
@@ -617,64 +625,77 @@ async def delete_mapping_targets(
         "predicate": str(MAP_TARGET_NODE),
     }
 
-
-@router.get(
+@router.delete(
     "/purge",
-    summary="Purge orphan entities or dangling mapping entries",
+    summary="Find and optionally delete orphan entities or dangling mappings",
     description=(
-        "Finds inconsistent resources in the configured libraries and optionally deletes them.\n\n"
-        "mode=entities:\n"
-        "- An entity is considered an orphan if it is not a mapping target.\n"
-        "- If `not_mapped_only=false`, the entity must additionally not be referenced as an object "
-        "in the selected graphs.\n\n"
-        "mode=mappings:\n"
-        "- A mapping entry is considered dangling if it has no target.\n"
-        "- Optionally, entries can also be treated as dangling if their target does not exist "
-        "in the knowledge base graph.\n\n"
-        "By default this endpoint runs in dry-run mode (`delete=false`)."
+        "Finds inconsistent knowledge-base entities or mapping entries for one or more configured "
+        "libraries.\n\n"
+        "Entity mode (`resource_type=entities`):\n"
+        "- An entity is a candidate when it is not referenced as a mapping target.\n"
+        "- When `require_unreferenced=true`, the entity must also not occur as an object in the "
+        "configured graphs.\n"
+        "- Entities with an outgoing `owl:sameAs` statement can optionally be preserved.\n\n"
+        "Mapping mode (`resource_type=mappings`):\n"
+        "- A mapping entry can be selected when it has no target.\n"
+        "- A mapping entry can also be selected when its target has no subject facts in the "
+        "knowledge-base graph.\n\n"
+        "By default, the endpoint performs a dry run. Set `execute=true` to delete the selected resources."
     ),
-    tags=["RDF"], dependencies=[Depends(require_writable)]
+    tags=["RDF", "Maintenance"],
+    dependencies=[Depends(require_writable)],
 )
 async def purge(
-    graph_iri: str | None = Query(
+    library_iri: str | None = Query(
         default=None,
         description=(
-            "Optional filter: run only for a specific library identifier (e.g., the library base URL). "
-            "If omitted, runs for all configured libraries."
+            "Optional configured library base IRI. If provided, process only that library. "
+            "If omitted, process all configured libraries."
         ),
     ),
-    mode: TypingLiteral["entities", "mappings"] = Query(
+    resource_type: TypingLiteral["entities", "mappings"] = Query(
         default="entities",
-        description="Select whether to purge orphan entities or dangling mapping entries.",
+        description="Type of resource to inspect and optionally delete.",
     ),
-    delete: bool = Query(
+    execute: bool = Query(
         default=False,
-        description="If true, deletes the detected resources from the selected graph.",
+        description=(
+            "If false, return the resources that would be deleted. "
+            "If true, delete those resources from their respective graphs."
+        ),
     ),
-    not_mapped_only: bool = Query(
+    require_unreferenced: bool = Query(
+        default=False,
+        description=(
+            "Entity mode only. If true, select an unmapped entity only when it is also not "
+            "referenced as an object in the configured graphs."
+        ),
+    ),
+    preserve_sameas_subjects: bool = Query(
+        default=False,
+        description=(
+            "Entity mode only. If true, preserve entities that have an outgoing `owl:sameAs` "
+            "statement in the knowledge-base graph."
+        ),
+    ),
+    include_mappings_without_target: bool = Query(
         default=True,
         description=(
-            "Entities mode only: if true, returns all entities that are not mapping targets. "
-            "If false, returns only those that are not mapping targets AND not referenced as objects."
+            "Mapping mode only. Select mapping entries that do not contain a target statement."
         ),
     ),
-    keep_if_sameas_subject: bool = Query(
+    include_mappings_with_missing_target_entity: bool = Query(
         default=False,
-        description="Entities mode only: if true, keeps entities that have an outgoing owl:sameAs triple in the entity graph.",
+        description=(
+            "Mapping mode only. Select mapping entries whose target has no subject facts in the "
+            "knowledge-base graph."
+        ),
     ),
-    delete_if_missing_target: bool = Query(
-        default=True,
-        description="Mappings mode only: if true, includes mapping entries that do not define a target.",
-    ),
-    delete_if_target_not_in_kb: bool = Query(
-        default=False,
-        description="Mappings mode only: if true, includes mapping entries whose target does not exist in the entity graph.",
-    ),
-) -> list:
+) -> list[dict[str, Any]]:
     from .global_store import get_graph
     store = global_store.get_store()
-    checked_graph, all_graphs = get_graph(graph_iri)
-    if graph_iri is not None and not checked_graph:
+    checked_graph, all_graphs = get_graph(library_iri)
+    if library_iri is not None and not checked_graph:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid graph IRI. Use one of these or None: {all_graphs}",
@@ -685,16 +706,16 @@ async def purge(
     for lib_cfg in ZOTERO_LIBRARIES_CONFIGS:
         lib = ZoteroLibrary(lib_cfg)
 
-        if graph_iri is not None and graph_iri != lib.base_url:
-            logger.debug("Skipping %s (filtered by graph_iri=%s)", lib.base_url, graph_iri)
+        if library_iri is not None and library_iri != lib.base_url:
+            logger.debug("Skipping %s (filtered by graph_iri=%s)", lib.base_url, library_iri)
             continue
 
-        logger.info("Purging for %s (mode=%s, delete=%s)...", lib.base_url, mode, delete)
+        logger.info("Purging for %s (mode=%s, delete=%s)...", lib.base_url, resource_type, execute)
 
         entity_graph = safeNamedNode(lib.knowledge_base_graph)
         map_graph = safeNamedNode(lib.mapping_base_graph)
 
-        if mode == "entities":
+        if resource_type == "entities":
             graphs_to_check = [
                 safeNamedNode(lib.knowledge_base_graph),
                 safeNamedNode(lib.base_url),
@@ -706,140 +727,247 @@ async def purge(
                     entity_graph=entity_graph,
                     map_graph=map_graph,
                     graphs_to_check_for_objects=graphs_to_check,
-                    delete=delete,
-                    not_mapped_only=not_mapped_only,
-                    keep_if_sameas_subject=keep_if_sameas_subject,
+                    delete=execute,
+                    not_mapped_only=not require_unreferenced,
+                    keep_if_sameas_subject=preserve_sameas_subjects,
                 )
             )
 
-        elif mode == "mappings":
+        elif resource_type == "mappings":
             results.append(
                 purge_dangling_mappings(
                     store,
                     entity_graph=entity_graph,
                     map_graph=map_graph,
-                    delete=delete,
-                    delete_if_missing_target=delete_if_missing_target,
-                    delete_if_target_not_in_kb=delete_if_target_not_in_kb,
+                    delete=execute,
+                    delete_if_missing_target=include_mappings_without_target,
+                    delete_if_target_not_in_kb=include_mappings_with_missing_target_entity,
                 )
             )
 
     return results
 
-
 @router.post(
     "/merge",
-    summary="Merge two entities in the knowledge base graph and retarget mapping entries",
+    summary="Merge or replace an entity and update all references",
     description=(
-        "Moves facts from `old` to `new` in the knowledge base graph, replaces all occurrences of `old` "
-        "as an object across the store, retargets mapping entries in the mapping graph, and migrates "
-        "facts in the mapping graph.\n\n"
-        "If `only_redirect=true`, the old subject facts are kept and a `new owl:sameAs old` triple is added "
-        "to the knowledge base graph. Otherwise, subject facts of `old` in the knowledge base graph are deleted.\n\n"
+        "Updates references from `old_iri` to `new_iri` in the knowledge base and mapping graphs.\n\n"
+        "By default, outgoing facts of the old entity are copied to the new entity, all incoming "
+        "references are rewritten, mapping entries are retargeted, and the old entity is removed.\n\n"
+        "Set `delete_old_only=true` to discard the outgoing facts of the old entity instead of copying "
+        "them. Incoming references and mapping entries are still rewritten to the new entity.\n\n"
+        "Set `only_redirect=true` to keep the old entity and its outgoing facts. In this mode, references "
+        "and mappings are still rewritten and a `new owl:sameAs old` triple is added.\n\n"
+        "`only_redirect` and `delete_old_only` are mutually exclusive."
     ),
-    tags=["RDF", "Semantics"], dependencies=[Depends(require_writable)]
+    tags=["RDF", "Semantics"],
+    dependencies=[Depends(require_writable)],
 )
 async def merge(
-    old_iri: str = Query(..., description="IRI of the entity to be merged (old / source)."),
-    new_iri: str = Query(..., description="IRI of the target entity (new / destination)."),
-    kb_graph_iri: str = Query(..., description="Named graph IRI of the knowledge base graph."),
-    map_graph_iri: str = Query(..., description="Named graph IRI of the mapping graph."),
+    old_iri: str = Query(
+        ...,
+        description=(
+            "IRI of the old entity. References to this entity will be rewritten to `new_iri`."
+        ),
+    ),
+    new_iri: str = Query(
+        ...,
+        description=(
+            "IRI of the target entity that will replace or absorb the old entity."
+        ),
+    ),
+    kb_graph_iri: str = Query(
+        ...,
+        description=(
+            "Named graph IRI containing the knowledge-base facts of both entities."
+        ),
+    ),
+    map_graph_iri: str = Query(
+        ...,
+        description=(
+            "Named graph IRI containing mapping entries that may reference the old entity."
+        ),
+    ),
     only_redirect: bool = Query(
         default=False,
-        description="If true, keep old KB subject facts and add a redirect triple (new owl:sameAs old).",
+        description=(
+            "Keep the old entity and its outgoing knowledge-base facts. Rewrite incoming references "
+            "and mappings to the new entity and add `new owl:sameAs old`. Cannot be combined with "
+            "`delete_old_only`."
+        ),
+    ),
+    delete_old_only: bool = Query(
+        default=False,
+        description=(
+            "Delete the outgoing knowledge-base facts of the old entity without copying them to the "
+            "new entity. Incoming references and mapping entries are still rewritten to the new entity. "
+            "Cannot be combined with `only_redirect`."
+        ),
     ),
     dedup_mapping: bool = Query(
         default=False,
-        description="If true, deduplicate and merge all mappings targeting new_iri",
-    )    ,
+        description=(
+            "After retargeting mapping entries, merge or remove duplicate mappings that target the "
+            "new entity."
+        ),
+    ),
 ) -> dict:
     from .global_store import get_graph
+
     store = global_store.get_store()
 
     old = safeNamedNode(old_iri)
     new = safeNamedNode(new_iri)
 
     if old == new:
-        raise HTTPException(status_code=400, detail="old_iri and new_iri must be different.")
+        raise HTTPException(
+            status_code=400,
+            detail="old_iri and new_iri must be different.",
+        )
+
+    if only_redirect and delete_old_only:
+        raise HTTPException(
+            status_code=400,
+            detail="only_redirect and delete_old_only cannot both be true.",
+        )
 
     checked_graph_map, _ = get_graph(map_graph_iri)
     checked_graph_kb, _ = get_graph(kb_graph_iri)
+
     if not checked_graph_map or not checked_graph_kb:
         raise HTTPException(
             status_code=400,
-            detail=f"Knowledge base or mapping graph not found or empty",
+            detail="Knowledge base or mapping graph not found or empty.",
         )
-    
-    def has_subject_in_graph(store: Store, subj: NamedNode, graph: NamedNode) -> bool:
-        return any(True for _ in store.quads_for_pattern(subj, None, None, graph_name=graph))
 
-    if not has_subject_in_graph(store, old, checked_graph_kb) or not has_subject_in_graph(store, new, checked_graph_kb):
+    def has_subject_in_graph(
+        store: Store,
+        subject: NamedNode,
+        graph: NamedNode,
+    ) -> bool:
+        return any(
+            True
+            for _ in store.quads_for_pattern(
+                subject,
+                None,
+                None,
+                graph_name=graph,
+            )
+        )
+
+    if (
+        not has_subject_in_graph(store, old, checked_graph_kb)
+        or not has_subject_in_graph(store, new, checked_graph_kb)
+    ):
         raise HTTPException(
             status_code=400,
-            detail="Knowledge base does not contain facts about old/new IRI",
+            detail="Knowledge base does not contain facts about old/new IRI.",
         )
-    
+
     merge_entities(
         store,
         old,
         new,
         only_redirect=only_redirect,
+        delete_old_only=delete_old_only,
         map_graph=checked_graph_map,
         KB_graph=checked_graph_kb,
-        dedup_mapping=dedup_mapping
+        dedup_mapping=dedup_mapping,
     )
 
     return {
         "only_redirect": only_redirect,
+        "delete_old_only": delete_old_only,
         "dedup_mapping": dedup_mapping,
         "old": str(old),
         "new": str(new),
         "kb_graph": str(checked_graph_kb),
-        "map_graph": str(checked_graph_map)
+        "map_graph": str(checked_graph_map),
     }
-
-
 
 @router.post(
     "/kb-map-sync",
-    summary="Synchronize knowledge base entities and mapping entries",
+    summary="Synchronize knowledge-base entities and mapping entries",
     description=(
-        "Synchronizes entities in the knowledge base graph with mapping entries in the mapping graph.\n\n"
-        "- direction=auto chooses a direction based on whether mapping/entities exist.\n"
-        "- execute=false performs only validation and direction resolution (dry run).\n"
-        "- execute=true performs the actual synchronization and returns counters."
+        "Synchronizes entities in a knowledge-base graph with entries in a mapping graph.\n\n"
+        "Supported directions:\n"
+        "- `mapping_to_kb`: create missing knowledge-base entities for mapping targets.\n"
+        "- `kb_to_mapping`: create missing mapping entries for knowledge-base entities.\n"
+        "- `both`: perform both operations.\n"
+        "- `auto`: select `mapping_to_kb` if only mappings exist, `kb_to_mapping` if only "
+        "entities exist, and `both` otherwise.\n\n"
+        "By default, the endpoint performs a dry run. Set `execute=true` to modify the store."
     ),
-    tags=["RDF"], dependencies=[Depends(require_writable)]
+    tags=["RDF", "Synchronization"],
+    dependencies=[Depends(require_writable)],
 )
 async def kb_map_sync(
-    entity_graph_iri: str = Query(..., description="Named graph IRI of the knowledge base (entities)."),
-    map_graph_iri: str = Query(..., description="Named graph IRI of the mapping graph (zmap entries)."),
-    direction: TypingLiteral["auto", "mapping_to_kb", "kb_to_mapping", "both"] = Query(
-        default="auto",
-        description="Synchronization direction.",
+    knowledge_base_graph_iri: str = Query(
+        ...,
+        description=(
+            "Named graph IRI containing the knowledge-base entities. "
+            "The graph may be created implicitly when it does not yet exist."
+        ),
     ),
-    seed_mapping_labels: bool = Query(
-        default=True,
-        description="If true, seed mapping entry labels from entity rdfs:label.",
+    mapping_graph_iri: str = Query(
+        ...,
+        description=(
+            "Named graph IRI containing the mapping entries. "
+            "The graph may be created implicitly when it does not yet exist."
+        ),
+    ),
+    direction: TypingLiteral[
+        "auto",
+        "mapping_to_kb",
+        "kb_to_mapping",
+        "both",
+    ] = Query(
+        default="auto",
+        description=(
+            "Synchronization direction. `auto` resolves the direction from the current graph contents."
+        ),
     ),
     create_missing_entities: bool = Query(
         default=True,
-        description="If true, create missing entities for mapping targets.",
+        description=(
+            "Applicable to `mapping_to_kb` and `both`. Create an entity when a mapping target "
+            "has no subject facts in the knowledge-base graph."
+        ),
+    ),
+    create_missing_mappings: bool = Query(
+        default=True,
+        description=(
+            "Applicable to `kb_to_mapping` and `both`. Create a mapping entry for each entity "
+            "that is not currently referenced as a mapping target."
+        ),
+    ),
+    seed_mapping_labels: bool = Query(
+        default=True,
+        description=(
+            "Applicable when mapping entries are created or updated. Copy the entity's first "
+            "`rdfs:label` value to the mapping entry when no equivalent mapping label exists."
+        ),
     ),
     default_entity_types: list[str] | None = Query(
         default=None,
-        description="Fallback RDF types (IRIs) to assign when creating missing entities.",
+        description=(
+            "Fallback RDF type IRIs assigned to entities created from mapping entries when the "
+            "mapping entry provides no type hints. May be specified multiple times."
+        ),
     ),
     execute: bool = Query(
         default=False,
-        description="If true, performs the synchronization. If false, returns only checks and resolved direction.",
+        description=(
+            "If false, validate the request and resolve the synchronization direction without "
+            "modifying the store. If true, perform the synchronization."
+        ),
     ),
 ) -> dict[str, Any]:
     from .global_store import get_graph
     store = global_store.get_store()
 
-    entity_graph, _ = get_graph(entity_graph_iri)
-    map_graph, _ = get_graph(map_graph_iri)
+    entity_graph, _ = get_graph(knowledge_base_graph_iri)
+    map_graph, _ = get_graph(mapping_graph_iri)
 
 
 
@@ -850,9 +978,9 @@ async def kb_map_sync(
         )
     
     if not entity_graph:
-        entity_graph=safeNamedNode(entity_graph_iri)
+        entity_graph=safeNamedNode(knowledge_base_graph_iri)
     if not map_graph:
-        map_graph=safeNamedNode(map_graph_iri)
+        map_graph=safeNamedNode(mapping_graph_iri)
 
     # Resolve direction in the same way as sync_kb_mapping does (dry-run)
     has_mapping = any(True for _ in iter_mapping_entries(store, map_graph)) if map_graph else False
@@ -888,15 +1016,27 @@ async def kb_map_sync(
         direction=resolved_direction,
         seed_mapping_labels=seed_mapping_labels,
         create_missing_entities=create_missing_entities,
+        create_missing_mappings=create_missing_mappings,
         default_entity_types=default_entity_types,
     )
 
     # JSON safe return
     return {
-        "execute": True,
-        "entity_graph": str(entity_graph),
-        "map_graph": str(map_graph),
-        **result,
+        "execute": False,
+        "knowledge_base_graph": str(entity_graph),
+        "mapping_graph": str(map_graph),
+        "requested_direction": direction,
+        "resolved_direction": resolved_direction,
+        "checks": {
+            "has_entities": has_entities,
+            "has_mapping_entries": has_mapping,
+        },
+        "options": {
+            "create_missing_entities": create_missing_entities,
+            "create_missing_mappings": create_missing_mappings,
+            "seed_mapping_labels": seed_mapping_labels,
+            "default_entity_types": default_entity_types or [],
+        },
     }
 
 @router.delete(
