@@ -23,6 +23,7 @@ except Exception:
 _KRAKEN_NET: dict[tuple[str, str], object] = {}
 _KRAKEN_SEG: dict[tuple[str, str], object] = {}
 _NO_UPSCALE_HOSTS: set[str] = set()
+_IIIF_FALLBACK_SIZE_BY_HOST: dict[str, str] = {}
 
 @dataclass(frozen=True)
 class ReplaceRule:
@@ -1143,13 +1144,36 @@ def iiif_manifest_to_image_urls(
         )
     ]
 
-def _force_full_url(iiif_url: str, fmt: str, quality: str) -> str:
+def _force_full_url_deprecated(iiif_url: str, fmt: str, quality: str) -> str:
     if "/full/" not in iiif_url:
         return iiif_url
     base = iiif_url.split("/full/")[0].rstrip("/")
     return f"{base}/full/full/0/{quality}.{fmt}"
 
-def fetch_pil_image(
+def _force_full_url(iiif_url: str, fmt: str = None, quality: str = None) -> str:
+    try:
+        base, rest = iiif_url.split("/full/", 1)
+        _size, tail = rest.split("/", 1)
+        return f"{base}/full/full/{tail}"
+    except ValueError:
+        return iiif_url
+    
+def _get_iiif_size(iiif_url: str) -> str | None:
+    try:
+        rest = iiif_url.split("/full/", 1)[1]
+        return rest.split("/", 1)[0]
+    except (IndexError, ValueError):
+        return None
+        
+def _replace_iiif_size(iiif_url: str, new_size: str) -> str:
+    try:
+        base, rest = iiif_url.split("/full/", 1)
+        _old_size, tail = rest.split("/", 1)
+        return f"{base}/full/{new_size}/{tail}"
+    except ValueError:
+        return iiif_url
+        
+def fetch_pil_image_deprecated(
     url: str,
     *,
     timeout: int = 30,
@@ -1188,27 +1212,190 @@ def fetch_pil_image(
             return None
         
         except requests.HTTPError as e:
-        
             last_exc = e
-            status = getattr(getattr(e, "response", None), "status_code", None)
+            response = getattr(e, "response", None)
+            status = getattr(response, "status_code", None)
+            body = (getattr(response, "text", "") or "").lower()
 
-            if status == 403 and (not strict_tried) and "/full/" in url:
-                _NO_UPSCALE_HOSTS.add(host)                
-                url = _force_full_url(url, fmt=iiif_format, quality=iiif_quality)
+            scaling_error = (
+                status == 403
+                or (
+                    status in (400, 501)
+                    and (
+                        "scale" in body
+                        or "upscal" in body
+                        or "in excess of 100%" in body
+                    )
+                )
+            )
+
+            if scaling_error and not strict_tried and "/full/" in url:
+                _NO_UPSCALE_HOSTS.add(host)
+                url = _force_full_url(url)
                 strict_tried = True
-                logger.warning(f"{host} does not support scaling, using full images for this host")
+                logger.warning(
+                    f"{host} rejected requested image size; using full size"
+                )
                 continue
 
             if status in (502, 503, 504) and attempt < retries:
                 time.sleep(backoff ** attempt)
                 continue
 
-            logger.error(f"HTTP Fetching image failed for {url}: {e}")
+            logger.error(f"HTTP fetching image failed for {url}: {e}")
+
             if status is not None:
                 raise
+
             return None
+        
+        # except requests.HTTPError as e:
+        
+        #     last_exc = e
+        #     status = getattr(getattr(e, "response", None), "status_code", None)
+
+        #     if status == 403 and (not strict_tried) and "/full/" in url:
+        #         _NO_UPSCALE_HOSTS.add(host)                
+        #         url = _force_full_url(url, fmt=iiif_format, quality=iiif_quality)
+        #         strict_tried = True
+        #         logger.warning(f"{host} does not support scaling, using full images for this host")
+        #         continue
+
+        #     if status in (502, 503, 504) and attempt < retries:
+        #         time.sleep(backoff ** attempt)
+        #         continue
+
+        #     logger.error(f"HTTP Fetching image failed for {url}: {e}")
+        #     if status is not None:
+        #         raise
+        #     return None
+
         except Exception as e:
             logger.error(f"Fetching image failed for {url}: {e}")
+
+    logger.error(f"Fetching image failed for {url}: {last_exc}")
+    return None
+
+def fetch_pil_image(
+    url: str,
+    *,
+    timeout: int = 30,
+    retries: int = 3,
+    backoff: float = 1.5,
+    iiif_format: str = "jpg",
+    iiif_quality: str = "default",
+):
+    last_exc = None
+
+    iiif_format = iiif_format.lstrip(".")
+    iiif_quality = iiif_quality or "default"
+
+    host = urlparse(url).netloc
+
+    cached_fallback = _IIIF_FALLBACK_SIZE_BY_HOST.get(host)
+    if cached_fallback and "/full/" in url:
+        url = _replace_iiif_size(url, cached_fallback)
+
+    fallback_count = 0
+
+    for attempt in range(retries + 1):
+        try:
+            connect_timeout = min(timeout / 2, 10)
+            read_timeout = max(timeout * 2, 60)
+
+            r = requests.get(
+                url,
+                timeout=(connect_timeout, read_timeout),
+                headers=APP_USER,
+            )
+            r.raise_for_status()
+
+            with Image.open(BytesIO(r.content)) as img:
+                return img.convert("RGB").copy()
+
+        except (
+            requests.ReadTimeout,
+            requests.Timeout,
+            requests.ConnectionError,
+        ) as e:
+            last_exc = e
+
+            if attempt < retries:
+                time.sleep(backoff ** attempt)
+                continue
+
+            logger.error(f"Fetching image failed for {url}: {e}")
+            return None
+
+        except requests.HTTPError as e:
+            last_exc = e
+
+            response = getattr(e, "response", None)
+            status = getattr(response, "status_code", None)
+            body = (getattr(response, "text", "") or "").lower()
+            current_size = _get_iiif_size(url)
+
+            scaling_error = (
+                status == 403
+                or (
+                    status in (400, 501)
+                    and (
+                        "scale" in body
+                        or "upscal" in body
+                        or "in excess of 100%" in body
+                    )
+                )
+            )
+
+            invalid_max = (
+                status in (400, 404, 501)
+                and current_size == "max"
+                and (
+                    "invalid size" in body
+                    or "unsupported" in body
+                    or status in (404, 501)
+                )
+            )
+
+            if (
+                scaling_error
+                and fallback_count == 0
+                and "/full/" in url
+            ):
+                url = _replace_iiif_size(url, "max")
+                fallback_count = 1
+
+                logger.warning(
+                    f"{host} rejected size {current_size!r}; "
+                    "retrying with IIIF size 'max'"
+                )
+                continue
+
+            if invalid_max and fallback_count == 1:
+                url = _replace_iiif_size(url, "full")
+                fallback_count = 2
+
+                logger.warning(
+                    f"{host} does not accept IIIF size 'max'; "
+                    "retrying with legacy size 'full'"
+                )
+                continue
+
+            if status in (502, 503, 504) and attempt < retries:
+                time.sleep(backoff ** attempt)
+                continue
+
+            logger.error(f"HTTP fetching image failed for {url}: {e}")
+
+            if status is not None:
+                raise
+
+            return None
+
+        except Exception as e:
+            last_exc = e
+            logger.error(f"Fetching image failed for {url}: {e}")
+            return None
 
     logger.error(f"Fetching image failed for {url}: {last_exc}")
     return None
@@ -1366,7 +1553,7 @@ def iter_pages(
     if src_kind == "file":
         kind = detect_file_kind(src_path)
     else:
-        kind = detect_url_kind(input, timeout=timeout)
+        kind = detect_url_kind(input, timeout=timeout, request_headers=APP_USER)
 
     def _abort_log(status):
         logger.error(f"**********************\n\n{doc_id}: Aborting IIIF manifest after repeated HTTP {status}")
@@ -1387,7 +1574,7 @@ def iter_pages(
         logger.warning("Has not downloaded PDF to save traffic")
         yield _log_and_yield(PageItem(start_page, "sniff", "", source=f"url:{src_path}", total=-1),-1)
 
-    if kind in ("json", "iiif"):    
+    if kind == "iiif": # in ("json", "iiif"):    
         if src_kind == "file":
             manifest = json.loads(src_path.read_text(encoding="utf-8"))
         else:
@@ -1726,7 +1913,6 @@ def iter_pages(
 
             data = json.loads(raw)
 
-            # --- Paginierung ---
             if json_policy.page_path:
                 pages = _json_get_path(data, json_policy.page_path)
             else:
@@ -1735,7 +1921,6 @@ def iter_pages(
             if pages is None:
                 pages = []
 
-            # normalize: immer Liste
             if not isinstance(pages, list):
                 pages = [pages]
 
@@ -1752,7 +1937,7 @@ def iter_pages(
                     total,
                 )
 
-            # --- Yield pro Element ---
+            # --- Yield per Element ---
             for i, item in enumerate(pages, start=1):
                 if i < start_page:
                     continue
@@ -1776,22 +1961,6 @@ def iter_pages(
         except Exception as e:
             logger.error(f"{doc_id}: Reading JSON {input}: {e}")
         return
-
-    # if kind in ("text", "html", "xml"): # TODO XML parsing
-    #     try:
-    #         if src_kind == "file":
-    #             raw = src_path.read_text(encoding="utf-8")
-    #         else:
-    #             r = requests.get(input, timeout=timeout, headers=APP_USER)
-    #             r.raise_for_status()
-    #             if not r.encoding:
-    #                 r.encoding = "utf-8"
-    #             raw = r.text
-    #         aPage = PageItem(1, "text", raw, source=f"{kind}:{input}", total=1)
-    #         yield _log_and_yield(aPage,1)
-    #     except Exception as e:
-    #         logger.error(f"{doc_id}: Reading {kind.upper()} {input}: {e}")
-    #     return
     
     if kind == "csv":
         try:

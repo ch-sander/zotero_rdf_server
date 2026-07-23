@@ -1,12 +1,7 @@
-import json
-import re, os, threading
 from typing import Literal, Optional, Any
 from urllib.parse import urlparse
-import requests
-import subprocess, importlib, sys, os
+import subprocess, importlib, sys, os, hashlib, csv, datetime, json, re, os, threading, requests
 from pathlib import Path
-import hashlib
-import datetime
 from functools import lru_cache
 from typing import Any
 from uuid import uuid4
@@ -294,6 +289,26 @@ def _norm_ctype(ctype: str) -> str:
 def _looks_like_pdf(prefix: bytes) -> bool:
     return prefix.startswith(b"%PDF-")
 
+def _looks_like_csv(prefix: bytes) -> bool:
+    try:
+        sample = prefix.decode("utf-8-sig", errors="strict")
+        lines = [line for line in sample.splitlines() if line.strip()]
+
+        if len(lines) < 2:
+            return False
+
+        dialect = csv.Sniffer().sniff(
+            "\n".join(lines[:20]),
+            delimiters=",;\t|",
+        )
+
+        rows = list(csv.reader(lines[:20], dialect))
+        widths = [len(row) for row in rows if row]
+
+        return bool(widths) and min(widths) > 1 and len(set(widths)) == 1
+    except (UnicodeDecodeError, csv.Error):
+        return False
+    
 def _strip_bom_and_ws(b: bytes) -> bytes:
     # UTF-8 BOM + leading whitespace/newlines
     if b.startswith(b"\xef\xbb\xbf"):
@@ -329,6 +344,13 @@ _IIIF_CTX_RE = re.compile(r"iiif\.io/api/presentation/[23]/", re.I)
 _IIIF_MANIFEST_TYPE_RE = re.compile(r'"(@type|type)"\s*:\s*"(sc:Manifest|Manifest)"', re.I)
 _IIIF_SC_TYPE_RE = re.compile(r'"@type"\s*:\s*"sc:[A-Za-z]+"\s*', re.I)
 _IIIF_URL_HINT_RE = re.compile(r'(iiif|i3f|/iiif/)', re.I)
+
+_JSON_LEADING_BYTES = b"\xef\xbb\xbf \t\r\n"
+
+def _looks_like_json_start(data: bytes) -> bool:
+    return bool(data) and data.lstrip(_JSON_LEADING_BYTES).startswith(
+        (b"{", b"[")
+    )
 
 def _is_probably_iiif_json_bytes(b: bytes) -> bool:
     s = b.decode("utf-8", errors="ignore")
@@ -387,8 +409,298 @@ def _is_probably_iiif_json(
 
     return False
 
+def _kind_from_url_path(url: str) -> Optional[Kind]:
+    path = urlparse(url).path.lower()
+    suffix = Path(path).suffix.lower()
+
+    return {
+        ".pdf": "pdf",
+        ".json": "json",
+        ".xml": "xml",
+        ".html": "html",
+        ".htm": "html",
+        ".xhtml": "html",
+        ".txt": "text",
+        ".text": "text",
+        ".csv": "csv",
+    }.get(suffix)
+
 
 def detect_url_kind(
+    url: str,
+    timeout: int = 30,
+    sniff_bytes: int = 16_384,
+    session: Optional[requests.Session] = None,
+    request_headers: Optional[dict[str, str]] = None,
+) -> Kind:
+    url = url.strip().rstrip("\u2060\u200b\ufeff")
+
+    owns_session = session is None
+    s = session or requests.Session()
+
+    headers = dict(request_headers or {})
+    headers.setdefault(
+        "Accept",
+        (
+            "application/ld+json, "
+            "application/json;q=0.9, "
+            "application/xml;q=0.8, "
+            "text/csv;q=0.7, "
+            "text/html;q=0.6, "
+            "text/plain;q=0.5, "
+            "*/*;q=0.1"
+        ),
+    )
+
+    try:
+        with s.get(
+            url,
+            stream=True,
+            allow_redirects=True,
+            headers=headers,
+            timeout=timeout,
+        ) as response:
+            response.raise_for_status()
+
+            content_type = _norm_ctype(
+                response.headers.get("Content-Type", "")
+            )
+
+            response.raw.decode_content = True
+            prefix = response.raw.read(sniff_bytes) or b""
+
+            # Body signatures are stronger than metadata.
+            if _looks_like_pdf(prefix):
+                return "pdf"
+
+            json_candidate = (
+                _looks_like_json_start(prefix)
+                or _sniff_text_vs_json(prefix) == "json"
+                or content_type == "application/json"
+                or content_type.endswith("+json")
+            )
+
+            if json_candidate:
+                return (
+                    "iiif"
+                    if _is_probably_iiif_json_bytes(prefix)
+                    else "json"
+                )
+
+            markup_kind = _sniff_markup(prefix)
+            if markup_kind:
+                return markup_kind
+
+            if content_type in (
+                "text/html",
+                "application/xhtml+xml",
+            ):
+                return "html"
+
+            if (
+                content_type in ("application/xml", "text/xml")
+                or content_type.endswith("+xml")
+            ):
+                return "xml"
+
+            if content_type in (
+                "text/csv",
+                "application/csv",
+                "application/vnd.ms-excel",
+            ):
+                return "csv"
+
+            path_kind = _kind_from_url_path(response.url)
+
+            # Only trust a CSV extension if the content also resembles CSV.
+            if path_kind == "csv":
+                return "csv" if _looks_like_csv(prefix) else "text"
+
+            # Extensions are weak hints, but useful when MIME types are generic.
+            if path_kind in {
+                "pdf",
+                "json",
+                "xml",
+                "html",
+                "text",
+            }:
+                return path_kind
+
+            return "text"
+
+    except requests.HTTPError as exc:
+        status = (
+            exc.response.status_code
+            if exc.response is not None
+            else None
+        )
+
+        plugin_logger().warning(
+            "URL type detection failed for %r with HTTP %r: %s",
+            url,
+            status,
+            exc,
+        )
+
+        return _kind_from_url_path(url) or "text"
+
+    except requests.RequestException as exc:
+        plugin_logger().warning(
+            "URL type detection failed for %r: %s",
+            url,
+            exc,
+        )
+
+        return _kind_from_url_path(url) or "text"
+
+    finally:
+        if owns_session:
+            s.close()
+
+def detect_url_kind_1(
+    url: str,
+    timeout: int = 30,
+    sniff_bytes: int = 16384,
+    session: Optional[requests.Session] = None,
+    request_headers: Optional[dict[str, str]] = None,
+) -> Kind:
+    s = session or requests.Session()
+
+    base_headers = dict(request_headers or {})
+    base_headers.setdefault(
+        "Accept",
+        (
+            "application/ld+json, "
+            "application/json;q=0.9, "
+            "application/xml;q=0.8, "
+            "text/html;q=0.7, "
+            "*/*;q=0.1"
+        ),
+    )
+
+    # HEAD
+    ctype = ""
+    try:
+        with s.head(
+            url,
+            allow_redirects=True,
+            headers=base_headers,
+            timeout=timeout,
+        ) as h:
+            ctype = _norm_ctype(h.headers.get("Content-Type", ""))
+
+            if ctype == "application/pdf":
+                return "pdf"
+
+    except requests.RequestException:
+        pass
+
+    def get_prefix(use_range: bool) -> tuple[requests.Response, bytes]:
+        headers = dict(base_headers)
+
+        if use_range:
+            headers["Range"] = f"bytes=0-{sniff_bytes - 1}"
+
+        plugin_logger().debug(
+            "detect_url_kind request: url=%r headers=%r use_range=%s",
+            url,
+            headers,
+            use_range,
+        )
+
+        r = s.get(
+            url,
+            stream=True,
+            allow_redirects=True,
+            headers=headers,
+            timeout=timeout,
+        )
+
+        try:
+            r.raise_for_status()
+            r.raw.decode_content = True
+            prefix = r.raw.read(sniff_bytes) or b""
+            return r, prefix
+        except Exception:
+            r.close()
+            raise
+
+    try:
+        try:
+            r, prefix = get_prefix(use_range=True)
+        except requests.HTTPError as exc:
+            status = getattr(exc.response, "status_code", None)
+
+            if status == 403:
+                plugin_logger().debug(
+                    "Range request forbidden for %r; retrying without Range",
+                    url,
+                )
+                r, prefix = get_prefix(use_range=False)
+            else:
+                raise
+        except requests.RequestException:
+            r, prefix = get_prefix(use_range=False)
+
+        with r:
+            ctype_get = (
+                _norm_ctype(r.headers.get("Content-Type", ""))
+                or ctype
+            )
+
+            if _looks_like_pdf(prefix):
+                return "pdf"
+
+            json_candidate = (
+                _looks_like_json_start(prefix)
+                or _sniff_text_vs_json(prefix) == "json"
+                or ctype_get == "application/json"
+                or ctype_get.endswith("+json")
+            )
+
+
+            if json_candidate:
+                is_iiif = _is_probably_iiif_json_bytes(prefix)
+                return "iiif" if is_iiif else "json"
+            
+            mk = _sniff_markup(prefix)
+            if mk:
+                return mk
+
+            if ctype_get in ("text/html", "application/xhtml+xml"):
+                return "html"
+
+            if (
+                ctype_get in ("application/xml", "text/xml")
+                or ctype_get.endswith("+xml")
+            ):
+                return "xml"
+            
+            csv_content_type = ctype_get in (
+                "text/csv",
+                "application/csv",
+                "application/vnd.ms-excel",
+            )
+
+            csv_extension = urlparse(r.url).path.lower().endswith(".csv")
+
+            if csv_content_type:
+                return "csv"
+
+            if csv_extension and _looks_like_csv(prefix):
+                return "csv"
+
+            return "text"
+
+    except requests.RequestException as e:
+        plugin_logger().warning(
+            "URL type detection failed for %r: %s",
+            url,
+            e,
+        )
+        return "text"
+    
+def detect_url_kind_deprecated(
     url: str,
     timeout: int = 30,
     sniff_bytes: int = 16384,
@@ -477,20 +789,20 @@ def format_size(size: int) -> str:
     return f"{size:.1f} TB"
 
 
-def _save_pil(im, path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    im.save(path)
+# def _save_pil(im, path: Path) -> None:
+#     path.parent.mkdir(parents=True, exist_ok=True)
+#     im.save(path)
 
-    width, height = im.size
-    file_size = path.stat().st_size
+#     width, height = im.size
+#     file_size = path.stat().st_size
 
-    logger.info(
-        "Stored image file: %s (%dx%d px, %s)",
-        path,
-        width,
-        height,
-        _format_size(file_size),
-    )
+#     logger.info(
+#         "Stored image file: %s (%dx%d px, %s)",
+#         path,
+#         width,
+#         height,
+#         _format_size(file_size),
+#     )
 
 
 def safe_doc_id(doc_id: str) -> str:
