@@ -15,6 +15,21 @@ from zotero_rdf_server.config import OS_MAX_SIZE as MAX_SIZE
 router = APIRouter()
 open_router = APIRouter()
 
+@open_router.get("test-url-kinds")
+def test_url_kinds():
+    from dataclasses import asdict
+    from .tests import test_url_kind_detection
+
+    results = test_url_kind_detection(verbose=True)
+    passed = sum(result.passed for result in results)
+
+    return {
+        "total": len(results),
+        "passed": passed,
+        "failed": len(results) - passed,
+        "results": [asdict(result) for result in results],
+    }
+
 class OcrPage(BaseModel):
     index: int = Field(..., description="0-based page index")
     text: str = Field(..., description="Extracted text for this page")
@@ -314,7 +329,7 @@ def ingest_route(
 ):
     from .pipeline import ingest_pipeline
     from .helpers import convert_bindings, get_worker_slice
-    import csv
+    import csv   
     run_ids = []
     if total_workers is not None and total_workers > 0:
         if worker_id >= total_workers:
