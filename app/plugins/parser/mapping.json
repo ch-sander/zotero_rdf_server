@@ -143,6 +143,10 @@
                     "operator": "OR",
                     "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
                     "targetObject": "http://xmlns.com/foaf/0.1/Agent"
+                }, {
+                    "operator": "OR",
+                    "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+                    "targetObject": "https://semantic-html.org/vocab#Entity"
                 }
             ],
             "SAME": [{
@@ -152,6 +156,7 @@
                 }
             ],
             "allowCreate": true,
+            "entityTypeSource": "mapping_or_rule",
             "mapProperty": "http://www.w3.org/2002/07/owl#sameAs",
             "mapLabel": "https://zotero-rdf-server.org/mapping/label",
             "knowledgeBaseGraph": "https://data.scigma.de/resources/entities",
@@ -190,6 +195,10 @@
                     "operator": "OR",
                     "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
                     "targetObject": "http://www.w3.org/2004/02/skos/core#Concept"
+                }, {
+                    "operator": "OR",
+                    "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+                    "targetObject": "https://semantic-html.org/vocab#Concept"
                 }
             ],
             "SAME": [{
@@ -198,6 +207,7 @@
                 }
             ],
             "allowCreate": true,
+            "entityTypeSource": "mapping_or_rule",
             "mapProperty": "http://www.w3.org/2002/07/owl#sameAs",
             "mapLabel": "https://zotero-rdf-server.org/mapping/label",
             "knowledgeBaseGraph": "https://data.scigma.de/resources/entities",
