@@ -111,6 +111,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                 fuzzy_rules = rule.get("FUZZY", [])
                 pool_rules = rule.get("POOL", [])
                 same_rules = rule.get("SAME", [])
+                type_source = rule.get("entityTypeSource","mapping_or_rule")
                 map_prop = safeNamedNode(rule.get("mapProperty", OWL_SAME_AS))
                 KB_graph = rule.get("knowledgeBaseGraph", None)
                 mapping_graph = rule.get("mappingBaseGraph", None)
@@ -241,7 +242,6 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                         except KeyError:
                             continue
 
-
                         # logger.info("############################################")
                         # logger.info(len(filter_source_store))
 
@@ -255,71 +255,269 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                                 pool_map_store.bulk_extend(store.quads_for_pattern(None, None, None, mapping_graph_uri))
                                 pool_map_store.bulk_extend(result_store.quads_for_pattern(None, None, None, mapping_graph_uri))
 
-                                for t in filter_target_subjects:
-                                    entries = find_entries_for_target(pool_map_store, t, mapping_graph_uri)
-                                    for entry in entries:                                        
-                                        quads = list(pool_map_store.quads_for_pattern(entry, None, None, graph_name=mapping_graph_uri))
-                                        pool_map.bulk_extend(quads)                            
-                                
-                                matched_node, score, matched_label = fuzzy_match_label(
+                                # for t in filter_target_subjects: # no constraining to entities alone
+                                #     entries = find_entries_for_target(pool_map_store, t, mapping_graph_uri)
+                                #     for entry in entries:                                        
+                                #         quads = list(pool_map_store.quads_for_pattern(entry, None, None, graph_name=mapping_graph_uri))
+                                #         pool_map.bulk_extend(quads)
+
+                                                       
+                                for quad in pool_map_store.quads_for_pattern(
+                                    None,
+                                    RDF_TYPE_NODE,
+                                    safeNamedNode(MAP_ENTRY_TYPE),
+                                    mapping_graph_uri,
+                                ):
+                                    pool_map.bulk_extend(
+                                        pool_map_store.quads_for_pattern(
+                                            quad.subject,
+                                            None,
+                                            None,
+                                            graph_name=mapping_graph_uri,
+                                        )
+                                    )  
+                                                                  
+                                matched_node, score, matched_label, matched_entry = fuzzy_match_label(
                                     pool_map,
                                     lit_value,
                                     threshold=fuzzy_threshold,
                                     graph_name=mapping_graph_uri,
                                     predicates=[map_label_prop],
-                                    regex=regex
+                                    regex=regex,
                                 )                                                                   
+                                if (
+                                    matched_node is not None
+                                    and filter_target_subjects
+                                    and matched_node not in filter_target_subjects
+                                ):
+                                    logger.info(
+                                        f"Matched mapping target {matched_node} is outside the target pool"
+                                    )
+                                    matched_node = None
+                                    matched_entry = None
 
-                                if matched_node:
+                                if matched_node is not None:
                                     result_store.add(Quad(domain_node, map_prop, matched_node, dp.graph_name))
                                     logger.debug(f"[FUZZY] Matched {lit_value} to {matched_label} ({score}%)")
-
-                                    entry = ensure_entry(result_store, matched_node, map_graph=mapping_graph_uri, type_hints=list(type_hints))
+                                    if matched_entry is None:
+                                        entry = ensure_entry(result_store, matched_node, map_graph=mapping_graph_uri, type_hints=list(type_hints))
+                                    else:
+                                        entry = matched_entry
                                     ensure_mapping_literal(result_store, entry, lit_value, map_label_prop, mapping_graph_uri)                               
                                     
+                                elif allow_create:
+                                    entry = matched_entry
 
-                                elif allow_create: # TODO uuid4 because same literal may have multiple types?
-                                    ENTITY_UUID = uuid5(NAMESPACE_URL, str(entity_graph_uri.value))
-                                    iri_suffix = uuid4() or uuid5(ENTITY_UUID, lit_value)
-                                    base_uri = parser_cfg.get('base_uri', f"{str(entity_graph_uri.value).rstrip('/')}") 
-                                    new_node = safeNamedNode(f"{base_uri}/{iri_suffix}") # {KB_graph}/semantic_html/{iri_suffix}
+                                    # Prefer mapping entry type hints over rule-derived type hints.
+                                    entry_type_hints = []
 
-                                    for p in pool_rules:
+                                    if entry is not None:
+                                        entry_type_hints = [
+                                            q.object.value
+                                            for q in pool_map.quads_for_pattern(
+                                                entry,
+                                                safeNamedNode(MAP_TYPE_HINT),
+                                                None,
+                                                mapping_graph_uri,
+                                            )
+                                        ]
+
+                                    rule_type_hints = [
+                                        safeNamedNode(type_hint)
+                                        for type_hint in type_hints
+                                    ]
+
+                                    effective_type_hints = select_entity_types(
+                                        rule_types=rule_type_hints,
+                                        mapping_types=entry_type_hints,
+                                        type_source=type_source,
+                                    )
+
+                                    # Prefer rdfs:label, then mapping label, then the input literal.
+                                    entry_label_quad = None
+
+                                    if entry is not None:
+                                        entry_label_quad = next(
+                                            pool_map.quads_for_pattern(
+                                                entry,
+                                                RDFS_LABEL_NODE,
+                                                None,
+                                                mapping_graph_uri,
+                                            ),
+                                            None,
+                                        )
+
+                                        if entry_label_quad is None:
+                                            entry_label_quad = next(
+                                                pool_map.quads_for_pattern(
+                                                    entry,
+                                                    map_label_prop,
+                                                    None,
+                                                    mapping_graph_uri,
+                                                ),
+                                                None,
+                                            )
+
+                                    entity_label = (
+                                        entry_label_quad.object
+                                        if entry_label_quad is not None
+                                        else Literal(lit_value)
+                                    )
+
+                                    entity_uuid = uuid5(
+                                        NAMESPACE_URL,
+                                        str(entity_graph_uri.value),
+                                    )
+
+                                    iri_suffix = stable_entity_uuid(
+                                        lit_value,
+                                        sorted(str(type_hint) for type_hint in effective_type_hints),
+                                        ENTITY_UUID=entity_uuid,
+                                    )
+
+                                    base_uri = parser_cfg.get(
+                                        "base_uri",
+                                        str(entity_graph_uri.value).rstrip("/"),
+                                    )
+
+                                    new_node = safeNamedNode(
+                                        f"{base_uri}/{iri_suffix}"
+                                    )
+
+                                    # Apply non-type properties from the rule.
+                                    for pool_rule in pool_rules:
                                         try:
-                                            result_store.add(Quad(
-                                                new_node,
-                                                safeNamedNode(p["targetProperty"]),
-                                                safeNamedNode(p["targetObject"]),
-                                                entity_graph_uri
-                                            ))
+                                            rule_property = safeNamedNode(
+                                                pool_rule["targetProperty"]
+                                            )
+
+                                            if rule_property == NamedNode(RDF_TYPE):
+                                                continue
+
+                                            result_store.add(
+                                                Quad(
+                                                    new_node,
+                                                    rule_property,
+                                                    safeNamedNode(pool_rule["targetObject"]),
+                                                    entity_graph_uri,
+                                                )
+                                            )
                                         except KeyError:
                                             continue
 
-                                    result_store.add(Quad(new_node, target_prop, Literal(lit_value), entity_graph_uri))
-                                    if target_prop != NamedNode(RDFS_LABEL):
-                                        result_store.add(Quad(new_node, NamedNode(RDFS_LABEL), Literal(lit_value), entity_graph_uri))
-                                    
-                                    result_store.add(Quad(domain_node, map_prop, new_node, dp.graph_name))                                    
+                                    logger.info(f"{entry}###{type_source}###{entity_label}###{effective_type_hints}")
+                                    # Apply mapping entry types or rule types.
+                                    for type_hint in effective_type_hints:
+                                        result_store.add(
+                                            Quad(
+                                                new_node,
+                                                RDF_TYPE_NODE,
+                                                safeNamedNode(type_hint),
+                                                entity_graph_uri,
+                                            )
+                                        )
 
-                                    entry = ensure_entry(result_store, new_node, map_graph=mapping_graph_uri, type_hints=list(type_hints))
-                                    ensure_mapping_literal(result_store, entry, lit_value, map_label_prop, mapping_graph_uri)
+                                    # Use the mapping entry label for entity even when target_prop is rdfs:label.
+                                    result_store.add(
+                                        Quad(
+                                            new_node,
+                                            RDFS_LABEL_NODE,
+                                            entity_label,
+                                            entity_graph_uri,
+                                        )
+                                    )
 
-                                    # Update pool                                
+                                    if target_prop not in {RDF_TYPE_NODE,RDFS_LABEL_NODE}:
+                                        result_store.add(
+                                            Quad(
+                                                new_node,
+                                                target_prop,
+                                                Literal(lit_value),
+                                                entity_graph_uri,
+                                            )
+                                        )
+
+                                    # add link from semz to entity
+                                    result_store.add(
+                                        Quad(
+                                            domain_node,
+                                            map_prop,
+                                            new_node,
+                                            dp.graph_name,
+                                        )
+                                    )
+
+                                    # add link from mapping to entity
+                                    if entry is not None:
+                                        result_store.add(
+                                            Quad(
+                                                entry,
+                                                safeNamedNode(MAP_TARGET),
+                                                new_node,
+                                                mapping_graph_uri,
+                                            )
+                                        )
+                                    else: # create mapping
+                                        entry = ensure_entry(
+                                            result_store,
+                                            new_node,
+                                            map_graph=mapping_graph_uri,
+                                            type_hints=effective_type_hints,
+                                        )
+
+                                    # update mapping labels
+                                    ensure_mapping_literal(
+                                        result_store,
+                                        entry,
+                                        lit_value,
+                                        map_label_prop,
+                                        mapping_graph_uri,
+                                    )
+
                                     filter_target_subjects.add(new_node)
 
-                                    if add_jsonld:                                        
-                                        try:
-                                            jsonld_copy = add_jsonld
-                                            if "@graph" in jsonld_copy:
-                                                logger.warning(f"[ADD] '@graph' found in ADD block and is ignored. Only single object additions are supported.")
-                                            else:                                            
-                                                jsonld_copy["@id"] = str(new_node.value)
-                                                result_store.load(json.dumps(jsonld_copy), to_graph=entity_graph_uri, format=RdfFormat.JSON_LD)
-                                                logger.debug(f"[ADD] Added JSON-LD supplement for {new_node}")                                             
-                                        except Exception as e:
-                                            logger.warning(f"[ADD] Failed to add JSON-LD for {new_node}: {e}")
+                                # elif allow_create:
+                                #     ENTITY_UUID = uuid5(NAMESPACE_URL, str(entity_graph_uri.value))
+                                #     iri_suffix = uuid4() or uuid5(ENTITY_UUID, lit_value)
+                                #     base_uri = parser_cfg.get('base_uri', f"{str(entity_graph_uri.value).rstrip('/')}") 
+                                #     new_node = safeNamedNode(f"{base_uri}/{iri_suffix}") # {KB_graph}/semantic_html/{iri_suffix}
 
-                                    logger.debug(f"[CREATE] New KB node for {lit_value} → {new_node}")
+                                #     for p in pool_rules:
+                                #         try:
+                                #             result_store.add(Quad(
+                                #                 new_node,
+                                #                 safeNamedNode(p["targetProperty"]),
+                                #                 safeNamedNode(p["targetObject"]),
+                                #                 entity_graph_uri
+                                #             ))
+                                #         except KeyError:
+                                #             continue
+
+                                #     result_store.add(Quad(new_node, target_prop, Literal(lit_value), entity_graph_uri))
+                                #     if target_prop != NamedNode(RDFS_LABEL):
+                                #         result_store.add(Quad(new_node, NamedNode(RDFS_LABEL), Literal(lit_value), entity_graph_uri))
+                                    
+                                #     result_store.add(Quad(domain_node, map_prop, new_node, dp.graph_name))                                    
+
+                                #     entry = ensure_entry(result_store, new_node, map_graph=mapping_graph_uri, type_hints=list(type_hints))
+                                #     ensure_mapping_literal(result_store, entry, lit_value, map_label_prop, mapping_graph_uri)
+
+                                #     # Update pool                                
+                                #     filter_target_subjects.add(new_node)
+
+                                #     if add_jsonld:                                        
+                                #         try:
+                                #             jsonld_copy = add_jsonld
+                                #             if "@graph" in jsonld_copy:
+                                #                 logger.warning(f"[ADD] '@graph' found in ADD block and is ignored. Only single object additions are supported.")
+                                #             else:                                            
+                                #                 jsonld_copy["@id"] = str(new_node.value)
+                                #                 result_store.load(json.dumps(jsonld_copy), to_graph=entity_graph_uri, format=RdfFormat.JSON_LD)
+                                #                 logger.debug(f"[ADD] Added JSON-LD supplement for {new_node}")                                             
+                                #         except Exception as e:
+                                #             logger.warning(f"[ADD] Failed to add JSON-LD for {new_node}: {e}")
+
+                                #     logger.debug(f"[CREATE] New KB node for {lit_value} → {new_node}")
 
                             except Exception as e:
                                 logger.error(f"[ERROR] Fuzzy match failed for '{lit_value}' with prop {domain_prop} → {target_prop}: {e}")

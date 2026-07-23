@@ -161,7 +161,7 @@ def safeNamedNode(uri: str | NamedNode, enforce: bool = True, allow_None: bool =
         # funcname = caller.function
         # logger.warning(f"Called from {filename}:{lineno} in {funcname}")
 
-        logger.info(f"Invalid IRI input (missing scheme), prepending 'http://': {uri}")
+        logger.warning(f"Invalid IRI input (missing scheme), prepending 'http://': {uri}")
         uri = "http://" + uri
         parsed = urlparse(uri)
 
@@ -170,7 +170,7 @@ def safeNamedNode(uri: str | NamedNode, enforce: bool = True, allow_None: bool =
             safe_iri = quote(uri, safe=':/#?&=%')
             return NamedNode(safe_iri)
         except ValueError as e:
-            logger.info(f"Invalid IRI converted to Literal or synthetic IRI: {uri} – {e}")
+            logger.warning(f"Invalid IRI converted to Literal or synthetic IRI: {uri} – {e}")
             if enforce:
                 fallback = quote(uri, safe="")
                 return NamedNode(f"{INTERNAL_IRI_PREFIX}{fallback}")
@@ -471,8 +471,20 @@ def ensure_mapping_literal(
     }
     if lit_value.lower() not in existing:
         store.add(Quad(subject, prop, Literal(lit_value), graph))
+        store.add(Quad(
+            subject,
+            NamedNode("http://purl.org/dc/terms/modified"),
+            Literal(
+                datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                datatype=NamedNode(f"{XSD_NS}dateTime"),
+            ),
+            graph,
+        ))
         logger.debug(f"[MAP] Added {prop.value} '{lit_value}' to {subject}")
-
+    # add rdfs
+    if not any(store.quads_for_pattern(subject, NamedNode(RDFS_LABEL), None, graph)):
+        store.add(Quad(subject, NamedNode(RDFS_LABEL), Literal(lit_value), graph))
+        logger.debug(f"[MAP] Added '{lit_value}' as rdfs:label to {subject}")
 
 def quads_by_type(store:Store,type_nodes:list, graph:NamedNode, type:NamedNode = NamedNode(RDF_TYPE)):
     result_store = Store()
@@ -486,7 +498,7 @@ def quads_by_type(store:Store,type_nodes:list, graph:NamedNode, type:NamedNode =
             result_store.bulk_extend(store.quads_for_pattern(quad.subject, None, None, graph))
     return result_store
 
-def fuzzy_match_label(
+def fuzzy_match_label_deprecated(
     pool_store: Store,
     label: str,
     threshold=90,
@@ -494,7 +506,7 @@ def fuzzy_match_label(
     predicates: list = [MAP_LABEL],
     regex: bool = False,
     max_matches: int = 1
-): # TODO include typeHint?
+): # TODO include typeHint? Done in pooling upstream
     logger.debug(
         f"Fuzzy matching '{label}' against existing pool of {len(pool_store)} quads "
         f"(threshold: {threshold}, max_matches={max_matches}, graph: {graph_name})"
@@ -563,7 +575,8 @@ def fuzzy_match_label(
                         return target, 100, best_match_label
                     return target, score, best_match_label
                 else:
-                    logger.warning(f"Found mapping for {label}, but no target" in {str(entry)})
+                    logger.warning(f"Found mapping for {label}, but no target in {str(entry)}")
+
     # --- Regex matching über map:pattern ---
     if regex and any(c in label for c in ".^$*+?{}[]\\|()"):
         regex_matches = []
@@ -587,6 +600,217 @@ def fuzzy_match_label(
     logger.debug("No fuzzy match found above threshold.")
     return [] if max_matches > 1 else (None, 0, None)
 
+from typing import Optional
+
+def fuzzy_match_label(
+    pool_store: Store,
+    label: str,
+    threshold: int = 90,
+    graph_name: Optional[NamedNode] = None,
+    predicates: Optional[list] = None,
+    regex: bool = False,
+    max_matches: int = 1,
+):
+    """
+    Match a label against mapping labels and optionally mapping regex patterns.
+
+    Single-match return value:
+        (target, score, matched_label, entry)
+
+    Multi-match return value:
+        [
+            (target, score, matched_label, entry),
+            ...
+        ]
+
+    A target may be None when a matching mapping entry exists but has no
+    MAP_TARGET relation yet.
+
+    No-match return value:
+        Single match: (None, 0, None, None)
+        Multi match:  []
+    """
+    if max_matches < 1:
+        raise ValueError("max_matches must be at least 1")
+
+    if predicates is None:
+        predicates = [MAP_LABEL]
+
+    logger.debug(
+        f"Matching '{label}' against a pool of {len(pool_store)} quads "
+        f"(threshold={threshold}, max_matches={max_matches}, "
+        f"graph={graph_name}, regex={regex})"
+    )
+
+    label_map = {}
+    target_map = {}
+
+    # Build the label-to-entry index.
+    for predicate in predicates:
+        predicate_node = safeNamedNode(predicate)
+
+        for quad in pool_store.quads_for_pattern(
+            None,
+            predicate_node,
+            None,
+            graph_name=graph_name,
+        ):
+            mapped_label = str(quad.object.value)
+            label_map.setdefault(mapped_label, []).append(quad.subject)
+
+    # Build the entry-to-target index once to avoid repeated store scans.
+    for quad in pool_store.quads_for_pattern(
+        None,
+        safeNamedNode(MAP_TARGET),
+        None,
+        graph_name=graph_name,
+    ):
+        target_map.setdefault(quad.subject, quad.object)
+
+    def normalize(value: str) -> str:
+        return value.casefold()
+
+    def make_match(
+        entry: NamedNode,
+        score: int,
+        matched_value: str,
+    ):
+        target = target_map.get(entry)
+
+        if target is None:
+            logger.debug(
+                f"Mapping entry {entry} matched '{label}' as "
+                f"'{matched_value}', but has no target"
+            )
+
+        return target, score, matched_value, entry
+
+    def order_entries(entries):
+        # Prefer complete mappings over entries without a target.
+        return sorted(
+            entries,
+            key=lambda entry: target_map.get(entry) is None,
+        )
+
+    # Try ordinary fuzzy matching first.
+    if label_map:
+        if max_matches == 1:
+            result = process.extractOne(
+                label,
+                label_map.keys(),
+                processor=normalize,
+                scorer=fuzz.ratio,
+                score_cutoff=threshold,
+            )
+
+            if result:
+                matched_label, score, _ = result
+                entries = order_entries(label_map[matched_label])
+                entry = entries[0]
+
+                match = make_match(
+                    entry=entry,
+                    score=score,
+                    matched_value=matched_label,
+                )
+
+                logger.debug(
+                    f"Best fuzzy match for '{label}': "
+                    f"'{matched_label}' with score {score}"
+                )
+
+                return match
+
+        else:
+            # Request enough labels to fill the result after entries are expanded.
+            results = process.extract(
+                label,
+                label_map.keys(),
+                processor=normalize,
+                scorer=fuzz.ratio,
+                score_cutoff=threshold,
+                limit=None,
+            )
+
+            matches = []
+
+            for matched_label, score, _ in results:
+                for entry in order_entries(label_map[matched_label]):
+                    matches.append(
+                        make_match(
+                            entry=entry,
+                            score=score,
+                            matched_value=matched_label,
+                        )
+                    )
+
+                    if len(matches) >= max_matches:
+                        logger.debug(
+                            f"Fuzzy matches for '{label}': "
+                            f"{[(match[1], match[2]) for match in matches]}"
+                        )
+                        return matches
+
+            if matches:
+                logger.debug(
+                    f"Fuzzy matches for '{label}': "
+                    f"{[(match[1], match[2]) for match in matches]}"
+                )
+                return matches
+
+    # Try mapping regex patterns when no fuzzy result was returned.
+    if regex:
+        regex_matches = []
+
+        for quad in pool_store.quads_for_pattern(
+            None,
+            safeNamedNode(MAP_REGEX),
+            None,
+            graph_name=graph_name,
+        ):
+            pattern = str(quad.object.value)
+            entry = quad.subject
+
+            if not pattern:
+                continue
+
+            try:
+                if re.search(pattern, label, flags=re.IGNORECASE):
+                    match = make_match(
+                        entry=entry,
+                        score=100,
+                        matched_value=pattern,
+                    )
+
+                    logger.debug(
+                        f"Regex pattern '{pattern}' matched '{label}'"
+                    )
+
+                    if max_matches == 1:
+                        return match
+
+                    regex_matches.append(match)
+
+                    if len(regex_matches) >= max_matches:
+                        return regex_matches
+
+            except re.error as exc:
+                logger.warning(
+                    f"Invalid regex pattern '{pattern}' "
+                    f"on mapping entry {entry}: {exc}"
+                )
+
+        if regex_matches:
+            return regex_matches
+
+    logger.debug(
+        f"No match found for '{label}' above threshold {threshold}"
+    )
+
+    if max_matches > 1:
+        return []
+
+    return None, 0, None, None
 
 def process_language_and_title(
     title: str | None,
@@ -730,6 +954,23 @@ MAP_LABEL_NODE = safeNamedNode(MAP_LABEL)
 RDF_TYPE_NODE = NamedNode(RDF_TYPE)
 RDFS_LABEL_NODE = NamedNode(RDFS_LABEL)
 
+def find_entries_for_type_hints(
+    store: Store,
+    type_hints,
+    graph_name: NamedNode,
+):
+    entries = set()
+
+    for type_hint in type_hints:
+        for quad in store.quads_for_pattern(
+            None,
+            safeNamedNode(MAP_TYPE_HINT),
+            safeNamedNode(type_hint),
+            graph_name,
+        ):
+            entries.add(quad.subject)
+
+    return entries
 
 def find_entries_for_target(
     store: Store,
@@ -749,6 +990,43 @@ def find_entries_for_target(
             entries.add(q.subject)
 
     return entries
+
+def select_entity_types(
+    rule_types: list,
+    mapping_types: list,
+    type_source: str = "mapping_or_rule",
+) -> list:
+    rule_types = list(rule_types or [])
+    mapping_types = list(mapping_types or [])
+
+    if type_source == "mapping":
+        return mapping_types
+
+    if type_source == "rule":
+        return rule_types
+
+    if type_source == "mapping_or_rule":
+        return mapping_types or rule_types
+    
+    if type_source == "rule_or_mapping":
+        return rule_types or mapping_types
+    
+    if type_source == "merge":
+        result = []
+        seen = set()
+
+        for rdf_type in [*mapping_types, *rule_types]:
+            key = getattr(rdf_type, "value", str(rdf_type))
+
+            if key not in seen:
+                seen.add(key)
+                result.append(rdf_type)
+
+        return result
+
+    raise ValueError(
+        f"Unsupported type_source: {type_source!r}"
+    )
 
 def ensure_entry(
     store: Store,

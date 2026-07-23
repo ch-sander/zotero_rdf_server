@@ -360,12 +360,12 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 return seq
             return items
           
-        def make_entity(object_value, my_types, specific_threshold=fuzzy_threshold, on_create=None, return_entries=False):
+        def make_entity_deprecated(object_value, my_types, specific_threshold=fuzzy_threshold, on_create=None, return_entries=False):
             items = normalize_split_list(object_value, field_map.get("re_split"))
             nodes = []
             entries = []
             pool_store = quads_by_type(store, [MAP_ENTRY_TYPE], MAP_GRAPH_URI)
-            my_rdf_types = my_rdf_types = [
+            my_rdf_types = [
                     make_iri(type_str, ns_prefix, False)
                     for field in my_types
                     if (type_str := resolve_template(field, data=data))
@@ -435,6 +435,259 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 entries.append(entry)
 
             return (nodes, entries) if return_entries else nodes
+        
+        def make_entity(
+            object_value,
+            my_types,
+            specific_threshold=fuzzy_threshold,
+            on_create=None,
+            return_entries=False,
+            type_source="mapping_or_rule",
+        ):
+            items = normalize_split_list(
+                object_value,
+                field_map.get("re_split"),
+            )
+
+            nodes = []
+            entries = []
+
+            my_rdf_types = [
+                make_iri(type_str, ns_prefix, False)
+                for field in my_types
+                if (type_str := resolve_template(field, data=data))
+            ]
+
+            pool_store = quads_by_type(
+                store,
+                [MAP_ENTRY_TYPE],
+                MAP_GRAPH_URI,
+            )
+
+            if my_rdf_types:
+                pool_store = quads_by_type(
+                    pool_store,
+                    my_rdf_types,
+                    MAP_GRAPH_URI,
+                    type=NamedNode(MAP_TYPE_HINT),
+                )
+
+            def create_entity_node(item: str,rdf_types:list=None) -> NamedNode:
+                effective_rdf_types = (
+                        list(rdf_types)
+                        if rdf_types is not None
+                        else my_rdf_types
+                    )
+                iri_suffix = stable_entity_uuid(
+                    item,
+                    effective_rdf_types,
+                    ENTITY_UUID=ENTITY_UUID,
+                )
+
+                node = safeNamedNode(
+                    f"{knowledge_base_graph}/{iri_suffix}"
+                )
+
+                apply_rdf_types(
+                    store=store,
+                    node=node,
+                    data=data,
+                    type_fields=effective_rdf_types,
+                    default_type=predicate_str,
+                    base_ns=ENTITY_GRAPH_URI.value,
+                    prefix_ns=ns_prefix,
+                )
+
+                label_language = get_language_tag(field_map)
+
+                label_literal = (
+                    Literal(item, language=label_language)
+                    if label_language
+                    else Literal(item)
+                )
+
+                store.add(
+                    Quad(
+                        node,
+                        NamedNode(RDFS_LABEL),
+                        label_literal,
+                        graph_name=ENTITY_GRAPH_URI,
+                    )
+                )
+
+                entity_spec = map.get("entity", {})
+
+                load_rdf_from_spec(
+                    entity_spec,
+                    context=None,
+                    data={
+                        **data,
+                        "value": item,
+                        "label": item,
+                    },
+                    node_value=node.value,
+                    store=store,
+                    default_graph_uri=ENTITY_GRAPH_URI,
+                )
+
+                if on_create is not None:
+                    on_create(node, item)
+
+                entity_type = effective_rdf_types[0] if effective_rdf_types else "entity"
+
+                logger.debug(
+                    f"Created new {entity_type}: '{item}' as {node}"
+                )
+
+                return node
+
+            def ensure_entry_target(
+                entry: NamedNode,
+                target: NamedNode,
+            ) -> None:
+                existing_target = next(
+                    store.quads_for_pattern(
+                        entry,
+                        safeNamedNode(MAP_TARGET),
+                        None,
+                        graph_name=MAP_GRAPH_URI,
+                    ),
+                    None,
+                )
+
+                if existing_target is not None:
+                    if existing_target.object != target:
+                        logger.warning(
+                            f"Mapping entry {entry} already targets "
+                            f"{existing_target.object}; not replacing it with {target}"
+                        )
+
+                    return
+
+                store.add(
+                    Quad(
+                        entry,
+                        safeNamedNode(MAP_TARGET),
+                        target,
+                        graph_name=MAP_GRAPH_URI,
+                    )
+                )
+
+                logger.debug(
+                    f"Linked mapping entry {entry} to target {target}"
+                )
+
+            for item in items:
+
+                node, score, matched_label, matched_entry = fuzzy_match_label(
+                    pool_store=pool_store,
+                    label=item,
+                    threshold=specific_threshold,
+                    graph_name=MAP_GRAPH_URI,
+                    predicates=[MAP_LABEL],
+                    regex=False,
+                    max_matches=1,
+                )
+
+                if node is not None:
+                    # A complete mapping was found.
+                    entry = matched_entry
+
+                    entity_type = my_rdf_types[0] if my_rdf_types else "entity"
+
+                    logger.debug(
+                        f"{entity_type.capitalize()} '{item}' matched "
+                        f"'{matched_label}' with score {score}: {node}"
+                    )
+
+                elif matched_entry is not None:
+                    # A mapping entry was found, but its target is missing.
+                    entry = matched_entry
+
+                    entry_label_quad = next(
+                        pool_store.quads_for_pattern(
+                            entry,
+                            RDFS_LABEL_NODE,
+                            None,
+                            MAP_GRAPH_URI,
+                        ),
+                        None,
+                    )
+
+                    if entry_label_quad is None:
+                        entry_label_quad = next(
+                            pool_store.quads_for_pattern(
+                                entry,
+                                safeNamedNode(MAP_LABEL),
+                                None,
+                                MAP_GRAPH_URI,
+                            ),
+                            None,
+                        )
+
+                    entity_label = (
+                        entry_label_quad.object.value
+                        if entry_label_quad is not None
+                        else item
+                    )
+                    entry_type_hints = [
+                        q.object.value
+                        for q in pool_store.quads_for_pattern(
+                            entry,
+                            safeNamedNode(MAP_TYPE_HINT),
+                            None,
+                            MAP_GRAPH_URI,
+                        )
+                    ]
+                    effective_types = select_entity_types(
+                        rule_types=my_rdf_types,
+                        mapping_types=entry_type_hints,
+                        type_source=type_source,
+                    )
+                    node = create_entity_node(entity_label,effective_types)
+
+                    ensure_entry_target(
+                        entry=entry,
+                        target=node,
+                    )
+
+                    logger.info(
+                        f"Repaired mapping entry {entry} for '{item}' "
+                        f"by creating and linking target {node}"
+                    )
+
+                else:
+                    # No mapping exists, so create both the entity and its entry.
+                    effective_types = select_entity_types(
+                        rule_types=my_rdf_types,
+                        mapping_types=[],
+                        type_source=type_source,
+                    ) # not used as type_source may prevent any type if type_source="mapping"
+                    node = create_entity_node(item,my_rdf_types)
+
+                    entry = ensure_entry(
+                        store,
+                        node,
+                        map_graph=MAP_GRAPH_URI,
+                        type_hints=my_rdf_types,
+                    )
+
+                ensure_mapping_literal(
+                    store,
+                    entry,
+                    item,
+                    safeNamedNode(MAP_LABEL),
+                    MAP_GRAPH_URI,
+                )
+
+                nodes.append(node)
+                entries.append(entry)
+
+            if return_entries:
+                return nodes, entries
+
+            return nodes
+        
 
         try:
             if not object:
@@ -457,7 +710,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 ### TAGS ###
                 if predicate_str == "tags" and isinstance(object, dict) and "tag" in object:
                     type_nodes = field_map.get("types", ["Tag"])
-
+                    type_source = field_map.get("entityTypeSource", "mapping_or_rule")
                     tag_value = object.get("tag")
                     fuzzy_threshold_specific = field_map.get("fuzzy") or 100
 
@@ -479,7 +732,8 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         my_types=type_nodes,
                         specific_threshold=fuzzy_threshold_specific,
                         on_create=on_create_tag,
-                        return_entries=True
+                        return_entries=True,
+                        type_source=type_source
                     )
 
                     tag_node = nodes[0]
@@ -505,6 +759,7 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         label = f"{object.get('lastName', '')}, {object.get('firstName', '')}".strip().strip(",")
 
                     type_nodes = field_map.get("types", ["Agent"])
+                    type_source = field_map.get("entityTypeSource", "mapping_or_rule")
 
                     # Keep raw values here so "_creatorType" can be resolved by apply_rdf_types().
                     role_types = field_map.get("role_types", ["creatorRole"])
@@ -630,7 +885,8 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         my_types=type_nodes,
                         specific_threshold=fuzzy_threshold_specific,
                         on_create=on_create_creator,
-                        return_entries=True
+                        return_entries=True,
+                        type_source=type_source
                     )
 
                     creator_node = nodes[0]
@@ -789,8 +1045,8 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
             elif isinstance(object, str) and (field_map.get('fuzzy') or field_map.get('types')):
                 logger.debug(f"UUID Entity for {predicate_str}: {object}")
                 ent_types = field_map.get("types", [ucfirst(predicate_str)])
-                
-                return make_entity(object, ent_types,fuzzy_threshold_specific)                
+                type_source = field_map.get("entityTypeSource", "mapping_or_rule")
+                return make_entity(object, ent_types,fuzzy_threshold_specific,type_source=type_source)                
 
             # LITERALS #
             elif isinstance(object, (str, int, datetime, float)):
@@ -1529,7 +1785,7 @@ def purge_orphan_entities(
         "deleted": len(orphans) if delete else 0,
     }
 
-def merge_entities(
+def merge_entities_deprecated(
     store: Store,
     old: NamedNode,
     new: NamedNode,
@@ -1558,7 +1814,59 @@ def merge_entities(
     else:
         delete_subject_facts(store, old, KB_graph)
 
-def sync_kb_mapping(
+def merge_entities(
+    store: Store,
+    old: NamedNode,
+    new: NamedNode,
+    *,
+    only_redirect: bool = False,
+    delete_old_only: bool = False,
+    map_graph: NamedNode,
+    KB_graph: NamedNode,
+    dedup_mapping: bool = False,
+) -> None:
+    if old == new:
+        return
+
+    if map_graph is None or KB_graph is None:
+        raise ValueError("map_graph and KB_graph are required")
+
+    if only_redirect and delete_old_only:
+        raise ValueError(
+            "only_redirect and delete_old_only cannot both be true"
+        )
+
+    if not only_redirect and not delete_old_only:
+        migrate_facts(store, old, new, KB_graph)
+
+    replace_object_everywhere(
+        store,
+        old,
+        new,
+        graph=None,
+    )
+
+    retarget_mapping_entries(
+        store,
+        old,
+        new,
+        map_graph,
+        dedup=dedup_mapping,
+    )
+
+    if only_redirect:
+        store.add(
+            Quad(
+                new,
+                NamedNode(OWL_SAME_AS),
+                old,
+                KB_graph,
+            )
+        )
+    else:
+        delete_subject_facts(store, old, KB_graph)
+
+def sync_kb_mapping_deprecated(
     store: Store,
     *,
     entity_graph: NamedNode,
@@ -1662,4 +1970,187 @@ def sync_kb_mapping(
         "created_entries": created_entries,
         "seeded_labels": seeded_labels,
     }
+
+def sync_kb_mapping(
+    store: Store,
+    *,
+    entity_graph: NamedNode,
+    map_graph: NamedNode,
+    direction: str = "auto",
+    seed_mapping_labels: bool = True,
+    create_missing_entities: bool = True,
+    create_missing_mappings: bool = True,
+    default_entity_types: list[str] | None = None,
+    entity_spec: dict | None = None,
+):
+    has_mapping = any(iter_mapping_entries(store, map_graph))
+    has_entities = any(iter_entities(store, entity_graph))
+
+    if direction == "auto":
+        if has_mapping and not has_entities:
+            direction = "mapping_to_kb"
+        elif has_entities and not has_mapping:
+            direction = "kb_to_mapping"
+        else:
+            direction = "both"
+
+    created_entities = 0
+    created_entries = 0
+    seeded_labels = 0
+    skipped_missing_entries = 0
+
+    # Mapping -> KB
+    if direction in ("mapping_to_kb", "both"):
+        for entry in iter_mapping_entries(store, map_graph):
+            target = get_target_of_entry(store, entry, map_graph)
+
+            if not target:
+                logger.warning("[SYNC] mapping entry without target: %s", entry)
+                continue
+
+            if has_any_facts(store, target, entity_graph):
+                continue
+
+            if not create_missing_entities:
+                logger.warning(
+                    "[SYNC] missing entity for target %s, creation disabled",
+                    target,
+                )
+                continue
+
+            lbl = (
+                first_literal(store, entry, MAP_LABEL_NODE, map_graph)
+                or str(target)
+            )
+
+            type_fields = (
+                get_type_hints_of_entry(store, entry, map_graph)
+                or default_entity_types
+                or []
+            )
+
+            apply_rdf_types(
+                store=store,
+                node=target,
+                data={},
+                type_fields=type_fields,
+                default_type="unidentified",
+                base_ns=entity_graph.value,
+            )
+
+            store.add(
+                Quad(
+                    target,
+                    RDFS_LABEL_NODE,
+                    Literal(lbl),
+                    graph_name=entity_graph,
+                )
+            )
+
+            if entity_spec:
+                load_rdf_from_spec(
+                    entity_spec,
+                    context=None,
+                    data={
+                        "value": lbl,
+                        "label": lbl,
+                        "types": type_fields,
+                    },
+                    node_value=target.value,
+                    store=store,
+                    default_graph_uri=entity_graph,
+                )
+            else:
+                add_timestamp(
+                    store=store,
+                    node=target,
+                    graph=entity_graph,
+                )
+
+            created_entities += 1
+
+    # KB -> Mapping
+    if direction in ("kb_to_mapping", "both"):
+        for entity in iter_entities(store, entity_graph):
+            existing_entries = find_entries_for_target(
+                store,
+                entity,
+                map_graph,
+            )
+
+            if existing_entries:
+                entry = existing_entries[0]
+            elif create_missing_mappings:
+                type_hints = get_rdf_types_of_entity(
+                    store,
+                    entity,
+                    entity_graph,
+                )
+
+                entry = ensure_entry(
+                    store,
+                    entity,
+                    map_graph,
+                    type_hints=type_hints,
+                )
+                created_entries += 1
+            else:
+                skipped_missing_entries += 1
+                logger.debug(
+                    "[SYNC] no mapping entry for entity %s, creation disabled",
+                    entity,
+                )
+                continue
+
+            if seed_mapping_labels:
+                lbl = first_literal(
+                    store,
+                    entity,
+                    RDFS_LABEL_NODE,
+                    entity_graph,
+                )
+
+                if lbl:
+                    before = len(
+                        list(
+                            store.quads_for_pattern(
+                                entry,
+                                MAP_LABEL_NODE,
+                                None,
+                                graph_name=map_graph,
+                            )
+                        )
+                    )
+
+                    ensure_mapping_literal(
+                        store,
+                        entry,
+                        lbl,
+                        graph=map_graph,
+                    )
+
+                    after = len(
+                        list(
+                            store.quads_for_pattern(
+                                entry,
+                                MAP_LABEL_NODE,
+                                None,
+                                graph_name=map_graph,
+                            )
+                        )
+                    )
+
+                    if after > before:
+                        seeded_labels += 1
+
+    return {
+        "direction": direction,
+        "had_mapping": has_mapping,
+        "had_entities": has_entities,
+        "created_entities": created_entities,
+        "created_entries": created_entries,
+        "seeded_labels": seeded_labels,
+        "skipped_missing_entries": skipped_missing_entries,
+    }
+
 # End
