@@ -38,11 +38,11 @@ const yasr = new Yasr(document.getElementById("yasr"), {
   });
 
 // link yasqe and yasr
-// yasqe.on("queryResponse", function(_yasqe, response, duration) {
-// 	yasr.setResponse(response, duration);
-// 	// when response is received, enable the button
-// 	sparnatural.enablePlayBtn();
-// });
+yasqe.on("queryResponse", function(_yasqe, response, duration) {
+	yasr.setResponse(response, duration);
+	// when response is received, enable the button
+	sparnatural.enablePlayBtn();
+});
 
 
 // sparnatural.addEventListener("init", (event) => {
@@ -63,8 +63,8 @@ document.getElementById('export').onclick = function(event) {
 	new bootstrap.Modal(document.getElementById('exportModal')).show();
 };
 
-// listener when sparnatural updates the query
-// see http://docs.sparnatural.eu/Javascript-integration.html#sparnatural-events
+// // listener when sparnatural updates the query
+// // see http://docs.sparnatural.eu/Javascript-integration.html#sparnatural-events
 // sparnatural.addEventListener("queryUpdated", (event) => {
 // 	// get the SPARQL query string, and pass it to yasQE
 // 	const queryString = sparnatural.expandSparql(event.detail.queryString);
@@ -74,15 +74,15 @@ document.getElementById('export').onclick = function(event) {
 // 	console.dir(event.detail.queryJson);
 
 // 	// notify the query to yasr plugins
-// 	// for (const plugin in yasr.plugins) {
-// 	//   if (yasr.plugins[plugin].notifyQuery) {
-// 	//     yasr.plugins[plugin].notifyQuery(event.detail.queryJson);
-// 	//   }
-// 	// }
+// 	for (const plugin in yasr.plugins) {
+// 	  if (yasr.plugins[plugin].notifyQuery) {
+// 	    yasr.plugins[plugin].notifyQuery(event.detail.queryJson);
+// 	  }
+// 	}
 // });
 
-// listener when the sparnatural submit button is clicked
-// see http://docs.sparnatural.eu/Javascript-integration.html#sparnatural-events
+// // listener when the sparnatural submit button is clicked
+// // see http://docs.sparnatural.eu/Javascript-integration.html#sparnatural-events
 // sparnatural.addEventListener("submit", (event) => {
 // 	// enable loader on button
 // 	sparnatural.disablePlayBtn() ; 
@@ -90,8 +90,8 @@ document.getElementById('export').onclick = function(event) {
 // 	yasqe.query();
 // });
 
-// listener when the sparnatural reset button is clicked
-// see http://docs.sparnatural.eu/Javascript-integration.html#sparnatural-events
+// // listener when the sparnatural reset button is clicked
+// // see http://docs.sparnatural.eu/Javascript-integration.html#sparnatural-events
 // sparnatural.addEventListener("reset", (event) => {
 // 	// empties the SPARQL query on yasQE
 // 	yasqe.setValue("");
