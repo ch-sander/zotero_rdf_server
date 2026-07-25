@@ -310,25 +310,26 @@
         }
       }
     },
-    "/delete_mapping_targets": {
+    "/mapping-targets": {
       "delete": {
         "tags": [
-          "RDF"
+          "RDF",
+          "Maintenance"
         ],
-        "summary": "Delete all mapping target triples from a mapping graph",
-        "description": "Deletes all triples of the form `?entry zmap:target ?entity` from the given mapping graph.\n\nBy default this endpoint runs in dry-run mode (`execute=false`).",
-        "operationId": "delete_mapping_targets_delete_mapping_targets_delete",
+        "summary": "Delete all target statements from a mapping graph",
+        "description": "Finds all statements of the form `?entry zmap:target ?entity` in the selected mapping graph.\n\nOnly the target statements are removed. The mapping entries and their remaining statements are preserved.\n\nBy default, the endpoint performs a dry run. Set `execute=true` to remove the statements.",
+        "operationId": "delete_mapping_targets_mapping_targets_delete",
         "parameters": [
           {
-            "name": "map_graph_iri",
+            "name": "mapping_graph_iri",
             "in": "query",
             "required": true,
             "schema": {
               "type": "string",
-              "description": "Named graph IRI of the mapping graph.",
-              "title": "Map Graph Iri"
+              "description": "Named graph IRI from which mapping target statements are to be removed.",
+              "title": "Mapping Graph Iri"
             },
-            "description": "Named graph IRI of the mapping graph."
+            "description": "Named graph IRI from which mapping target statements are to be removed."
           },
           {
             "name": "execute",
@@ -336,11 +337,11 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "If true, performs the deletion. If false, only returns how many triples would be removed.",
+              "description": "If false, return the number of matching statements without modifying the store. If true, remove all matching target statements.",
               "default": false,
               "title": "Execute"
             },
-            "description": "If true, performs the deletion. If false, only returns how many triples would be removed."
+            "description": "If false, return the number of matching statements without modifying the store. If true, remove all matching target statements."
           }
         ],
         "responses": {
@@ -351,7 +352,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Delete Mapping Targets Delete Mapping Targets Delete"
+                  "title": "Response Delete Mapping Targets Mapping Targets Delete"
                 }
               }
             }
@@ -370,16 +371,17 @@
       }
     },
     "/purge": {
-      "get": {
+      "delete": {
         "tags": [
-          "RDF"
+          "RDF",
+          "Maintenance"
         ],
-        "summary": "Purge orphan entities or dangling mapping entries",
-        "description": "Finds inconsistent resources in the configured libraries and optionally deletes them.\n\nmode=entities:\n- An entity is considered an orphan if it is not a mapping target.\n- If `not_mapped_only=false`, the entity must additionally not be referenced as an object in the selected graphs.\n\nmode=mappings:\n- A mapping entry is considered dangling if it has no target.\n- Optionally, entries can also be treated as dangling if their target does not exist in the knowledge base graph.\n\nBy default this endpoint runs in dry-run mode (`delete=false`).",
-        "operationId": "purge_purge_get",
+        "summary": "Find and optionally delete orphan entities or dangling mappings",
+        "description": "Finds inconsistent knowledge-base entities or mapping entries for one or more configured libraries.\n\nEntity mode (`resource_type=entities`):\n- An entity is a candidate when it is not referenced as a mapping target.\n- When `require_unreferenced=true`, the entity must also not occur as an object in the configured graphs.\n- Entities with an outgoing `owl:sameAs` statement can optionally be preserved.\n\nMapping mode (`resource_type=mappings`):\n- A mapping entry can be selected when it has no target.\n- A mapping entry can also be selected when its target has no subject facts in the knowledge-base graph.\n\nBy default, the endpoint performs a dry run. Set `execute=true` to delete the selected resources.",
+        "operationId": "purge_purge_delete",
         "parameters": [
           {
-            "name": "graph_iri",
+            "name": "library_iri",
             "in": "query",
             "required": false,
             "schema": {
@@ -391,13 +393,13 @@
                   "type": "null"
                 }
               ],
-              "description": "Optional filter: run only for a specific library identifier (e.g., the library base URL). If omitted, runs for all configured libraries.",
-              "title": "Graph Iri"
+              "description": "Optional configured library base IRI. If provided, process only that library. If omitted, process all configured libraries.",
+              "title": "Library Iri"
             },
-            "description": "Optional filter: run only for a specific library identifier (e.g., the library base URL). If omitted, runs for all configured libraries."
+            "description": "Optional configured library base IRI. If provided, process only that library. If omitted, process all configured libraries."
           },
           {
-            "name": "mode",
+            "name": "resource_type",
             "in": "query",
             "required": false,
             "schema": {
@@ -406,71 +408,71 @@
                 "mappings"
               ],
               "type": "string",
-              "description": "Select whether to purge orphan entities or dangling mapping entries.",
+              "description": "Type of resource to inspect and optionally delete.",
               "default": "entities",
-              "title": "Mode"
+              "title": "Resource Type"
             },
-            "description": "Select whether to purge orphan entities or dangling mapping entries."
+            "description": "Type of resource to inspect and optionally delete."
           },
           {
-            "name": "delete",
+            "name": "execute",
             "in": "query",
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "If true, deletes the detected resources from the selected graph.",
+              "description": "If false, return the resources that would be deleted. If true, delete those resources from their respective graphs.",
               "default": false,
-              "title": "Delete"
+              "title": "Execute"
             },
-            "description": "If true, deletes the detected resources from the selected graph."
+            "description": "If false, return the resources that would be deleted. If true, delete those resources from their respective graphs."
           },
           {
-            "name": "not_mapped_only",
+            "name": "require_unreferenced",
             "in": "query",
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Entities mode only: if true, returns all entities that are not mapping targets. If false, returns only those that are not mapping targets AND not referenced as objects.",
+              "description": "Entity mode only. If true, select an unmapped entity only when it is also not referenced as an object in the configured graphs.",
+              "default": false,
+              "title": "Require Unreferenced"
+            },
+            "description": "Entity mode only. If true, select an unmapped entity only when it is also not referenced as an object in the configured graphs."
+          },
+          {
+            "name": "preserve_sameas_subjects",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Entity mode only. If true, preserve entities that have an outgoing `owl:sameAs` statement in the knowledge-base graph.",
+              "default": false,
+              "title": "Preserve Sameas Subjects"
+            },
+            "description": "Entity mode only. If true, preserve entities that have an outgoing `owl:sameAs` statement in the knowledge-base graph."
+          },
+          {
+            "name": "include_mappings_without_target",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Mapping mode only. Select mapping entries that do not contain a target statement.",
               "default": true,
-              "title": "Not Mapped Only"
+              "title": "Include Mappings Without Target"
             },
-            "description": "Entities mode only: if true, returns all entities that are not mapping targets. If false, returns only those that are not mapping targets AND not referenced as objects."
+            "description": "Mapping mode only. Select mapping entries that do not contain a target statement."
           },
           {
-            "name": "keep_if_sameas_subject",
+            "name": "include_mappings_with_missing_target_entity",
             "in": "query",
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Entities mode only: if true, keeps entities that have an outgoing owl:sameAs triple in the entity graph.",
+              "description": "Mapping mode only. Select mapping entries whose target has no subject facts in the knowledge-base graph.",
               "default": false,
-              "title": "Keep If Sameas Subject"
+              "title": "Include Mappings With Missing Target Entity"
             },
-            "description": "Entities mode only: if true, keeps entities that have an outgoing owl:sameAs triple in the entity graph."
-          },
-          {
-            "name": "delete_if_missing_target",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "description": "Mappings mode only: if true, includes mapping entries that do not define a target.",
-              "default": true,
-              "title": "Delete If Missing Target"
-            },
-            "description": "Mappings mode only: if true, includes mapping entries that do not define a target."
-          },
-          {
-            "name": "delete_if_target_not_in_kb",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "description": "Mappings mode only: if true, includes mapping entries whose target does not exist in the entity graph.",
-              "default": false,
-              "title": "Delete If Target Not In Kb"
-            },
-            "description": "Mappings mode only: if true, includes mapping entries whose target does not exist in the entity graph."
+            "description": "Mapping mode only. Select mapping entries whose target has no subject facts in the knowledge-base graph."
           }
         ],
         "responses": {
@@ -480,8 +482,11 @@
               "application/json": {
                 "schema": {
                   "type": "array",
-                  "items": {},
-                  "title": "Response Purge Purge Get"
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response Purge Purge Delete"
                 }
               }
             }
@@ -505,8 +510,8 @@
           "RDF",
           "Semantics"
         ],
-        "summary": "Merge two entities in the knowledge base graph and retarget mapping entries",
-        "description": "Moves facts from `old` to `new` in the knowledge base graph, replaces all occurrences of `old` as an object across the store, retargets mapping entries in the mapping graph, and migrates facts in the mapping graph.\n\nIf `only_redirect=true`, the old subject facts are kept and a `new owl:sameAs old` triple is added to the knowledge base graph. Otherwise, subject facts of `old` in the knowledge base graph are deleted.",
+        "summary": "Merge or replace an entity and update all references",
+        "description": "Updates references from `old_iri` to `new_iri` in the knowledge base and mapping graphs.\n\nBy default, outgoing facts of the old entity are copied to the new entity, all incoming references are rewritten, mapping entries are retargeted, and the old entity is removed.\n\nSet `delete_old_only=true` to discard the outgoing facts of the old entity instead of copying them. Incoming references and mapping entries are still rewritten to the new entity.\n\nSet `only_redirect=true` to keep the old entity and its outgoing facts. In this mode, references and mappings are still rewritten and a `new owl:sameAs old` triple is added.\n\n`only_redirect` and `delete_old_only` are mutually exclusive.",
         "operationId": "merge_merge_post",
         "parameters": [
           {
@@ -515,10 +520,10 @@
             "required": true,
             "schema": {
               "type": "string",
-              "description": "IRI of the entity to be merged (old / source).",
+              "description": "IRI of the old entity. References to this entity will be rewritten to `new_iri`.",
               "title": "Old Iri"
             },
-            "description": "IRI of the entity to be merged (old / source)."
+            "description": "IRI of the old entity. References to this entity will be rewritten to `new_iri`."
           },
           {
             "name": "new_iri",
@@ -526,10 +531,10 @@
             "required": true,
             "schema": {
               "type": "string",
-              "description": "IRI of the target entity (new / destination).",
+              "description": "IRI of the target entity that will replace or absorb the old entity.",
               "title": "New Iri"
             },
-            "description": "IRI of the target entity (new / destination)."
+            "description": "IRI of the target entity that will replace or absorb the old entity."
           },
           {
             "name": "kb_graph_iri",
@@ -537,10 +542,10 @@
             "required": true,
             "schema": {
               "type": "string",
-              "description": "Named graph IRI of the knowledge base graph.",
+              "description": "Named graph IRI containing the knowledge-base facts of both entities.",
               "title": "Kb Graph Iri"
             },
-            "description": "Named graph IRI of the knowledge base graph."
+            "description": "Named graph IRI containing the knowledge-base facts of both entities."
           },
           {
             "name": "map_graph_iri",
@@ -548,10 +553,10 @@
             "required": true,
             "schema": {
               "type": "string",
-              "description": "Named graph IRI of the mapping graph.",
+              "description": "Named graph IRI containing mapping entries that may reference the old entity.",
               "title": "Map Graph Iri"
             },
-            "description": "Named graph IRI of the mapping graph."
+            "description": "Named graph IRI containing mapping entries that may reference the old entity."
           },
           {
             "name": "only_redirect",
@@ -559,11 +564,23 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "If true, keep old KB subject facts and add a redirect triple (new owl:sameAs old).",
+              "description": "Keep the old entity and its outgoing knowledge-base facts. Rewrite incoming references and mappings to the new entity and add `new owl:sameAs old`. Cannot be combined with `delete_old_only`.",
               "default": false,
               "title": "Only Redirect"
             },
-            "description": "If true, keep old KB subject facts and add a redirect triple (new owl:sameAs old)."
+            "description": "Keep the old entity and its outgoing knowledge-base facts. Rewrite incoming references and mappings to the new entity and add `new owl:sameAs old`. Cannot be combined with `delete_old_only`."
+          },
+          {
+            "name": "delete_old_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Delete the outgoing knowledge-base facts of the old entity without copying them to the new entity. Incoming references and mapping entries are still rewritten to the new entity. Cannot be combined with `only_redirect`.",
+              "default": false,
+              "title": "Delete Old Only"
+            },
+            "description": "Delete the outgoing knowledge-base facts of the old entity without copying them to the new entity. Incoming references and mapping entries are still rewritten to the new entity. Cannot be combined with `only_redirect`."
           },
           {
             "name": "dedup_mapping",
@@ -571,11 +588,11 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "If true, deduplicate and merge all mappings targeting new_iri",
+              "description": "After retargeting mapping entries, merge or remove duplicate mappings that target the new entity.",
               "default": false,
               "title": "Dedup Mapping"
             },
-            "description": "If true, deduplicate and merge all mappings targeting new_iri"
+            "description": "After retargeting mapping entries, merge or remove duplicate mappings that target the new entity."
           }
         ],
         "responses": {
@@ -607,33 +624,34 @@
     "/kb-map-sync": {
       "post": {
         "tags": [
-          "RDF"
+          "RDF",
+          "Synchronization"
         ],
-        "summary": "Synchronize knowledge base entities and mapping entries",
-        "description": "Synchronizes entities in the knowledge base graph with mapping entries in the mapping graph.\n\n- direction=auto chooses a direction based on whether mapping/entities exist.\n- execute=false performs only validation and direction resolution (dry run).\n- execute=true performs the actual synchronization and returns counters.",
+        "summary": "Synchronize knowledge-base entities and mapping entries",
+        "description": "Synchronizes entities in a knowledge-base graph with entries in a mapping graph.\n\nSupported directions:\n- `mapping_to_kb`: create missing knowledge-base entities for mapping targets.\n- `kb_to_mapping`: create missing mapping entries for knowledge-base entities.\n- `both`: perform both operations.\n- `auto`: select `mapping_to_kb` if only mappings exist, `kb_to_mapping` if only entities exist, and `both` otherwise.\n\nBy default, the endpoint performs a dry run. Set `execute=true` to modify the store.",
         "operationId": "kb_map_sync_kb_map_sync_post",
         "parameters": [
           {
-            "name": "entity_graph_iri",
+            "name": "knowledge_base_graph_iri",
             "in": "query",
             "required": true,
             "schema": {
               "type": "string",
-              "description": "Named graph IRI of the knowledge base (entities).",
-              "title": "Entity Graph Iri"
+              "description": "Named graph IRI containing the knowledge-base entities. The graph may be created implicitly when it does not yet exist.",
+              "title": "Knowledge Base Graph Iri"
             },
-            "description": "Named graph IRI of the knowledge base (entities)."
+            "description": "Named graph IRI containing the knowledge-base entities. The graph may be created implicitly when it does not yet exist."
           },
           {
-            "name": "map_graph_iri",
+            "name": "mapping_graph_iri",
             "in": "query",
             "required": true,
             "schema": {
               "type": "string",
-              "description": "Named graph IRI of the mapping graph (zmap entries).",
-              "title": "Map Graph Iri"
+              "description": "Named graph IRI containing the mapping entries. The graph may be created implicitly when it does not yet exist.",
+              "title": "Mapping Graph Iri"
             },
-            "description": "Named graph IRI of the mapping graph (zmap entries)."
+            "description": "Named graph IRI containing the mapping entries. The graph may be created implicitly when it does not yet exist."
           },
           {
             "name": "direction",
@@ -647,23 +665,11 @@
                 "both"
               ],
               "type": "string",
-              "description": "Synchronization direction.",
+              "description": "Synchronization direction. `auto` resolves the direction from the current graph contents.",
               "default": "auto",
               "title": "Direction"
             },
-            "description": "Synchronization direction."
-          },
-          {
-            "name": "seed_mapping_labels",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "description": "If true, seed mapping entry labels from entity rdfs:label.",
-              "default": true,
-              "title": "Seed Mapping Labels"
-            },
-            "description": "If true, seed mapping entry labels from entity rdfs:label."
+            "description": "Synchronization direction. `auto` resolves the direction from the current graph contents."
           },
           {
             "name": "create_missing_entities",
@@ -671,11 +677,35 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "If true, create missing entities for mapping targets.",
+              "description": "Applicable to `mapping_to_kb` and `both`. Create an entity when a mapping target has no subject facts in the knowledge-base graph.",
               "default": true,
               "title": "Create Missing Entities"
             },
-            "description": "If true, create missing entities for mapping targets."
+            "description": "Applicable to `mapping_to_kb` and `both`. Create an entity when a mapping target has no subject facts in the knowledge-base graph."
+          },
+          {
+            "name": "create_missing_mappings",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Applicable to `kb_to_mapping` and `both`. Create a mapping entry for each entity that is not currently referenced as a mapping target.",
+              "default": true,
+              "title": "Create Missing Mappings"
+            },
+            "description": "Applicable to `kb_to_mapping` and `both`. Create a mapping entry for each entity that is not currently referenced as a mapping target."
+          },
+          {
+            "name": "seed_mapping_labels",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Applicable when mapping entries are created or updated. Copy the entity's first `rdfs:label` value to the mapping entry when no equivalent mapping label exists.",
+              "default": true,
+              "title": "Seed Mapping Labels"
+            },
+            "description": "Applicable when mapping entries are created or updated. Copy the entity's first `rdfs:label` value to the mapping entry when no equivalent mapping label exists."
           },
           {
             "name": "default_entity_types",
@@ -693,10 +723,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Fallback RDF types (IRIs) to assign when creating missing entities.",
+              "description": "Fallback RDF type IRIs assigned to entities created from mapping entries when the mapping entry provides no type hints. May be specified multiple times.",
               "title": "Default Entity Types"
             },
-            "description": "Fallback RDF types (IRIs) to assign when creating missing entities."
+            "description": "Fallback RDF type IRIs assigned to entities created from mapping entries when the mapping entry provides no type hints. May be specified multiple times."
           },
           {
             "name": "execute",
@@ -704,11 +734,11 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "If true, performs the synchronization. If false, returns only checks and resolved direction.",
+              "description": "If false, validate the request and resolve the synchronization direction without modifying the store. If true, perform the synchronization.",
               "default": false,
               "title": "Execute"
             },
-            "description": "If true, performs the synchronization. If false, returns only checks and resolved direction."
+            "description": "If false, validate the request and resolve the synchronization direction without modifying the store. If true, perform the synchronization."
           }
         ],
         "responses": {
@@ -2046,6 +2076,27 @@
         }
       }
     },
+    "/plugin/ftstest-url-kinds": {
+      "get": {
+        "tags": [
+          "Plugin",
+          "Fts",
+          "Open Endpoint"
+        ],
+        "summary": "Test Url Kinds",
+        "operationId": "test_url_kinds_plugin_ftstest_url_kinds_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/plugin/fts/search/terms": {
       "get": {
         "tags": [
@@ -2636,10 +2687,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-21T13:53:35Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-23T21:32:49Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-21T13:53:35Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-23T21:32:49Z"
           },
           {
             "name": "perform_analysis",
@@ -3608,10 +3659,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-21T13:53:35Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-23T21:32:49Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-21T13:53:35Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-23T21:32:49Z"
           },
           {
             "name": "format",
@@ -3925,10 +3976,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-21T13:53:35Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-23T21:32:49Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-21T13:53:35Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-23T21:32:49Z"
           },
           {
             "name": "format",
@@ -4259,10 +4310,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-21T13:53:35Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-23T21:32:49Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-21T13:53:35Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-23T21:32:49Z"
           },
           {
             "name": "format",
@@ -4572,10 +4623,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-21T13:53:35Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-23T21:32:49Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-21T13:53:35Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-23T21:32:49Z"
           },
           {
             "name": "format",
