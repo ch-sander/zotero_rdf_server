@@ -13,5 +13,14 @@
     ],
     "http://www.w3.org/ns/prov#wasGeneratedBy": {
         "@id": "https://data.scigma.de/resources/meta/activities/semantic-note-creation"
-    }
+    },
+    "http://purl.org/dc/terms/license": {
+        "@id": "https://creativecommons.org/licenses/by/4.0/"
+    },
+    "http://creativecommons.org/ns#license": {
+        "@id": "https://creativecommons.org/licenses/by/4.0/"
+    },
+    "https://schema.org/funding": {
+        "@id": "https://data.scigma.de/resources/meta/projects/SCIGMA"
+    }  
 }
