@@ -34,6 +34,19 @@
         value="/sparql/query"
       />
 
+      <div class="remote-single-editor" style="margin-top:8px;">         
+
+          <input
+              id="remoteMappingIri"
+              type="url"
+              placeholder="Insert mapping IRI"
+          >
+
+          <button id="loadRemoteMapping" type="button" style="margin-top:8px;">
+              Load mapping
+          </button>
+      </div>
+
       <div class="row" style="margin-top:8px;">
         <button id="loadRemote">Load remote into local</button>
         <button id="clearEndpoint">Clear endpoint</button>
@@ -84,6 +97,9 @@
         <button id="exportEntity" disabled>Download entity TriG</button>
         <div style="flex:1;"></div>
         <button id="exportFull" class="primary">Download full graphs (TriG)</button>
+        <button id="exportShapes" type="button">
+          Download SHACL
+        </button>
         <div id="status" class="muted"></div>
       </div>
 
@@ -98,6 +114,14 @@
           <button id="showEntity" disabled>Show entity TriG</button>
           <button id="copyTrig" disabled>Copy</button>
           <button id="clearTrig">Clear</button>
+          <label>
+            <input
+                type="checkbox"
+                id="includeCompleteRdf"
+                checked
+              >
+            Include full RDF from source
+          </label>
           <div class="small" style="margin-left:auto;">Auto-preview updates after edits</div>
         </div>
         <textarea id="trigOut" spellcheck="false" placeholder="TriG preview will appear here…"></textarea>
