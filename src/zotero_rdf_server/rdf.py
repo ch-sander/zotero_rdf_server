@@ -812,15 +812,9 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         default_graph_uri=GRAPH_URI,
                     )
 
-                    creator_type = object.get("creatorType")  # e.g. "author"
+                    creator_type = object.get("creatorType")
+                    
                     if creator_type:
-                        store.add(Quad(
-                            role_node,
-                            NamedNode(RDFS_LABEL),
-                            Literal(str(creator_type)),
-                            graph_name=GRAPH_URI
-                        ))
-
                         creator_type_objects = field_map.get("creator_type_objects", ["_creatorType"])
                         creator_type_objects = creator_type_objects if isinstance(creator_type_objects, list) else [creator_type_objects]
 
@@ -894,13 +888,25 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
 
                     ln, fn = object.get("lastName"), object.get("firstName")
                     if ln or fn:
+                        creator_label = f"{fn} {ln}".strip()
                         ensure_mapping_literal(
                             store,
                             entry,
-                            f"{fn} {ln}".strip(),
+                            creator_label,
                             safeNamedNode(MAP_LABEL),
                             MAP_GRAPH_URI
                         )
+                    else:
+                        creator_label = object.get("name", "unspecified").strip()
+                    
+                    role_label = f"{creator_label} as {str(creator_type).upper()}"
+                    
+                    store.add(Quad(
+                        role_node,
+                        NamedNode(RDFS_LABEL),
+                        Literal(role_label, language='en'),
+                        graph_name=GRAPH_URI
+                    ))
 
                     for role_property in role_properties:
                         store.add(Quad(
