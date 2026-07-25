@@ -5,19 +5,23 @@
 // reference to the sparnatural webcomponent
 const sparnatural = document.querySelector("spar-natural");
 
-// display on the page the endpoint URL with which sparnatural is configured
-document.querySelector("#displayEndpoint").setAttribute("href", sparnatural.getAttribute("endpoint"));
-document.querySelector("#displayEndpoint").textContent = sparnatural.getAttribute("endpoint");
+const params = new URLSearchParams(window.location.search);
+const endpointFromUrl = params.get("endpoint");
+const endpoint = endpointFromUrl || sparnatural.getAttribute("endpoint");
 
-// init yasQE query editor
+sparnatural.setAttribute("endpoint", endpoint);
+
+const displayEndpoint = document.querySelector("#displayEndpoint");
+displayEndpoint.setAttribute("href", endpoint);
+displayEndpoint.textContent = endpoint;
+
 const yasqe = new Yasqe(document.getElementById("yasqe"), {
-	requestConfig: {
-	  // make sure the endpoint is the same as sparnatural
-	  endpoint: sparnatural.getAttribute("endpoint"),
-	  method: "GET",
-	  header: {}
-	},
-	copyEndpointOnNewTab: false  
+  requestConfig: {
+    endpoint,
+    method: "GET",
+    header: {}
+  },
+  copyEndpointOnNewTab: false
 });
 
 // init yasR result display

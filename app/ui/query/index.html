@@ -55,14 +55,12 @@
 
         <p>Queries are sent to <a href="#" id="displayEndpoint">...</a></p>
         <textarea id="query-json" style="display:none;"></textarea>
-        <!-- uncomment to enable links to load sample queries
+        <!-- uncomment to enable links to load sample queries -->
         <p>
-          Load example queries :
-          <a href="#" onclick="document.querySelector('spar-natural').loadQuery(window['example_1']);return false;">example 1</a>
-          |
-          <a href="#" onclick="document.querySelector('spar-natural').loadQuery(window['example_2']);return false;">example 2</a>
+          Load example queries:
+          <span id="example-queries"></span>
         </p>
-        -->
+       
 
         <!-- The sparnatural web component with config attributes. -->
         <!-- See http://docs.sparnatural.eu/Javascript-integration.html#html-attributes-reference 
@@ -121,16 +119,16 @@
   </div>
 </div>
 
-        <spar-natural 
-            src="config-dev.ttl"
-            endpoint="/sparql/query"
-            lang="en"
-            defaultLang="en"
-            distinct="true"
-            limit="5000"
-            debug="true"
-            prefixes="zot:http://www.zotero.org/namespaces/export# semz:https://semantic-html.org/vocab# owl:http://www.w3.org/2002/07/owl# skos:http://www.w3.org/2004/02/skos/core# geo:http://www.opengis.net/ont/geosparql# scigma:https://data.scigma.de/resources/"
-        ></spar-natural>
+<spar-natural 
+    src="config-dev.ttl"
+    endpoint="/sparql/query"
+    lang="en"
+    defaultLang="en"
+    distinct="true"
+    limit="5000"
+    debug="true"
+    prefixes="zot:http://www.zotero.org/namespaces/export# semz:https://semantic-html.org/vocab# owl:http://www.w3.org/2002/07/owl# skos:http://www.w3.org/2004/02/skos/core# geo:http://www.opengis.net/ont/geosparql# scigma:https://data.scigma.de/resources/"
+></spar-natural>
 
 <div class="query-actions">
   <span class="btn btn-primary" id="sparql-toggle">
@@ -183,7 +181,8 @@
     <script src="example-queries.js"></script>
     
     <!-- This page custom JS -->
-    <script src="main.js"></script>    
+    <script src="main.js"></script>
+    <script src="./examples/examples.js"></script>
     <script src="../partials/load-partials.js" defer></script>
     
   </body>
