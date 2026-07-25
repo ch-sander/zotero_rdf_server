@@ -41,3 +41,4 @@ app/plugins/citations/software.cff
 app/mapping.yaml
 app/scigma.mapping.yaml
 app/ui/partials/custom.js
+app/ui/query/examples/examples.json
