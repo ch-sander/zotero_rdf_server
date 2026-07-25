@@ -30,6 +30,19 @@ const HIDDEN_PROPERTIES = new Set([
   "http://www.zotero.org/namespaces/export#url"
 ]);
 
+const allowedHosts = new Set([
+  "app.scigma.de",
+  "localhost",
+  "127.0.0.1"
+]);
+
+const allowedTypes = new Set([
+  "http://www.zotero.org/namespaces/export#Agent",
+  "http://www.zotero.org/namespaces/export#Place",
+  "http://www.zotero.org/namespaces/export#Tag",
+  "http://www.zotero.org/namespaces/export#Publisher",
+  "https://zotero-rdf-server.org/mapping/Entry"
+]);
 
 const LANGUAGE = "en";
 const LIMIT = 1000;
@@ -55,6 +68,42 @@ window.addEventListener("hashchange", () => {
 });
 
 loadCurrentResource();
+
+function setEditLink(resourceIri, resourceTypes = []) {
+  const editLink =
+    document.getElementById("edit-resource-link");
+
+  if (!editLink || !resourceIri) return;
+
+  const isAllowedHost =
+    allowedHosts.has(window.location.hostname);
+
+  const hasAllowedType =
+    resourceTypes.some(type => allowedTypes.has(type));
+
+  const isVisible =
+    isAllowedHost && hasAllowedType;
+
+  editLink.hidden = !isVisible;
+
+  if (!isVisible) {
+    editLink.removeAttribute("href");
+    return;
+  }
+
+  const editUrl =
+    new URL("/ui/edit", window.location.origin);
+
+  const parameterName =
+    resourceIri.includes("/mappings/")
+      ? "mapping"
+      : "entity";
+
+  editUrl.searchParams.set(parameterName, resourceIri);
+  editUrl.searchParams.set("endpoint", ENDPOINT);
+
+  editLink.href = editUrl.toString();
+}
 
 async function loadCurrentResource() {
   const uri = getUriFromLocation();
@@ -666,22 +715,24 @@ function renderSameAs(bindings) {
 }
 
 function renderTriples(bindings) {
-
   const normalRows = [];
+  const resourceTypes = [];
 
   for (const binding of bindings) {
-
     const p = binding.p.value;
 
     if (isRdfsLabel(p)) {
-        resourceLabelEl.textContent = "";
-        resourceLabelEl.appendChild(withCopy(
-        document.createTextNode(binding.o.value),
-        binding.o.value
-        ));
+      resourceLabelEl.textContent = "";
+      resourceLabelEl.appendChild(
+        withCopy(
+          document.createTextNode(binding.o.value),
+          binding.o.value
+        )
+      );
     }
 
     if (isRdfType(p)) {
+      resourceTypes.push(binding.o.value);
 
       const span = document.createElement("span");
       span.className = "resource-type";
@@ -695,7 +746,6 @@ function renderTriples(bindings) {
     }
 
     if (isRdfsComment(p)) {
-
       const pEl = document.createElement("p");
       pEl.textContent = binding.o.value;
 
@@ -715,29 +765,32 @@ function renderTriples(bindings) {
     }
   }
 
-for (const binding of normalRows) {
-  const tr = document.createElement("tr");
+  const uri = getUriFromLocation();
+  setEditLink(uri, resourceTypes);
 
-  const isExternal =
-    binding.o?.type === "uri" &&
-    binding.isKnown?.value !== "1" &&
-    binding.isKnown?.value !== "true";
+  for (const binding of normalRows) {
+    const tr = document.createElement("tr");
 
-  if (isExternal) {
-    tr.classList.add("external-iri-row");
+    const isExternal =
+      binding.o?.type === "uri" &&
+      binding.isKnown?.value !== "1" &&
+      binding.isKnown?.value !== "true";
+
+    if (isExternal) {
+      tr.classList.add("external-iri-row");
+    }
+
+    const propertyTd = document.createElement("td");
+    propertyTd.appendChild(renderProperty(binding));
+
+    const objectTd = document.createElement("td");
+    objectTd.appendChild(renderObject(binding));
+
+    tr.appendChild(propertyTd);
+    tr.appendChild(objectTd);
+
+    triplesEl.appendChild(tr);
   }
-
-  const propertyTd = document.createElement("td");
-  propertyTd.appendChild(renderProperty(binding));
-
-  const objectTd = document.createElement("td");
-  objectTd.appendChild(renderObject(binding));
-
-  tr.appendChild(propertyTd);
-  tr.appendChild(objectTd);
-
-  triplesEl.appendChild(tr);
-}
 }
 function renderIncomingSubject(binding) {
   const link = document.createElement("a");

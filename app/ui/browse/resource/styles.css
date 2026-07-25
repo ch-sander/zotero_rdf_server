@@ -389,3 +389,20 @@ tbody tr.external-iri-row:nth-child(odd) {
 tbody tr.external-iri-row > td {
   background: #fff8e8;
 }
+
+#edit-resource-link[hidden] {
+  display: none !important;
+}
+
+.edit-button {
+  display: inline-block;
+  margin-top: 0.75rem;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid currentColor;
+  border-radius: 0.35rem;
+  text-decoration: none;
+}
+
+.edit-button:hover {
+  text-decoration: underline;
+}
