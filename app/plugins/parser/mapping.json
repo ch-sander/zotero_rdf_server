@@ -17,7 +17,8 @@
             ],
             "split": "\\s*(?:,|\\band\\b|\\+|\\&)\\s*",
             "types": [
-                "Entity"
+                "Entity",
+                "Annotation"
             ]
         },
         "Concept": {
@@ -25,7 +26,8 @@
                 "//strong"
             ],
             "types": [
-                "Concept"
+                "Concept",
+                "Annotation"
             ],
             "split": "\\s*(?:,|\\band\\b|\\+|\\&)\\s*"
         },
@@ -34,7 +36,8 @@
                 "//u"
             ],
             "types": [
-                "Reference"
+                "Reference",
+                "Annotation"
             ]
         }
     },
@@ -171,6 +174,15 @@
                         "@id": "https://data.scigma.de/resources/meta/users/551508"
                     }
                 ],
+                "http://purl.org/dc/terms/license": {
+                    "@id": "https://creativecommons.org/licenses/by/4.0/"
+                },
+                "http://creativecommons.org/ns#license": {
+                    "@id": "https://creativecommons.org/licenses/by/4.0/"
+                },
+                "https://schema.org/funding": {
+                    "@id": "https://data.scigma.de/resources/meta/projects/SCIGMA"
+                },
                 "http://www.w3.org/ns/prov#wasGeneratedBy": {
                     "@id": "https://data.scigma.de/resources/meta/activities/semantic-note-mapping"
                 }
@@ -227,6 +239,15 @@
                 ],
                 "http://www.w3.org/ns/prov#wasGeneratedBy": {
                     "@id": "https://data.scigma.de/resources/meta/activities/semantic-note-mapping"
+                },
+                "http://purl.org/dc/terms/license": {
+                    "@id": "https://creativecommons.org/licenses/by/4.0/"
+                },
+                "http://creativecommons.org/ns#license": {
+                    "@id": "https://creativecommons.org/licenses/by/4.0/"
+                },
+                "https://schema.org/funding": {
+                    "@id": "https://data.scigma.de/resources/meta/projects/SCIGMA"
                 },
                 "http://www.w3.org/2004/02/skos/core#inScheme": [
                     {
