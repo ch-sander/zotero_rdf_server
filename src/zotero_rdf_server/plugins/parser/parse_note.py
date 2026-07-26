@@ -405,7 +405,6 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                                         except KeyError:
                                             continue
 
-                                    logger.info(f"{entry}###{type_source}###{entity_label}###{effective_type_hints}")
                                     # Apply mapping entry types or rule types.
                                     for type_hint in effective_type_hints:
                                         result_store.add(

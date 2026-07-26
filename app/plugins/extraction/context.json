@@ -1,0 +1,51 @@
+{
+  "cito": "http://purl.org/spar/cito/",
+  "schema": "https://schema.org/",
+  "dcterms": "http://purl.org/dc/terms/",
+  "owl": "http://www.w3.org/2002/07/owl#",
+  "zrs": "https://zotero-rdf-server.org/citation/",
+  "zot": "http://www.zotero.org/namespaces/export#",
+
+  "Document": "zot:Item",
+  "Citation": "schema:ItemList",
+  "CitationItem": "cito:Citation",
+
+  "citation": {
+    "@id": "schema:hasPart",
+    "@type": "@id"
+  },
+  "item": {
+    "@id": "schema:itemListElement",
+    "@type": "@id"
+  },
+  "cites": {
+    "@id": "cito:cites",
+    "@type": "@id"
+  },
+  "citingEntity": {
+    "@id": "cito:hasCitingEntity",
+    "@type": "@id"
+  },
+  "target": {
+    "@id": "cito:hasCitedEntity",
+    "@type": "@id"
+  },
+  "characterization": {
+    "@id": "cito:hasCitationCharacterization",
+    "@type": "@id"
+  },
+
+  "sameAs": {
+    "@id": "owl:sameAs",
+    "@type": "@id"
+  },
+
+  "order": "schema:position",
+  "citationId": "dcterms:identifier",
+  "text": "schema:text",
+
+  "locator": "zrs:locator",
+  "label": "zrs:locatorLabel",
+  "prefix": "zrs:citationPrefix",
+  "suffix": "zrs:citationSuffix"
+}
