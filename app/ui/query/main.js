@@ -102,15 +102,21 @@ document.getElementById('export').onclick = function(event) {
 // });
 
 const tableXConfig = yasr.plugins["TableX"];
+
 Object.assign(tableXConfig.config, {
   includeControls: true,
   openIriInNewWindow: true,
 
-  uriHrefAdapter: (uri) =>
-    `/ui/browse/resource/#${encodeURIComponent(uri)}`
+  uriHrefAdapter: (uri) => {
+    const targetUrl = new URL("/ui/browse/resource/", window.location.origin);
+
+    targetUrl.searchParams.set("endpoint", endpoint);
+    targetUrl.hash = encodeURIComponent(uri);
+
+    return targetUrl.toString();
+  }
 });
 tableXConfig.persistentConfig.compact = true;
-
 
 const importModal = new bootstrap.Modal(document.getElementById('importModal'));
 
