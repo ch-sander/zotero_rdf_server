@@ -1,5 +1,5 @@
 from uuid import uuid5, NAMESPACE_URL, uuid4
-import json, re, requests, tempfile
+import json, re, requests, tempfile, time
 from datetime import datetime
 from dateutil import parser
 from pathlib import Path
@@ -1303,6 +1303,83 @@ def run_update_queries(lib: ZoteroLibrary, store: Store):
         after_all - before_all,
     )
 
+def index_citation_sources(lib: ZoteroLibrary, store: Store) -> list[dict[str, Any]]:
+    """Index all configured citation sources serially."""
+    if not lib.citation_sources:
+        return
+    
+    result = None
+
+    try:
+        from .plugins.extraction.citation2rdf import index_document
+        import urllib.request
+    except:
+        logger.error("Failed to import citation extraction plugin")
+        raise
+
+    for source_config in lib.citation_sources:
+        try:
+            source = source_config["source"]
+            logger.info(f"Extracting citations from {source}")
+            context = load_dict_like(source_config.get("context"),default={},label="Context for citation extraction")
+
+            if source["kind"] == "path":
+                result = index_document(
+                    source["path"],
+                    document_uri=source_config["document_uri"],
+                    graph_uri=source_config.get("graph_uri"),
+                    context=context,
+                )
+
+            elif source["kind"] == "url":
+                with tempfile.TemporaryDirectory(
+                    prefix="zotero-citation-download-"
+                ) as temp_dir:
+                    path = Path(temp_dir) / "document"
+
+                    urllib.request.urlretrieve(
+                        source["url"],
+                        path,
+                    )
+
+                    result = index_document(
+                        path,
+                        document_uri=source_config["document_uri"],
+                        graph_uri=source_config.get("graph_uri"),
+                        context=context,
+                    )
+            else:
+                raise ValueError(
+                    f"Unsupported citation source kind: {source['kind']}"
+                )
+    
+        except Exception as e:
+            logger.error(f"Failed extracting citations from {lib.name}; {e}")
+            continue
+        meta_path = source_config.get("meta")
+        if meta_path and result:
+            meta = load_dict_like(meta_path,default={},label="Meta for citation extraction")
+
+            if "@graph" in result:
+                result["@graph"][0].update(meta)
+            else:
+                result.update(meta)
+
+        tmp_store = Store()
+
+        graph_uri = source_config.get("graph_uri") or lib.base_url
+        to_graph = safeNamedNode(graph_uri) if graph_uri else None
+
+        tmp_store.load(
+            json.dumps(result),
+            format=RdfFormat.JSON_LD,
+            to_graph=to_graph,
+        )
+
+        store.extend(tmp_store)
+        logger.info(f"Extended store with citations: {len(tmp_store)} quads!")
+
+
 def apply_rdf_types(store: Store, node: NamedNode, data: dict, type_fields: list[str], default_type: str, base_ns: str, prefix_ns: str = ZOT_NS):
     GRAPH_URI = NamedNode(base_ns)
     RDF_TYPE_NODE = NamedNode(RDF_TYPE)
@@ -1556,6 +1633,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
         # add_timestamp(store=store, node=library_uri, graph=GRAPH_URI)
 
     if collections: # TODO write_to_store
+        logger.info(f"Loading {len(collections)} collections for {lib.name} to store")
         for col in collections:
             col_data = col["data"]
             if library_property:
@@ -1594,8 +1672,17 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
     if items:
         all_items = []
         item_type_fields = lib.map.get("item_type") or []
+        start = time.perf_counter()
+        total = len(items)
+        mark = min(1000, 10 ** (len(str(total)) - 1))
         # ignore_tags = lib.map.get("ignore_tags") or []
-        for item in items:
+        logger.info(f"Loading {total} items for {lib.name} to store")
+        for i, item in enumerate(items, 1):
+            if i % mark == 0:
+                elapsed = time.perf_counter() - start
+                remaining = elapsed / i * (total - i)
+                hours, minutes, seconds = int(remaining) // 3600, int(remaining) % 3600 // 60, int(remaining) % 60
+                logger.info(f"Processing item {i}/{total} for {lib.name} - ca. {hours}:{minutes}:{seconds} left")
             node_uri = None
             try:
                 item_data = item.get("data", {})
