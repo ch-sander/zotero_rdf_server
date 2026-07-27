@@ -61,6 +61,53 @@
           <span id="example-queries"></span>
         </p>
        
+          <div
+            class="modal fade"
+            id="exampleConfirmModal"
+            tabindex="-1"
+            aria-labelledby="exampleConfirmModalLabel"
+            aria-hidden="true"
+          >
+            <div class="modal-dialog modal-dialog-centered">
+              <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title" id="exampleConfirmModalLabel">
+                  Load example query?
+                </h5>
+
+                <button
+                  type="button"
+                  class="btn-close"
+                  data-bs-dismiss="modal"
+                  aria-label="Close"
+                ></button>
+              </div>
+
+              <div class="modal-body">
+                <p id="example-confirm-message"></p>
+              </div>
+
+              <div class="modal-footer">
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  data-bs-dismiss="modal"
+                >
+                  No
+                </button>
+
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  id="accept-example-query"
+                >
+                  Accept
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
 
         <!-- The sparnatural web component with config attributes. -->
         <!-- See http://docs.sparnatural.eu/Javascript-integration.html#html-attributes-reference 
@@ -127,7 +174,7 @@
     distinct="true"
     limit="5000"
     debug="true"
-    prefixes="zot:http://www.zotero.org/namespaces/export# semz:https://semantic-html.org/vocab# owl:http://www.w3.org/2002/07/owl# skos:http://www.w3.org/2004/02/skos/core# geo:http://www.opengis.net/ont/geosparql# scigma:https://data.scigma.de/resources/ cito:http://purl.org/spar/cito/ schema:https://schema.org/"
+    prefixes="zot:http://www.zotero.org/namespaces/export# semz:https://semantic-html.org/vocab# owl:http://www.w3.org/2002/07/owl# skos:http://www.w3.org/2004/02/skos/core# geo:http://www.opengis.net/ont/geosparql# scigma:https://data.scigma.de/resources/ cito:http://purl.org/spar/cito/ schema:https://schema.org/ dct:http://purl.org/dc/terms/"
 ></spar-natural>
 
 <div class="query-actions">

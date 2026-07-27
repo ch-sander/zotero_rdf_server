@@ -896,18 +896,6 @@ zotsn:is_creator_of a owl:ObjectProperty ;
     rdfs:domain zot:Agent ;
     rdfs:range zot:Item .
 
-zotsn:itemtype_2109 a sh:NodeShape ;
-    rdfs:label "Item Type"@en ;
-    volipi:iconName "fa-sticky-note"@en ;
-    volipi:message "The primary type of any Zotero item"@en ;
-    sh:description "The primary type of any Zotero item"@en ;
-    sh:name "Item Type"@en ;
-    sh:nodeKind sh:IRI ;
-    sh:order 6.0 ;
-    sh:property zotsn:property_1729,
-        zotsn:property_1867 ;
-    sh:targetClass zot:ItemType .
-
 zotsn:journalarticle_1570 a sh:NodeShape ;
     rdfs:label "Journal Article"@en ;
     volipi:iconName "fa-book-journal-whills"@en ;
@@ -1465,10 +1453,17 @@ zotsn:tag_of a owl:ObjectProperty ;
     rdfs:label "tag of"@en ;
     sparnatural:sparqlString "^<http://www.zotero.org/namespaces/export#tags>"@en ;
     sparnatural:tooltip "Tooltip for tag of (This is only a query pattern)"@en ;
-    rdfs:domain zot:Tag ;
+    rdfs:domain [ a owl:Class ;
+            grace:unionOf skos:Concept,
+                zot:ItemType,
+                zot:Language,
+                zot:Tag ] ;
     rdfs:range [ a owl:Class ;
             grace:unionOf zot:Agent,
-                zot:Item ] ;
+                zot:Item,
+                zot:Place,
+                zot:Publisher,
+                zot:Series ] ;
     owl:inverseOf zot:tags .
 
 zotsn:thesis_1572 a sh:NodeShape ;
@@ -1831,7 +1826,7 @@ grace: a owl:Ontology ;
     rdfs:label "Graceful17 Ontology"@en ;
     ns4:status <bibo:status/draft> ;
     ns2:title "Graceful17 Ontology"@en ;
-    ns1:created "2026-07-26T00:02:35"@en ;
+    ns1:created "2026-07-26T21:12:37"@en ;
     ns1:creator "Bruno Boute"@en,
         "Christoph Sander"@en ;
     ns1:license <http://creativecommons.org/licenses/by/4.0/> ;
@@ -1839,7 +1834,7 @@ grace: a owl:Ontology ;
     owl:imports <http://www.opengis.net/ont/geosparql> ;
     owl:priorVersion grace:1.0.0 ;
     owl:versionIRI grace:1.0.1 ;
-    prov:generatedAtTime "2026-07-26T00:02:35"^^xsd:dateTime ;
+    prov:generatedAtTime "2026-07-26T21:12:37"^^xsd:dateTime ;
     schema:citation "Sander, Christoph; Boute, Bruno. (2025). The Graceful17 Ontology, https://w3id.org/g17/ontology (Version 1.0.1)"@en ;
     ns3:preferredNamespacePrefix "grace"@en ;
     ns3:preferredNamespaceUri "https://w3id.org/grace/ontology/"@en .
@@ -3540,15 +3535,6 @@ zot:title a owl:DatatypeProperty ;
                 zot:Webpage ] ;
     rdfs:range zotsn:Text .
 
-zot:type a owl:DatatypeProperty ;
-    rdfs:label "type"@en ;
-    sparnatural:tooltip "Tooltip for type"@en ;
-    rdfs:domain [ a owl:Class ;
-            grace:unionOf zot:Dataset,
-                zot:Item,
-                zot:Standard ] ;
-    rdfs:range zotsn:Text .
-
 zot:university a owl:DatatypeProperty ;
     rdfs:label "university"@en ;
     sparnatural:tooltip "Tooltip for university"@en ;
@@ -3687,18 +3673,6 @@ zotsn:geometry_2120 a sh:NodeShape ;
     sh:nodeKind sh:IRI ;
     sh:targetClass geosparql:Geometry .
 
-zotsn:language_2107 a sh:NodeShape ;
-    rdfs:label "Language"@en ;
-    volipi:iconName "fa-sticky-note"@en ;
-    volipi:message "A laguage tag"@en ;
-    sh:description "A laguage tag"@en ;
-    sh:name "Language"@en ;
-    sh:nodeKind sh:IRI ;
-    sh:order 1.0 ;
-    sh:property zotsn:property_1729,
-        zotsn:property_1867 ;
-    sh:targetClass zot:Language .
-
 zotsn:library_1500 a sh:NodeShape ;
     rdfs:label "Library"@en ;
     volipi:iconName "fa-solid fa-box"@en ;
@@ -3706,7 +3680,7 @@ zotsn:library_1500 a sh:NodeShape ;
     sh:description "A Zotero Library (Group or User)"@en ;
     sh:name "Library"@en ;
     sh:nodeKind sh:IRI ;
-    sh:order 1.0 ;
+    sh:order 0.1 ;
     sh:property zotsn:property_1729,
         zotsn:property_1737,
         zotsn:property_1740,
@@ -3805,17 +3779,6 @@ zotsn:property_1734 a sh:PropertyShape ;
     sh:node zotsn:collection_1501 ;
     sh:nodeKind sh:IRI ;
     sh:path zot:collections .
-
-zotsn:property_1738 a sh:PropertyShape ;
-    rdfs:label "Tag of"@en ;
-    volipi:message "Tooltip for tag of (This is only a query pattern)"@en ;
-    dash:searchWidget sparnatural:NonSelectableProperty ;
-    sh:name "Tag of"@en ;
-    sh:nodeKind sh:IRI ;
-    sh:or ( [ sh:class zot:Item ;
-                sh:node zotsn:item_1498 ] [ sh:class zot:Agent ;
-                sh:node zotsn:agent_1742 ] ) ;
-    sh:path [ sh:inversePath zot:tags ] .
 
 zotsn:property_1739 a sh:PropertyShape ;
     rdfs:label "Collection of"@en ;
@@ -4123,18 +4086,6 @@ zotsn:semantics_1769 a sh:NodeShape ;
         zotsn:property_1966 ;
     sh:targetClass semz:Semantics .
 
-zotsn:series_2108 a sh:NodeShape ;
-    rdfs:label "Series"@en ;
-    volipi:iconName "fa-sticky-note"@en ;
-    volipi:message "A series of a publication"@en ;
-    sh:description "A series of a publication"@en ;
-    sh:name "Series"@en ;
-    sh:nodeKind sh:IRI ;
-    sh:order 1.0 ;
-    sh:property zotsn:property_1729,
-        zotsn:property_1867 ;
-    sh:targetClass zot:Series .
-
 semz:hasLevel a owl:DatatypeProperty ;
     rdfs:label "hasLevel"@en ;
     sparnatural:tooltip "The hierarchical level of a structure"@en ;
@@ -4190,6 +4141,23 @@ skos:prefLabel a owl:DatatypeProperty ;
                 zotsn:Text ] ;
     rdfs:range zotsn:Text .
 
+zot:type a owl:DatatypeProperty,
+        owl:ObjectProperty ;
+    rdfs:label "type"@en ;
+    sparnatural:tooltip "Tooltip for type"@en ;
+    rdfs:domain [ a owl:Class ;
+            grace:unionOf zot:Agent,
+                zot:Item,
+                zot:Place,
+                zot:Publisher,
+                zot:Series ],
+        [ a owl:Class ;
+            grace:unionOf zot:Dataset,
+                zot:Item,
+                zot:Standard ] ;
+    rdfs:range zot:ItemType,
+        zotsn:Text .
+
 zotsn:conceptscheme_146 a sh:NodeShape ;
     rdfs:label "ConceptScheme"@en ;
     volipi:iconName "fa-solid fa-question"@en ;
@@ -4214,6 +4182,32 @@ zotsn:creatorrole_1499 a sh:NodeShape ;
         zotsn:property_1743,
         zotsn:property_1867 ;
     sh:targetClass zot:CreatorRole .
+
+zotsn:itemtype_2109 a sh:NodeShape ;
+    rdfs:label "Item Type"@en ;
+    volipi:iconName "fa-sticky-note"@en ;
+    volipi:message "The primary type of any Zotero item"@en ;
+    sh:description "The primary type of any Zotero item"@en ;
+    sh:name "Item Type"@en ;
+    sh:nodeKind sh:IRI ;
+    sh:order 6.0 ;
+    sh:property zotsn:property_1729,
+        zotsn:property_1738,
+        zotsn:property_1867 ;
+    sh:targetClass zot:ItemType .
+
+zotsn:language_2107 a sh:NodeShape ;
+    rdfs:label "Language"@en ;
+    volipi:iconName "fa-sticky-note"@en ;
+    volipi:message "A laguage tag"@en ;
+    sh:description "A laguage tag"@en ;
+    sh:name "Language"@en ;
+    sh:nodeKind sh:IRI ;
+    sh:order 1.0 ;
+    sh:property zotsn:property_1729,
+        zotsn:property_1738,
+        zotsn:property_1867 ;
+    sh:targetClass zot:Language .
 
 zotsn:property_148 a sh:PropertyShape ;
     rdfs:label "prefLabel"@en ;
@@ -4819,16 +4813,6 @@ zotsn:property_1731 a sh:PropertyShape ;
     sh:nodeKind sh:IRI ;
     sh:path zot:inLibrary .
 
-zotsn:property_1732 a sh:PropertyShape ;
-    rdfs:label "has the Tag(s)"@en ;
-    volipi:message "Tooltip for tags"@en ;
-    dash:searchWidget sparnatural:ListProperty ;
-    sh:class zot:Tag ;
-    sh:name "has the Tag(s)"@en ;
-    sh:node zotsn:tag_1502 ;
-    sh:nodeKind sh:IRI ;
-    sh:path zot:tags .
-
 zotsn:property_1735 a sh:PropertyShape ;
     rdfs:label "has Parent Item"@en ;
     volipi:message "Tooltip for parentItem"@en ;
@@ -4905,6 +4889,20 @@ zotsn:property_2155 a sh:PropertyShape ;
                 sh:node zotsn:link_1728 ] ) ;
     sh:path ( [ sh:zeroOrMorePath [ sh:alternativePath ( owl:sameAs [ sh:inversePath owl:sameAs ] dct:replaces [ sh:inversePath dct:replaces ] ) ] ] [ sh:inversePath cito:cites ] [ sh:zeroOrMorePath [ sh:alternativePath ( owl:sameAs [ sh:inversePath owl:sameAs ] dct:replaces [ sh:inversePath dct:replaces ] ) ] ] ) .
 
+zotsn:series_2108 a sh:NodeShape ;
+    rdfs:label "Series"@en ;
+    volipi:iconName "fa-sticky-note"@en ;
+    volipi:message "A series of a publication"@en ;
+    sh:description "A series of a publication"@en ;
+    sh:name "Series"@en ;
+    sh:nodeKind sh:IRI ;
+    sh:order 1.0 ;
+    sh:property zotsn:property_1729,
+        zotsn:property_1732,
+        zotsn:property_1867,
+        zotsn:property_2160 ;
+    sh:targetClass zot:Series .
+
 zotsn:wktliteral_1054 a sh:NodeShape ;
     rdfs:label "Geo Location"@en ;
     volipi:iconName "fa-solid fa-map"@en ;
@@ -4929,12 +4927,6 @@ cito:cites a owl:ObjectProperty ;
     rdfs:range [ a owl:Class ;
             grace:unionOf zot:Item,
                 zotsn:Link ] .
-
-zot:ItemType a owl:Class ;
-    rdfs:label "ItemType"@en ;
-    sparnatural:faIcon "fa-sticky-note"@en ;
-    sparnatural:tooltip "The primary type of any Zotero item"@en ;
-    rdfs:comment "The primary type of any Zotero item"@en .
 
 zot:inLibrary a owl:ObjectProperty ;
     rdfs:label "inLibrary"@en ;
@@ -4988,8 +4980,15 @@ zot:tags a owl:ObjectProperty ;
     sparnatural:tooltip "Tooltip for tags"@en ;
     rdfs:domain [ a owl:Class ;
             grace:unionOf zot:Agent,
-                zot:Item ] ;
-    rdfs:range zot:Tag .
+                zot:Item,
+                zot:Place,
+                zot:Publisher,
+                zot:Series ] ;
+    rdfs:range [ a owl:Class ;
+            grace:unionOf skos:Concept,
+                zot:ItemType,
+                zot:Language,
+                zot:Tag ] .
 
 zotsn:note_1559 a sh:NodeShape ;
     rdfs:label "Note"@en ;
@@ -5136,18 +5135,6 @@ zot:Attachment a owl:Class ;
     sparnatural:tooltip "Tooltip for Attachment"@en ;
     rdfs:subClassOf zot:Item .
 
-zot:Language a owl:Class ;
-    rdfs:label "Language"@en ;
-    sparnatural:faIcon "fa-sticky-note"@en ;
-    sparnatural:tooltip "A laguage tag"@en ;
-    rdfs:comment "A laguage tag"@en .
-
-zot:Series a owl:Class ;
-    rdfs:label "Series"@en ;
-    sparnatural:faIcon "fa-sticky-note"@en ;
-    sparnatural:tooltip "A series of a publication"@en ;
-    rdfs:comment "A series of a publication"@en .
-
 zot:collections a owl:ObjectProperty ;
     rdfs:label "collections"@en ;
     sparnatural:tooltip "Tooltip for collections"@en ;
@@ -5242,6 +5229,20 @@ zotsn:property_1720 a sh:PropertyShape ;
     sh:node zotsn:text_1724 ;
     sh:nodeKind sh:Literal ;
     sh:path zot:videoRecordingFormat .
+
+zotsn:property_1738 a sh:PropertyShape ;
+    rdfs:label "Tag of"@en ;
+    volipi:message "Tooltip for tag of (This is only a query pattern)"@en ;
+    dash:searchWidget sparnatural:NonSelectableProperty ;
+    sh:name "Tag of"@en ;
+    sh:nodeKind sh:IRI ;
+    sh:or ( [ sh:class zot:Item ;
+                sh:node zotsn:item_1498 ] [ sh:class zot:Agent ;
+                sh:node zotsn:agent_1742 ] [ sh:class zot:Place ;
+                sh:node zotsn:place_1772 ] [ sh:class zot:Publisher ;
+                sh:node zotsn:publisher_1773 ] [ sh:class zot:Series ;
+                sh:node zotsn:series_2108 ] ) ;
+    sh:path [ sh:inversePath zot:tags ] .
 
 zotsn:property_1856 a sh:PropertyShape ;
     rdfs:label "is paragraph of"@en ;
@@ -5347,27 +5348,6 @@ zot:hasCreator a owl:ObjectProperty ;
     rdfs:domain zot:CreatorRole ;
     rdfs:range zot:Agent .
 
-zotsn:concept_134 a sh:NodeShape ;
-    rdfs:label "Concept"@en ;
-    volipi:iconName "fa-solid fa-question"@en ;
-    volipi:message "Tooltip for Concept"@en ;
-    sh:name "Concept"@en ;
-    sh:nodeKind sh:IRI ;
-    sh:property zotsn:property_1208,
-        zotsn:property_1209,
-        zotsn:property_1210,
-        zotsn:property_1211,
-        zotsn:property_1213,
-        zotsn:property_148,
-        zotsn:property_149,
-        zotsn:property_150,
-        zotsn:property_1871,
-        zotsn:property_1899,
-        zotsn:property_1963,
-        zotsn:property_1966,
-        zotsn:property_1967 ;
-    sh:targetClass skos:Concept .
-
 zotsn:date_1727 a sh:NodeShape ;
     rdfs:label "Date"@en ;
     volipi:iconName "fa-solid fa-calendar-alt"@en ;
@@ -5375,24 +5355,6 @@ zotsn:date_1727 a sh:NodeShape ;
     sh:description "A search value for dates"@en ;
     sh:name "Date"@en ;
     sh:nodeKind sh:Literal .
-
-zotsn:place_1772 a sh:NodeShape ;
-    rdfs:label "Place"@en ;
-    volipi:iconName "fa-sticky-note"@en ;
-    volipi:message "A place, e.g. a place of publication"@en ;
-    sh:description "A place, e.g. a place of publication"@en ;
-    sh:name "Place"@en ;
-    sh:nodeKind sh:IRI ;
-    sh:order 5.0 ;
-    sh:property zotsn:property_1729,
-        zotsn:property_1774,
-        zotsn:property_1803,
-        zotsn:property_1867,
-        zotsn:property_1963,
-        zotsn:property_1966,
-        zotsn:property_2067,
-        zotsn:property_2121 ;
-    sh:targetClass zot:Place .
 
 zotsn:property_1657 a sh:PropertyShape ;
     rdfs:label "history"@en ;
@@ -5412,22 +5374,28 @@ zotsn:property_1699 a sh:PropertyShape ;
     sh:nodeKind sh:Literal ;
     sh:path zot:numPages .
 
-zotsn:publisher_1773 a sh:NodeShape ;
-    rdfs:label "Publisher"@en ;
-    volipi:iconName "fa-sticky-note"@en ;
-    volipi:message "A publisher"@en ;
-    sh:description "A publisher"@en ;
-    sh:name "Publisher"@en ;
+zotsn:property_1732 a sh:PropertyShape ;
+    rdfs:label "has the Tag(s)"@en ;
+    volipi:message "Tooltip for tags"@en ;
+    dash:searchWidget sparnatural:ListProperty ;
+    sh:name "has the Tag(s)"@en ;
     sh:nodeKind sh:IRI ;
-    sh:order 1.0 ;
-    sh:property zotsn:property_1729,
-        zotsn:property_1775,
-        zotsn:property_1803,
-        zotsn:property_1867,
-        zotsn:property_1963,
-        zotsn:property_1966,
-        zotsn:property_2067 ;
-    sh:targetClass zot:Publisher .
+    sh:or ( [ sh:class skos:Concept ;
+                sh:node zotsn:concept_134 ] [ sh:class zot:Tag ;
+                sh:node zotsn:tag_1502 ] [ sh:class zot:Language ;
+                sh:node zotsn:language_2107 ] [ sh:class zot:ItemType ;
+                sh:node zotsn:itemtype_2109 ] ) ;
+    sh:path zot:tags .
+
+zotsn:property_2160 a sh:PropertyShape ;
+    rdfs:label "has the Type"@en ;
+    volipi:message "Tooltip for type"@en ;
+    dash:searchWidget sparnatural:ListProperty ;
+    sh:class zot:ItemType ;
+    sh:name "has the Type"@en ;
+    sh:node zotsn:itemtype_2109 ;
+    sh:nodeKind sh:IRI ;
+    sh:path zot:type .
 
 zotsn:tag_1502 a sh:NodeShape ;
     rdfs:label "Tag"@en ;
@@ -5448,6 +5416,48 @@ zotsn:tag_1502 a sh:NodeShape ;
         zotsn:property_1967,
         zotsn:property_2067 ;
     sh:targetClass zot:Tag .
+
+zotsn:concept_134 a sh:NodeShape ;
+    rdfs:label "Concept"@en ;
+    volipi:iconName "fa-solid fa-question"@en ;
+    volipi:message "Tooltip for Concept"@en ;
+    sh:name "Concept"@en ;
+    sh:nodeKind sh:IRI ;
+    sh:property zotsn:property_1208,
+        zotsn:property_1209,
+        zotsn:property_1210,
+        zotsn:property_1211,
+        zotsn:property_1213,
+        zotsn:property_148,
+        zotsn:property_149,
+        zotsn:property_150,
+        zotsn:property_1738,
+        zotsn:property_1871,
+        zotsn:property_1899,
+        zotsn:property_1963,
+        zotsn:property_1966,
+        zotsn:property_1967 ;
+    sh:targetClass skos:Concept .
+
+zotsn:place_1772 a sh:NodeShape ;
+    rdfs:label "Place"@en ;
+    volipi:iconName "fa-sticky-note"@en ;
+    volipi:message "A place, e.g. a place of publication"@en ;
+    sh:description "A place, e.g. a place of publication"@en ;
+    sh:name "Place"@en ;
+    sh:nodeKind sh:IRI ;
+    sh:order 5.0 ;
+    sh:property zotsn:property_1729,
+        zotsn:property_1732,
+        zotsn:property_1774,
+        zotsn:property_1803,
+        zotsn:property_1867,
+        zotsn:property_1963,
+        zotsn:property_1966,
+        zotsn:property_2067,
+        zotsn:property_2121,
+        zotsn:property_2160 ;
+    sh:targetClass zot:Place .
 
 zotsn:property_1673 a sh:PropertyShape ;
     rdfs:label "seriesNumber"@en ;
@@ -5494,6 +5504,25 @@ zotsn:property_2065 a sh:PropertyShape ;
                 sh:node zotsn:place_1772 ] [ sh:class zot:Publisher ;
                 sh:node zotsn:publisher_1773 ] ) ;
     sh:path ( [ sh:zeroOrMorePath [ sh:inversePath zot:parentItem ] ] [ sh:alternativePath ( [ sh:inversePath semz:inNote ] [ sh:inversePath semz:inStructure ] [ sh:inversePath semz:hasLocator ] [ sh:inversePath semz:inDoc ] [ sh:inversePath semz:inQuotation ] ) ] [ sh:oneOrMorePath owl:sameAs ] ) .
+
+zotsn:publisher_1773 a sh:NodeShape ;
+    rdfs:label "Publisher"@en ;
+    volipi:iconName "fa-sticky-note"@en ;
+    volipi:message "A publisher"@en ;
+    sh:description "A publisher"@en ;
+    sh:name "Publisher"@en ;
+    sh:nodeKind sh:IRI ;
+    sh:order 1.0 ;
+    sh:property zotsn:property_1729,
+        zotsn:property_1732,
+        zotsn:property_1775,
+        zotsn:property_1803,
+        zotsn:property_1867,
+        zotsn:property_1963,
+        zotsn:property_1966,
+        zotsn:property_2067,
+        zotsn:property_2160 ;
+    sh:targetClass zot:Publisher .
 
 semz:hasLocator a owl:ObjectProperty ;
     rdfs:label "hasLocator"@en ;
@@ -5545,6 +5574,12 @@ semz:inQuotation a owl:ObjectProperty ;
                 semz:Structure ] ;
     rdfs:range semz:Quotation .
 
+zot:Language a owl:Class ;
+    rdfs:label "Language"@en ;
+    sparnatural:faIcon "fa-sticky-note"@en ;
+    sparnatural:tooltip "A laguage tag"@en ;
+    rdfs:comment "A laguage tag"@en .
+
 zot:Library a owl:Class ;
     rdfs:label "Library"@en ;
     sparnatural:faIcon "fa-solid fa-box"@en ;
@@ -5570,7 +5605,8 @@ zotsn:agent_1742 a sh:NodeShape ;
         zotsn:property_1867,
         zotsn:property_1963,
         zotsn:property_1966,
-        zotsn:property_2067 ;
+        zotsn:property_2067,
+        zotsn:property_2160 ;
     sh:targetClass zot:Agent .
 
 zotsn:number_1726 a sh:NodeShape ;
@@ -5657,6 +5693,18 @@ skos:ConceptScheme a owl:Class ;
     rdfs:label "ConceptScheme"@en ;
     sparnatural:faIcon "fa-solid fa-question"@en ;
     sparnatural:tooltip "Tooltip for ConceptScheme"@en .
+
+zot:ItemType a owl:Class ;
+    rdfs:label "ItemType"@en ;
+    sparnatural:faIcon "fa-sticky-note"@en ;
+    sparnatural:tooltip "The primary type of any Zotero item"@en ;
+    rdfs:comment "The primary type of any Zotero item"@en .
+
+zot:Series a owl:Class ;
+    rdfs:label "Series"@en ;
+    sparnatural:faIcon "fa-sticky-note"@en ;
+    sparnatural:tooltip "A series of a publication"@en ;
+    rdfs:comment "A series of a publication"@en .
 
 zotsn:annotation_1759 a sh:NodeShape ;
     rdfs:label "Annotation"@en ;
@@ -6228,6 +6276,7 @@ zotsn:item_1498 a sh:NodeShape ;
     sh:description "Any Zotero Item"@en ;
     sh:name "Item"@en ;
     sh:nodeKind sh:IRI ;
+    sh:order 0.01 ;
     sh:property zotsn:property_1613,
         zotsn:property_1614,
         zotsn:property_1615,
@@ -6362,7 +6411,8 @@ zotsn:item_1498 a sh:NodeShape ;
         zotsn:property_2068,
         zotsn:property_2121,
         zotsn:property_2152,
-        zotsn:property_2155 ;
+        zotsn:property_2155,
+        zotsn:property_2160 ;
     sh:targetClass zot:Item .
 
 zot:Manuscript a owl:Class ;
@@ -6370,12 +6420,6 @@ zot:Manuscript a owl:Class ;
     sparnatural:faIcon "fa-scroll"@en ;
     sparnatural:tooltip "Tooltip for Manuscript"@en ;
     rdfs:subClassOf zot:Item .
-
-zot:Publisher a owl:Class ;
-    rdfs:label "Publisher"@en ;
-    sparnatural:faIcon "fa-sticky-note"@en ;
-    sparnatural:tooltip "A publisher"@en ;
-    rdfs:comment "A publisher"@en .
 
 zot:Statute a owl:Class ;
     rdfs:label "Statute"@en ;
@@ -6400,12 +6444,6 @@ zot:Hearing a owl:Class ;
     sparnatural:faIcon "fa-gavel"@en ;
     sparnatural:tooltip "Tooltip for Hearing"@en ;
     rdfs:subClassOf zot:Item .
-
-zot:Place a owl:Class ;
-    rdfs:label "Place"@en ;
-    sparnatural:faIcon "fa-sticky-note"@en ;
-    sparnatural:tooltip "A place, e.g. a place of publication"@en ;
-    rdfs:comment "A place, e.g. a place of publication"@en .
 
 zot:Thesis a owl:Class ;
     rdfs:label "Thesis"@en ;
@@ -6474,6 +6512,12 @@ zot:Patent a owl:Class ;
     sparnatural:tooltip "Tooltip for Patent"@en ;
     rdfs:subClassOf zot:Item .
 
+zot:Publisher a owl:Class ;
+    rdfs:label "Publisher"@en ;
+    sparnatural:faIcon "fa-sticky-note"@en ;
+    sparnatural:tooltip "A publisher"@en ;
+    rdfs:comment "A publisher"@en .
+
 zot:Tag a owl:Class ;
     rdfs:label "Tag"@en ;
     sparnatural:faIcon "fa-solid fa-tag"@en ;
@@ -6493,6 +6537,12 @@ zot:AudioRecording a owl:Class ;
     sparnatural:faIcon "fa-headphones"@en ;
     sparnatural:tooltip "Tooltip for AudioRecording"@en ;
     rdfs:subClassOf zot:Item .
+
+zot:Place a owl:Class ;
+    rdfs:label "Place"@en ;
+    sparnatural:faIcon "fa-sticky-note"@en ;
+    sparnatural:tooltip "A place, e.g. a place of publication"@en ;
+    rdfs:comment "A place, e.g. a place of publication"@en .
 
 zot:VideoRecording a owl:Class ;
     rdfs:label "VideoRecording"@en ;
@@ -6517,11 +6567,6 @@ zot:Dataset a owl:Class ;
     sparnatural:faIcon "fa-database"@en ;
     sparnatural:tooltip "Tooltip for Dataset"@en ;
     rdfs:subClassOf zot:Item .
-
-skos:Concept a owl:Class ;
-    rdfs:label "Concept"@en ;
-    sparnatural:faIcon "fa-solid fa-question"@en ;
-    sparnatural:tooltip "Tooltip for Concept"@en .
 
 zot:Standard a owl:Class ;
     rdfs:label "Standard"@en ;
@@ -6565,17 +6610,22 @@ zotsn:property_1717 a sh:PropertyShape ;
     sh:nodeKind sh:Literal ;
     sh:path zot:libraryCatalog .
 
-zot:Agent a owl:Class ;
-    rdfs:label "Agent"@en ;
-    sparnatural:faIcon "fa-solid fa-user"@en ;
-    sparnatural:tooltip "A creator of an item, usually a person"@en ;
-    rdfs:comment "A creator of an item, usually a person"@en .
+skos:Concept a owl:Class ;
+    rdfs:label "Concept"@en ;
+    sparnatural:faIcon "fa-solid fa-question"@en ;
+    sparnatural:tooltip "Tooltip for Concept"@en .
 
 zot:Book a owl:Class ;
     rdfs:label "Book"@en ;
     sparnatural:faIcon "fa-book"@en ;
     sparnatural:tooltip "Tooltip for Book"@en ;
     rdfs:subClassOf zot:Item .
+
+zot:Agent a owl:Class ;
+    rdfs:label "Agent"@en ;
+    sparnatural:faIcon "fa-solid fa-user"@en ;
+    sparnatural:tooltip "A creator of an item, usually a person"@en ;
+    rdfs:comment "A creator of an item, usually a person"@en .
 
 zot:ConferencePaper a owl:Class ;
     rdfs:label "ConferencePaper"@en ;
@@ -6778,4 +6828,3 @@ zotsn:Text a rdfs:Datatype ;
     sparnatural:faIcon "fa-solid fa-quote-left"@en ;
     sparnatural:tooltip "A search value for plain text (This is only a query pattern)"@en ;
     rdfs:comment "A search value for plain text"@en .
-
