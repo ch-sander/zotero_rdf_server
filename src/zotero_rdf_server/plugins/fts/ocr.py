@@ -2398,8 +2398,6 @@ def iter_text_pages(
 
     img_dir = _resolve_out(img_out)
     txt_dir = _resolve_out(txt_out)
-   
-    def _organize_cache_files() -> dict[str, Any]:
 
         # CONFIG EXAMPLE
 
@@ -2428,18 +2426,22 @@ def iter_text_pages(
         #     min_content_len: null
         #     all_files: true
 
+    def _organize_cache_files() -> dict[str, Any]:
         from .pipeline import clean_files
+
         organize = dict(cfg.get("organize") or {})
 
-        default_action = organize.get("action")
+        default_action = organize.get("action", "copy")
         default_move_to = organize.get("move_to")
 
         reports: dict[str, Any] = {}
 
         if save_text == "organize" and txt_dir is not None:
             text_cfg = dict(organize.get("text") or {})
+
             action = text_cfg.get("action", default_action)
             move_to = text_cfg.get("move_to", default_move_to)
+
             if move_to:
                 move_to = _resolve_out(move_to)
 
@@ -2447,7 +2449,9 @@ def iter_text_pages(
                 root_dir=txt_dir,
                 extension=text_cfg.get("extension", txt_ext),
                 min_bytes=text_cfg.get("min_bytes"),
+                max_bytes=text_cfg.get("max_bytes"),
                 min_content_len=text_cfg.get("min_content_len"),
+                max_content_len=text_cfg.get("max_content_len"),
                 action=action,
                 move_to=move_to,
                 all_files=text_cfg.get("all_files", False),
@@ -2455,8 +2459,10 @@ def iter_text_pages(
 
         if save_image == "organize" and img_dir is not None:
             image_cfg = dict(organize.get("image") or {})
+
             action = image_cfg.get("action", default_action)
             move_to = image_cfg.get("move_to", default_move_to)
+
             if move_to:
                 move_to = _resolve_out(move_to)
 
@@ -2464,7 +2470,9 @@ def iter_text_pages(
                 root_dir=img_dir,
                 extension=image_cfg.get("extension", img_ext),
                 min_bytes=image_cfg.get("min_bytes"),
+                max_bytes=image_cfg.get("max_bytes"),
                 min_content_len=image_cfg.get("min_content_len"),
+                max_content_len=image_cfg.get("max_content_len"),
                 action=action,
                 move_to=move_to,
                 all_files=image_cfg.get("all_files", False),

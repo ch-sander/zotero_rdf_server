@@ -323,13 +323,227 @@ def ingest_pipeline(
 
 Action = TypeLiteral["delete", "move", "copy"]
 
-
 def clean_files(
     root_dir: str | Path,
     extension: str,
     min_bytes: int | None = None,
+    max_bytes: int | None = None,
     min_content_len: int | None = None,
-    action: Action = "delete",
+    max_content_len: int | None = None,
+    action: Action = "copy",
+    move_to: str | Path | None = None,
+    all_files: bool = False,
+) -> dict:
+    """
+    Recursively finds files by extension and deletes, moves or copies files
+    matching the configured ranges.
+
+    Range semantics are inclusive:
+
+        min_bytes <= file size <= max_bytes
+
+        min_content_len <= decoded content length <= max_content_len
+
+    Missing bounds are ignored.
+
+    If both a byte range and a content-length range are configured, a file
+    must match both ranges.
+
+    If all_files=True, all matching files are processed regardless of ranges.
+    """
+
+    root = Path(root_dir).resolve()
+
+    if not root.exists() or not root.is_dir():
+        logger.error(f"root_dir does not exist or is not a directory: {root}")
+        return {
+            "root_dir": str(root),
+            "extension": extension,
+            "action": action,
+            "deleted": 0,
+            "moved": 0,
+            "copied": 0,
+            "skipped": 0,
+            "errors": [],
+            "directory_missing": True,
+        }
+        # raise ValueError(f"root_dir does not exist or is not a directory: {root}")
+
+    valid_actions = {"delete", "move", "copy"}
+
+    if action not in valid_actions:
+        raise ValueError(
+            f"Unsupported action {action!r}; expected one of "
+            f"{sorted(valid_actions)}"
+        )
+
+    if min_bytes is not None and min_bytes < 0:
+        raise ValueError("min_bytes must be >= 0")
+
+    if max_bytes is not None and max_bytes < 0:
+        raise ValueError("max_bytes must be >= 0")
+
+    if min_content_len is not None and min_content_len < 0:
+        raise ValueError("min_content_len must be >= 0")
+
+    if max_content_len is not None and max_content_len < 0:
+        raise ValueError("max_content_len must be >= 0")
+
+    if (
+        min_bytes is not None
+        and max_bytes is not None
+        and min_bytes > max_bytes
+    ):
+        raise ValueError(
+            "min_bytes must be less than or equal to max_bytes"
+        )
+
+    if (
+        min_content_len is not None
+        and max_content_len is not None
+        and min_content_len > max_content_len
+    ):
+        raise ValueError(
+            "min_content_len must be less than or equal to "
+            "max_content_len"
+        )
+
+    has_byte_filter = min_bytes is not None or max_bytes is not None
+    has_content_filter = (
+        min_content_len is not None
+        or max_content_len is not None
+    )
+
+    if not all_files and not has_byte_filter and not has_content_filter:
+        raise ValueError(
+            "At least one range filter or all_files=True must be set"
+        )
+
+    if not extension.startswith("."):
+        extension = f".{extension}"
+
+    target_dir: Path | None = None
+
+    if action in {"move", "copy"}:
+        if move_to is None:
+            raise ValueError(
+                "move_to must be set when action='move' or action='copy'"
+            )
+
+        target_dir = Path(move_to).resolve()
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+    deleted = 0
+    moved = 0
+    copied = 0
+    skipped = 0
+    errors: list[dict[str, str]] = []
+
+    for file_path in root.rglob(f"*{extension}"):
+        if not file_path.is_file():
+            continue
+
+        try:
+            if all_files:
+                should_clean = True
+            else:
+                checks: list[bool] = []
+
+                if has_byte_filter:
+                    file_size = file_path.stat().st_size
+
+                    byte_matches = (
+                        (min_bytes is None or file_size >= min_bytes)
+                        and
+                        (max_bytes is None or file_size <= max_bytes)
+                    )
+
+                    checks.append(byte_matches)
+
+                if has_content_filter:
+                    try:
+                        content = file_path.read_text(
+                            encoding="utf-8",
+                            errors="ignore",
+                        )
+                    except OSError as exc:
+                        errors.append({
+                            "file": str(file_path),
+                            "error": str(exc),
+                        })
+                        continue
+
+                    content_len = len(content)
+
+                    content_matches = (
+                        (
+                            min_content_len is None
+                            or content_len >= min_content_len
+                        )
+                        and
+                        (
+                            max_content_len is None
+                            or content_len <= max_content_len
+                        )
+                    )
+
+                    checks.append(content_matches)
+
+                # Every configured filter must match.
+                should_clean = all(checks)
+
+            if not should_clean:
+                skipped += 1
+                continue
+
+            if action == "delete":
+                file_path.unlink()
+                deleted += 1
+                continue
+
+            assert target_dir is not None
+
+            relative_path = file_path.relative_to(root)
+            destination = target_dir / relative_path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+
+            if action == "move":
+                move(str(file_path), str(destination))
+                moved += 1
+            else:
+                copy2(str(file_path), str(destination))
+                copied += 1
+
+        except OSError as exc:
+            errors.append({
+                "file": str(file_path),
+                "error": str(exc),
+            })
+
+    return {
+        "root_dir": str(root),
+        "extension": extension,
+        "action": action,
+        "filters": {
+            "min_bytes": min_bytes,
+            "max_bytes": max_bytes,
+            "min_content_len": min_content_len,
+            "max_content_len": max_content_len,
+            "all_files": all_files,
+        },
+        "deleted": deleted,
+        "moved": moved,
+        "copied": copied,
+        "skipped": skipped,
+        "errors": errors,
+    }
+
+def clean_files_dedrecated(
+    root_dir: str | Path,
+    extension: str,
+    min_bytes: int | None = None,
+    min_content_len: int | None = None,
+    action: Action = "copy",
     move_to: str | Path | None = None,
     all_files: bool = False
 ) -> dict:
@@ -342,7 +556,19 @@ def clean_files(
     root = Path(root_dir).resolve()
 
     if not root.exists() or not root.is_dir():
-        raise ValueError(f"root_dir does not exist or is not a directory: {root}")
+        logger.error(f"root_dir does not exist or is not a directory: {root}")
+        return {
+            "root_dir": str(root),
+            "extension": extension,
+            "action": action,
+            "deleted": 0,
+            "moved": 0,
+            "copied": 0,
+            "skipped": 0,
+            "errors": [],
+            "directory_missing": True,
+        }
+        # raise ValueError(f"root_dir does not exist or is not a directory: {root}")
 
     if not all_files and min_bytes is None and min_content_len is None:
         raise ValueError("At least one of all_files, min_bytes or min_content_len must be set")
@@ -424,3 +650,5 @@ def clean_files(
         "skipped": skipped,
         "errors": errors,
     }
+
+# END

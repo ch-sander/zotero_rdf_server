@@ -2496,26 +2496,40 @@ class CleanRequest(BaseModel):
     extension: str
     action: Literal["delete", "move", "copy"] = "delete"
     move_to: str | None = None
+
     min_bytes: int | None = None
+    max_bytes: int | None = None
+
     min_content_len: int | None = None
-    all_files: bool | None = False
+    max_content_len: int | None = None
+
+    all_files: bool = False
+
 
 @router.post("/clean-files")
 def clean_files_endpoint(payload: CleanRequest):
     from zotero_rdf_server.config import EXPORT_DIRECTORY
     from .pipeline import clean_files
+
     export_root = Path(EXPORT_DIRECTORY).resolve()
     root_dir = (export_root / payload.root_dir).resolve()
+
+    move_to: Path | None = None
+
     if payload.move_to:
         move_to = (export_root / payload.move_to).resolve()
-    else:
-        move_to = None
 
     # Prevent path traversal outside EXPORT_DIRECTORY.
     if not root_dir.is_relative_to(export_root):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"root_dir must be inside {EXPORT_DIRECTORY}",
+        )
+
+    if move_to is not None and not move_to.is_relative_to(export_root):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"move_to must be inside {EXPORT_DIRECTORY}",
         )
 
     if not root_dir.exists():
@@ -2537,7 +2551,10 @@ def clean_files_endpoint(payload: CleanRequest):
             action=payload.action,
             move_to=move_to,
             min_bytes=payload.min_bytes,
+            max_bytes=payload.max_bytes,
             min_content_len=payload.min_content_len,
+            max_content_len=payload.max_content_len,
+            all_files=payload.all_files,
         )
 
     except ValueError as exc:
