@@ -112,14 +112,18 @@ def index_document(
             _citation_to_jsonld(document_uri, citation)
             for citation in citations
         ],
-        "cites": list(
-            dict.fromkeys(
-                item.target
-                for citation in citations
-                for item in citation.items
-                if item.target
-            )
-        ),
+    "cites": [
+        {
+            "@id": target,
+            "@type": "CitedDocument",
+        }
+        for target in dict.fromkeys(
+            item.target
+            for citation in citations
+            for item in citation.items
+            if item.target
+        )
+    ],
     }
 
     if graph_uri:
