@@ -194,7 +194,9 @@ def refresh_store(force_reload:bool = False, remove_store:bool=True):
                         lib = ZoteroLibrary(lib_cfg)
                         ensure_store(store)
                         logger.warning(f"load_mode '{lib.load_mode}' for '{lib.name}' — start.")
-                        if lib.load_mode == "rdf":
+                        if lib.library_type == "excluded":
+                            logger.warning(f"{lib.name} excluded")
+                        elif lib.load_mode == "rdf":
                             try:
                                 logger.info(f"Fetching RDF export for '{lib.name}'")
                                 rdf_data = lib.fetch_rdf_export()
