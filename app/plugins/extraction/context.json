@@ -7,6 +7,7 @@
   "zot": "http://www.zotero.org/namespaces/export#",
 
   "Document": "zot:Item",
+  "CitedDocument": "zot:Item",
   "Citation": "schema:ItemList",
   "CitationItem": "cito:Citation",
 
