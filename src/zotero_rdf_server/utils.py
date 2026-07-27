@@ -287,7 +287,7 @@ def _sources_from_sparql(
         yield url_value.value, document_uri_value.value
 
     logger.info("Number of citation sources: %s", count)
-    
+
 def _index_url(
     url: str,
     *,
@@ -315,7 +315,6 @@ def _index_url(
             graph_uri=graph_uri,
             context=context,
         )
-    
 
 def load_dict_like(
     raw: str | dict | list | Path | None,
@@ -973,6 +972,40 @@ def ucfirst(value: object) -> str:
     return s[:1].upper() + s[1:] if s else s
 
 def ensure_import(module, attr=None, requirements=None):
+    modname = re.split(r"(?:==|!=|<=|>=|<|>|~=)", module, 1)[0]
+
+    try:
+        mod = importlib.import_module(modname)
+    except ImportError:
+        try:
+            logger.warning(
+                f"{modname} not found. Installing dependencies ({module})..."
+            )
+
+            command = [
+                "uv",
+                "pip",
+                "install",
+                "--python",
+                sys.executable,
+            ]
+
+            if requirements:
+                command.extend(["-r", str(requirements)])
+            else:
+                command.append(module)
+
+            subprocess.check_call(command)
+            importlib.invalidate_caches()
+            mod = importlib.import_module(modname)
+
+        except Exception as e:
+            logger.error(e, exc_info=True)
+            raise
+
+    return getattr(mod, attr) if attr else mod
+
+def ensure_import_pip(module, attr=None, requirements=None):
     modname = re.split(r"(?:==|!=|<=|>=|<|>|~=)", module, 1)[0]
 
     try:
