@@ -1303,7 +1303,148 @@ def run_update_queries(lib: ZoteroLibrary, store: Store):
         after_all - before_all,
     )
 
-def index_citation_sources(lib: ZoteroLibrary, store: Store) -> list[dict[str, Any]]:
+def index_citation_sources(
+    lib: ZoteroLibrary,
+    store: Store,
+) -> list[dict[str, Any]]:
+    """Index all configured citation sources serially."""
+    if not lib.citation_sources:
+        return []
+
+    try:
+        from .plugins.extraction.citation2rdf import index_document
+        from .utils import _index_url, _sources_from_sparql
+    except ImportError:
+        logger.exception("Failed to import citation extraction plugin")
+        raise
+
+    indexed_results: list[dict[str, Any]] = []
+
+    for source_config in lib.citation_sources:
+        source = source_config["source"]
+
+        context = load_dict_like(
+            source_config.get("context"),
+            default={},
+            label="Context for citation extraction",
+        )
+
+        try:
+            kind = source["kind"]
+
+            if kind == "path":
+                source_results = [
+                    index_document(
+                        source["path"],
+                        document_uri=source_config["document_uri"],
+                        graph_uri=source_config.get("graph_uri"),
+                        context=context,
+                    )
+                ]
+
+            elif kind == "url":
+                source_results = [
+                    _index_url(
+                        source["url"],
+                        index_document=index_document,
+                        document_uri=source_config["document_uri"],
+                        graph_uri=source_config.get("graph_uri"),
+                        context=context,
+                    )
+                ]
+
+
+            elif kind == "sparql":
+                query = load_text_like(
+                    source["query"],
+                    label="SPARQL for citation extraction",
+                )
+
+                url_variable = source.get("url_variable", "url")
+                doc_variable = source.get("document_uri_variable", "doc")
+
+                citation_sources = list(
+                    _sources_from_sparql(
+                        store,
+                        query,
+                        url_variable=url_variable,
+                        document_uri_variable=doc_variable,
+                    )
+                )
+
+                source_results = [
+                    _index_url(
+                        url,
+                        index_document=index_document,
+                        document_uri=document_uri,
+                        graph_uri=source_config.get("graph_uri"),
+                        context=context,
+                    )
+                    for url, document_uri in citation_sources
+                ]
+
+
+
+            else:
+                raise ValueError(
+                    f"Unsupported citation source kind: {kind}"
+                )
+
+            for result in source_results:
+                if not result:
+                    continue
+
+                meta_path = source_config.get("meta")
+                if meta_path:
+                    meta = load_dict_like(
+                        meta_path,
+                        default={},
+                        label="Meta for citation extraction",
+                    )
+
+                    graph = result.get("@graph")
+                    if graph:
+                        graph[0].update(meta)
+                    else:
+                        result.update(meta)
+
+                tmp_store = Store()
+
+                graph_uri = (
+                    source_config.get("graph_uri")
+                    or lib.base_url
+                )
+                to_graph = (
+                    safeNamedNode(graph_uri)
+                    if graph_uri
+                    else None
+                )
+
+                tmp_store.load(
+                    json.dumps(result),
+                    format=RdfFormat.JSON_LD,
+                    to_graph=to_graph,
+                )
+
+                store.extend(tmp_store)
+                indexed_results.append(result)
+
+                logger.info(
+                    "Extended store with citations: %s quads",
+                    len(tmp_store),
+                )
+
+        except Exception:
+            logger.exception(
+                "Failed extracting citations from source %r in %s",
+                source,
+                lib.name,
+            )
+            continue
+
+    return indexed_results
+
+def index_citation_sources_deprecated(lib: ZoteroLibrary, store: Store) -> list[dict[str, Any]]:
     """Index all configured citation sources serially."""
     if not lib.citation_sources:
         return
@@ -1322,7 +1463,8 @@ def index_citation_sources(lib: ZoteroLibrary, store: Store) -> list[dict[str, A
             source = source_config["source"]
             logger.info(f"Extracting citations from {source}")
             context = load_dict_like(source_config.get("context"),default={},label="Context for citation extraction")
-
+            kind = source["kind"]
+            
             if source["kind"] == "path":
                 result = index_document(
                     source["path"],
@@ -1583,11 +1725,11 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
             if items:                
                 with (path / f"{lib.library_id}_items.json").open("w", encoding="utf-8") as f:
                     json.dump(items, f, ensure_ascii=False, indent=2)
-
+                logger.info(f"Stored JSON for {lib.library_id} in {path}: {len(items)} items")
             if collections:
                 with (path / f"{lib.library_id}_collections.json").open("w", encoding="utf-8") as f:
                     json.dump(collections, f, ensure_ascii=False, indent=2)      
-            logger.info(f"Stored JSON for {lib.library_id} in {path}")
+                logger.info(f"Stored JSON for {lib.library_id} in {path}: {len(collections)} collections")
         except Exception as e:
             logger.error(f"Error saving JSON for {lib.library_id} to {lib.save_to}: {e}")
 
@@ -1673,16 +1815,28 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
         all_items = []
         item_type_fields = lib.map.get("item_type") or []
         start = time.perf_counter()
+        last = start
         total = len(items)
-        mark = min(1000, 10 ** (len(str(total)) - 1))
+        mark = LIMIT or min(1000, 10 ** (len(str(total)) - 1))
         # ignore_tags = lib.map.get("ignore_tags") or []
         logger.info(f"Loading {total} items for {lib.name} to store")
         for i, item in enumerate(items, 1):
             if i % mark == 0:
-                elapsed = time.perf_counter() - start
+                now = time.perf_counter()
+
+                elapsed = now - start
+                rate = mark / (now - last) * 60
+                last = now
+
                 remaining = elapsed / i * (total - i)
-                hours, minutes, seconds = int(remaining) // 3600, int(remaining) % 3600 // 60, int(remaining) % 60
-                logger.info(f"Processing item {i}/{total} for {lib.name} - ca. {hours}:{minutes}:{seconds} left")
+                hours, rest = divmod(int(remaining), 3600)
+                minutes, seconds = divmod(rest, 60)
+
+                logger.info(
+                    f"Processing item {i}/{total} for {lib.name} "
+                    f"- {rate:.0f} items/min "
+                    f"- ca. {hours}:{minutes:02}:{seconds:02} left"
+                )
             node_uri = None
             try:
                 item_data = item.get("data", {})

@@ -1,6 +1,7 @@
 
 from datetime import datetime, timezone
 from urllib.parse import quote, urlparse
+import urllib.request
 from pyoxigraph import Store, Quad, NamedNode, Literal, RdfFormat, DefaultGraph, BlankNode
 from rapidfuzz import fuzz, process
 import re, json, requests, yaml, unicodedata, subprocess, importlib, sys
@@ -9,6 +10,8 @@ from pathlib import Path
 from .logging_config import logger
 # from .config import *
 from uuid import uuid4, uuid5, UUID
+from typing import Any, Iterator
+import tempfile
 
 from .config import MAP_TYPE_HINT, MAP_ENTRY_TYPE, RDF_TYPE, LANG_MAP, PROV_TIMESTAMP, XSD_NS, MAP_LABEL, MAP_TARGET, MAP_REGEX, RDFS_LABEL, APP_USER
 
@@ -228,7 +231,91 @@ def _parse_csv_to_dict(content: str, label: str) -> dict:
         rows = list(reader)
         return {"rows": rows}
     except Exception as e:
-        raise ValueError(f"{label}: failed to parse CSV: {e}")    
+        raise ValueError(f"{label}: failed to parse CSV: {e}")
+    
+def _sources_from_sparql(
+    store: Store,
+    query: str,
+    *,
+    url_variable: str = "url",
+    document_uri_variable: str = "document_uri",
+) -> Iterator[tuple[str, str]]:
+    logger.info("Using citation source query:\n%s", query)
+
+    bindings = store.query(
+        query,
+        use_default_graph_as_union=True,
+    )
+
+    count = 0
+
+    for row in bindings:
+        url_value = row[url_variable]
+        document_uri_value = row[document_uri_variable]
+
+        if url_value is None:
+            logger.warning(
+                "SPARQL result does not contain binding ?%s",
+                url_variable,
+            )
+            continue
+
+        if document_uri_value is None:
+            logger.warning(
+                "SPARQL result does not contain binding ?%s",
+                document_uri_variable,
+            )
+            continue
+
+        if not isinstance(url_value, (NamedNode, Literal)):
+            logger.warning(
+                "Ignoring unsupported SPARQL value for ?%s: %r",
+                url_variable,
+                url_value,
+            )
+            continue
+
+        if not isinstance(document_uri_value, (NamedNode, Literal)):
+            logger.warning(
+                "Ignoring unsupported SPARQL value for ?%s: %r",
+                document_uri_variable,
+                document_uri_value,
+            )
+            continue
+
+        count += 1
+        yield url_value.value, document_uri_value.value
+
+    logger.info("Number of citation sources: %s", count)
+    
+def _index_url(
+    url: str,
+    *,
+    index_document,
+    document_uri: str,
+    graph_uri: str | None,
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    """Download and index a document URL."""
+    with tempfile.TemporaryDirectory(
+        prefix="zotero-citation-download-",
+    ) as temp_dir:
+        path = Path(temp_dir) / "document"
+
+        logger.info("Downloading citation source %s", url)
+
+        urllib.request.urlretrieve(
+            url,
+            path,
+        )
+
+        return index_document(
+            path,
+            document_uri=document_uri,
+            graph_uri=graph_uri,
+            context=context,
+        )
+    
 
 def load_dict_like(
     raw: str | dict | list | Path | None,
