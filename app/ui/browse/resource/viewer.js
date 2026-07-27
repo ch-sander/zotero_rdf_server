@@ -5,7 +5,7 @@ const DEFAULT_ONTOLOGY_GRAPH = "http://www.zotero.org/namespaces/export";
 // const ONTOLOGY_GRAPH = null;
 
 const params = new URLSearchParams(location.search);
-
+const QUERY_UI = "/sparql/"
 const ENDPOINT =
   params.get("endpoint")
   || DEFAULT_ENDPOINT;
@@ -15,6 +15,9 @@ const ONTOLOGY_GRAPH =
   || DEFAULT_ONTOLOGY_GRAPH;
 
 console.log("SPARQL endpoint:", ENDPOINT);
+
+const PROPERTY_FILTERS = params.getAll("property");
+const VIEW_MODE = params.get("view");
 
 const HIDDEN_PROPERTIES = new Set([
   "http://www.zotero.org/namespaces/export#version",
@@ -107,7 +110,6 @@ function setEditLink(resourceIri, resourceTypes = []) {
 
 async function loadCurrentResource() {
   const uri = getUriFromLocation();
-
   triplesEl.innerHTML = "";
   contentEl.hidden = true;
     resourceLabelEl.textContent = "";
@@ -136,6 +138,7 @@ async function loadCurrentResource() {
   span.textContent = uri;
 
   resourceUriEl.appendChild(withCopy(span, uri));
+  resourceUriEl.appendChild(createQueryLink(uri));
   showStatus("Loading Resource …");
 
   try {
@@ -760,9 +763,119 @@ function renderTriples(bindings) {
       generatedAtEl.hidden = false;
     }
 
-    if (!HIDDEN_PROPERTIES.has(p)) {
+    const hasPropertyFilter = PROPERTY_FILTERS.length > 0;
+
+    if (
+      !HIDDEN_PROPERTIES.has(p) &&
+      (!hasPropertyFilter || PROPERTY_FILTERS.includes(p))
+    ) {
       normalRows.push(binding);
     }
+  }
+
+  const uri = getUriFromLocation();
+  setEditLink(uri, resourceTypes);
+
+  if (VIEW_MODE === "html") {
+    const htmlBinding = normalRows.find(
+      binding =>
+        binding.o?.datatype ===
+        "http://www.w3.org/1999/02/22-rdf-syntax-ns#HTML"
+    );
+
+    if (htmlBinding) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+
+      td.colSpan = 2;
+      td.className = "html-literal";
+      td.appendChild(renderObject(htmlBinding));
+
+      tr.appendChild(td);
+      triplesEl.appendChild(tr);
+      return;
+    }
+  }
+  for (const binding of normalRows) {
+    const tr = document.createElement("tr");
+
+    const isExternal =
+      binding.o?.type === "uri" &&
+      binding.isKnown?.value !== "1" &&
+      binding.isKnown?.value !== "true";
+
+    if (isExternal) {
+      tr.classList.add("external-iri-row");
+    }
+
+    const propertyTd = document.createElement("td");
+    propertyTd.appendChild(renderProperty(binding));
+
+    const objectTd = document.createElement("td");
+    objectTd.appendChild(renderObject(binding));
+
+    tr.appendChild(propertyTd);
+    tr.appendChild(objectTd);
+
+    triplesEl.appendChild(tr);
+  }
+}
+
+function renderTriples_deprecated(bindings) {
+  const normalRows = [];
+  const resourceTypes = [];
+
+  for (const binding of bindings) {
+    const p = binding.p.value;
+
+    if (isRdfsLabel(p)) {
+      resourceLabelEl.textContent = "";
+      resourceLabelEl.appendChild(
+        withCopy(
+          document.createTextNode(binding.o.value),
+          binding.o.value
+        )
+      );
+    }
+
+    if (isRdfType(p)) {
+      resourceTypes.push(binding.o.value);
+
+      const span = document.createElement("span");
+      span.className = "resource-type";
+
+      span.textContent =
+        binding.oLabel?.value || shortenIri(binding.o.value);
+
+      resourceTypesEl.appendChild(
+        withCopy(span, binding.o.value)
+      );
+    }
+
+    if (isRdfsComment(p)) {
+      const pEl = document.createElement("p");
+      pEl.textContent = binding.o.value;
+
+      commentTextEl.appendChild(pEl);
+      commentBoxEl.hidden = false;
+    }
+
+    if (isGeneratedAtTime(p)) {
+      generatedAtEl.textContent =
+        "Generated at: " + binding.o.value;
+
+      generatedAtEl.hidden = false;
+    }
+
+    const hasPropertyFilter = PROPERTY_FILTERS.length > 0;
+
+    if (
+      !HIDDEN_PROPERTIES.has(p) &&
+      (!hasPropertyFilter || PROPERTY_FILTERS.includes(p))
+    ) {
+      normalRows.push(binding);
+    }
+
   }
 
   const uri = getUriFromLocation();
@@ -792,6 +905,7 @@ function renderTriples(bindings) {
     triplesEl.appendChild(tr);
   }
 }
+
 function renderIncomingSubject(binding) {
   const link = document.createElement("a");
 
@@ -826,7 +940,11 @@ function renderIncomingTriples(bindings) {
   const visibleBindings = bindings.filter(
     binding => !HIDDEN_PROPERTIES.has(binding.p.value)
   );
-
+  // const visibleBindings = bindings.filter(
+  //   binding =>
+  //     !HIDDEN_PROPERTIES.has(binding.p.value) &&
+  //     (!PROPERTY_FILTER || binding.p.value === PROPERTY_FILTER)
+  // );
 
   console.log("Incoming bindings:", visibleBindings);
   if (visibleBindings.length === 0) {
@@ -971,6 +1089,32 @@ function shortenIri(iri) {
   } catch {
     return iri;
   }
+}
+
+function createQueryLink(uri) {
+  const query = `
+    SELECT ?p ?o
+    WHERE {
+      <${escapeSparqlIri(uri)}> ?p ?o .
+    }
+    ORDER BY ?p
+    LIMIT ${LIMIT}
+  `.trim();
+
+  const url = new URL(QUERY_UI, window.location.href);
+  url.searchParams.set("endpoint", ENDPOINT);
+  url.searchParams.set("query", query);
+
+  const link = document.createElement("a");
+  link.href = url.toString();
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.className = "external-link-icon";
+  link.textContent = "SPARQL";
+  link.title = "Open SPARQL query";
+  link.setAttribute("aria-label", "Open SPARQL query");
+
+  return link;
 }
 
 function escapeSparqlIri(iri) {
