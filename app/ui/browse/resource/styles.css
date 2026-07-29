@@ -345,7 +345,8 @@ details table {
 .html-literal {
   padding: 0.5rem 0.75rem;
   font-weight: normal;
-  background: var(--panel-3);
+  background: var(--panel);
+  /* background: var(--panel-3); */
   border-left: 4px solid var(--accent);
 }
 
