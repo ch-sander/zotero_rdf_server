@@ -4,14 +4,13 @@ from urllib.parse import quote, urlparse
 import urllib.request
 from pyoxigraph import Store, Quad, NamedNode, Literal, RdfFormat, DefaultGraph, BlankNode
 from rapidfuzz import fuzz, process
-import re, json, requests, yaml, unicodedata, subprocess, importlib, sys
+import re, json, requests, yaml, unicodedata, subprocess, importlib, sys, hashlib, tempfile
 from copy import deepcopy
 from pathlib import Path
 from .logging_config import logger
 # from .config import *
 from uuid import uuid4, uuid5, UUID
 from typing import Any, Iterator
-import tempfile
 
 from .config import MAP_TYPE_HINT, MAP_ENTRY_TYPE, RDF_TYPE, LANG_MAP, PROV_TIMESTAMP, XSD_NS, MAP_LABEL, MAP_TARGET, MAP_REGEX, RDFS_LABEL, APP_USER
 
@@ -1282,3 +1281,13 @@ def get_rdf_types_of_entity(store: Store, node: NamedNode, entity_graph: NamedNo
         if isinstance(q.object, NamedNode):
             out.append(q.object.value)
     return out
+
+def stable_int_id(value: str) -> int:
+    """Return a deterministic positive 63-bit integer for a string."""
+    digest = hashlib.blake2b(
+        value.encode("utf-8"),
+        digest_size=8,
+        person=b"scigma-note-id",
+    ).digest()
+
+    return int.from_bytes(digest, byteorder="big") & ((1 << 63) - 1)
