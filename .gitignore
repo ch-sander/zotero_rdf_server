@@ -44,3 +44,4 @@ app/ui/partials/custom.js
 app/ui/query/examples/examples.json
 app/plugins/extraction/meta.json
 app/plugins/extraction/urls.sparql
+app/plugins/parser/entity.ttl
