@@ -10,6 +10,7 @@ from zotero_rdf_server.logging_config import logger
 from zotero_rdf_server.config import *
 from zotero_rdf_server.models import ZoteroLibrary
 from zotero_rdf_server.utils import *
+from zotero_rdf_server.rdf import load_rdf_from_spec
 
 here = Path(__file__).resolve().parent
 requirements = here / "requirements.txt"
@@ -69,14 +70,14 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
         mapping = load_dict_like(
             parser_cfg.get("mapping"),
             default={"@context": {"@base": lib.base_url, "@vocab": ZOT_NS}}, # TODO fallback not sufficient
-            label="Parser mapping",
+            label="Parsing Semantic HTML mapping",
             verbose=True
         )
 
         metadata = load_dict_like(
             parser_cfg.get("metadata"),
             default={"http://www.w3.org/ns/prov#wasGeneratedBy": lib.user},
-            label="Parser metadata",
+            label="Parsing Semantic HTML  metadata",
             verbose=True
         )
 
@@ -198,6 +199,19 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
 
                 for domain_node in filter_source_subjects:
                     value_matched = False
+
+                    # Add to Annotation from Config
+                    if parser_cfg.get("load"):
+                        load_rdf_from_spec(
+                            parser_cfg,
+                            context=None,
+                            data={
+                                "record_id": stable_int_id(domain_node.value),
+                            },
+                            node_value=domain_node.value,
+                            store=result_store,
+                            default_graph_uri=SEMANTIC_HTML_GRAPH,
+                        )                        
 
                     # SAME
                     for same_rule in same_rules:                    
@@ -436,6 +450,21 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                                             )
                                         )
 
+                                    # Adding RDF to created entity (not to the source Annotation)
+                                    load_rdf_from_spec(
+                                        rule,
+                                        context=None,
+                                        data={
+                                            "value": lit_value,
+                                            "label": lit_value,
+                                            # "entity_id": UUID(iri_suffix.removeprefix("urn:uuid:")).int,
+                                        },
+                                        node_value=new_node.value,
+                                        store=result_store,
+                                        default_graph_uri=entity_graph_uri,
+                                    )
+                                    # add_timestamp(store=result_store, node=new_node,graph=entity_graph_uri)
+
                                     # add link from semz to entity
                                     result_store.add(
                                         Quad(
@@ -475,6 +504,18 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
 
                                     filter_target_subjects.add(new_node)
 
+                                    if add_jsonld:                                        
+                                        try:
+                                            jsonld_copy = add_jsonld
+                                            if "@graph" in jsonld_copy:
+                                                logger.warning(f"[ADD] '@graph' found in ADD block and is ignored. Only single object additions are supported.")
+                                            else:                                            
+                                                jsonld_copy["@id"] = str(new_node.value)
+                                                result_store.load(json.dumps(jsonld_copy), to_graph=entity_graph_uri, format=RdfFormat.JSON_LD)
+                                                logger.debug(f"[ADD] Added JSON-LD supplement for {new_node}")                                             
+                                        except Exception as e:
+                                            logger.warning(f"[ADD] Failed to add JSON-LD for {new_node}: {e}")
+
                                 # elif allow_create:
                                 #     ENTITY_UUID = uuid5(NAMESPACE_URL, str(entity_graph_uri.value))
                                 #     iri_suffix = uuid4() or uuid5(ENTITY_UUID, lit_value)
@@ -503,18 +544,6 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
 
                                 #     # Update pool                                
                                 #     filter_target_subjects.add(new_node)
-
-                                #     if add_jsonld:                                        
-                                #         try:
-                                #             jsonld_copy = add_jsonld
-                                #             if "@graph" in jsonld_copy:
-                                #                 logger.warning(f"[ADD] '@graph' found in ADD block and is ignored. Only single object additions are supported.")
-                                #             else:                                            
-                                #                 jsonld_copy["@id"] = str(new_node.value)
-                                #                 result_store.load(json.dumps(jsonld_copy), to_graph=entity_graph_uri, format=RdfFormat.JSON_LD)
-                                #                 logger.debug(f"[ADD] Added JSON-LD supplement for {new_node}")                                             
-                                #         except Exception as e:
-                                #             logger.warning(f"[ADD] Failed to add JSON-LD for {new_node}: {e}")
 
                                 #     logger.debug(f"[CREATE] New KB node for {lit_value} → {new_node}")
 
@@ -621,8 +650,8 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                     tmp_store = Store()
                     tmp_store.load(json.dumps(result["JSON-LD"]), format=RdfFormat.JSON_LD, to_graph=SEMANTIC_HTML_GRAPH)
                     parser_store.extend(tmp_store)
-                    # logger.debug(tmp_store.dump(format=RdfFormat.TRIG).decode("utf-8"))
-                    logger.debug("JSON-LD parsed")                    
+                    # logger.debug(tmp_store.dump(format=RdfFormat.TRIG).decode("utf-8"))                    
+                    logger.debug("JSON-LD parsed")
                 except Exception as e:
                     logger.error(f"Error when parsing note: {e}")
         logger.info(f"Parsed {count} notes!")
@@ -642,12 +671,30 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                 else:                
                     logger.info(f"No mapping for parser provided!")
             else:
-                logger.info("Serialized only")                    
+                logger.info("Serialized only")                                
                 
         except Exception as e:
             logger.error(f"Error when extending store: {e}")
 
-        
+        try:
+            if parser_cfg.get('qlever_text_index'):
+                from .qlever_helpers import write_qlever_text_index
+                stats = write_qlever_text_index(
+                    store=store,
+                    config=parser_cfg.get('qlever_text_index'),
+                    load_text_like=load_text_like,
+                    base_dir=EXPORT_DIRECTORY,
+                )
+
+                logger.info(
+                    f"Wrote {stats.records} records, "
+                    f"{stats.word_occurrences} word occurrences and "
+                    f"{stats.entity_occurrences} entity occurrences"
+                )   
+        except Exception as e:
+            logger.error(f"Error when creating Qlever files: {e}")
+
+
     logger.info(f"Semantic-HTML parsing completed, {count} notes parsed")
     return count
 

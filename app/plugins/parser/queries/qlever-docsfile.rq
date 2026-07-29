@@ -1,0 +1,12 @@
+PREFIX semz: <https://semantic-html.org/vocab#>
+PREFIX owl:  <http://www.w3.org/2002/07/owl#>
+
+SELECT DISTINCT ?record_id ?text
+WHERE {
+  ?annotation
+      a semz:Annotation ;
+      semz:recordId ?record_id ;
+      semz:text ?text ;
+      owl:sameAs ?entity .
+}
+ORDER BY ?record_id

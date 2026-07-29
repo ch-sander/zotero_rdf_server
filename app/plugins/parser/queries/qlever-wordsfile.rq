@@ -1,0 +1,21 @@
+PREFIX semz: <https://semantic-html.org/vocab#>
+PREFIX owl:  <http://www.w3.org/2002/07/owl#>
+
+SELECT DISTINCT ?word ?is_entity ?record_id ?score
+WHERE {
+  ?annotation
+      a semz:Annotation ;
+      semz:recordId ?record_id ;
+      semz:text ?surface ;
+      owl:sameAs ?entity .
+
+  VALUES ?is_entity { 0 1 }
+
+  BIND(
+    IF(?is_entity = 1, ?entity, ?surface)
+    AS ?word
+  )
+
+  BIND(1 AS ?score)
+}
+ORDER BY ?record_id ?is_entity ?word
