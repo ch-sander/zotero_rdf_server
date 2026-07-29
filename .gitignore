@@ -45,3 +45,5 @@ app/ui/query/examples/examples.json
 app/plugins/extraction/meta.json
 app/plugins/extraction/urls.sparql
 app/plugins/parser/entity.ttl
+app/ui/query/config-qlever.ttl
+app/ui/query/config-wikidata.ttl
