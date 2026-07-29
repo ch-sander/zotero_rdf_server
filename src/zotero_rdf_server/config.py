@@ -76,22 +76,35 @@ def normalize(value):
     value = str(value).strip()
     return value if value else None
 
-def safe_path(path_str: str | Path | None, base_dir: Path | str = WORKDIR, create: bool = True) -> Path | None:
-    if path_str:
-        p = Path(path_str)
-        
-        base_dir = Path(base_dir) if base_dir else Path.cwd().parent # Path().resolve()
-        result = p if p.is_absolute() else (base_dir / p).resolve()
-        
-        if create:
-            try:
-                result.mkdir(parents=True, exist_ok=True)
-            except Exception as e:
-                logger.error(f"Failed creating safe path for {path_str}: {e}")
-        
-        return result
-    logger.warning(f"Path not valid: {path_str} in {base_dir}")
-    return None
+def safe_path(path_str: str | Path | None, base_dir: Path | str = WORKDIR, create: bool = True, allow_absolute: bool = True,) -> Path | None:
+    if not path_str:
+        logger.warning("Path not valid: %s in %s", path_str, base_dir)
+        return None
+
+    path = Path(path_str).expanduser()
+    base = Path(base_dir).expanduser().resolve()
+
+    if path.is_absolute():
+        if not allow_absolute:
+            raise ValueError(f"Absolute path is not allowed: {path}")
+
+        result = path.resolve()
+    else:
+        result = (base / path).resolve()
+
+        if not result.is_relative_to(base):
+            raise ValueError(
+                f"Relative path escapes the base directory: {path}"
+            )
+
+    if create:
+        try:
+            result.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            logger.exception("Failed creating safe path: %s", result)
+            raise
+
+    return result
 
 def env_bool(name: str, default: bool) -> bool:
     value = os.getenv(name)
@@ -163,6 +176,20 @@ STATIC_UI_DIRECTORY = safe_path(
 STATIC_UI_PREFIX = (
     os.getenv("STATIC_UI_PREFIX")
     or server_cfg.get("static_ui_prefix", "/ui")
+    )
+
+STATIC_ONTODOC_DIRECTORY = safe_path(
+    os.getenv("STATIC_ONTODOC_DIRECTORY")
+    or server_cfg.get("static_ontodoc_directory")
+    or "ontology",
+    base_dir=STATIC_UI_DIRECTORY,
+    create=False,
+    allow_absolute=False
+)
+
+STATIC_ONTOLOGY_MOUNT = (
+    os.getenv("STATIC_ONTOLOGY_MOUNT")
+    or server_cfg.get("static_ontology_mount", "/ontology")
     )
 
 ROOT_REDIRECT = (
@@ -301,6 +328,7 @@ ZOT_API_URL = ZOTERO_CONFIGS.get("api_url", "https://api.zotero.org/")
 ZOT_API_USER = ZOTERO_CONFIGS.get("user", "Zotero RDF Server App")
 ZOT_BASE_URL = ZOTERO_CONFIGS.get("base_url", "https://zotero.org/")
 ZOT_SCHEMA = ZOTERO_CONFIGS.get("schema") # "https://api.zotero.org/schema"
+ZOT_ONTOLOGY_TTL = safe_path(ZOTERO_CONFIGS.get("ontology", "ontology/zotero.ttl"),base_dir=STATIC_UI_DIRECTORY,create=False) # "https://api.zotero.org/schema"
 REGEX_PATTERN = f"{ZOT_NS}regex"
 
 PREFIXES = {"zot":ZOT_NS, "rdfs":"http://www.w3.org/2000/01/rdf-schema#", "owl":"http://www.w3.org/2002/07/owl#", "rdf":"http://www.w3.org/1999/02/22-rdf-syntax-ns#", "xsd":XSD_NS, "skos":"http://www.w3.org/2004/02/skos/core#", "prov":"http://www.w3.org/ns/prov#", "dc":"http://purl.org/dc/elements/1.1/", "schema":"https://schema.org/", "dct":"http://purl.org/dc/terms/", "zmap": MAPPING_BASE, "semz": "https://semantic-html.org/vocab#", "foaf": "http://xmlns.com/foaf/0.1/", "geo": "http://www.opengis.net/ont/geosparql#", "wd": "http://www.wikidata.org/entity/", "cito": "http://purl.org/spar/cito/"}

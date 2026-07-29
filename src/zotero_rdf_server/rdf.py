@@ -2400,4 +2400,22 @@ def sync_kb_mapping(
         "skipped_missing_entries": skipped_missing_entries,
     }
 
+
+def generate_ontospy_doc():
+    if ZOT_ONTOLOGY_TTL.exists():
+        try:
+            ensure_import("ontospy==2.1.1", requirements=None)
+            import ontospy
+            from ontospy.gendocs.viz.viz_html_multi import KompleteViz
+            output_path = STATIC_ONTODOC_DIRECTORY
+            logger.info(f"Rendering Ontospy for {ZOT_ONTOLOGY_TTL}")
+            g = ontospy.Ontospy(str(ZOT_ONTOLOGY_TTL))
+            logger.info(f"Creating Ontospy docs at {output_path}")
+            v = KompleteViz(g, "Zotero RDF Server")
+            v.build(str(output_path))
+            logger.info(f"Created Ontospy docs at {output_path}")
+            return Path(output_path / "index.html")
+        except Exception as e:
+            logger.error(f"Ontospy failed: {e}")
+
 # End

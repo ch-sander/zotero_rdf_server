@@ -190,6 +190,10 @@ def refresh_store(force_reload:bool = False, remove_store:bool=True):
                         except Exception as e:
                             logger.error(f"Schema could not be loaded: {e}")
 
+                    if ZOT_ONTOLOGY_TTL and STATIC_ONTODOC_DIRECTORY:
+                        # from .rdf import generate_ontospy_doc
+                        generate_ontospy_doc()
+
                     for lib_cfg in config.ZOTERO_LIBRARIES_CONFIGS:
                         lib = ZoteroLibrary(lib_cfg)
                         ensure_store(store)
