@@ -120,39 +120,47 @@
             "@type": "xsd:dateTime"
         }
     },
-    "KnowledgeBase": [{
+    "KnowledgeBase": [
+        {
             "comment": "Rule for entities",
-            "FUZZY": [{
+            "FUZZY": [
+                {
                     "comment": "compares each Literal from domainProperty to each from targetProperty with a fuzzy score threshold 0-100 (set here or taken from global config). If matched a link will be created from source to target using mapProperty, the matched Literal will be added to target using altLabel, and if allowCreate is true, a new resource in target will be created, having all target property-object pairs. The JSON-LD dictionary in ADD will be added to each created resource in the target dataset.",
                     "threshold": 80,
                     "domainProperty": "https://semantic-html.org/vocab#text",
                     "targetProperty": "http://www.w3.org/2000/01/rdf-schema#label"
                 }
             ],
-            "POOL": [{
+            "POOL": [
+                {
                     "comment": "filters target and source dataset subjects by property and object. Each pair given is by default (operator key is not neccessary) an additive to the pool (OR not AND). Recursive filtering (AND) is experimental. Property or Object may be None.",
                     "operator": "OR",
                     "domainProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
                     "domainObject": "https://semantic-html.org/vocab#Entity"
-                }, {
+                },
+                {
                     "operator": "OR",
                     "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
                     "targetObject": "http://www.zotero.org/namespaces/export#Agent"
-                }, {
+                },
+                {
                     "operator": "OR",
                     "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
                     "targetObject": "http://www.zotero.org/namespaces/export#Place"
-                }, {
+                },
+                {
                     "operator": "OR",
                     "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
                     "targetObject": "http://xmlns.com/foaf/0.1/Agent"
-                }, {
+                },
+                {
                     "operator": "OR",
                     "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
                     "targetObject": "https://semantic-html.org/vocab#Entity"
                 }
             ],
-            "SAME": [{
+            "SAME": [
+                {
                     "comment": "if source resource matches node in any target resource, FUZZY will be skipped and a link will directly be created from source to target using mapProperty.",
                     "domainProperty": "http://www.w3.org/2002/07/owl#sameAs",
                     "targetProperty": "http://www.w3.org/2002/07/owl#sameAs"
@@ -164,56 +172,36 @@
             "mapLabel": "https://zotero-rdf-server.org/mapping/label",
             "knowledgeBaseGraph": "https://data.scigma.de/resources/entities",
             "mappingBaseGraph": "https://data.scigma.de/resources/mappings",
-            "ADD": {
-                    "http://purl.org/dc/terms/description": {
-                        "@value": "Automatically generated from a Semantic HTML annotation.",
-                        "@language": "en"
-                    },
-                "http://www.w3.org/ns/prov#wasAttributedTo": [
-                    {
-                        "@id": "https://data.scigma.de/resources/meta/users/551508"
-                    }
-                ],
-                "http://purl.org/dc/terms/license": {
-                    "@id": "https://creativecommons.org/licenses/by/4.0/"
-                },
-                "http://creativecommons.org/ns#license": {
-                    "@id": "https://creativecommons.org/licenses/by/4.0/"
-                },
-                "https://schema.org/funding": {
-                    "@id": "https://data.scigma.de/resources/meta/projects/SCIGMA"
-                },
-                "http://www.w3.org/ns/prov#wasGeneratedBy": {
-                    "@id": "https://data.scigma.de/resources/meta/activities/semantic-note-mapping"
-                }
-            }
-        }, {
-            "comment": "Rule for concepts",
-            "FUZZY": [{
-                    "threshold": 90,
+            "load": {"format": "TURTLE", "lenient": true, "path": "/app/plugins/parser/entity.ttl"}
+        },
+        {
+            "comment": "Rule for references",
+            "FUZZY": [
+                {
+                    "threshold": 80,
                     "domainProperty": "https://semantic-html.org/vocab#text",
-                    "targetProperty": "http://www.w3.org/2004/02/skos/core#prefLabel"
+                    "targetProperty": "http://www.w3.org/2000/01/rdf-schema#label"
                 }
             ],
-            "POOL": [{
+            "POOL": [
+                {
                     "operator": "OR",
                     "domainProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-                    "domainObject": "https://semantic-html.org/vocab#Concept"
-                }, {
+                    "domainObject": "https://semantic-html.org/vocab#Reference"
+                },
+                {
                     "operator": "OR",
                     "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-                    "targetObject": "http://www.zotero.org/namespaces/export#Tag"
-                }, {
+                    "targetObject": "http://purl.org/spar/cito/Citation"
+                },
+                {
                     "operator": "OR",
                     "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-                    "targetObject": "http://www.w3.org/2004/02/skos/core#Concept"
-                }, {
-                    "operator": "OR",
-                    "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-                    "targetObject": "https://semantic-html.org/vocab#Concept"
+                    "targetObject": "https://semantic-html.org/vocab#Entity"
                 }
             ],
-            "SAME": [{
+            "SAME": [
+                {
                     "domainProperty": "http://www.w3.org/2002/07/owl#sameAs",
                     "targetProperty": "http://www.w3.org/2002/07/owl#sameAs"
                 }
@@ -224,31 +212,53 @@
             "mapLabel": "https://zotero-rdf-server.org/mapping/label",
             "knowledgeBaseGraph": "https://data.scigma.de/resources/entities",
             "mappingBaseGraph": "https://data.scigma.de/resources/mappings",
+            "load": {"format": "TURTLE", "lenient": true, "path": "/app/plugins/parser/entity.ttl"}
+        },
+        {
+            "comment": "Rule for concepts",
+            "FUZZY": [
+                {
+                    "threshold": 90,
+                    "domainProperty": "https://semantic-html.org/vocab#text",
+                    "targetProperty": "http://www.w3.org/2004/02/skos/core#prefLabel"
+                }
+            ],
+            "POOL": [
+                {
+                    "operator": "OR",
+                    "domainProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+                    "domainObject": "https://semantic-html.org/vocab#Concept"
+                },
+                {
+                    "operator": "OR",
+                    "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+                    "targetObject": "http://www.zotero.org/namespaces/export#Tag"
+                },
+                {
+                    "operator": "OR",
+                    "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+                    "targetObject": "http://www.w3.org/2004/02/skos/core#Concept"
+                },
+                {
+                    "operator": "OR",
+                    "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+                    "targetObject": "https://semantic-html.org/vocab#Concept"
+                }
+            ],
+            "SAME": [
+                {
+                    "domainProperty": "http://www.w3.org/2002/07/owl#sameAs",
+                    "targetProperty": "http://www.w3.org/2002/07/owl#sameAs"
+                }
+            ],
+            "allowCreate": true,
+            "entityTypeSource": "mapping_or_rule",
+            "mapProperty": "http://www.w3.org/2002/07/owl#sameAs",
+            "mapLabel": "https://zotero-rdf-server.org/mapping/label",
+            "knowledgeBaseGraph": "https://data.scigma.de/resources/entities",
+            "mappingBaseGraph": "https://data.scigma.de/resources/mappings",
+            "load": {"format": "TURTLE", "lenient": true, "path": "/app/plugins/parser/entity.ttl"},
             "ADD": {
-                    "http://purl.org/dc/terms/description": {
-                        "@value": "Automatically generated from a Semantic HTML annotation.",
-                        "@language": "en"
-                    },
-                "http://www.w3.org/ns/prov#wasAttributedTo": [
-                    {
-                        "@id": "https://data.scigma.de/resources/meta/projects/SCIGMA"
-                    },
-                    {
-                        "@id": "https://data.scigma.de/resources/meta/users/551508"
-                    }
-                ],
-                "http://www.w3.org/ns/prov#wasGeneratedBy": {
-                    "@id": "https://data.scigma.de/resources/meta/activities/semantic-note-mapping"
-                },
-                "http://purl.org/dc/terms/license": {
-                    "@id": "https://creativecommons.org/licenses/by/4.0/"
-                },
-                "http://creativecommons.org/ns#license": {
-                    "@id": "https://creativecommons.org/licenses/by/4.0/"
-                },
-                "https://schema.org/funding": {
-                    "@id": "https://data.scigma.de/resources/meta/projects/SCIGMA"
-                },
                 "http://www.w3.org/2004/02/skos/core#inScheme": [
                     {
                         "@id": "https://data.scigma.de/resources/conceptSchemes/SCIGMA"
