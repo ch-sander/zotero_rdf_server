@@ -214,8 +214,8 @@ def refresh_store(force_reload:bool = False, remove_store:bool=True):
                                     store.bulk_load(
                                         path=tmp_path,
                                         format=RdfFormat.RDF_XML,
-                                        base_iri=f"{lib.base_url}/items/", # TODO why items?
-                                        to_graph=safeNamedNode(lib.base_url)
+                                        base_iri=f"{lib.base_uri}/items/", # TODO why items?
+                                        to_graph=safeNamedNode(lib.base_uri)
                                     )
                                     after = len(store)
                                     logger.info(f"Loaded {after - before} triples from RDF export for '{lib.name}'")

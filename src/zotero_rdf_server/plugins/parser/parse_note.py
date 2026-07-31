@@ -56,19 +56,19 @@ class ParseNotePlugin:
 def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode = NamedNode(f"{ZOT_NS}note"), query_str: str = None, delete:bool = False, push:bool=True):
     # from zotero_rdf_server.plugins.parser.parse_note import ParseNotePlugin
     parser_cfgs = lib.plugin.get("notes_parser") or []
-    GRAPH_URI = safeNamedNode(lib.base_url) # Source graph of notes
+    GRAPH_URI = safeNamedNode(lib.base_uri) # Source graph of notes
     KB_GRAPH = safeNamedNode(lib.knowledge_base_graph) # graph to link SEMANTIC_HTML_GRAPH entites to
     MAP_GRAPH = safeNamedNode(lib.mapping_base_graph)
     count = 0
     parser_cfgs = [parser_cfgs] if isinstance(parser_cfgs,dict) else parser_cfgs
     if len(parser_cfgs)>1:
-        logger.warning(f"Running {len(parser_cfgs)} Notes Parser configurations for library {lib.base_url}")
+        logger.warning(f"Running {len(parser_cfgs)} Notes Parser configurations for library {lib.base_uri}")
     for parser_cfg in parser_cfgs: # allow multiple runs per library    
-        SEMANTIC_HTML_GRAPH = safeNamedNode(parser_cfg.get("to_graph", parser_cfg.get("base_uri", lib.base_url))) # graph to store RDF parsed from notes
+        SEMANTIC_HTML_GRAPH = safeNamedNode(parser_cfg.get("to_graph", parser_cfg.get("base_uri", lib.base_uri))) # graph to store RDF parsed from notes
         
         mapping = load_dict_like(
             parser_cfg.get("mapping"),
-            default={"@context": {"@base": lib.base_url, "@vocab": ZOT_NS}}, # TODO fallback not sufficient
+            default={"@context": {"@base": lib.base_uri, "@vocab": ZOT_NS}}, # TODO fallback not sufficient
             label="Parsing Semantic HTML mapping",
             verbose=True
         )

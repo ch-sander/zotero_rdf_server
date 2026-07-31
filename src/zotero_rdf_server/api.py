@@ -706,11 +706,11 @@ async def purge(
     for lib_cfg in ZOTERO_LIBRARIES_CONFIGS:
         lib = ZoteroLibrary(lib_cfg)
 
-        if library_iri is not None and library_iri != lib.base_url:
-            logger.debug("Skipping %s (filtered by graph_iri=%s)", lib.base_url, library_iri)
+        if library_iri is not None and library_iri != lib.base_uri:
+            logger.debug("Skipping %s (filtered by graph_iri=%s)", lib.base_uri, library_iri)
             continue
 
-        logger.info("Purging for %s (mode=%s, delete=%s)...", lib.base_url, resource_type, execute)
+        logger.info("Purging for %s (mode=%s, delete=%s)...", lib.base_uri, resource_type, execute)
 
         entity_graph = safeNamedNode(lib.knowledge_base_graph)
         map_graph = safeNamedNode(lib.mapping_base_graph)
@@ -718,7 +718,7 @@ async def purge(
         if resource_type == "entities":
             graphs_to_check = [
                 safeNamedNode(lib.knowledge_base_graph),
-                safeNamedNode(lib.base_url),
+                safeNamedNode(lib.base_uri),
             ]
 
             results.append(

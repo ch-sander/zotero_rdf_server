@@ -94,7 +94,7 @@ async def znotes2rdf(
             for lib_cfg in ZOTERO_LIBRARIES_CONFIGS:
                 lib = ZoteroLibrary(lib_cfg)
                 if (
-                    (not graph or graph == lib.base_url) and
+                    (not graph or graph == lib.base_uri) and
                     lib.sync and
                     lib.sync.get("api_key") and
                     lib.sync.get("library_id") and
@@ -176,7 +176,7 @@ async def rdf2znotes(
             lib = ZoteroLibrary(lib_cfg)
             logger.info(f"Checking config for library: {lib.name}")
             if (
-                (not graph or graph == lib.base_url) and
+                (not graph or graph == lib.base_uri) and
                 lib.sync and
                 lib.sync.get("api_key") and
                 lib.sync.get("library_id") and
@@ -242,7 +242,7 @@ async def taxonomy(
                 logger.info(f"Checking config for library: {lib.name}")
                 tax_cfg = lib.plugin.get("taxonomy") or {}
                 if (
-                    (not graph or graph == lib.base_url) and
+                    (not graph or graph == lib.base_uri) and
                     lib.sync and
                     lib.sync.get("api_key") and
                     lib.sync.get("library_id") and
@@ -400,7 +400,7 @@ async def taxonomy(
 #                 for lib_cfg in ZOTERO_LIBRARIES_CONFIGS:
 #                     lib = ZoteroLibrary(lib_cfg)
 #                     if (
-#                         (not graph or graph == lib.base_url) and
+#                         (not graph or graph == lib.base_uri) and
 #                         lib.sync.get("api_key") and
 #                         lib.sync.get("library_id") and
 #                         lib.sync.get("library_type")
@@ -454,7 +454,7 @@ async def taxonomy(
 #             for lib_cfg in ZOTERO_LIBRARIES_CONFIGS:
 #                 lib = ZoteroLibrary(lib_cfg)
 #                 if (
-#                     (not graph or graph == lib.base_url) and
+#                     (not graph or graph == lib.base_uri) and
 #                     lib.sync.get("api_key") and
 #                     lib.sync.get("library_id") and
 #                     lib.sync.get("library_type")

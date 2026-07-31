@@ -35,10 +35,10 @@ async def parse_notes(
 
     for lib_cfg in ZOTERO_LIBRARIES_CONFIGS: # TODO improve
         lib = ZoteroLibrary(lib_cfg)
-        if not graph or graph == lib.base_url:
-            logger.info(f"starting note parsing for {lib.base_url}...")
+        if not graph or graph == lib.base_uri:
+            logger.info(f"starting note parsing for {lib.base_uri}...")
             result=parse_all_notes(lib, store, note_predicate=predicate, query_str=query, delete=delete,push=push) # TODO no graph given
-        elif graph and graph != lib.base_url:
+        elif graph and graph != lib.base_uri:
             logger.debug(f"{graph} skipped")
         else:
             logger.warning(f"{graph} not yet supported but defined via config")
@@ -128,7 +128,7 @@ async def generate_qlever_text_indexes(
         logger.info(f"Reading {lib.name}...")
         if library is not None and library not in {
             lib.name,
-            lib.base_url,
+            lib.base_uri,
             lib.library_id,
             lib.library_type,
         }:

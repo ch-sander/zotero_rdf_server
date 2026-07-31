@@ -78,7 +78,7 @@ def _iter_sources(lib) -> Iterable[SourceFile]:
     return
 
 def import_rdf(lib: ZoteroLibrary, store: Store):
-    logger.info(f"Importing RDF for '{lib.name}' into {lib.base_url}")
+    logger.info(f"Importing RDF for '{lib.name}' into {lib.base_uri}")
 
     for src in _iter_sources(lib):
         try:
@@ -102,8 +102,8 @@ def import_rdf(lib: ZoteroLibrary, store: Store):
             store.bulk_load(
                 path=src.path,
                 format=fmt,
-                base_iri=f"{lib.base_url}/items/",
-                to_graph=NamedNode(lib.base_url),
+                base_iri=f"{lib.base_uri}/items/",
+                to_graph=NamedNode(lib.base_uri),
             )
             after = len(store)
             logger.info(f"Imported {after - before} triples from {src.name}")
@@ -1240,7 +1240,7 @@ def run_update_queries(lib: ZoteroLibrary, store: Store):
     logger.warning(
         "Running %s SPARQL UPDATE queries for %s; store size before=%s",
         total,
-        lib.base_url,
+        lib.base_uri,
         before_all,
     )
 
@@ -1253,7 +1253,7 @@ def run_update_queries(lib: ZoteroLibrary, store: Store):
                 logger.warning(
                     "Skipping invalid SPARQL UPDATE config entry #%s for %s: %r",
                     i,
-                    lib.base_url,
+                    lib.base_uri,
                     q,
                 )
                 continue
@@ -1264,7 +1264,7 @@ def run_update_queries(lib: ZoteroLibrary, store: Store):
                 "Running SPARQL UPDATE #%s/%s for %s; store size before=%s",
                 i,
                 total,
-                lib.base_url,
+                lib.base_uri,
                 before,
             )
 
@@ -1276,7 +1276,7 @@ def run_update_queries(lib: ZoteroLibrary, store: Store):
                 "Finished SPARQL UPDATE #%s/%s for %s; store size after=%s; delta=%+d",
                 i,
                 total,
-                lib.base_url,
+                lib.base_uri,
                 after,
                 after - before,
             )
@@ -1292,7 +1292,7 @@ def run_update_queries(lib: ZoteroLibrary, store: Store):
                 "SPARQL UPDATE #%s/%s for %s failed: %s; store size now=%s\n\n%s",
                 i,
                 total,
-                lib.base_url,
+                lib.base_uri,
                 e,
                 failed_size,
                 update or q,
@@ -1304,7 +1304,7 @@ def run_update_queries(lib: ZoteroLibrary, store: Store):
 
     logger.warning(
         "Finished all SPARQL UPDATE queries for %s; store size before=%s; after=%s; delta=%+d",
-        lib.base_url,
+        lib.base_uri,
         before_all,
         after_all,
         after_all - before_all,
@@ -1419,7 +1419,7 @@ def index_citation_sources(
 
                 graph_uri = (
                     source_config.get("graph_uri")
-                    or lib.base_url
+                    or lib.base_uri
                 )
                 to_graph = (
                     safeNamedNode(graph_uri)
@@ -1516,7 +1516,7 @@ def index_citation_sources_deprecated(lib: ZoteroLibrary, store: Store) -> list[
 
         tmp_store = Store()
 
-        graph_uri = source_config.get("graph_uri") or lib.base_url
+        graph_uri = source_config.get("graph_uri") or lib.base_uri
         to_graph = safeNamedNode(graph_uri) if graph_uri else None
 
         tmp_store.load(
@@ -1749,15 +1749,15 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
     else:
         logger.warning(f"No items or collections found for library {lib.name}")
     library_property = lib.map.get("named_library")
-    library_uri = safeNamedNode(lib.base_url)
+    library_uri = safeNamedNode(lib.base_uri)
     a_library_href = library_href(library_data)
     logger.info(f"[{lib.name} at {a_library_href}] Fetched {len(items) if items else 0} items and {len(collections) if collections else 0} collections.")
 
-    GRAPH_URI = safeNamedNode(lib.base_url)
+    GRAPH_URI = safeNamedNode(lib.base_uri)
 
     if library_property and sample_entry and sample_entry.get("library"): # TODO write_to_store
         library_type = map.get("library_type") or []
-        apply_rdf_types(store, library_uri, library_data, library_type, "Library", lib.base_url, ZOT_NS)   
+        apply_rdf_types(store, library_uri, library_data, library_type, "Library", lib.base_uri, ZOT_NS)   
         # store.add(Quad(library_uri, NamedNode(RDF_TYPE), safeNamedNode(f"{ZOT_NS}Library"), graph_name=GRAPH_URI))
         # store.add(Quad(library_uri, NamedNode(OWL_SAME_AS), safeNamedNode(a_library_href), graph_name=GRAPH_URI))
         add_rdf_from_dict(
@@ -1765,7 +1765,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
             library_uri,
             library_data,
             ZOT_NS,
-            lib.base_url,
+            lib.base_uri,
             map,
             lib.knowledge_base_graph,
             mapping_base_graph=lib.mapping_base_graph
@@ -1775,7 +1775,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
             library_uri,
             library_data,
             map.get("additional", []),
-            lib.base_url,
+            lib.base_uri,
             ZOT_NS,
             "library"
         )
@@ -1789,19 +1789,19 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
                 col_data[library_property] = str(library_uri.value)       
             col_data_long = merge_with_prefix(col_data, library_data, "library_")
             key = col_data.get("key", uuid4())
-            node_uri = NamedNode(f"{lib.base_url}/collections/{key}")
+            node_uri = NamedNode(f"{lib.base_uri}/collections/{key}")
             # if library_property:
             #     col_data_long[library_property] = str(library_uri.value)
                 # property_str = lib.map.get("named_library", "inLibrary")
                 # store.add(Quad(node_uri, safeNamedNode(property_str) if property_str.startswith("http") else safeNamedNode(f"{ZOT_NS}{property_str}"), library_uri, graph_name=GRAPH_URI))
 
             collection_type_fields = map.get("collection_type") or []
-            apply_rdf_types(store, node_uri, col_data, collection_type_fields, "Collection", lib.base_url, ZOT_NS)           
+            apply_rdf_types(store, node_uri, col_data, collection_type_fields, "Collection", lib.base_uri, ZOT_NS)           
 
             additional = map.get("additional") or []
-            apply_additional_properties(store, node_uri, col_data_long, additional, lib.base_url, ZOT_NS,"collection")
+            apply_additional_properties(store, node_uri, col_data_long, additional, lib.base_uri, ZOT_NS,"collection")
 
-            add_rdf_from_dict(store, node_uri, col_data, ZOT_NS, lib.base_url, map, lib.knowledge_base_graph, mapping_base_graph=lib.mapping_base_graph)
+            add_rdf_from_dict(store, node_uri, col_data, ZOT_NS, lib.base_uri, map, lib.knowledge_base_graph, mapping_base_graph=lib.mapping_base_graph)
             # add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
 
             metadata = col.get("meta")
@@ -1880,7 +1880,7 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
                 
                 language = item_data.get("language")
                 key = item_data.get("key",uuid4())            
-                node_uri = NamedNode(f"{lib.base_url}/items/{key}")
+                node_uri = NamedNode(f"{lib.base_uri}/items/{key}")
 
                 if write_to_store == False:
                     all_items.append({
@@ -1912,12 +1912,12 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
                     if item_bib:
                         store.add(Quad(node_uri, safeNamedNode(f"{ZOT_NS}bib"), Literal(item_bib, datatype=NamedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#HTML")), graph_name=GRAPH_URI))
 
-                    apply_rdf_types(store, node_uri, item_data, item_type_fields, "Item", lib.base_url, ZOT_NS)
+                    apply_rdf_types(store, node_uri, item_data, item_type_fields, "Item", lib.base_uri, ZOT_NS)
 
                     additional = map.get("additional") or []
-                    apply_additional_properties(store, node_uri, item_data_long, additional, lib.base_url, ZOT_NS,"item")
+                    apply_additional_properties(store, node_uri, item_data_long, additional, lib.base_uri, ZOT_NS,"item")
 
-                    add_rdf_from_dict(store, node_uri, item_data, ZOT_NS, lib.base_url, map, lib.knowledge_base_graph,mapping_base_graph=lib.mapping_base_graph,language=language)
+                    add_rdf_from_dict(store, node_uri, item_data, ZOT_NS, lib.base_uri, map, lib.knowledge_base_graph,mapping_base_graph=lib.mapping_base_graph,language=language)
                     # add_timestamp(store=store, node=node_uri, graph=GRAPH_URI)
 
                     metadata = item.get("meta")

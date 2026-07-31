@@ -561,9 +561,9 @@ def taxononmy_to_store(
 def pipeline(lib:ZoteroLibrary | dict, source_store:Store, job:Literal["writeNote", "writeStore"] = "writeNote", note_key: str = None, file:str = None):
     try:
         if isinstance(lib, ZoteroLibrary):
-            BASE = lib.base_url
+            BASE = lib.base_uri
             lib_cfg = lib.sync
-            sync_base_uri = lib_cfg.pop("base_uri", lib.base_url)
+            sync_base_uri = lib_cfg.pop("base_uri", lib.base_uri)
             tax_cfg = lib.plugin.get("taxonomy") or {}
             tax_map = load_dict_like(tax_cfg.get("mapping", None), label="Taxonomy mapping")
             note_key = note_key or tax_cfg.get("note_key") or uuid.uuid4()

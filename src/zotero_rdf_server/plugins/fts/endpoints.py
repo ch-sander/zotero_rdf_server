@@ -454,15 +454,15 @@ def ingest_route(
 
             for lib_cfg in zcfg.ZOTERO_LIBRARIES_CONFIGS:
                 lib = ZoteroLibrary(lib_cfg)
-                if not graph or graph == lib.base_url:
-                    logger.info(f"starting FTS pipeline for {lib.base_url}...")
+                if not graph or graph == lib.base_uri:
+                    logger.info(f"starting FTS pipeline for {lib.base_uri}...")
 
                     cfg = lib.plugin.get("fts") or [] # TODO load_dict_like
                     cfg = [cfg] if isinstance(cfg,dict) else cfg
                     if len(cfg)>1:
-                        logger.warning(f"Running {len(cfg)} FTS configuration for library {lib.base_url}")
+                        logger.warning(f"Running {len(cfg)} FTS configuration for library {lib.base_uri}")
                     # if not cfg:
-                    #     raise HTTPException(status_code=400, detail=f"No FTS config for library {lib.base_url}")
+                    #     raise HTTPException(status_code=400, detail=f"No FTS config for library {lib.base_uri}")
                     for n, ncfg in enumerate(cfg, start=1): # allow multiple runs per library
                         name = ncfg.get('name','n/a')
                         pipe_id = ncfg.get("id")
@@ -585,7 +585,7 @@ def ingest_route(
                                 store=store,
                                 endpoint_url=sparql_endpoint_x,
                                 use_default_graph_as_union=False,
-                                default_graphs=[lib.base_url, lib.knowledge_base_graph],
+                                default_graphs=[lib.base_uri, lib.knowledge_base_graph],
                             )
                             items, var_names = convert_bindings(
                                 bindings,
@@ -622,8 +622,8 @@ def ingest_route(
                                                 pipeline_meta=pipeline_meta,
                                                 rdf_kwargs=rdf_x))
 
-                elif graph and graph != lib.base_url:
-                    logger.debug(f"{lib.base_url} skipped")
+                elif graph and graph != lib.base_uri:
+                    logger.debug(f"{lib.base_uri} skipped")
                 else:
                     logger.warning(f"{graph} not yet supported but defined via config")
 

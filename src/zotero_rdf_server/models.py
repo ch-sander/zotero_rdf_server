@@ -19,8 +19,8 @@ class ZoteroLibrary:
         self.rdf_export_format = config.get("rdf_export_format", "rdf_zotero")
         self.api_query_params = config.get("api_query_params") or {}
         self.base_api_url = f"{ZOT_API_URL}{self.library_type}/{self.library_id}".strip("#/")
-        self.base_url = str(config.get("base_uri", f"{ZOT_BASE_URL}{self.library_type}/{self.library_id}")).strip("/#") # TODO make dynamic ?
-        self.knowledge_base_graph = str(config.get("knowledge_base_graph", self.base_url)).strip("/#")
+        self.base_uri = str(config.get("base_uri", f"{ZOT_BASE_URL}{self.library_type}/{self.library_id}")).strip("/#") # TODO make dynamic ?
+        self.knowledge_base_graph = str(config.get("knowledge_base_graph", self.base_uri)).strip("/#")
         self.metadata_graph = str(config.get("metadata_graph")).strip("/#") if config.get("metadata_graph") else None
 
         self.mapping_base_graph = str(config.get("mapping_base_graph", self.knowledge_base_graph)).strip("/#")
@@ -47,7 +47,7 @@ class ZoteroLibrary:
             logger.warning(f"Found Ontology in {self.name}: Setting as a dataset import from {ZOT_ONTOLOGY_SOURCE}")
             from .rdf import load_ontology
             self.load_from = load_ontology(ZOT_ONTOLOGY_SOURCE)
-            self.base_url = ZOT_NS
+            self.base_uri = ZOT_NS
             self.library_type = "dataset"
             self.load_mode = "manual_import"
             self.plugin = {}
@@ -68,7 +68,7 @@ class ZoteroLibrary:
         # check settings
         if check:
             passing = True
-            if not any([str(self.base_url).startswith("http"),str(self.base_api_url).startswith("http"),str(self.knowledge_base_graph).startswith("http")]):
+            if not any([str(self.base_uri).startswith("http"),str(self.base_api_url).startswith("http"),str(self.knowledge_base_graph).startswith("http")]):
                 passing = False
                 logger.warning(f"{self.name}: Some library config variable is expected to be a IRI/URI but is not!")
             if not str(self.library_id).isdigit() and not self.library_type in ["knowledge base", "mapping", "dataset", "query", "update", "citation", "excluded", "index"]:
