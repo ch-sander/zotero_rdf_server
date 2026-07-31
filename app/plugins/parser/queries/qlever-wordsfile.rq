@@ -11,6 +11,11 @@ WHERE {
 
   VALUES ?is_entity { 0 1 }
 
+  FILTER(
+    ?is_entity = 1 ||
+    REGEX(STR(?surface), "[\\p{L}\\p{N}_]")
+  )
+
   BIND(
     IF(?is_entity = 1, ?entity, ?surface)
     AS ?word
