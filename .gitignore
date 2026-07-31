@@ -48,3 +48,4 @@ app/plugins/parser/entity.ttl
 app/ui/query/config-qlever.ttl
 app/ui/query/config-wikidata.ttl
 /app/ui/ontology
+app/plugins/fts/rdf/template.ttl
