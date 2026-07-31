@@ -7,6 +7,7 @@ from requests.exceptions import RequestException
 from typing import Iterable, Optional, Any
 
 from .global_store import Store, Quad, NamedNode, Literal, RdfFormat, BlankNode
+from pyoxigraph import parse, serialize
 from .logging_config import logger
 from .config import *
 from .models import ZoteroLibrary
@@ -2408,6 +2409,7 @@ def sync_kb_mapping(
 
 
 def generate_ontospy_doc():
+    ZOT_ONTOLOGY_TTL = load_ontology(ZOT_ONTOLOGY_SOURCE)
     if ZOT_ONTOLOGY_TTL.exists():
         try:
             ensure_import("ontospy==2.1.1", requirements=None)
@@ -2424,4 +2426,64 @@ def generate_ontospy_doc():
         except Exception as e:
             logger.error(f"Ontospy failed: {e}")
 
+def load_ontology(source: str | Path) -> Path:
+    source = str(source)
+    is_url = urlparse(source).scheme in {"http", "https"}
+
+    from tempfile import NamedTemporaryFile
+    if is_url:
+        response = requests.get(source, timeout=30)
+        response.raise_for_status()
+
+        content = response.content
+        base_iri = response.url
+        rdf_format = (
+            RdfFormat.from_media_type(
+                response.headers.get("Content-Type", "")
+            )
+            or RdfFormat.from_extension(
+                Path(urlparse(response.url).path).suffix.lstrip(".")
+            )
+        )
+        filename = Path(urlparse(response.url).path).stem or "ontology"
+    else:
+        path = Path(source)
+
+        if not path.is_file():
+            raise FileNotFoundError(path)
+
+        rdf_format = RdfFormat.from_extension(path.suffix.lstrip("."))
+
+        if rdf_format == RdfFormat.TURTLE:
+            return path
+
+        content = path.read_bytes()
+        base_iri = path.resolve().as_uri()
+        filename = path.stem
+
+    if rdf_format is None:
+        raise ValueError(f"Could not detect RDF format: {source}")
+
+    with NamedTemporaryFile(
+        mode="wb",
+        prefix=f"{filename}-",
+        suffix=".ttl",
+        delete=False,
+    ) as target:
+        if rdf_format == RdfFormat.TURTLE:
+            target.write(content)
+        else:
+            serialize(
+                parse(
+                    input=content,
+                    format=rdf_format,
+                    base_iri=base_iri,
+                    without_named_graphs=True,
+                ),
+                output=target,
+                format=RdfFormat.TURTLE,
+            )
+
+        return Path(target.name)
+    
 # End

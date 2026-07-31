@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse, HTMLResponse, FileResponse
 from fastapi import Request
-from .config import STATIC_UI_DIRECTORY, ROOT_PATH, STATIC_UI_PREFIX, INCLUDE_OPEN_ROUTER, INCLUDE_CLOSED_ROUTER, INCLUDE_PLUGINS, FASTAPI_META, API_UI_URL, logger, ROOT_REDIRECT, ZOT_ONTOLOGY_TTL, STATIC_ONTOLOGY_MOUNT
+from .config import STATIC_UI_DIRECTORY, ROOT_PATH, STATIC_UI_PREFIX, INCLUDE_OPEN_ROUTER, INCLUDE_CLOSED_ROUTER, INCLUDE_PLUGINS, FASTAPI_META, API_UI_URL, logger, ROOT_REDIRECT, ZOT_ONTOLOGY_SOURCE, STATIC_ONTOLOGY_MOUNT
 
 
 _title = FASTAPI_META.get('title', "Zotero RDF Server App")
@@ -49,35 +49,46 @@ if INCLUDE_PLUGINS:
 else:
     logger.warning("Skip --> INCLUDE_PLUGINS = False")
 
-if (
-    STATIC_ONTOLOGY_MOUNT
-    and ZOT_ONTOLOGY_TTL
-    and ZOT_ONTOLOGY_TTL.is_file()
-):
-    ont_route = f"{STATIC_ONTOLOGY_MOUNT.rstrip('/')}/ttl"
+if STATIC_ONTOLOGY_MOUNT and ZOT_ONTOLOGY_SOURCE:
+    from .rdf import load_ontology
+    import requests
+    try:
+        ZOT_ONTOLOGY_TTL = load_ontology(ZOT_ONTOLOGY_SOURCE)
+    except (
+        FileNotFoundError,
+        ValueError,
+        SyntaxError,
+        requests.RequestException,
+    ):
+        logger.exception(
+            "Could not load ontology: %s",
+            ZOT_ONTOLOGY_SOURCE,
+        )
+    else:
+        ont_route = f"{STATIC_ONTOLOGY_MOUNT.rstrip('/')}/ttl"
 
-    logger.info(
-        "Adding route at %s for %s",
-        ont_route,
-        ZOT_ONTOLOGY_TTL,
-    )
+        logger.info(
+            "Adding route at %s for %s",
+            ont_route,
+            ZOT_ONTOLOGY_TTL,
+        )
 
-    app.add_api_route(
-        path=ont_route,
-        endpoint=lambda: FileResponse(
-            path=ZOT_ONTOLOGY_TTL,
-            media_type="text/turtle",
-            filename=ZOT_ONTOLOGY_TTL.name,
-            content_disposition_type="inline",
-        ),
-        methods=["GET", "HEAD"],
-        name="ontology-ttl",
-        response_class=FileResponse,
-    )
+        app.add_api_route(
+            path=ont_route,
+            endpoint=lambda: FileResponse(
+                path=ZOT_ONTOLOGY_TTL,
+                media_type="text/turtle",
+                filename="ontology.ttl",
+                content_disposition_type="inline",
+            ),
+            methods=["GET", "HEAD"],
+            name="ontology-ttl",
+            response_class=FileResponse,
+        )
 else:
     logger.warning(
-        "Ontology TTL file not found: %s",
-        ZOT_ONTOLOGY_TTL,
+        "No ontology source configured: %s",
+        ZOT_ONTOLOGY_SOURCE,
     )
 
 if STATIC_UI_PREFIX and STATIC_UI_DIRECTORY:

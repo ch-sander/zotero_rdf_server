@@ -151,7 +151,7 @@ def refresh_store(force_reload:bool = False, remove_store:bool=True):
                     break
             return
         else:
-            if ZOT_ONTOLOGY_TTL and STATIC_ONTODOC_DIRECTORY:
+            if ZOT_ONTOLOGY_SOURCE and STATIC_ONTODOC_DIRECTORY:
                 # from .rdf import generate_ontospy_doc
                 generate_ontospy_doc()
 

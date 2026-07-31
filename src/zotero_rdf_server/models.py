@@ -43,6 +43,16 @@ class ZoteroLibrary:
         # self.metadata_map = load_dict_like(self.map.get("metadata_map"), default=self.map,label="Loading metadata map")
         self.sync = {}
 
+        if self.library_type == "ontology":
+            logger.warning(f"Found Ontology in {self.name}: Setting as a dataset import from {ZOT_ONTOLOGY_SOURCE}")
+            from .rdf import load_ontology
+            self.load_from = load_ontology(ZOT_ONTOLOGY_SOURCE)
+            self.base_url = ZOT_NS
+            self.library_type = "dataset"
+            self.load_mode = "manual_import"
+            self.plugin = {}
+            self.map = {}
+
         if (
             config.get("sync") and
             config["sync"].get('library_type') and
