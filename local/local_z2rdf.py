@@ -1,23 +1,42 @@
 import os
 import sys
 import json
+import asyncio
 from pathlib import Path
+
 from dotenv import load_dotenv
 from fastapi.openapi.utils import get_openapi
 
 script_dir = Path(__file__).resolve().parent
-os.chdir(script_dir)
-print("script_dir =", script_dir)
-ENV_PATH = Path(".env.local").resolve()
-print(f"ENV_PATH = {ENV_PATH}")
+repo_dir = script_dir.parent
+env_path = script_dir / ".env.local"
 
-load_dotenv(dotenv_path=ENV_PATH, override=True)
-WORKDIR = Path(os.getenv("WORKDIR")).resolve()
+print("script_dir =", script_dir)
+print("repo_dir =", repo_dir)
+print("ENV_PATH =", env_path)
+
+load_dotenv(dotenv_path=env_path, override=False)
+
+raw_workdir = os.getenv("WORKDIR")
+
+if raw_workdir:
+    workdir_candidate = Path(raw_workdir).expanduser()
+
+    if workdir_candidate.is_absolute():
+        WORKDIR = workdir_candidate.resolve()
+    else:
+        WORKDIR = (script_dir / workdir_candidate).resolve()
+else:
+    WORKDIR = repo_dir
+
 SRC_PATH = WORKDIR / "src"
-print(f"SRC_PATH = {SRC_PATH}")
+
+print("WORKDIR =", WORKDIR)
+print("SRC_PATH =", SRC_PATH)
+
 sys.path.insert(0, str(SRC_PATH))
-os.chdir(SRC_PATH)
-print("WORKDIR =", Path.cwd().resolve())
+
+os.chdir(WORKDIR)
 
 from zotero_rdf_server.main import app
 

@@ -5,4 +5,5 @@ server:
   export_directory: "./local/exports"  
   import_directory: "./local/import"
   backup_directory: "./local/backup"
+  static_ui_directory: "./local/backup""
   log_level: "info"  # "debug", "info", "warning", "error"
