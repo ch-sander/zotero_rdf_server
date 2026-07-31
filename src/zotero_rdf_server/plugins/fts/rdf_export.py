@@ -6,7 +6,7 @@ from urllib.parse import quote
 
 from pyoxigraph import Literal, NamedNode, RdfFormat, Store
 
-from zotero_rdf_server.rdf import load_rdf_from_spec
+from zotero_rdf_server.rdf import load_rdf_from_spec, XSD_NS
 from zotero_rdf_server.utils import safeLiteral, safeNamedNode
 
 
@@ -108,8 +108,8 @@ def make_page_rdf_data(
             "page_id": page_id,
             "rdf_page": safeNamedNode(page_iri),
             "rdf_page_id": safeLiteral(page_id),
-            "rdf_page_no": safeLiteral(
-                int(page_no)
+            "rdf_page_no": Literal(
+                int(page_no),datatype=NamedNode(f"{XSD_NS}int")
             ),
             "rdf_text": safeLiteral(text),
         }
