@@ -114,7 +114,7 @@
           "Data"
         ],
         "summary": "Create backup",
-        "description": "Creates a complete backup of the store to /home/runner/work/zotero_rdf_server/zotero_rdf_server/local/backup",
+        "description": "Creates a complete backup of the store to /home/runner/work/zotero_rdf_server/local/backup",
         "operationId": "backup_store_backup_get",
         "parameters": [
           {
@@ -1147,6 +1147,130 @@
             "description": "Path to CITATION.cff"
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugin/extraction/zotero/import": {
+      "post": {
+        "tags": [
+          "Plugin",
+          "Extraction",
+          "Citation Extraction"
+        ],
+        "summary": "Extract Zotero citations",
+        "description": "Extract Zotero citations from a local or remote ODT/DOCX document and return them as JSON-LD.",
+        "operationId": "import_zotero_document_plugin_extraction_zotero_import_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Payload",
+                "description": "Import definition containing the document source, document IRI, optional graph IRI, and JSON-LD context."
+              },
+              "examples": {
+                "local_file": {
+                  "summary": "Import a local document",
+                  "value": {
+                    "source": {
+                      "kind": "path",
+                      "path": "/app/import/files/test.odt"
+                    },
+                    "document_uri": "https://zotero-rdf-server.org/documents/test",
+                    "graph_uri": "https://zotero-rdf-server.org/graphs/citations",
+                    "context": {
+                      "z": "https://zotero-rdf-server.org/plugin/zc2rdf/",
+                      "owl": "http://www.w3.org/2002/07/owl#",
+                      "Document": "z:Document",
+                      "Citation": "z:Citation",
+                      "CitationItem": "z:CitationItem",
+                      "citation": {
+                        "@id": "z:citation",
+                        "@type": "@id"
+                      },
+                      "item": {
+                        "@id": "z:item",
+                        "@type": "@id"
+                      },
+                      "target": {
+                        "@id": "z:target",
+                        "@type": "@id"
+                      },
+                      "sameAs": {
+                        "@id": "owl:sameAs",
+                        "@type": "@id"
+                      },
+                      "order": "z:order",
+                      "locator": "z:locator",
+                      "label": "z:label",
+                      "prefix": "z:prefix",
+                      "suffix": "z:suffix"
+                    }
+                  }
+                },
+                "remote_file": {
+                  "summary": "Download and import a document",
+                  "value": {
+                    "source": {
+                      "kind": "url",
+                      "url": "https://example.org/article.odt"
+                    },
+                    "document_uri": "https://zotero-rdf-server.org/documents/test",
+                    "context": {
+                      "z": "https://zotero-rdf-server.org/plugin/zc2rdf/",
+                      "owl": "http://www.w3.org/2002/07/owl#",
+                      "Document": "z:Document",
+                      "Citation": "z:Citation",
+                      "CitationItem": "z:CitationItem",
+                      "citation": {
+                        "@id": "z:citation",
+                        "@type": "@id"
+                      },
+                      "item": {
+                        "@id": "z:item",
+                        "@type": "@id"
+                      },
+                      "target": {
+                        "@id": "z:target",
+                        "@type": "@id"
+                      },
+                      "sameAs": {
+                        "@id": "owl:sameAs",
+                        "@type": "@id"
+                      },
+                      "order": "z:order",
+                      "locator": "z:locator",
+                      "label": "z:label",
+                      "prefix": "z:prefix",
+                      "suffix": "z:suffix"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2697,10 +2821,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-23T21:32:49Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-31T10:06:27Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-23T21:32:49Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-31T10:06:27Z"
           },
           {
             "name": "perform_analysis",
@@ -3669,10 +3793,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-23T21:32:49Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-31T10:06:27Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-23T21:32:49Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-31T10:06:27Z"
           },
           {
             "name": "format",
@@ -3986,10 +4110,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-23T21:32:49Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-31T10:06:27Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-23T21:32:49Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-31T10:06:27Z"
           },
           {
             "name": "format",
@@ -4320,10 +4444,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-23T21:32:49Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-31T10:06:27Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-23T21:32:49Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-31T10:06:27Z"
           },
           {
             "name": "format",
@@ -4633,10 +4757,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-23T21:32:49Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-31T10:06:27Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-23T21:32:49Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-31T10:06:27Z"
           },
           {
             "name": "format",
@@ -5150,6 +5274,88 @@
         }
       }
     },
+    "/plugin/parser/qlever/text-index": {
+      "post": {
+        "tags": [
+          "Plugin",
+          "Parser",
+          "Semantics"
+        ],
+        "summary": "Generate QLever text index",
+        "operationId": "generate_qlever_text_indexes_plugin_parser_qlever_text_index_post",
+        "parameters": [
+          {
+            "name": "library",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional library filter by name, base URL, library ID, or library type. Ignored when a custom request body is supplied.",
+              "title": "Library"
+            },
+            "description": "Optional library filter by name, base URL, library ID, or library type. Ignored when a custom request body is supplied."
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/QLeverTextIndexRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              },
+              "examples": {
+                "custom": {
+                  "summary": "Custom QLever index",
+                  "value": {
+                    "docs_query": "/app/plugins/parser/queries/qlever-docsfile.rq",
+                    "words_query": "/app/plugins/parser/queries/qlever-wordsfile.rq",
+                    "docs_file": "Qlever/index.docsfile.tsv",
+                    "words_file": "Qlever/index.wordsfile.tsv",
+                    "lowercase": true,
+                    "use_default_graph_as_union": true,
+                    "require_word_and_entity": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/plugin/rdf_notes/znotes2rdf": {
       "get": {
         "tags": [
@@ -5216,11 +5422,11 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Push loaded triples to main store (default: true). Otherwise writes file in /home/runner/work/zotero_rdf_server/zotero_rdf_server/local/exports",
+              "description": "Push loaded triples to main store (default: true). Otherwise writes file in /home/runner/work/zotero_rdf_server/local/exports",
               "default": true,
               "title": "Push"
             },
-            "description": "Push loaded triples to main store (default: true). Otherwise writes file in /home/runner/work/zotero_rdf_server/zotero_rdf_server/local/exports"
+            "description": "Push loaded triples to main store (default: true). Otherwise writes file in /home/runner/work/zotero_rdf_server/local/exports"
           },
           {
             "name": "clear_graph",
@@ -5578,11 +5784,11 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Stores to HTML file (instead of Zotero note) or reads from HTML file (instead of from Zotero note). Depends on task. File read from /home/runner/work/zotero_rdf_server/zotero_rdf_server/local/import and saved to /home/runner/work/zotero_rdf_server/zotero_rdf_server/local/exports. Graph name must be given and will be used for file name, all library configs will be ignored. Provide a mapping or rely on defaults",
+              "description": "Stores to HTML file (instead of Zotero note) or reads from HTML file (instead of from Zotero note). Depends on task. File read from /home/runner/work/zotero_rdf_server/local/import and saved to /home/runner/work/zotero_rdf_server/local/exports. Graph name must be given and will be used for file name, all library configs will be ignored. Provide a mapping or rely on defaults",
               "default": false,
               "title": "Html File"
             },
-            "description": "Stores to HTML file (instead of Zotero note) or reads from HTML file (instead of from Zotero note). Depends on task. File read from /home/runner/work/zotero_rdf_server/zotero_rdf_server/local/import and saved to /home/runner/work/zotero_rdf_server/zotero_rdf_server/local/exports. Graph name must be given and will be used for file name, all library configs will be ignored. Provide a mapping or rely on defaults"
+            "description": "Stores to HTML file (instead of Zotero note) or reads from HTML file (instead of from Zotero note). Depends on task. File read from /home/runner/work/zotero_rdf_server/local/import and saved to /home/runner/work/zotero_rdf_server/local/exports. Graph name must be given and will be used for file name, all library configs will be ignored. Provide a mapping or rely on defaults"
           },
           {
             "name": "mapping",
@@ -5822,6 +6028,22 @@
             "examples": [
               null
             ]
+          },
+          "rdf_kwargs": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rdf Kwargs",
+            "description": "Keyword Arguments for RDF Backend Config",
+            "examples": [
+              null
+            ]
           }
         },
         "type": "object",
@@ -5900,6 +6122,17 @@
             ],
             "title": "Min Bytes"
           },
+          "max_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Bytes"
+          },
           "min_content_len": {
             "anyOf": [
               {
@@ -5911,15 +6144,19 @@
             ],
             "title": "Min Content Len"
           },
-          "all_files": {
+          "max_content_len": {
             "anyOf": [
               {
-                "type": "boolean"
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
+            "title": "Max Content Len"
+          },
+          "all_files": {
+            "type": "boolean",
             "title": "All Files",
             "default": false
           }
@@ -6139,6 +6376,61 @@
           "atlas"
         ],
         "title": "OutputFormat"
+      },
+      "QLeverTextIndexRequest": {
+        "properties": {
+          "docs_query": {
+            "type": "string",
+            "title": "Docs Query"
+          },
+          "words_query": {
+            "type": "string",
+            "title": "Words Query"
+          },
+          "docs_file": {
+            "type": "string",
+            "title": "Docs File"
+          },
+          "words_file": {
+            "type": "string",
+            "title": "Words File"
+          },
+          "lowercase": {
+            "type": "boolean",
+            "title": "Lowercase",
+            "default": true
+          },
+          "use_default_graph_as_union": {
+            "type": "boolean",
+            "title": "Use Default Graph As Union",
+            "default": true
+          },
+          "require_word_and_entity": {
+            "type": "boolean",
+            "title": "Require Word And Entity",
+            "default": false
+          },
+          "max_record_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Record Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "docs_query",
+          "words_query",
+          "docs_file",
+          "words_file"
+        ],
+        "title": "QLeverTextIndexRequest"
       },
       "ValidationError": {
         "properties": {
