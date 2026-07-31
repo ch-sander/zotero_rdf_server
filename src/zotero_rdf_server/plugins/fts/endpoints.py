@@ -320,7 +320,7 @@ def ingest_route(
     file_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for File Output", examples=[None]),
     vector_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for embedding Backend Config", examples=[None]),
     llm_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for LLM Backend Config", examples=[None]),
-
+    rdf_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for RDF Backend Config", examples=[None]),
     reverse: bool = Query(default=None, description="If true, reverses order of item results"),
 
     worker_id: int = Query(default=None, ge=0, description="Worker index, 0-based"),
@@ -542,6 +542,32 @@ def ingest_route(
                         vector_x = vector_kwargs if vector_kwargs is not None else ncfg.get("vector")
 
                         llm_x = llm_kwargs if llm_kwargs is not None else ncfg.get("llm_kwargs")
+
+                        rdf_x = rdf_kwargs if rdf_kwargs is not None else pipeline_cfg.get("rdf_kwargs")
+                        if rdf_x:
+                            import re
+                            from copy import deepcopy
+                            rdf_x = deepcopy(rdf_x)
+
+                            output_dir = Path(rdf_x["output"])
+
+                            library_id = re.sub(
+                                r"[^A-Za-z0-9_.-]+",
+                                "_",
+                                str(lib.library_id),
+                            )
+
+                            pipeline_id = re.sub(
+                                r"[^A-Za-z0-9_.-]+",
+                                "_",
+                                str(pipe_id or f"pipeline-{n}"),
+                            )
+
+                            rdf_x["output"] = str(
+                                output_dir
+                                / f"{library_id}.{pipeline_id}.nq.gz"
+                            )
+                            
                         reverse_x = reverse if reverse is not None else ncfg.get("reverse_results", False)
 
                         iter_pages_kwargs = source_kwargs if source_kwargs is not None else dict(pipeline_cfg.get("source_kwargs") or {})
@@ -593,7 +619,8 @@ def ingest_route(
                                                 iter_pages_kwargs=iter_pages_kwargs,
                                                 page_to_text_kwargs=page_to_text_kwargs, text_image_file_kwargs=text_image_file_kwargs,
                                                 config_path=config_path_x,
-                                                pipeline_meta=pipeline_meta))
+                                                pipeline_meta=pipeline_meta,
+                                                rdf_kwargs=rdf_x))
 
                 elif graph and graph != lib.base_url:
                     logger.debug(f"{lib.base_url} skipped")
@@ -665,7 +692,8 @@ def ingest_route(
                                             iter_pages_kwargs=source_kwargs,
                                             page_to_text_kwargs=framework_kwargs,
                                             text_image_file_kwargs=file_kwargs,
-                                            config_path=config_path))
+                                            config_path=config_path,
+                                            rdf_kwargs=rdf_kwargs))
         else:
             raise HTTPException(
                     status_code=400,
@@ -714,7 +742,8 @@ def ingest_route(
                                         iter_pages_kwargs=source_kwargs,
                                         page_to_text_kwargs=framework_kwargs,
                                         text_image_file_kwargs=file_kwargs,
-                                        config_path=config_path))
+                                        config_path=config_path,
+                                        rdf_kwargs=rdf_kwargs))
 
     result = {
         "status": "ok",
