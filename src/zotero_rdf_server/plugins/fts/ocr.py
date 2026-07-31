@@ -2355,7 +2355,7 @@ def iter_text_pages(
     iter_kwargs['doc_id']=_doc_id
     iter_kwargs['skip'] = save_image in {"sniff"}    
 
-    def _resolve_out(p: Optional[str], doc_dir:str|None = _doc_id) -> Optional[Path]:
+    def _resolve_out(p: Optional[str], doc_dir:str|None = _doc_id) -> Optional[Path]: # TODO maybe use safe_path
         if not p:
             return None
         pp = Path(p)
