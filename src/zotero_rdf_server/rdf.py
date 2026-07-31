@@ -202,13 +202,19 @@ def load_rdf_from_spec(
             "add_to",
             ["item", "collection", "library"],
         )
-
+        if isinstance(restrict_to, str):
+            restrict_to = [restrict_to]
         if context is not None and context not in restrict_to:
             continue
 
         input_ = load_spec.get("input")
         path_ = load_spec.get("path")
 
+        if input_ is not None and path_ is not None:
+            raise ValueError(
+                "RDF load block may define only 'input' or 'path'"
+            )
+        
         if input_ is not None:
             input_ = resolve_template(
                 input_,
@@ -232,7 +238,7 @@ def load_rdf_from_spec(
                 node=node_value,
             )
 
-            path_ = path_ if not input_ else None
+            path_ = None
 
         fmt = ensure_rdf_format(
             load_spec.get("format", RdfFormat.TURTLE)
