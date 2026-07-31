@@ -326,7 +326,7 @@ for lib_cfg in zotero_config.get("libraries", []):
 ZOT_NS = ZOTERO_CONFIGS.get("vocab", "http://www.zotero.org/namespaces/export#")
 ZOT_API_URL = ZOTERO_CONFIGS.get("api_url", "https://api.zotero.org/")
 ZOT_API_USER = ZOTERO_CONFIGS.get("user", "Zotero RDF Server App")
-ZOT_BASE_URL = ZOTERO_CONFIGS.get("base_url", "https://zotero.org/")
+ZOT_BASE_URI = ZOTERO_CONFIGS.get("base_uri", "https://zotero.org/")
 ZOT_SCHEMA = ZOTERO_CONFIGS.get("schema") # "https://api.zotero.org/schema"
 ZOT_ONTOLOGY_SOURCE = ZOTERO_CONFIGS.get("ontology") # "https://api.zotero.org/schema"
 REGEX_PATTERN = f"{ZOT_NS}regex"

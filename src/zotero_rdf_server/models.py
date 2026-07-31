@@ -19,7 +19,7 @@ class ZoteroLibrary:
         self.rdf_export_format = config.get("rdf_export_format", "rdf_zotero")
         self.api_query_params = config.get("api_query_params") or {}
         self.base_api_url = f"{ZOT_API_URL}{self.library_type}/{self.library_id}".strip("#/")
-        self.base_uri = str(config.get("base_uri", f"{ZOT_BASE_URL}{self.library_type}/{self.library_id}")).strip("/#") # TODO make dynamic ?
+        self.base_uri = str(config.get("base_uri", f"{ZOT_BASE_URI}{self.library_type}/{self.library_id}")).strip("/#") # TODO make dynamic ?
         self.knowledge_base_graph = str(config.get("knowledge_base_graph", self.base_uri)).strip("/#")
         self.metadata_graph = str(config.get("metadata_graph")).strip("/#") if config.get("metadata_graph") else None
 
@@ -60,7 +60,7 @@ class ZoteroLibrary:
             config["sync"].get('api_key')
         ):
             self.sync = config["sync"]
-            self.sync['base_uri'] = f"{ZOT_BASE_URL}{self.sync['library_type']}/{self.sync['library_id']}"
+            self.sync['base_uri'] = f"{ZOT_BASE_URI}{self.sync['library_type']}/{self.sync['library_id']}"
         
         # PLUG-IN Config
         self.plugin = load_dict_like(config.get("plugin") or config.get("plugins") or {}, label="Loading library plugin config")

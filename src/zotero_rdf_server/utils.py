@@ -120,8 +120,8 @@ def store_move_subject(store: Store, src: NamedNode, dst: NamedNode, g: NamedNod
 
 
 def normalize_iri_scheme(iri: str) -> str:
-    from .config import ZOT_BASE_URL
-    BASE = urlparse(ZOT_BASE_URL)
+    from .config import ZOT_BASE_URI
+    BASE = urlparse(ZOT_BASE_URI)
     iri = iri.strip()
     logger.debug(f"HTTP --> HTTPS for {BASE} in {iri}")
     try:
