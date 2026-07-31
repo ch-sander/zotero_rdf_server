@@ -132,6 +132,7 @@ def refresh_store(force_reload:bool = False, remove_store:bool=True):
     global store
 
     with _store_lock:
+
         if STORE_MODE == "directory_ro":
             while True:
                 try:
@@ -149,7 +150,11 @@ def refresh_store(force_reload:bool = False, remove_store:bool=True):
                 else:
                     break
             return
-            
+        else:
+            if ZOT_ONTOLOGY_TTL and STATIC_ONTODOC_DIRECTORY:
+                # from .rdf import generate_ontospy_doc
+                generate_ontospy_doc()
+
         if REFRESH == False and not force_reload:
             try:
                 close_store()
@@ -190,16 +195,13 @@ def refresh_store(force_reload:bool = False, remove_store:bool=True):
                         except Exception as e:
                             logger.error(f"Schema could not be loaded: {e}")
 
-                    if ZOT_ONTOLOGY_TTL and STATIC_ONTODOC_DIRECTORY:
-                        # from .rdf import generate_ontospy_doc
-                        generate_ontospy_doc()
-
                     for lib_cfg in config.ZOTERO_LIBRARIES_CONFIGS:
                         lib = ZoteroLibrary(lib_cfg)
                         ensure_store(store)
                         logger.warning(f"load_mode '{lib.load_mode}' for '{lib.name}' — start.")
                         if lib.library_type == "excluded":
                             logger.warning(f"{lib.name} excluded")
+                            continue
                         elif lib.load_mode == "rdf":
                             try:
                                 logger.info(f"Fetching RDF export for '{lib.name}'")
@@ -229,7 +231,7 @@ def refresh_store(force_reload:bool = False, remove_store:bool=True):
                                 logger.error(f"Error loading from file import for {lib.name}: {e}")
                         elif lib.load_mode == "json":
                             logger.warning(f"Importing from local Zotero JSON")
-                            if lib.library_type not in ["knowledge base","mapping", "dataset", "query", "update", "citation"]:
+                            if lib.library_type not in ["knowledge base","mapping", "dataset", "query", "update", "citation", "index"]:
                                 try:
                                     build_graph_for_library(lib, store)
                                 except Exception as e:
@@ -239,25 +241,30 @@ def refresh_store(force_reload:bool = False, remove_store:bool=True):
                         else:
                             logger.warning(f"Unknown load_mode '{lib.load_mode}' for '{lib.name}' — skipping.")
 
-                        if (lib.plugin or {}).get("notes_parser", {}).get("auto") is True:
-                            try:
-                                ensure_store(store)
-                                time.sleep(2)
-                                logger.info("Start Parser Plugin")
-                                # TODO read predicate/query, and tag filter from YAML?
-                                
-                                try:
-                                    from .plugins.parser.parse_note import parse_all_notes
-                                    parse_all_notes(lib, store, delete=False) # no deleting for multiple libraries using the same graph
-                                except ImportError:
-                                    logger.exception("parse_all_notes import failed!")                                
+                        notes_parser = (lib.plugin or {}).get("notes_parser", {})
+                        if notes_parser:
 
-                                
-                            except Exception as e:
-                                logger.error(f"Error parsing notes: {e}")
+                            if notes_parser.get("auto") is True:
+                                try:
+                                    ensure_store(store)
+                                    time.sleep(2)
+                                    logger.info("Start Parser Plugin")
+                                    # TODO read predicate/query, and tag filter from YAML?
+                                    
+                                    try:
+                                        from .plugins.parser.parse_note import parse_all_notes
+                                        parse_all_notes(lib, store, delete=False) # no deleting for multiple libraries using the same graph
+                                    except ImportError:
+                                        logger.exception("parse_all_notes import failed!")                                
+                                except Exception as e:
+                                    logger.error(f"Error parsing notes: {e}")
+
+                            if notes_parser.get("qlever_text_index"):
+                                from .plugins.parser.qlever_helpers import create_qlever_text_index
+                                create_qlever_text_index(lib, store)
                         else:
                             logger.info(f"No notes parsing for {lib.name}")
-                        
+
                         run_update_queries(lib,store)
                         index_citation_sources(lib,store)
 

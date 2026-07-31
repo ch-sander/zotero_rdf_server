@@ -5,6 +5,10 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from zotero_rdf_server.logging_config import logger
+from zotero_rdf_server.config import EXPORT_DIRECTORY
+from zotero_rdf_server.models import ZoteroLibrary
+from zotero_rdf_server.utils import load_text_like
 
 from pyoxigraph import Literal, NamedNode, Store
 
@@ -29,6 +33,74 @@ class _WordEntry:
     record_id: int
     score: int
     sequence: int
+
+def _serialize_qlever_stats(
+    stats: QLeverExportStats,
+) -> dict[str, Any]:
+    return {
+        "records": stats.records,
+        "word_occurrences": stats.word_occurrences,
+        "entity_occurrences": stats.entity_occurrences,
+        "docs_file": str(stats.docs_file),
+        "words_file": str(stats.words_file),
+    }
+
+def create_qlever_text_index(
+    lib: ZoteroLibrary,
+    store: Store,
+) -> QLeverExportStats | None: # This is nothing but a wrapper
+    parser_config = (lib.plugin or {}).get("notes_parser", {})
+    qlever_config = parser_config.get("qlever_text_index")
+
+    if not qlever_config:
+        logger.warning(
+            "No QLever text index config for '%s'",
+            lib.name,
+        )
+        return None
+
+    if not isinstance(qlever_config, dict):
+        raise TypeError(
+            f"Invalid qlever_text_index config for '{lib.name}': "
+            f"expected dict, got {type(qlever_config).__name__}"
+        )
+
+    logger.warning(
+        "Creating QLever text index for '%s'; "
+        "store size=%s; docs_file=%s; words_file=%s",
+        lib.name,
+        len(store),
+        qlever_config.get("docs_file"),
+        qlever_config.get("words_file"),
+    )
+
+    try:
+        stats = write_qlever_text_index(
+            store=store,
+            config=qlever_config,
+            load_text_like=load_text_like,
+            base_dir=EXPORT_DIRECTORY,
+        )
+    except Exception:
+        logger.exception(
+            "QLever text index creation failed for '%s'",
+            lib.name,
+        )
+        raise
+
+    logger.warning(
+        "Finished QLever text index for '%s'; "
+        "records=%s; words=%s; entities=%s; "
+        "docs_file=%s; words_file=%s",
+        lib.name,
+        stats.records,
+        stats.word_occurrences,
+        stats.entity_occurrences,
+        stats.docs_file,
+        stats.words_file,
+    )
+
+    return stats
 
 def write_qlever_text_index(
     store: Store,
@@ -71,7 +143,7 @@ def write_qlever_text_index(
     lowercase = bool(section.get("lowercase", True))
     use_union = bool(section.get("use_default_graph_as_union", False))
     require_word_and_entity = bool(
-        section.get("require_word_and_entity", True)
+        section.get("require_word_and_entity", False)
     )
 
     configured_max = section.get(
@@ -203,11 +275,17 @@ def _read_docs_query(
         text = _normalize_docs_text(text)
 
         previous = docs.get(record_id)
-        if previous is not None and previous != text:
-            raise ValueError(
-                "Conflicting docsfile texts for record_id "
-                f"{record_id}: {previous!r} versus {text!r}"
-            )
+
+        if previous is not None:
+            if previous != text:
+                logger.warning(
+                    "Conflicting docsfile texts for record_id %s; "
+                    "keeping first value %r and ignoring %r",
+                    record_id,
+                    previous,
+                    text,
+                )
+            continue
 
         docs[record_id] = text
 
@@ -254,7 +332,6 @@ def _read_words_query(
                 "was not returned by the docs query"
             ) from error
 
-        # Danach wie bisher:
         word_term = _required_binding(
             solution, "word", "words query", row_number
         )
@@ -317,6 +394,10 @@ def _read_words_query(
         if lowercase:
             tokens = [token.lower() for token in tokens]
 
+        tokens = list(tokenizer(surface))
+        if lowercase:
+            tokens = [token.lower() for token in tokens]
+
         tokens = [
             _validate_word_token(token, context=context)
             for token in tokens
@@ -324,9 +405,12 @@ def _read_words_query(
         ]
 
         if not tokens:
-            raise ValueError(
-                f"{context}: word value {surface!r} produced no tokens"
+            logger.debug(
+                "%s: skipping word value %r because it produced no tokens",
+                context,
+                surface,
             )
+            continue
 
         for token in tokens:
             entries.append(
@@ -678,6 +762,7 @@ def _atomic_write_text(
             output.flush()
             os.fsync(output.fileno())
 
+        os.chmod(temporary_path, 0o644)
         os.replace(temporary_path, target)
 
     except BaseException:

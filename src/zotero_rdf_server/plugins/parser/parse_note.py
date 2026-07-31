@@ -53,7 +53,6 @@ class ParseNotePlugin:
         logger.debug("Parsing completed.")
         return result
 
-
 def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode = NamedNode(f"{ZOT_NS}note"), query_str: str = None, delete:bool = False, push:bool=True):
     # from zotero_rdf_server.plugins.parser.parse_note import ParseNotePlugin
     parser_cfgs = lib.plugin.get("notes_parser") or []
@@ -676,25 +675,27 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
         except Exception as e:
             logger.error(f"Error when extending store: {e}")
 
-        try:
-            if parser_cfg.get('qlever_text_index'):
-                from .qlever_helpers import write_qlever_text_index
-                stats = write_qlever_text_index(
-                    store=store,
-                    config=parser_cfg.get('qlever_text_index'),
-                    load_text_like=load_text_like,
-                    base_dir=EXPORT_DIRECTORY,
-                )
+        # try:
+        #     if parser_cfg.get('qlever_text_index'):
+        #         logger.warning("Starting Qlever text index creation")
+        #         from .qlever_helpers import write_qlever_text_index
+        #         stats = write_qlever_text_index(
+        #             store=store,
+        #             config=parser_cfg.get('qlever_text_index'),
+        #             load_text_like=load_text_like,
+        #             base_dir=EXPORT_DIRECTORY,
+        #         )
 
-                logger.info(
-                    f"Wrote {stats.records} records, "
-                    f"{stats.word_occurrences} word occurrences and "
-                    f"{stats.entity_occurrences} entity occurrences"
-                )   
-        except Exception as e:
-            logger.error(f"Error when creating Qlever files: {e}")
+        #         logger.info(
+        #             f"Wrote {stats.records} records, "
+        #             f"{stats.word_occurrences} word occurrences and "
+        #             f"{stats.entity_occurrences} entity occurrences"
+        #         )   
+        # except Exception as e:
+        #     logger.error(f"Error when creating Qlever files: {e}")
 
 
     logger.info(f"Semantic-HTML parsing completed, {count} notes parsed")
     return count
 
+# End
