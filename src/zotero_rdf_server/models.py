@@ -47,7 +47,7 @@ class ZoteroLibrary:
             logger.warning(f"Found Ontology in {self.name}: Setting as a dataset import from {ZOT_ONTOLOGY_SOURCE}")
             from .rdf import load_ontology
             self.load_from = load_ontology(ZOT_ONTOLOGY_SOURCE)
-            self.base_uri = ZOT_NS
+            self.base_uri = str(ZOT_NS).rstrip("#/")
             self.library_type = "dataset"
             self.load_mode = "manual_import"
             self.plugin = {}
