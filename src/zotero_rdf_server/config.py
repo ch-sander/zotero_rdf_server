@@ -112,8 +112,8 @@ def env_bool(name: str, default: bool) -> bool:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
-config_path = os.getenv("CONFIG_FILE", "config.yaml")
-zotero_config_path = os.getenv("ZOTERO_CONFIG_FILE", "zotero.yaml")
+config_path = os.getenv("CONFIG_FILE", "/app/config.yaml")
+zotero_config_path = os.getenv("ZOTERO_CONFIG_FILE", "/app/zotero.yaml")
 
 try:    
     logger.info(f"Loading config YAML...")
@@ -328,7 +328,7 @@ ZOT_API_URL = ZOTERO_CONFIGS.get("api_url", "https://api.zotero.org/")
 ZOT_API_USER = ZOTERO_CONFIGS.get("user", "Zotero RDF Server App")
 ZOT_BASE_URI = ZOTERO_CONFIGS.get("base_uri", "https://zotero.org/")
 ZOT_SCHEMA = ZOTERO_CONFIGS.get("schema") # "https://api.zotero.org/schema"
-ZOT_ONTOLOGY_SOURCE = ZOTERO_CONFIGS.get("ontology") # "https://api.zotero.org/schema"
+ZOT_ONTOLOGY_SOURCE = ZOTERO_CONFIGS.get("ontology")
 REGEX_PATTERN = f"{ZOT_NS}regex"
 
 PREFIXES = {"zot":ZOT_NS, "rdfs":"http://www.w3.org/2000/01/rdf-schema#", "owl":"http://www.w3.org/2002/07/owl#", "rdf":"http://www.w3.org/1999/02/22-rdf-syntax-ns#", "xsd":XSD_NS, "skos":"http://www.w3.org/2004/02/skos/core#", "prov":"http://www.w3.org/ns/prov#", "dc":"http://purl.org/dc/elements/1.1/", "schema":"https://schema.org/", "dct":"http://purl.org/dc/terms/", "zmap": MAPPING_BASE, "semz": "https://semantic-html.org/vocab#", "foaf": "http://xmlns.com/foaf/0.1/", "geo": "http://www.opengis.net/ont/geosparql#", "wd": "http://www.wikidata.org/entity/", "cito": "http://purl.org/spar/cito/"}
