@@ -1084,14 +1084,6 @@ zotsn:property_1225 a sh:PropertyShape ;
     sh:name "givenName" ;
     sh:path schema:givenName .
 
-zotsn:property_1632 a sh:PropertyShape ;
-    rdfs:label "publisher" ;
-    volipi:message "Tooltip for publisher" ;
-    sh:name "publisher" ;
-    sh:node zotsn:publisher_1773 ;
-    sh:nodeKind sh:IRI ;
-    sh:path zot:publisher .
-
 zotsn:property_2119 a sh:PropertyShape ;
     rdfs:label "hasGeometry" ;
     volipi:message "Tooltip for hasGeometry" ;
@@ -1529,6 +1521,14 @@ zotsn:property_150 a sh:PropertyShape ;
     sh:node zotsn:concept_134 ;
     sh:nodeKind sh:IRI ;
     sh:path skos:narrower .
+
+zotsn:property_1632 a sh:PropertyShape ;
+    rdfs:label "publisher" ;
+    volipi:message "Tooltip for publisher" ;
+    sh:name "publisher" ;
+    sh:node zotsn:publisher_1773 ;
+    sh:nodeKind sh:IRI ;
+    sh:path zot:publisher .
 
 zotsn:property_1730 a sh:PropertyShape ;
     rdfs:label "created by" ;
@@ -3803,6 +3803,7 @@ zotsn:item_1498 a sh:NodeShape ;
         zotsn:property_1629,
         zotsn:property_1630,
         zotsn:property_1631,
+        zotsn:property_1632,
         zotsn:property_1633,
         zotsn:property_1634,
         zotsn:property_1635,
