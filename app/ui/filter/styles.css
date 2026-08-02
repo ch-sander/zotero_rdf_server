@@ -1,0 +1,212 @@
+/* Font (bewusst neutral + technisch) */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+
+:root {
+  --bg: #eef2f7;
+  --panel: #ffffff;
+  --panel-soft: #edf3ff;
+
+  --text: #111111;
+  --muted: #4f5f78;
+
+  --line: #4a86e8;
+  --accent: #4a86e8;
+  --accent-2: #ff9900;
+
+  --border: #9eb9ef;
+  --border-strong: #4a86e8;
+
+  --btn-blue: #4a86e8;
+  --btn-blue-hover: #3f78d6;
+
+  --btn-orange: #ff9900;
+  --btn-orange-hover: #e68a00;
+}
+
+/* Base */
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', Tahoma, sans-serif;
+  line-height: 1.6;
+}
+
+/* Headings */
+h1, h2, h3 {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* Links */
+a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+a:hover {
+  text-decoration: underline;
+  color: #2f5fb3;
+}
+
+/* Navbar */
+.navbar {
+  background-color: #dfe9fb !important;
+  border-bottom: 2px solid var(--line);
+  box-shadow: none;
+}
+
+.navbar-light .navbar-brand {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.navbar-light .navbar-nav .nav-link {
+  color: #2c3e5f;
+}
+
+.navbar-light .navbar-nav .nav-link:hover {
+  color: var(--accent-2);
+}
+
+/* Container Layout */
+.container {
+  background: var(--panel);
+  border: 2px solid var(--line);
+  border-radius: 0;
+  padding: 2rem;
+  margin-top: 2rem;
+}
+
+/* SPARQL Toggle Button (JETZT KLAR SICHTBAR) */
+.query-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  flex-wrap: wrap;
+}
+
+#sparql-toggle,
+.button-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+
+  margin: 0;
+  min-height: 3rem;
+  padding: 0.6rem 1.2rem;
+
+  border-radius: 0;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+#sparql-toggle {
+  background-color: var(--btn-blue);
+  border: 2px solid #2f5fb3;
+  color: #fff;
+}
+
+#sparql-toggle:hover {
+  background-color: var(--btn-blue-hover);
+}
+
+.button-secondary {
+  background-color: var(--btn-orange);
+  border: 2px solid #cc7a00;
+  color: #111;
+}
+
+.button-secondary:hover {
+  background-color: var(--btn-orange-hover);
+  color: #111;
+}
+/* YASQE / YASR */
+#yasqe,
+#yasr {
+  background: var(--panel-soft);
+  border: 2px solid var(--line);
+  border-radius: 0;
+  padding: 1rem;
+}
+
+#yasqe .CodeMirror {
+  min-height: 320px;
+  font-size: 0.9rem;
+}
+
+.yasr_header {
+  border-bottom: 1px solid var(--border);
+}
+
+/* Sparnatural Form */
+sparnatural-form {
+  display: block;
+  width: 100%;
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: var(--panel-soft);
+  border: 2px solid var(--line);
+  box-sizing: border-box;
+
+  --sparnatural-main-color: var(--accent);
+  --sparnatural-border-radius: 0px;
+}
+
+/* Kleine UI-Elemente */
+.badge,
+.tag {
+  border: 2px solid var(--line);
+  background: #eaf2ff;
+  color: #244a8f;
+  border-radius: 0;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+/* Divider */
+hr,
+.divider {
+  border: none;
+  height: 2px;
+  background: var(--line);
+}
+
+/* Inputs (falls Bootstrap reinspielt) */
+input,
+select,
+textarea {
+  border-radius: 0 !important;
+  border: 2px solid var(--line);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent-2);
+  background: #fffaf2;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .navbar-brand {
+    font-size: 1.1rem;
+  }
+
+  .container {
+    padding: 1rem;
+  }
+
+  sparnatural-form {
+    padding: 0.75rem;
+  }
+
+  #sparql-toggle {
+    width: 100%;
+  }
+}

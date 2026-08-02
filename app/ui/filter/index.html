@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Zotero RDF Server Search Form</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-rbsA2VBKQhggwzxH7pPCaAqO46MgnOM80zW1RWuH61DGLwZJEdK2Kadq2F9CUG65" crossorigin="anonymous">
+
+    <!-- YASGUI CSS -->
+    <link href="https://unpkg.com/@triply/yasgui/build/yasgui.min.css" rel="stylesheet" type="text/css">
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="fa/css/all.min.css">
+
+    <!-- Sparnatural Form CSS -->
+    <link rel="stylesheet" href="sparnatural-form.css">
+
+    <!-- This page custom CSS -->
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+
+    <nav class="navbar navbar-expand-lg navbar-light">
+      <div id="custom-header-container"></div>
+    </nav>
+
+    <div class="container my-5">
+      <p>
+        <em>This is a simple Sparnatural Form integration for the Zotero RDF Server.</em>
+      </p>
+
+      <h1>Search Zotero Libraries and Semantic Notes</h1>
+
+      <div class="col-lg-12 px-0">
+        <p>Queries are sent to <a href="#" id="displayEndpoint">...</a>.</p>
+        <p>Ontology loaded from <a href="/ontology/ttl" target="_blank">Turtle file</a>.</p>
+
+        <!--
+          Sparnatural Form uses the same semantic configuration as the query builder,
+          but loads a fixed query template and its form bindings.
+        -->
+        <sparnatural-form
+          id="sparnatural-form"
+          src="../query/config-dev.ttl /ontology/ttl"
+          endpoint="/sparql/query"
+          lang="en"
+          defaultLang="en"
+          limit="5000"
+          debug="true"
+          form="form-configs/scigma/form.json"
+          query="form-configs/scigma/query.json"
+          prefixes="zot:http://www.zotero.org/namespaces/export# semz:https://semantic-html.org/vocab# owl:http://www.w3.org/2002/07/owl# skos:http://www.w3.org/2004/02/skos/core# geo:http://www.opengis.net/ont/geosparql# scigma:https://data.scigma.de/resources/ cito:http://purl.org/spar/cito/ schema:https://schema.org/ dct:http://purl.org/dc/terms/ wd:http://www.wikidata.org/prop/direct/"
+        ></sparnatural-form>
+
+        <div class="query-actions">
+          <button type="button" class="btn btn-primary" id="sparql-toggle">
+            Toggle SPARQL query
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Raw SPARQL query editor, YASQE -->
+    <div class="container my-5">
+      <div id="yasqe" style="display:none;"></div>
+    </div>
+
+    <!-- SPARQL query results display, YASR -->
+    <div class="container my-5">
+      <div id="yasr"></div>
+    </div>
+
+    <div id="custom-footer-container"></div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-kenU1KFdBIe4zVF0s0G1M5b4hcpxyD9F7jL+jjXkk+Q2h455rYXK/7HAuoJl+0I4" crossorigin="anonymous"></script>
+
+    <!-- YASGUI JS -->
+    <script src="https://unpkg.com/@triply/yasgui/build/yasgui.min.js"></script>
+
+    <!-- Sparnatural Form JS -->
+    <script src="sparnatural-form.js"></script>
+
+    <!-- Sparnatural Custom YASR plugins -->
+    <script src="sparnatural-yasgui-plugins.js"></script>
+
+    <!-- This page custom JS -->
+    <script src="main.js"></script>
+    <script src="../partials/load-partials.js" defer></script>
+
+  </body>
+</html>

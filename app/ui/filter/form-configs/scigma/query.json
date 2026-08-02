@@ -1,0 +1,153 @@
+{
+  "distinct": true,
+  "variables": [
+    {
+      "termType": "Variable",
+      "value": "Item"
+    },
+    {
+      "termType": "Variable",
+      "value": "publisher_1773_14"
+    },
+    {
+      "termType": "Variable",
+      "value": "date_1727_12"
+    },
+    {
+      "termType": "Variable",
+      "value": "Type"
+    },
+    {
+      "termType": "Variable",
+      "value": "place_1772_8"
+    },
+    {
+      "termType": "Variable",
+      "value": "tag_1502_6"
+    },
+    {
+      "termType": "Variable",
+      "value": "agent_1742_4"
+    },
+    {
+      "termType": "Variable",
+      "value": "Library"
+    },
+    {
+      "termType": "Variable",
+      "value": "search_term_2283_18"
+    }
+  ],
+  "order": null,
+  "branches": [
+    {
+      "line": {
+        "s": "Item",
+        "p": "http://www.zotero.org/namespaces/sparnatural#property_1731",
+        "o": "Library",
+        "sType": "http://www.zotero.org/namespaces/sparnatural#item_1498",
+        "oType": "http://www.zotero.org/namespaces/sparnatural#library_1500",
+        "values": []
+      },
+      "children": [],
+      "optional": true
+    },
+    {
+      "line": {
+        "s": "Item",
+        "p": "http://www.zotero.org/namespaces/sparnatural#property_1746",
+        "o": "agent_1742_4",
+        "sType": "http://www.zotero.org/namespaces/sparnatural#item_1498",
+        "oType": "http://www.zotero.org/namespaces/sparnatural#agent_1742",
+        "values": []
+      },
+      "children": [],
+      "optional": true
+    },
+    {
+      "line": {
+        "s": "Item",
+        "p": "http://www.zotero.org/namespaces/sparnatural#property_1732",
+        "o": "tag_1502_6",
+        "sType": "http://www.zotero.org/namespaces/sparnatural#item_1498",
+        "oType": "http://www.zotero.org/namespaces/sparnatural#tag_1502",
+        "values": []
+      },
+      "children": [],
+      "optional": true
+    },
+    {
+      "line": {
+        "s": "Item",
+        "p": "http://www.zotero.org/namespaces/sparnatural#property_1668",
+        "o": "place_1772_8",
+        "sType": "http://www.zotero.org/namespaces/sparnatural#item_1498",
+        "oType": "http://www.zotero.org/namespaces/sparnatural#place_1772",
+        "values": []
+      },
+      "children": [],
+      "optional": true
+    },
+    {
+      "line": {
+        "s": "Item",
+        "p": "http://www.zotero.org/namespaces/sparnatural#property_2160",
+        "o": "Type",
+        "sType": "http://www.zotero.org/namespaces/sparnatural#item_1498",
+        "oType": "http://www.zotero.org/namespaces/sparnatural#itemtype_2109",
+        "values": []
+      },
+      "children": [],
+      "optional": true
+    },
+    {
+      "line": {
+        "s": "Item",
+        "p": "http://www.zotero.org/namespaces/sparnatural#property_1639",
+        "o": "date_1727_12",
+        "sType": "http://www.zotero.org/namespaces/sparnatural#item_1498",
+        "oType": "http://www.zotero.org/namespaces/sparnatural#date_1727",
+        "values": []
+      },
+      "children": [],
+      "optional": true
+    },
+    {
+      "line": {
+        "s": "Item",
+        "p": "http://www.zotero.org/namespaces/sparnatural#property_1632",
+        "o": "publisher_1773_14",
+        "sType": "http://www.zotero.org/namespaces/sparnatural#item_1498",
+        "oType": "http://www.zotero.org/namespaces/sparnatural#publisher_1773",
+        "values": []
+      },
+      "children": [],
+      "optional": true
+    },
+    {
+      "line": {
+        "s": "Item",
+        "p": "http://www.zotero.org/namespaces/sparnatural#property_2286",
+        "o": "digitaldocument_2289_16",
+        "sType": "http://www.zotero.org/namespaces/sparnatural#item_1498",
+        "oType": "http://www.zotero.org/namespaces/sparnatural#digitaldocument_2289",
+        "values": []
+      },
+      "children": [
+        {
+          "line": {
+            "s": "digitaldocument_2289_16",
+            "p": "http://www.zotero.org/namespaces/sparnatural#property_2288",
+            "o": "search_term_2283_18",
+            "sType": "http://www.zotero.org/namespaces/sparnatural#digitaldocument_2289",
+            "oType": "http://www.zotero.org/namespaces/sparnatural#search_term_2283",
+            "values": []
+          },
+          "children": []
+        }
+      ],
+      "optional": true
+    }
+  ],
+  "limit": 5000
+}

@@ -201,6 +201,27 @@ a:hover {
   text-decoration: none;
 }
 
+.cta-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.cta-group .cta {
+  flex: 1 1 10rem;
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  .cta-group {
+    flex-direction: column;
+  }
+
+  .cta-group .cta {
+    width: 100%;
+  }
+}
 /* Generic Buttons */
 
 button,

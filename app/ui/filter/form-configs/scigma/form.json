@@ -1,0 +1,123 @@
+{
+  "bindings": [
+    {
+      "variable": "Library",
+      "node": {
+        "type": "UserPrompt",
+        "name": {
+          "de": "Bibliothek",
+          "en": "Library"
+        },
+        "help": {
+          "de": "Suche auf eine oder mehrere Zotero-Bibliotheken beschränken.",
+          "en": "Restrict the search to one or more Zotero libraries."
+        }
+      }
+    },
+    {
+      "variable": "agent_1742_4",
+      "node": {
+        "type": "UserPrompt",
+        "name": {
+          "de": "Person oder Körperschaft",
+          "en": "Person or organization"
+        },
+        "help": {
+          "de": "Nach Autorinnen, Autoren, Herausgebenden oder anderen beteiligten Personen und Körperschaften suchen.",
+          "en": "Search for authors, editors, or other associated people and organizations."
+        }
+      }
+    },
+    {
+      "variable": "tag_1502_6",
+      "node": {
+        "type": "UserPrompt",
+        "name": {
+          "de": "Schlagwort",
+          "en": "Tag"
+        },
+        "help": {
+          "de": "Nach einem oder mehreren Zotero-Schlagwörtern filtern.",
+          "en": "Filter by one or more Zotero tags."
+        }
+      }
+    },
+    {
+      "variable": "place_1772_8",
+      "node": {
+        "type": "UserPrompt",
+        "name": {
+          "de": "Ort",
+          "en": "Place"
+        },
+        "help": {
+          "de": "Nach dem mit dem Eintrag verknüpften Ort filtern.",
+          "en": "Filter by the place associated with the item."
+        }
+      }
+    },
+    {
+      "variable": "Type",
+      "node": {
+        "type": "UserPrompt",
+        "name": {
+          "de": "Dokumenttyp",
+          "en": "Item type"
+        },
+        "help": {
+          "de": "Zum Beispiel Buch, Zeitschriftenartikel, Webseite oder Bericht.",
+          "en": "For example book, journal article, webpage, or report."
+        }
+      }
+    },
+    {
+      "variable": "date_1727_12",
+      "node": {
+        "type": "UserPrompt",
+        "name": {
+          "de": "Datum",
+          "en": "Date"
+        },
+        "help": {
+          "de": "Nach Datum oder Zeitraum filtern.",
+          "en": "Filter by a date or date range."
+        }
+      }
+    },
+    {
+      "variable": "publisher_1773_14",
+      "node": {
+        "type": "UserPrompt",
+        "name": {
+          "de": "Verlag",
+          "en": "Publisher"
+        },
+        "help": {
+          "de": "Nach Verlag oder veröffentlichender Institution filtern.",
+          "en": "Filter by publisher or publishing institution."
+        }
+      }
+    },
+    {
+      "variable": "search_term_2283_18",
+      "node": {
+        "type": "UserPrompt",
+        "name": {
+          "de": "Volltextsuche",
+          "en": "Full-text search"
+        },
+        "help": {
+          "de": "In den verknüpften digitalen Dokumenten nach einem Suchbegriff suchen. Nur mit RDF-Volltext.",
+          "en": "Search for a term in linked digital documents. Works only if full text was ingested as RDF."
+        }
+      }
+    }
+  ],
+  "variables": {
+    "onscreen": [
+      "Item",
+      "Type",
+      "Library"
+    ]
+  }
+}
