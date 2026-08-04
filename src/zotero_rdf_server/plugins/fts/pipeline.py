@@ -18,7 +18,7 @@ def _meta_flat_strings(d: Dict[str, Any]) -> Dict[str, str]:
     return out
 
 
-def ingest_pipeline_deprecated(
+def ingest_pipeline_deprecated_0(
     items: list = [],
     targets: str | list = [],
     from_source: bool = True,
@@ -319,7 +319,7 @@ def ingest_pipeline_deprecated(
         return runs
     return runs
 
-def ingest_pipeline(
+def ingest_pipeline_deprecated_1(
     items: list = [],
     targets: str | list = [],
     from_source: bool = True,
@@ -858,6 +858,717 @@ def ingest_pipeline(
                             store=item_store,
                             default_graph_uri=default_graph_uri,
                         )
+                        stats["pages_emitted"] = 1
+
+                    if vector:
+                        vector_doc = embed(
+                            clean_ocr(text),
+                            **vector_kwargs,
+                        )
+                        d["vector"] = vector_doc
+
+                    if use_llm:  # TODO adjust
+                        llm_kwargs_item = dict(llm_kwargs)
+                        llm_mapping_key = llm_kwargs_item.pop(
+                            "mapping_key",
+                            "llm",
+                        )
+                        llm_mapping_keys = (
+                            llm_kwargs_item.pop("mapping_keys", None)
+                            or [llm_mapping_key]
+                        )
+                        llm_response = llm(
+                            clean_ocr(text),
+                            llm_kwargs_item,
+                        )
+                        logger.debug(llm_response)
+                        llm_dict = load_dict_like(llm_response)
+                        if llm_dict:
+                            for key in llm_mapping_keys:
+                                d[key] = llm_response
+                            logger.debug(
+                                json.dumps(llm_dict, indent=4)
+                            )
+
+                    digest = index_stream(
+                        client=client,
+                        oscfg=oscfg,
+                        targets=targets,
+                        doc_id=doc_id,
+                        doc=d,
+                    )
+
+                    digest["from_source"] = False
+                    digest["framework"] = framework
+                    digest["ocr_pages"] = stats["pages_emitted"]
+
+                dump_rdf_item(rdf_sink, item_store)
+
+                digest["ingest"] = True
+                digest["delete_index"] = delete_index
+                digest["llm"] = bool(use_llm)
+                digest["rdf"] = rdf_enabled
+                digest["rdf_output"] = rdf_kwargs.get("output")
+                runs.append(digest)
+
+            except Exception as e:
+                logger.exception(
+                    "Ingest failed for doc_id=%s",
+                    doc_id,
+                )
+                runs.append({
+                    "doc_id": doc_id,
+                    "label": label,
+                    "from_source": from_source,
+                    "ingest": True,
+                    "rdf": rdf_enabled,
+                    "rdf_output": rdf_kwargs.get("output"),
+                    "error": str(e),
+                    "delete_index": delete_index,
+                })
+
+    logger.info("Ingest Pipeline finished with %s runs!", len(runs))
+    return runs
+
+## NEW
+
+def ingest_pipeline(
+    items: list = [],
+    targets: str | list = [],
+    from_source: bool = True,
+    framework: TypeLiteral["kraken", "tesseract", "transformer", "source", "none"] = "kraken",
+    vector_kwargs: dict | None = None,
+    llm_kwargs: dict | None = None,
+    ingest: bool = True,
+    delete_index: list = [],
+    iter_pages_kwargs: dict = {},
+    page_to_text_kwargs: dict = {},
+    text_image_file_kwargs: dict = {},    
+    config_path: str = None,
+    pipeline_meta: dict = {},
+    rdf_kwargs: dict | None = None,
+    qlever_tsv_paths: dict | None = None,
+):
+
+    from .db import index_stream
+    from zotero_rdf_server.utils import load_dict_like
+    
+    items = list(items or [])
+    total = len(items)
+    targets = targets or []
+    iter_pages_kwargs = dict(iter_pages_kwargs or {})
+    page_to_text_kwargs = dict(page_to_text_kwargs or {})
+    vector_kwargs = dict(vector_kwargs or {})
+    text_image_file_kwargs = dict(text_image_file_kwargs or {})
+    llm_kwargs = dict(llm_kwargs or {})
+    rdf_kwargs = dict(rdf_kwargs or {})
+    rdf_enabled = bool(rdf_kwargs)
+    qlever_tsv_paths = dict(qlever_tsv_paths or {})
+    qlever_enabled = bool(qlever_tsv_paths)
+
+    logger.info(
+        "Ingest Pipeline started with %s items using framework=%s...",
+        total,
+        framework,
+    )
+
+    page_to_text_kwargs["config_path"] = (
+        config_path
+        if not page_to_text_kwargs.get("config_path") and config_path
+        else page_to_text_kwargs.get("config_path")
+    )
+    vector_kwargs["config_path"] = (
+        config_path
+        if not vector_kwargs.get("config_path") and config_path
+        else vector_kwargs.get("config_path")
+    )
+    llm_kwargs["config_path"] = (
+        config_path
+        if not llm_kwargs.get("config_path") and config_path
+        else llm_kwargs.get("config_path")
+    )
+
+    if rdf_enabled:
+        try:
+
+            from pyoxigraph import Store
+            from .rdf_export import (
+                RdfNqGzipSink,
+                make_item_iri,
+                make_item_rdf_data,
+                make_page_rdf_data,
+            )
+            from zotero_rdf_server.rdf import resolve_to_graph
+            
+        except ImportError:
+            logger.exception("Import of RDF modules failed")
+            rdf_enabled = False
+            rdf_kwargs = {}
+            
+    if rdf_enabled:
+        logger.info("RDF Export is enabled!\n")      
+        rdf_output = rdf_kwargs.get("output")
+        if not rdf_output:
+            raise ValueError("rdf_kwargs requires 'output'")
+        from zotero_rdf_server.config import safe_path, EXPORT_DIRECTORY
+        rdf_output = safe_path(rdf_output, base_dir=EXPORT_DIRECTORY, create=False, allow_absolute=False)
+        rdf_spec_source = rdf_kwargs.get("spec")
+        if not rdf_spec_source:
+            raise ValueError("rdf_kwargs requires 'spec'")
+
+        rdf_spec = load_dict_like(rdf_spec_source)
+        if not isinstance(rdf_spec, dict):
+            raise TypeError("rdf_kwargs['spec'] must resolve to a dict")
+
+        rdf_context = RdfNqGzipSink(
+            rdf_output,
+            spec=rdf_spec,
+            compresslevel=int(rdf_kwargs.get("compresslevel", 6)),
+        )
+    else:
+        from contextlib import nullcontext
+        rdf_context = nullcontext(None)
+
+    if qlever_enabled:
+        try:
+            from .qlever_export import QLeverTextGzipSink
+        except ImportError:
+            logger.exception("Import of QLever export module failed")
+            qlever_enabled = False
+            qlever_tsv_paths = {}
+
+    if qlever_enabled:
+        logger.info("QLever text export is enabled!\n")
+
+        docs_output = qlever_tsv_paths.get("docs")
+        words_output = qlever_tsv_paths.get("words")
+        if not docs_output or not words_output:
+            raise ValueError(
+                "qlever_tsv_paths requires 'docs' and 'words'"
+            )
+
+        from zotero_rdf_server.config import safe_path, EXPORT_DIRECTORY
+
+        docs_output = safe_path(
+            docs_output,
+            base_dir=EXPORT_DIRECTORY,
+            create=False,
+            allow_absolute=False,
+        )
+        words_output = safe_path(
+            words_output,
+            base_dir=EXPORT_DIRECTORY,
+            create=False,
+            allow_absolute=False,
+        )
+
+        qlever_context = QLeverTextGzipSink(
+            docs_output,
+            words_output,
+            compresslevel=int(
+                qlever_tsv_paths.get("compresslevel", 6)
+            ),
+        )
+    else:
+        from contextlib import nullcontext
+        qlever_context = nullcontext(None)
+
+    def prepare_rdf_item(rdf_sink, obj):
+        """Create one item store, emit item RDF and return page bindings."""
+        if rdf_sink is None:
+            return None, None, None
+        
+        # logger.info(json.dumps(obj,indent=4))
+
+        item_iri = make_item_iri(
+            obj,
+            base_iri=rdf_kwargs.get(
+                "item_base_iri",
+                rdf_kwargs.get("base_iri", "urn:ingest:item:"),
+            ),
+        )
+        item_data = make_item_rdf_data(
+            obj,
+            item_iri=item_iri,
+        )
+
+        graph_spec = rdf_kwargs.get("to_graph")
+        if graph_spec in (None, ""):
+            default_graph_uri = f"{item_iri}#graph"
+        else:
+            default_graph_uri = resolve_to_graph(
+                graph_spec,
+                data=item_data,
+                node=obj,
+            )
+
+        item_store = Store()
+        rdf_sink.emit(
+            context="item",
+            data=item_data,
+            node_value=obj,
+            store=item_store,
+            default_graph_uri=default_graph_uri,
+        )
+
+        return item_store, item_data, default_graph_uri
+
+    def dump_rdf_item(rdf_sink, item_store):
+        if rdf_sink is not None and item_store is not None:
+            logger.info(
+                "Dumped RDF for item %s with %s quads",
+                i,
+                len(item_store),
+            )
+            rdf_sink.dump(item_store)
+
+    logger.info(
+        "Pipeline configuration:\n"
+        "iter_pages_kwargs:\n%s\n\n"
+        "page_to_text_kwargs:\n%s\n\n"
+        "text_image_file_kwargs:\n%s\n\n"
+        "llm_kwargs:\n%s\n\n"
+        "rdf_kwargs:\n%s\n\n"
+        "qlever_tsv_paths:\n%s\n",
+        json.dumps(iter_pages_kwargs, indent=2, sort_keys=True, ensure_ascii=False),
+        json.dumps(page_to_text_kwargs, indent=2, sort_keys=True, ensure_ascii=False),
+        json.dumps(text_image_file_kwargs, indent=2, sort_keys=True, ensure_ascii=False),
+        json.dumps(llm_kwargs, indent=2, sort_keys=True, ensure_ascii=False),
+        json.dumps(
+            rdf_kwargs,
+            indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+            default=str,
+        ),
+        json.dumps(
+            qlever_tsv_paths,
+            indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+            default=str,
+        ),
+    )
+
+    if not from_source and not ingest and not rdf_enabled and not qlever_enabled:
+        return [{
+            "error": (
+                "nothing to do here: no from_source, "
+                "no ingest, no RDF or QLever export!"
+            )
+        }]
+
+    vector = isinstance(vector_kwargs, dict) and vector_kwargs.get("framework")
+    if vector:
+        from .analysis.vector import embed
+        from .helpers import clean_ocr
+
+    use_llm = isinstance(llm_kwargs, dict) and llm_kwargs.get("tasks")
+    if use_llm:
+        logger.warning("LLM active!")
+        from .analysis.llm import llm
+
+    make_pages_fn = None
+
+    if from_source:
+        from .ocr import (
+            HtmlPolicy,
+            IiifOcrPolicy,
+            JsonPolicy,
+            PdfTextPolicy,
+            TextPolicy,
+            XmlPolicy,
+            iter_text_pages,
+        )
+
+        ptp = iter_pages_kwargs.get("pdf_text_policy")
+        if isinstance(ptp, dict):
+            iter_pages_kwargs["pdf_text_policy"] = PdfTextPolicy.from_json(ptp)
+
+        iiif_ocr_policy = iter_pages_kwargs.get("iiif_ocr_policy")
+        if isinstance(iiif_ocr_policy, dict):
+            iter_pages_kwargs["iiif_ocr_policy"] = IiifOcrPolicy.from_json(
+                iiif_ocr_policy
+            )
+
+        text_policy = iter_pages_kwargs.get("text_policy")
+        if isinstance(text_policy, dict):
+            iter_pages_kwargs["text_policy"] = TextPolicy.from_json(text_policy)
+
+        html_policy = iter_pages_kwargs.get("html_policy")
+        if isinstance(html_policy, dict):
+            iter_pages_kwargs["html_policy"] = HtmlPolicy.from_json(html_policy)
+
+        xml_policy = iter_pages_kwargs.get("xml_policy")
+        if isinstance(xml_policy, dict):
+            iter_pages_kwargs["xml_policy"] = XmlPolicy.from_json(xml_policy)
+
+        json_policy = iter_pages_kwargs.get("json_policy")
+        if isinstance(json_policy, dict):
+            iter_pages_kwargs["json_policy"] = JsonPolicy.from_json(json_policy)
+
+        pipeline_meta["len_items"] = total
+
+        def make_pages_fn(
+            doc_id: str,
+            stats: dict,
+            *,
+            rdf_sink=None,
+            rdf_store=None,
+            rdf_item_data=None,
+            rdf_default_graph=None,
+            qlever_sink=None,
+        ):
+            def pages_fn(u: str):
+                try:
+                    for page_no, text in iter_text_pages(
+                        u,
+                        doc_id=doc_id,
+                        iter_kwargs=iter_pages_kwargs,
+                        page_to_text_kwargs=page_to_text_kwargs,
+                        text_image_file_kwargs=text_image_file_kwargs,
+                        framework=framework,
+                        yield_result=ingest or rdf_enabled or qlever_enabled,
+                        pipeline_meta=pipeline_meta,
+                    ):
+                        page_no = int(page_no)
+                        stats["pages_emitted"] += 1
+
+                        page_iri = None
+
+                        if rdf_sink is not None and rdf_store is not None:
+                            page_data = make_page_rdf_data(
+                                rdf_item_data,
+                                page_no=page_no,
+                                text=text,
+                            )
+                            page_iri = page_data["page_iri"]
+
+                            rdf_sink.emit(
+                                context="page",
+                                data=page_data,
+                                node_value={
+                                    "page": page_no,
+                                    "text": text,
+                                },
+                                store=rdf_store,
+                                default_graph_uri=rdf_default_graph,
+                            )
+
+                        if qlever_sink is not None:
+                            qlever_sink.emit(
+                                text=text,
+                                entities=(page_iri,) if page_iri else (),
+                            )
+
+                        yield page_no, text
+
+                except Exception:
+                    logger.exception(
+                        "pages_fn failed for doc_id=%s input=%r",
+                        doc_id,
+                        u,
+                    )
+                    raise
+
+            return pages_fn
+
+
+    if not ingest:
+        results: List[Dict[str, Any]] = []
+
+        with (
+            rdf_context as rdf_sink,
+            qlever_context as qlever_sink,
+        ):
+            for i, obj in enumerate(items, start=1):
+                stats = {"pages_emitted": 0}
+                payload = dict(obj)
+                doc_id = payload.pop("_id", None)
+                input_ = payload.pop("_input", None) or payload.pop("_url", None)
+                text = payload.pop("_text", "")
+                sequence = int(payload.pop("_idx", 1))
+                label = payload.pop("_label", "no label")
+                meta = _meta_flat_strings(payload)
+
+                pipeline_meta["i_items"] = i
+                pipeline_meta["label_items"] = label
+
+                logger.info(
+                    "\n\n%s\n\n%s %s\n\n",
+                    pipeline_log_prefix(pipeline_meta),
+                    obj.get("_id"),
+                    label,
+                )
+
+                try:
+                    item_store, item_data, default_graph_uri = prepare_rdf_item(
+                        rdf_sink,
+                        obj,
+                    )
+
+                    pages = []
+
+                    if from_source:
+                        if not input_:
+                            raise ValueError(
+                                "from_source=true requires '_input' in each item"
+                            )
+
+                        for page_no, page_text in make_pages_fn(
+                            doc_id or "",
+                            stats,
+                            rdf_sink=rdf_sink,
+                            rdf_store=item_store,
+                            rdf_item_data=item_data,
+                            rdf_default_graph=default_graph_uri,
+                            qlever_sink=qlever_sink,
+                        )(input_):
+                            result_page = {
+                                "page": page_no,
+                                "text": page_text,
+                            }
+
+                            if vector:
+                                vector_doc = embed(
+                                    clean_ocr(page_text),
+                                    **vector_kwargs,
+                                )
+                                logger.debug(vector_doc)
+                                result_page["vector"] = vector_doc
+
+                            pages.append(result_page)
+
+                    elif text != "":
+                        page_iri = None
+                        if rdf_sink is not None and item_store is not None:
+                            page_data = make_page_rdf_data(
+                                item_data,
+                                page_no=sequence,
+                                text=text,
+                            )
+                            page_iri = page_data["page_iri"]
+
+                            rdf_sink.emit(
+                                context="page",
+                                data=page_data,
+                                node_value={
+                                    "page": sequence,
+                                    "text": text,
+                                },
+                                store=item_store,
+                                default_graph_uri=default_graph_uri,
+                            )
+
+                        if qlever_sink is not None:
+                            qlever_sink.emit(
+                                text=text,
+                                entities=(page_iri,) if page_iri else (),
+                            )
+                            logger.info(f"Emitted QLever TSV export for item {i} with {len(text)} chars")
+
+                        pages.append({
+                            "page": sequence,
+                            "text": text,
+                        })
+                        stats["pages_emitted"] = 1
+
+                    dump_rdf_item(rdf_sink, item_store)
+
+                except Exception as e:
+                    results.append({
+                        "doc_id": doc_id,
+                        "label": label,
+                        "input": input_,
+                        "meta": meta,
+                        "from_source": from_source,
+                        "vector": vector,
+                        "llm": use_llm,
+                        "ingest": False,
+                        "rdf": rdf_enabled,
+                        "rdf_output": rdf_kwargs.get("output"),
+                        "error": str(e),
+                        "delete_index": delete_index,
+                    })
+                    continue
+
+                results.append({
+                    "doc_id": doc_id,
+                    "label": label,
+                    "input": input_,
+                    "meta": meta,
+                    "from_source": from_source,
+                    "framework": framework,
+                    "vector": vector,
+                    "llm": use_llm,
+                    "ocr_pages": len(pages),
+                    "ingest": False,
+                    "rdf": rdf_enabled,
+                    "rdf_output": rdf_kwargs.get("output"),
+                    "targets": targets,
+                    "delete_index": delete_index,
+                })
+
+        logger.info("Pipeline finished with %s results!", len(results))
+        return results
+
+    runs: List[dict] = []
+
+    from .db import (
+        get_os_config,
+        make_client,
+        provision_from_cfg,
+        resolve_config_path,
+    )
+
+    resolve_config_path.cache_clear()
+    get_os_config.cache_clear()
+
+    cfg_path = resolve_config_path(config_path)
+    oscfg = get_os_config(cfg_path)
+    client = make_client(oscfg)
+
+    try:
+        logger.info("Provisioning %s...", targets)
+        provision_from_cfg(client, oscfg)
+        logger.info("Provisioning completed!")
+    except Exception as e:
+        logger.critical("Open Search failed: %s. Open Search running?", e)
+
+    if delete_index:
+        targets_list = (
+            [delete_index]
+            if isinstance(delete_index, str)
+            else list(delete_index)
+        )
+        for target in targets_list:
+            response = client.indices.delete(
+                index=str(target),
+                ignore=[400, 404],
+            )
+            logger.warning("\n\nDeleted Index %s: %s\n\n", target, response)
+
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    with (
+        rdf_context as rdf_sink,
+        qlever_context as qlever_sink,
+    ):
+        for i, obj in enumerate(items, start=1):
+            stats = {"pages_emitted": 0}
+            payload = dict(obj)
+            logger.debug("Ingest Pipeline payload: %s", payload)
+
+            doc_id = payload.pop("_id", None)
+            input_ = payload.pop("_input", None)
+            text = payload.pop("_text", "")
+            sequence = int(payload.pop("_idx", 1))
+            label = payload.pop("_label", "no label")
+            meta = _meta_flat_strings(payload)
+
+            pipeline_meta["i_items"] = i
+            pipeline_meta["label_items"] = label
+
+            logger.info(
+                "\n\n%s\n%s %s\n\n",
+                pipeline_log_prefix(pipeline_meta),
+                obj.get("_id"),
+                label,
+            )
+            logger.debug(
+                "Ingest Pipeline index_stream from source: %s",
+                from_source,
+            )
+
+            item_store = None
+            item_data = None
+            default_graph_uri = None
+
+            try:
+                item_store, item_data, default_graph_uri = prepare_rdf_item(
+                    rdf_sink,
+                    obj,
+                )
+
+                if from_source:
+                    if not input_:
+                        logger.error(
+                            "from_source=true requires '_input' in each item"
+                        )
+                        continue
+
+                    logger.info("Ingest Pipeline with input from source!")
+                    digest = index_stream(
+                        client=client,
+                        oscfg=oscfg,
+                        input=input_,
+                        doc_id=doc_id,
+                        label=label,
+                        url_to_text_pages_fn=make_pages_fn(
+                            doc_id or "",
+                            stats,
+                            rdf_sink=rdf_sink,
+                            rdf_store=item_store,
+                            rdf_item_data=item_data,
+                            rdf_default_graph=default_graph_uri,
+                            qlever_sink=qlever_sink,
+                        ),
+                        targets=targets,
+                        meta=meta,
+                        vector_kwargs=vector,
+                        llm_kwargs=llm_kwargs,
+                    )
+
+                    digest["from_source"] = True
+                    digest["framework"] = framework
+                    digest["ocr_pages"] = stats["pages_emitted"]
+
+                else:
+                    logger.info("Ingest Pipeline with no input from source!")
+                    d: Dict[str, Any] = {
+                        "ingest_ts": now,
+                        "meta": meta,
+                    }
+
+                    if input_ is not None:
+                        d["input"] = input_
+                    if doc_id is not None:
+                        d["doc_id"] = doc_id
+                    if sequence is not None:
+                        d["page"] = sequence
+                    if text != "":
+                        d["text"] = text
+                    if label != "":
+                        d["label"] = label
+                    page_iri = None
+                    if rdf_sink is not None and item_store is not None and text != "":
+                        page_data = make_page_rdf_data(
+                            item_data,
+                            page_no=sequence,
+                            text=text,
+                        )
+                        page_iri = page_data["page_iri"]
+                        rdf_sink.emit(
+                            context="page",
+                            data=page_data,
+                            node_value={
+                                "page": sequence,
+                                "text": text,
+                            },
+                            store=item_store,
+                            default_graph_uri=default_graph_uri,
+                        )
+
+                    if qlever_sink is not None and text != "":
+                        qlever_sink.emit(
+                            text=text,
+                            entities=(page_iri,) if page_iri else (),
+                        )
+                        logger.info(f"Emitted QLever TSV export for item {i} with {len(text)} chars")
+
+                    if text != "":
                         stats["pages_emitted"] = 1
 
                     if vector:

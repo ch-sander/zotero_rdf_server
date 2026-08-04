@@ -321,6 +321,7 @@ def ingest_route(
     vector_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for embedding Backend Config", examples=[None]),
     llm_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for LLM Backend Config", examples=[None]),
     rdf_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for RDF Backend Config", examples=[None]),
+    qlever_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for RDF Backend Config", examples=[None]),
     reverse: bool = Query(default=None, description="If true, reverses order of item results"),
 
     worker_id: int = Query(default=None, ge=0, description="Worker index, 0-based"),
@@ -544,6 +545,7 @@ def ingest_route(
                         llm_x = llm_kwargs if llm_kwargs is not None else ncfg.get("llm_kwargs")
 
                         rdf_x = rdf_kwargs if rdf_kwargs is not None else pipeline_cfg.get("rdf_kwargs")
+                        ql_x = qlever_kwargs if qlever_kwargs is not None else pipeline_cfg.get("qlever_kwargs")
                         if rdf_x:
                             import re
                             from copy import deepcopy
@@ -620,7 +622,7 @@ def ingest_route(
                                                 page_to_text_kwargs=page_to_text_kwargs, text_image_file_kwargs=text_image_file_kwargs,
                                                 config_path=config_path_x,
                                                 pipeline_meta=pipeline_meta,
-                                                rdf_kwargs=rdf_x))
+                                                rdf_kwargs=rdf_x,qlever_tsv_paths=ql_x))
 
                 elif graph and graph != lib.base_uri:
                     logger.debug(f"{lib.base_uri} skipped")
@@ -693,7 +695,7 @@ def ingest_route(
                                             page_to_text_kwargs=framework_kwargs,
                                             text_image_file_kwargs=file_kwargs,
                                             config_path=config_path,
-                                            rdf_kwargs=rdf_kwargs))
+                                            rdf_kwargs=rdf_kwargs,qlever_tsv_paths=qlever_kwargs))
         else:
             raise HTTPException(
                     status_code=400,
@@ -743,14 +745,14 @@ def ingest_route(
                                         page_to_text_kwargs=framework_kwargs,
                                         text_image_file_kwargs=file_kwargs,
                                         config_path=config_path,
-                                        rdf_kwargs=rdf_kwargs))
+                                        rdf_kwargs=rdf_kwargs,qlever_tsv_paths=qlever_kwargs))
 
     result = {
         "status": "ok",
         "run_ids": run_ids[:2],
         "targets": list(targets),
         "runs": len(run_ids),
-        "pipeline_ids": list(pipeline_ids),
+        "pipeline_ids": list(pipeline_ids) if pipeline_ids else [],
     }
     try:
         _runs_filename = _default_filename("runs_result", "json")
