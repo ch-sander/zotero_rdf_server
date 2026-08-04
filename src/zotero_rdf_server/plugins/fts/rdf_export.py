@@ -109,7 +109,7 @@ def make_page_rdf_data(
             "rdf_page": safeNamedNode(page_iri),
             "rdf_page_id": safeLiteral(page_id),
             "rdf_page_no": Literal(
-                int(page_no),datatype=NamedNode(f"{XSD_NS}int")
+                str(int(page_no)),datatype=NamedNode(f"{XSD_NS}int")
             ),
             "rdf_text": safeLiteral(text),
         }
