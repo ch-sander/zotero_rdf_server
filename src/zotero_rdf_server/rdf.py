@@ -2428,6 +2428,39 @@ def generate_ontospy_doc():
 
 def load_ontology(source: str | Path) -> Path:
     source = str(source)
+    if not source:
+        logger.warning("Empty source for ontology given!")
+        from .global_store import get_store, get_graph
+        schema, _ = get_graph(ZOT_NS)
+        if not schema:
+            raise ValueError(
+                f"No ontology source and no named graph for {ZOT_NS}"
+            )
+        logger.warning(
+            "Rendering named graph from %s instead!",
+            ZOT_NS,
+        )
+        
+        store = get_store(False)
+        with NamedTemporaryFile(
+            prefix="ontology-",
+            suffix=".ttl",
+            delete=False,
+        ) as temp:
+            source_path = Path(temp.name)
+        try:
+            store.dump(
+                source_path,
+                format=RdfFormat.TURTLE,
+                from_graph=schema,
+                base_iri=ZOT_NS,
+                prefixes=PREFIXES,
+            )
+        except Exception:
+            source_path.unlink(missing_ok=True)
+            raise
+        return source_path
+    
     is_url = urlparse(source).scheme in {"http", "https"}
 
     from tempfile import NamedTemporaryFile
