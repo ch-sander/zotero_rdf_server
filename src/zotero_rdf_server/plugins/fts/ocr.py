@@ -2383,8 +2383,8 @@ def iter_text_pages(
 
 
     if local_in:
-        local_in = _resolve_out(local_in, None)
-        matches = list(Path(local_in).glob(f"{_doc_id}.*"))
+        local_in = Path(local_in).resolve() # _resolve_out(local_in, None) # TODO accepts files outside EXPORT_DIRECTORY
+        matches = list((local_in).glob(f"{_doc_id}.*"))
         
         if matches:
             file_in = matches[0]
