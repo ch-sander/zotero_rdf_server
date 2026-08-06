@@ -71,6 +71,20 @@
       }
     },
     {
+      "variable": "text_1724_22",
+      "node": {
+        "type": "UserPrompt",
+        "name": {
+          "de": "Titel",
+          "en": "Title"
+        },
+        "help": {
+          "de": "Nach Titel suchen.",
+          "en": "Filter by a title."
+        }
+      }
+    },
+    {
       "variable": "date_1727_12",
       "node": {
         "type": "UserPrompt",

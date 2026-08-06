@@ -36,6 +36,10 @@
     {
       "termType": "Variable",
       "value": "search_term_2283_18"
+    },
+    {
+      "termType": "Variable",
+      "value": "text_1724_22"
     }
   ],
   "order": null,
@@ -146,6 +150,18 @@
           "children": []
         }
       ],
+      "optional": true
+    },
+    {
+      "line": {
+        "s": "Item",
+        "p": "http://www.zotero.org/namespaces/sparnatural#property_1715",
+        "o": "text_1724_22",
+        "sType": "http://www.zotero.org/namespaces/sparnatural#item_1498",
+        "oType": "http://www.zotero.org/namespaces/sparnatural#text_1724",
+        "values": []
+      },
+      "children": [],
       "optional": true
     }
   ],
