@@ -72,17 +72,29 @@ if STATIC_ONTOLOGY_MOUNT and ZOT_ONTOLOGY_SOURCE:
             ont_route,
             ZOT_ONTOLOGY_TTL,
         )
-
-        app.add_api_route(
-            path=ont_route,
-            endpoint=lambda: FileResponse(
+        def serve_ontology_ttl() -> FileResponse:
+            return FileResponse(
                 path=ZOT_ONTOLOGY_TTL,
                 media_type="text/turtle",
                 filename="ontology.ttl",
                 content_disposition_type="inline",
-            ),
-            methods=["GET", "HEAD"],
+            )
+
+        app.add_api_route(
+            path=ont_route,
+            endpoint=serve_ontology_ttl,
+            methods=["GET"],
             name="ontology-ttl",
+            operation_id="get_ontology_ttl",
+            response_class=FileResponse,
+        )
+
+        app.add_api_route(
+            path=ont_route,
+            endpoint=serve_ontology_ttl,
+            methods=["HEAD"],
+            name="ontology-ttl-head",
+            include_in_schema=False,
             response_class=FileResponse,
         )
 else:
