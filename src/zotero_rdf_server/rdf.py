@@ -367,82 +367,6 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                 return seq
             return items
           
-        def make_entity_deprecated(object_value, my_types, specific_threshold=fuzzy_threshold, on_create=None, return_entries=False):
-            items = normalize_split_list(object_value, field_map.get("re_split"))
-            nodes = []
-            entries = []
-            pool_store = quads_by_type(store, [MAP_ENTRY_TYPE], MAP_GRAPH_URI)
-            my_rdf_types = [
-                    make_iri(type_str, ns_prefix, False)
-                    for field in my_types
-                    if (type_str := resolve_template(field, data=data))
-                ]
-            pool_store = quads_by_type(pool_store, my_rdf_types, MAP_GRAPH_URI,type=NamedNode(MAP_TYPE_HINT))
-            
-            for item in items:
-                node, score, matched_label = fuzzy_match_label(
-                    pool_store,
-                    item,
-                    threshold=specific_threshold,
-                    graph_name=MAP_GRAPH_URI,
-                    predicates=[MAP_LABEL],
-                    regex=False
-                )
-
-                if not node:
-                    # iri_suffix = uuid5(ENTITY_UUID, item) if specific_threshold < 100 else uuid4()
-                    iri_suffix = stable_entity_uuid(item, my_types, ENTITY_UUID=ENTITY_UUID)
-                    node = safeNamedNode(f"{knowledge_base_graph}/{iri_suffix}")
-
-                    apply_rdf_types(
-                        store=store,
-                        node=node,
-                        data=data,
-                        type_fields=my_types,
-                        default_type=predicate_str,
-                        base_ns=ENTITY_GRAPH_URI.value,
-                        prefix_ns=ns_prefix
-                    )
-                    label_language = get_language_tag(field_map)
-
-                    store.add(Quad(
-                        node,
-                        NamedNode(RDFS_LABEL),
-                        Literal(item, language=label_language) if label_language else Literal(item),
-                        graph_name=ENTITY_GRAPH_URI
-                    ))
-
-                    entity_spec = map.get("entity", {})
-
-                    load_rdf_from_spec(
-                        entity_spec,
-                        context=None,
-                        data={
-                            **data,
-                            "value": item,
-                            "label": item,
-                        },
-                        node_value=node.value,
-                        store=store,
-                        default_graph_uri=ENTITY_GRAPH_URI,
-                    )
-                    # add_timestamp(store=store, node=node, graph=ENTITY_GRAPH_URI)
-
-                    if on_create:
-                        on_create(node, item)
-
-                    logger.debug(f"Created new {my_types[0]}: {item}")
-                else:
-                    logger.debug(f"{my_types[0].capitalize()} '{item}' matched as '{matched_label}' (score {score})")
-
-                entry = ensure_entry(store, node, map_graph=MAP_GRAPH_URI, type_hints=my_rdf_types)
-                ensure_mapping_literal(store, entry, item, safeNamedNode(MAP_LABEL), MAP_GRAPH_URI)
-
-                nodes.append(node)
-                entries.append(entry)
-
-            return (nodes, entries) if return_entries else nodes
-        
         def make_entity(
             object_value,
             my_types,
@@ -805,20 +729,6 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     )
                     entity_spec = field_map.get("role_add", map.get("entity", {}))
 
-                    load_rdf_from_spec(
-                        entity_spec,
-                        context=None,
-                        data={
-                            **data,
-                            **object,
-                            "value": label,
-                            "label": label,
-                        },
-                        node_value=role_node.value,
-                        store=store,
-                        default_graph_uri=GRAPH_URI,
-                    )
-
                     creator_type = object.get("creatorType")
                     
                     if creator_type:
@@ -922,6 +832,23 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                             creator_node,
                             graph_name=GRAPH_URI
                         ))
+
+                    load_rdf_from_spec(
+                        entity_spec,
+                        context=None,
+                        data={
+                            **data,
+                            **object,
+                            "value": label,
+                            "label": label,
+                            "role_label": role_label,
+                            "creator_label": creator_label,
+                            "creator_node": creator_node
+                        },
+                        node_value=role_node.value,
+                        store=store,
+                        default_graph_uri=GRAPH_URI,
+                    )
 
                     return role_node
                 
