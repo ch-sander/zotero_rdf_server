@@ -111,6 +111,11 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                 fuzzy_rules = rule.get("FUZZY", [])
                 pool_rules = rule.get("POOL", [])
                 same_rules = rule.get("SAME", [])
+                target_pool_constrained = any(
+                    p.get("targetProperty") is not None
+                    or p.get("targetObject") is not None
+                    for p in pool_rules
+                )
                 type_source = rule.get("entityTypeSource","mapping_or_rule")
                 map_prop = safeNamedNode(rule.get("mapProperty", OWL_SAME_AS))
                 KB_graph = rule.get("knowledgeBaseGraph", None)
@@ -125,6 +130,20 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                 filter_target_subjects = set()
                 filter_source_store = Store()
                 filter_target_store = Store()
+
+                # Existing KB + entities created by previous rules in this run
+                target_pool_store = Store()
+                target_pool_store.bulk_extend(
+                    target_store.quads_for_pattern(
+                        None, None, None, entity_graph_uri
+                    )
+                )
+                target_pool_store.bulk_extend(
+                    result_store.quads_for_pattern(
+                        None, None, None, entity_graph_uri
+                    )
+                )
+
                 logger.debug("KB definition found!")
                 type_hints = set()
                 if pool_rules:
@@ -159,14 +178,14 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                             for q in src_qs:
                                 filter_source_store.bulk_extend(pool_source.quads_for_pattern(q.subject, None, None, None))                        
                         else:
-                            logger.warning(f"No domain POOL rule applied, couldn't find {domainProperty} or {domainObject}")
+                            logger.info(f"No domain POOL rule applied, couldn't find {domainProperty} or {domainObject}")
 
                         if targetProperty or targetObject:
                             if operator == "AND":
                                 pool_target = filter_target_store
                             else:
-                                pool_target = target_store
-                            
+                                pool_target = target_pool_store # target_store
+
                             tgt_qs = list(pool_target.quads_for_pattern(
                                 None,
                                 safeNamedNode(targetProperty, allow_None = True),
@@ -179,7 +198,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                             for q in tgt_qs:
                                 filter_target_store.bulk_extend(pool_target.quads_for_pattern(q.subject, None, None, entity_graph_uri))
                         else:
-                            logger.warning(f"No target POOL rule applied, couldn't find {targetProperty} or {targetObject}")
+                            logger.info(f"No target POOL rule applied, couldn't find {targetProperty} or {targetObject}")
 
                 else: # fallback if no POOL rules
                     logger.debug("No POOL Rule definition found!")
@@ -300,7 +319,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                                 )                                                                   
                                 if (
                                     matched_node is not None
-                                    and filter_target_subjects
+                                    and target_pool_constrained
                                     and matched_node not in filter_target_subjects
                                 ):
                                     logger.info(
