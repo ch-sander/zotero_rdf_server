@@ -2,10 +2,15 @@ import gzip
 import json
 from pathlib import Path
 from typing import Any, BinaryIO, Mapping
-from urllib.parse import quote
 
 from pyoxigraph import Literal, NamedNode, RdfFormat, Store
 
+from zotero_rdf_server.plugins.fts.export.export_data import (
+    make_item_data,
+    make_item_iri,
+    make_page_data,
+    make_page_iri,
+)
 from zotero_rdf_server.rdf import load_rdf_from_spec, XSD_NS
 from zotero_rdf_server.utils import safeLiteral, safeNamedNode
 
@@ -30,88 +35,73 @@ def rdf_json_literal(value: Any) -> str:
     )
 
 
-def make_item_iri(
-    item: Mapping[str, Any],
-    *,
-    base_iri: str = "urn:ingest:item:",
-) -> str:
-    """Use _iri when present, otherwise derive a stable IRI from _id."""
-    explicit = (
-        item.get("item_iri")
-        or item.get("_iri")
-        or item.get("file")
-    )
-    if explicit:
-        return str(explicit)
-
-    doc_id = item.get("_id")
-    if doc_id in (None, ""):
-        raise ValueError(
-            "RDF export requires either '_iri' or '_id'"
-        )
-
-    return f"{base_iri}{quote(str(doc_id), safe='')}"
-
-
 def make_item_rdf_data(
     item: Mapping[str, Any],
     *,
-    item_iri: str,
+    item_iri: str | None = None,
+    base_iri: str = "urn:ingest:item:",
 ) -> dict[str, Any]:
-    """Build raw and RDF-safe bindings for the item template."""
-    data = dict(item)
+    """Build RDF-safe bindings from shared item data.
+
+    The signature remains compatible with the previous implementation.
+    """
+    data = (
+        dict(item)
+        if item_iri is None and "item_iri" in item
+        else make_item_data(
+            item,
+            item_iri=item_iri,
+            base_iri=base_iri,
+        )
+    )
 
     data.update(
         {
-            "item": dict(item),
-            "item_iri": item_iri,
-            "rdf_item": safeNamedNode(item_iri),
-            "rdf_id": safeLiteral(item.get("_id")),
-            "rdf_label": safeLiteral(
-                item.get("_label", "")
-            ),
+            "rdf_item": safeNamedNode(data["item_iri"]),
+            "rdf_id": safeLiteral(data.get("_id")),
+            "rdf_label": safeLiteral(data.get("_label", "")),
             "rdf_input": safeLiteral(
-                item.get("_input")
-                or item.get("_url")
+                data.get("_input")
+                or data.get("_url")
                 or ""
             ),
             "rdf_item_json": rdf_json_literal(
-                dict(item)
+                dict(data.get("item", item))
             ),
         }
     )
-
     return data
-
 
 def make_page_rdf_data(
     item_data: Mapping[str, Any],
     *,
-    page_no: int,
-    text: str,
+    page_no: int | None = None,
+    text: str | None = None,
 ) -> dict[str, Any]:
-    """Add raw and RDF-safe page/OCR bindings."""
-    item_iri = str(item_data["item_iri"])
-    item_id = item_data.get("_id")
-    page_iri = (
-        f"{item_iri}/page/"
-        f"{quote(str(page_no), safe='')}"
+    """Add RDF-safe item and page bindings to shared page data."""
+
+    data = (
+        dict(item_data)
+        if page_no is None and text is None and "page_iri" in item_data
+        else make_page_data(
+            item_data,
+            page_no=int(page_no),
+            text="" if text is None else text,
+        )
     )
-    page_id = f"{item_id}:{page_no}" if item_id else f"page:{page_no}"
-    data = dict(item_data)
+
+    # Page templates may also use item-level RDF bindings.
+    data = make_item_rdf_data(data)
 
     data.update(
         {
-            "page": int(page_no),
-            "text": text,
-            "page_iri": page_iri,
-            "page_id": page_id,
-            "rdf_page": safeNamedNode(page_iri),
-            "rdf_page_id": safeLiteral(page_id),
+            "rdf_page": safeNamedNode(data["page_iri"]),
+            "rdf_page_id": safeLiteral(data["page_id"]),
             "rdf_page_no": Literal(
-                str(int(page_no)),datatype=NamedNode(f"{XSD_NS}int")
+                str(int(data["page"])),
+                datatype=NamedNode(f"{XSD_NS}int"),
             ),
-            "rdf_text": safeLiteral(text),
+            "rdf_text": safeLiteral(data["text"]),
         }
     )
 
@@ -127,10 +117,12 @@ class RdfNqGzipSink:
         *,
         spec: Mapping[str, Any],
         compresslevel: int = 6,
+        append: bool = False,
     ) -> None:
         self.path = Path(path)
         self.spec = spec
         self.compresslevel = compresslevel
+        self.append = append
         self._output: BinaryIO | None = None
 
     def __enter__(self) -> "RdfNqGzipSink":
@@ -141,10 +133,9 @@ class RdfNqGzipSink:
 
         self._output = gzip.open(
             self.path,
-            mode="wb",
+            mode="ab" if self.append else "wb",
             compresslevel=self.compresslevel,
         )
-
         return self
 
     def __exit__(
@@ -199,3 +190,16 @@ class RdfNqGzipSink:
             )
 
         return self._output
+
+
+__all__ = [
+    "RDF_JSON",
+    "RdfNqGzipSink",
+    "make_item_data",
+    "make_item_iri",
+    "make_item_rdf_data",
+    "make_page_data",
+    "make_page_iri",
+    "make_page_rdf_data",
+    "rdf_json_literal",
+]

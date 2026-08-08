@@ -320,8 +320,7 @@ def ingest_route(
     file_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for File Output", examples=[None]),
     vector_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for embedding Backend Config", examples=[None]),
     llm_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for LLM Backend Config", examples=[None]),
-    rdf_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for RDF Backend Config", examples=[None]),
-    qlever_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for RDF Backend Config", examples=[None]),
+    export_kwargs: Optional[dict] = Body(default=None, description="Keyword Arguments for Export to RDF, XML, or QLever TSV", examples=[None]),
     reverse: bool = Query(default=None, description="If true, reverses order of item results"),
 
     worker_id: int = Query(default=None, ge=0, description="Worker index, 0-based"),
@@ -445,7 +444,8 @@ def ingest_route(
             if graph and not checked_graph:
                 raise HTTPException(status_code=400, detail=f"Invalid graph IRI. Use one of these or None: {all_graphs}")
             from zotero_rdf_server.models import ZoteroLibrary
-            import importlib
+            import importlib, re
+            from copy import deepcopy
             import zotero_rdf_server.config as zcfg
             importlib.reload(zcfg)
             # from zotero_rdf_server.config import ZOTERO_LIBRARIES_CONFIGS
@@ -544,13 +544,13 @@ def ingest_route(
 
                         llm_x = llm_kwargs if llm_kwargs is not None else ncfg.get("llm_kwargs")
 
-                        rdf_x = rdf_kwargs if rdf_kwargs is not None else pipeline_cfg.get("rdf_kwargs")
-                        ql_x = qlever_kwargs if qlever_kwargs is not None else pipeline_cfg.get("qlever_kwargs")
-                        if rdf_x:
-                            import re
-                            from copy import deepcopy
-                            rdf_x = deepcopy(rdf_x)
+                        export_kwargs_x = export_kwargs if export_kwargs is not None else pipeline_cfg.get("export_kwargs")
+                        export_kwargs_x = deepcopy(
+                            export_kwargs_x or {}
+                        )
 
+                        rdf_x = export_kwargs_x.get("rdf")
+                        if rdf_x:
                             output_dir = Path(rdf_x["output"])
 
                             library_id = re.sub(
@@ -622,7 +622,7 @@ def ingest_route(
                                                 page_to_text_kwargs=page_to_text_kwargs, text_image_file_kwargs=text_image_file_kwargs,
                                                 config_path=config_path_x,
                                                 pipeline_meta=pipeline_meta,
-                                                rdf_kwargs=rdf_x,qlever_tsv_paths=ql_x))
+                                                export_kwargs=export_kwargs_x,))
 
                 elif graph and graph != lib.base_uri:
                     logger.debug(f"{lib.base_uri} skipped")
@@ -695,7 +695,7 @@ def ingest_route(
                                             page_to_text_kwargs=framework_kwargs,
                                             text_image_file_kwargs=file_kwargs,
                                             config_path=config_path,
-                                            rdf_kwargs=rdf_kwargs,qlever_tsv_paths=qlever_kwargs))
+                                            export_kwargs=export_kwargs,))
         else:
             raise HTTPException(
                     status_code=400,
@@ -745,7 +745,7 @@ def ingest_route(
                                         page_to_text_kwargs=framework_kwargs,
                                         text_image_file_kwargs=file_kwargs,
                                         config_path=config_path,
-                                        rdf_kwargs=rdf_kwargs,qlever_tsv_paths=qlever_kwargs))
+                                        export_kwargs=export_kwargs,))
 
     result = {
         "status": "ok",
