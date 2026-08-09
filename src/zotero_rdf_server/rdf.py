@@ -727,7 +727,8 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                         base_uri,
                         ns_prefix
                     )
-                    entity_spec = field_map.get("role_add", map.get("entity", {}))
+                    entity_spec = map.get("entity", {})
+                    role_spec = field_map.get("role_add", {})
 
                     creator_type = object.get("creatorType")
                     
@@ -832,23 +833,24 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                             creator_node,
                             graph_name=GRAPH_URI
                         ))
-
-                    load_rdf_from_spec(
-                        entity_spec,
-                        context=None,
-                        data={
-                            **data,
-                            **object,
-                            "value": label,
-                            "label": label,
-                            "role_label": role_label,
-                            "creator_label": creator_label,
-                            "creator_node": creator_node
-                        },
-                        node_value=role_node.value,
-                        store=store,
-                        default_graph_uri=GRAPH_URI,
-                    )
+                        
+                    for spec in (role_spec, entity_spec):
+                        load_rdf_from_spec(
+                            spec,
+                            context=None,
+                            data={
+                                **data,
+                                **object,
+                                "value": label,
+                                "label": label,
+                                "role_label": role_label,
+                                "creator_label": creator_label,
+                                "creator_node": creator_node
+                            },
+                            node_value=role_node.value,
+                            store=store,
+                            default_graph_uri=GRAPH_URI,
+                        )
 
                     return role_node
                 
