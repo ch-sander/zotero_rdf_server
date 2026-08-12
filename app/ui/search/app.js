@@ -306,6 +306,7 @@ async function init(indexName = activeIndexName) {
         host: OPENSEARCH_HOST
       },
       search_settings: {
+        search_attributes: ["text"],
         result_attributes: dynamicResultAttributes,
         highlight_attributes: HIGHLIGHT_ATTRIBUTES,
         snippet_attributes: SNIPPET_ATTRIBUTES,
