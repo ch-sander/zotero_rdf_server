@@ -56,7 +56,7 @@ class ResultAnalysisParams(BaseModel):
         default=1.0,
         gt=0.0,
         le=1.0,
-        description="Maximum document frequency for TF-IDF.",
+        description="Maximum fraction of documents in which a term may appear for TF-IDF."
     )
 
     cluster_enabled: bool = Field(
@@ -275,7 +275,7 @@ def get_result_analysis_params_legacy(
     ] = 1,
     analyze_tfidf_max_df: Annotated[
         float,
-        Query(description="Max document frequency.", gt=0.0, le=1.0),
+        Query(description="Maximum fraction of documents in which a term may appear for TF-IDF.", gt=0.0, le=1.0),
     ] = 1.0,
 
     cluster_enabled: Annotated[
@@ -517,7 +517,7 @@ def get_result_analysis_params(
     ] = 1,
     analyze_tfidf_max_df: Annotated[
         float,
-        Query(description="Max document frequency.", gt=0.0, le=1.0),
+        Query(description="Maximum fraction of documents in which a term may appear for TF-IDF.", gt=0.0, le=1.0),
     ] = 1.0,
 
     cluster_enabled: Annotated[
