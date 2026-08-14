@@ -2773,7 +2773,7 @@ def iter_text_pages(
                 tp = _text_path(page_no)
                 if tp is None or not tp.exists():
                     continue
-                yield page_no, tp.read_text(encoding="utf-8")
+                yield page_no, tp.read_text(encoding="utf-8", errors="replace")
 
         return _it()
 
@@ -2872,7 +2872,7 @@ def iter_text_pages(
                 if save_text not in {"overwrite"} and tp and tp.exists(): # Cache
                     if yield_result:
                         try:
-                            txt = tp.read_text(encoding="utf-8")
+                            txt = tp.read_text(encoding="utf-8", errors="replace")
                         except Exception as e:
                             logger.error(f"{_doc_id}: Failed to load cached text for page {page_no} from {str(tp)}: {e}")
                             if on_error == "raise":
@@ -3007,7 +3007,7 @@ def iter_text_pages(
         if save_image not in {"smart"} and save_text not in {"overwrite"} and tp is not None and tp.exists():
             if yield_result:                
                 try:
-                    txt = tp.read_text(encoding="utf-8")
+                    txt = tp.read_text(encoding="utf-8", errors="replace")
                 except Exception as e:
                     logger.error(f"{_doc_id}: Failed to load cached text for page {page_no} from {str(tp)}: {e}")
                     if on_error == "raise":
