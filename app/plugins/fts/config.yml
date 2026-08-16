@@ -248,7 +248,7 @@ viewer:
   #   ... defined best in app
   # static_url: "/ui/view" # set by app to be dynamic
   OpenSeadragon:
-    src: "https://cdn.jsdelivr.net/npm/openseadragon@5.0.1/build/openseadragon/openseadragon.min.js"
+    src: "https://cdn.jsdelivr.net/npm/openseadragon@5.0.1/build/openseadragon/openseadragon.min.js" # "/ui/viewer/openseadragon.min.js"
     prefixUrl: "https://cdn.jsdelivr.net/npm/openseadragon@5.0.1/build/openseadragon/images/"
     showNavigator: false
     maxZoomPixelRatio: 2
