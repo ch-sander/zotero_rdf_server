@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+
+  <title>
+    {{ parent_title | default(_label) }}
+  </title>
+
+  <link
+    rel="stylesheet"
+    href="{{ viewer_css }}"
+  >
+
+  <script
+    src="{{ openseadragon_js }}"
+    defer
+  ></script>
+
+  <script
+    src="{{ viewer_js }}"
+    defer
+  ></script>
+</head>
+
+<body>
+
+<script
+  id="viewer-config"
+  type="application/json"
+>
+  {{
+    {
+      "sourceUrl": _input,
+      "prefixUrl": openseadragon_prefix
+    } | tojson
+  }}
+</script>
+
+
+<header class="document-header">
+
+  <div class="document-title">
+    <h1>
+      {{ parent_title | default(_label) }}
+    </h1>
+
+    {% if parent_creators %}
+      <p class="creators">
+        {{ parent_creators }}
+      </p>
+    {% endif %}
+  </div>
+
+  <div class="document-actions">
+
+    {% if _input %}
+      <a
+        href="{{ _input }}"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Open source
+      </a>
+    {% endif %}
+
+    <button
+      id="viewer-toggle"
+      type="button"
+      aria-expanded="true"
+      aria-controls="viewer-panel"
+    >
+      Hide viewer
+    </button>
+
+  </div>
+
+</header>
+
+
+<div class="document-layout">
+
+  <aside
+    id="viewer-panel"
+    class="viewer-panel"
+  >
+    <div id="viewer"></div>
+
+    <div
+      id="viewer-message"
+      class="viewer-message"
+      hidden
+    ></div>
+  </aside>
+
+
+  <main id="text">
+
+    <section class="metadata">
+
+      <h2>Metadata</h2>
+
+      <dl>
+
+        {% for key, value in data.items() %}
+
+          {% if
+            value is not none
+            and value != ""
+            and key not in [
+              "item",
+              "text",
+              "pages"
+            ]
+          %}
+
+            <div class="metadata-row">
+              <dt>{{ key }}</dt>
+              <dd>{{ value }}</dd>
+            </div>
+
+          {% endif %}
+
+        {% endfor %}
+
+      </dl>
+
+      <p class="page-count">
+        {{ page_count }} pages
+      </p>
+
+    </section>
+
+
+    <section class="ocr-pages">
+
+      {% for page in pages %}
+
+        <article
+          class="page"
+          id="page-{{ page.page }}"
+          data-page="{{ page.page }}"
+        >
+
+          <h2>
+            <a
+              class="page-link"
+              href="#page={{ page.page }}"
+            >
+              Page {{ page.page }}
+            </a>
+          </h2>
+
+          <div class="ocr">
+            {{ page.text }}
+          </div>
+
+        </article>
+
+      {% endfor %}
+
+    </section>
+
+  </main>
+
+</div>
+
+</body>
+</html>

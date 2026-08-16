@@ -1,0 +1,382 @@
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+
+html {
+  scroll-behavior: auto;
+}
+
+
+body {
+  min-width: 0;
+
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
+  color: #222;
+  background: #fff;
+}
+
+
+/*
+ * Top document header.
+ */
+
+.document-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 2rem;
+
+  box-sizing: border-box;
+
+  min-height: 6rem;
+  padding: 1rem 1.5rem;
+
+  border-bottom: 1px solid #ddd;
+  background: #fff;
+}
+
+
+.document-title {
+  min-width: 0;
+}
+
+
+.document-title h1 {
+  margin: 0;
+
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+
+
+.creators {
+  margin: .4rem 0 0;
+
+  color: #555;
+}
+
+
+.document-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+
+  gap: 1rem;
+
+  white-space: nowrap;
+}
+
+
+.document-actions a {
+  color: inherit;
+}
+
+
+.document-actions button {
+  padding: .45rem .8rem;
+
+  border: 1px solid #aaa;
+  border-radius: .3rem;
+
+  font: inherit;
+
+  background: #fff;
+  cursor: pointer;
+}
+
+
+.document-actions button:hover {
+  background: #f3f3f3;
+}
+
+
+/*
+ * Main two-column layout.
+ */
+
+.document-layout {
+  display: grid;
+
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(24rem, 40rem);
+
+  height: calc(100vh - 6rem);
+  min-height: 0;
+}
+
+
+/*
+ * OpenSeadragon panel.
+ */
+
+.viewer-panel {
+  position: relative;
+
+  min-width: 0;
+  min-height: 0;
+
+  overflow: hidden;
+
+  background: #111;
+}
+
+
+#viewer {
+  width: 100%;
+  height: 100%;
+}
+
+
+.viewer-message {
+  position: absolute;
+
+  inset: 0;
+
+  box-sizing: border-box;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 2rem;
+
+  color: #eee;
+  background: #222;
+
+  text-align: center;
+}
+
+
+.viewer-message[hidden] {
+  display: none;
+}
+
+
+/*
+ * Collapsed viewer state.
+ */
+
+body.viewer-collapsed
+.document-layout {
+  grid-template-columns:
+    minmax(0, 1fr);
+}
+
+
+body.viewer-collapsed
+.viewer-panel {
+  display: none;
+}
+
+
+/*
+ * OCR and metadata panel.
+ */
+
+#text {
+  min-width: 0;
+  min-height: 0;
+
+  overflow-y: auto;
+
+  box-sizing: border-box;
+
+  height: 100%;
+
+  padding: 1.5rem 2rem;
+
+  background: #fff;
+}
+
+
+/*
+ * Metadata.
+ */
+
+.metadata {
+  margin: 0 0 3rem;
+  padding: 0 0 2rem;
+
+  border-bottom: 1px solid #ddd;
+}
+
+
+.metadata > h2 {
+  margin-top: 0;
+}
+
+
+.metadata dl {
+  margin: 0;
+}
+
+
+.metadata-row {
+  display: grid;
+
+  grid-template-columns:
+    minmax(8rem, 12rem)
+    minmax(0, 1fr);
+
+  gap: .5rem 1rem;
+
+  padding: .35rem 0;
+}
+
+
+.metadata-row dt {
+  font-weight: 600;
+
+  overflow-wrap: anywhere;
+}
+
+
+.metadata-row dd {
+  min-width: 0;
+  margin: 0;
+
+  overflow-wrap: anywhere;
+}
+
+
+.page-count {
+  margin: 1.25rem 0 0;
+
+  color: #555;
+}
+
+
+/*
+ * OCR pages.
+ */
+
+.ocr-pages {
+  min-width: 0;
+}
+
+
+.page {
+  margin: 0 0 4rem;
+
+  /*
+   * Leaves some space when jumping to
+   * #page=N or using scrollIntoView().
+   */
+  scroll-margin-top: 1rem;
+}
+
+
+.page h2 {
+  position: sticky;
+  top: 0;
+
+  z-index: 2;
+
+  margin: 0 0 1rem;
+  padding: .65rem 0;
+
+  font-size: 1.15rem;
+
+  background: #fff;
+
+  border-bottom: 1px solid transparent;
+}
+
+
+.page.active h2 {
+  border-bottom-color: #ccc;
+}
+
+
+.page-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+
+.page-link:hover,
+.page-link:focus-visible {
+  text-decoration: underline;
+}
+
+
+.ocr {
+  min-width: 0;
+
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+
+  line-height: 1.55;
+}
+
+
+/*
+ * Responsive layout.
+ */
+
+@media (max-width: 900px) {
+
+  .document-header {
+    align-items: flex-start;
+    flex-direction: column;
+
+    gap: 1rem;
+
+    min-height: auto;
+  }
+
+
+  .document-actions {
+    width: 100%;
+
+    flex-wrap: wrap;
+  }
+
+
+  .document-layout {
+    grid-template-columns: 1fr;
+
+    /*
+     * On smaller screens the document
+     * should behave like a normal page
+     * rather than two fixed-height panes.
+     */
+    height: auto;
+  }
+
+
+  .viewer-panel {
+    height: 50vh;
+    min-height: 20rem;
+  }
+
+
+  #text {
+    height: auto;
+    overflow: visible;
+
+    padding: 1.25rem;
+  }
+
+
+  .metadata-row {
+    grid-template-columns: 1fr;
+  }
+
+
+  .metadata-row dd {
+    margin-bottom: .4rem;
+  }
+
+}

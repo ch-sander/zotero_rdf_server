@@ -59,6 +59,7 @@ def ingest_pipeline(
     rdf_kwargs = dict(export_kwargs.get("rdf") or {})
     qlever_kwargs = dict(export_kwargs.get("qlever") or {})
     xml_kwargs = dict(export_kwargs.get("xml") or {})
+    html_kwargs = dict(export_kwargs.get("html") or {})    
     base_iri = export_kwargs.get(
         "base_iri",
         rdf_kwargs.get(
@@ -76,6 +77,7 @@ def ingest_pipeline(
         ),
     )
     rdf_enabled = bool(rdf_kwargs)
+    html_enabled = bool(html_kwargs)
     qlever_enabled = bool(qlever_kwargs)
     xml_enabled = bool(xml_kwargs)
 
@@ -132,6 +134,18 @@ def ingest_pipeline(
             logger.exception("Import of XML export modules failed")
             xml_enabled = False
             xml_kwargs = {}
+
+    if html_enabled:
+        try:
+            from .export.html_export import (
+                HtmlJinjaSink,
+            )
+        except ImportError:
+            logger.exception(
+                "Import of HTML export modules failed"
+            )
+            html_enabled = False
+            html_kwargs = {}
 
     if rdf_enabled:
         logger.info("RDF Export is enabled!\n")      
@@ -223,6 +237,38 @@ def ingest_pipeline(
     else:
         xml_context = nullcontext(None)
 
+    if html_enabled:
+        logger.info(
+            "HTML Jinja export is enabled!"
+        )
+
+        from zotero_rdf_server.config import (
+            EXPORT_DIRECTORY,
+        )
+
+        html_output = html_kwargs.get("output")
+        if not html_output:
+            raise ValueError(
+                "export_kwargs['html'] requires 'output'"
+            )
+
+        html_template = html_kwargs.get(
+            "template"
+        )
+        if not html_template:
+            raise ValueError(
+                "export_kwargs['html'] requires 'template'"
+            )
+
+        html_context = HtmlJinjaSink(
+            html_output,
+            template=html_template,
+            base_dir=EXPORT_DIRECTORY,
+            context=html_kwargs.get("context"),
+        )
+    else:
+        html_context = nullcontext(None)
+
     def prepare_rdf_item(
         rdf_sink,
         obj,
@@ -300,11 +346,12 @@ def ingest_pipeline(
         and not rdf_enabled
         and not qlever_enabled
         and not xml_enabled
+        and not html_enabled
     ):
         return [{
             "error": (
                 "nothing to do here: no from_source, no ingest, "
-                "no RDF, QLever or XML export!"
+                "no RDF, QLever, XML or HTML export!"
             )
         }]
 
@@ -368,6 +415,7 @@ def ingest_pipeline(
             rdf_default_graph=None,
             qlever_sink=None,
             xml_sink=None,
+            html_sink=None,
             export_item_data=None,
         ):
             def pages_fn(u: str):
@@ -384,6 +432,7 @@ def ingest_pipeline(
                             or rdf_enabled
                             or qlever_enabled
                             or xml_enabled
+                            or html_enabled
                         ),
                         pipeline_meta=pipeline_meta,
                     ):
@@ -428,6 +477,11 @@ def ingest_pipeline(
                                     "text": text,
                                 },
                             )
+                            
+                        if html_sink is not None:
+                            html_sink.emit_page(
+                                export_page_data
+                            )
 
                         yield page_no, text
 
@@ -449,6 +503,7 @@ def ingest_pipeline(
             rdf_context as rdf_sink,
             qlever_context as qlever_sink,
             xml_context as xml_sink,
+            html_context as html_sink,
         ):
             for i, obj in enumerate(items, start=1):
                 stats = {"pages_emitted": 0}
@@ -487,6 +542,11 @@ def ingest_pipeline(
                             export_item_data,
                             node_value=obj,
                         )
+                    if html_sink is not None:
+                        html_sink.emit_item(
+                            export_item_data,
+                            node_value=obj,
+                        )
 
                     pages = []
 
@@ -504,6 +564,7 @@ def ingest_pipeline(
                             rdf_default_graph=default_graph_uri,
                             qlever_sink=qlever_sink,
                             xml_sink=xml_sink,
+                            html_sink=html_sink,
                             export_item_data=export_item_data,
                         )(input_):
                             result_page = {
@@ -560,6 +621,11 @@ def ingest_pipeline(
                                 },
                             )
 
+                        if html_sink is not None:
+                            html_sink.emit_page(
+                                export_page_data
+                            )
+
                         pages.append({
                             "page": sequence,
                             "text": text,
@@ -576,7 +642,10 @@ def ingest_pipeline(
                     dump_rdf_item(rdf_sink, item_store)
                     if xml_sink is not None:
                         xml_sink.emit_footer(export_item_data)
-
+                    if html_sink is not None:
+                        html_sink.emit_footer(
+                            export_item_data
+                        )
                 except Exception as e:
                     results.append({
                         "doc_id": doc_id,
@@ -664,6 +733,7 @@ def ingest_pipeline(
         rdf_context as rdf_sink,
         qlever_context as qlever_sink,
         xml_context as xml_sink,
+        html_context as html_sink,
     ):
         for i, obj in enumerate(items, start=1):
             stats = {"pages_emitted": 0}
@@ -711,6 +781,12 @@ def ingest_pipeline(
                         node_value=obj,
                     )
 
+                if html_sink is not None:
+                    html_sink.emit_item(
+                        export_item_data,
+                        node_value=obj,
+                    )
+
                 if from_source:
                     if not input_:
                         logger.error(
@@ -733,6 +809,7 @@ def ingest_pipeline(
                             rdf_default_graph=default_graph_uri,
                             qlever_sink=qlever_sink,
                             xml_sink=xml_sink,
+                            html_sink=html_sink,
                             export_item_data=export_item_data,
                         ),
                         targets=targets,
@@ -802,6 +879,11 @@ def ingest_pipeline(
                                 },
                             )
 
+                        if html_sink is not None:
+                            html_sink.emit_page(
+                                export_page_data
+                            )
+
                         stats["pages_emitted"] = 1
 
                     if vector:
@@ -856,6 +938,10 @@ def ingest_pipeline(
                         doc_id,
                         stats["pages_emitted"],
                     )
+                if html_sink is not None:
+                    html_sink.emit_footer(
+                        export_item_data
+                    )
                 digest["ingest"] = True
                 digest["delete_index"] = delete_index
                 digest["llm"] = bool(use_llm)
@@ -864,6 +950,8 @@ def ingest_pipeline(
                 digest["qlever"] = qlever_enabled
                 digest["xml"] = xml_enabled
                 digest["xml_output"] = xml_kwargs.get("output")
+                digest["html"] = html_enabled
+                digest["html_output"] = html_kwargs.get("output")
                 runs.append(digest)
 
             except Exception as e:
@@ -1098,119 +1186,6 @@ def clean_files(
             "max_content_len": max_content_len,
             "all_files": all_files,
         },
-        "deleted": deleted,
-        "moved": moved,
-        "copied": copied,
-        "skipped": skipped,
-        "errors": errors,
-    }
-
-def clean_files_dedrecated(
-    root_dir: str | Path,
-    extension: str,
-    min_bytes: int | None = None,
-    min_content_len: int | None = None,
-    action: Action = "copy",
-    move_to: str | Path | None = None,
-    all_files: bool = False
-) -> dict:
-    """
-    Recursively finds files by extension and deletes or moves files that are
-    smaller than min_bytes or whose decoded content length is smaller than
-    min_content_len.
-    """
-
-    root = Path(root_dir).resolve()
-
-    if not root.exists() or not root.is_dir():
-        logger.error(f"root_dir does not exist or is not a directory: {root}")
-        return {
-            "root_dir": str(root),
-            "extension": extension,
-            "action": action,
-            "deleted": 0,
-            "moved": 0,
-            "copied": 0,
-            "skipped": 0,
-            "errors": [],
-            "directory_missing": True,
-        }
-        # raise ValueError(f"root_dir does not exist or is not a directory: {root}")
-
-    if not all_files and min_bytes is None and min_content_len is None:
-        raise ValueError("At least one of all_files, min_bytes or min_content_len must be set")
-
-    if not extension.startswith("."):
-        extension = f".{extension}"
-
-    target_dir: Path | None = None
-
-    if action in {"move", "copy"}:
-        if move_to is None:
-            raise ValueError(
-                "move_to must be set when action='move' or action='copy'"
-            )
-
-        target_dir = Path(move_to).resolve()
-        target_dir.mkdir(parents=True, exist_ok=True)
-        
-    deleted = 0
-    moved = 0
-    copied = 0
-    skipped = 0
-    errors: list[dict] = []
-
-    for file_path in root.rglob(f"*{extension}"):
-        if not file_path.is_file():
-            continue
-
-        should_clean = all_files
-
-        try:
-            # Check file size in bytes without reading the file.
-            if min_bytes is not None and file_path.stat().st_size < min_bytes:
-                should_clean = True
-
-            # Check content length only if needed.
-            if min_content_len is not None:
-                try:
-                    content = file_path.read_text(encoding="utf-8", errors="ignore")
-                    if len(content) < min_content_len:
-                        should_clean = True
-                except OSError as exc:
-                    errors.append({"file": str(file_path), "error": str(exc)})
-                    continue
-
-            if not should_clean:
-                skipped += 1
-                continue
-
-            if action == "delete":
-                file_path.unlink()
-                deleted += 1
-
-            elif action in {"move", "copy"}:
-                assert target_dir is not None
-
-                relative_path = file_path.relative_to(root)
-                destination = target_dir / relative_path
-                destination.parent.mkdir(parents=True, exist_ok=True)
-
-                if action == "move":
-                    move(str(file_path), str(destination))
-                    moved += 1
-
-                else:
-                    copy2(str(file_path), str(destination))
-                    copied += 1
-
-        except OSError as exc:
-            errors.append({"file": str(file_path), "error": str(exc)})
-
-    return {
-        "root_dir": str(root),
-        "extension": extension,
-        "action": action,
         "deleted": deleted,
         "moved": moved,
         "copied": copied,
