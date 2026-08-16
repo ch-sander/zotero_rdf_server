@@ -318,105 +318,6 @@ async function init(indexName = activeIndexName) {
       }
     });
 
-    const searchClient_legacy = SearchkitInstantsearchClient(sk, {
-      getQuery(query) {
-        const q = (query || "").trim();
-        if (!q) return false;
-
-        const hasComma = query.includes(",");
-
-        const parts = query
-          .split(hasComma ? "," : " ")
-          .map(s => s.trim())
-          .filter(Boolean);
-
-        if (hasComma) {
-          return [
-            {
-              bool: {
-                should: parts.flatMap((part) => [
-                  {
-                    match_phrase: {
-                      text: {
-                        query: part,
-                        slop: 2,
-                        boost: 4
-                      }
-                    }
-                  },
-                  {
-                    match_phrase_prefix: {
-                      text: {
-                        query: part,
-                        max_expansions: 50,
-                        boost: 2
-                      }
-                    }
-                  },
-                  {
-                    match: {
-                      text: {
-                        query: part,
-                        fuzziness: 2,
-                        prefix_length: 1,
-                        max_expansions: 50,
-                        boost: 1
-                      }
-                    }
-                  }
-                ]),
-                minimum_should_match: 1
-              }
-            }
-          ];
-        }
-
-        return [
-          {
-            bool: {
-              must: parts.map((part) => ({
-                bool: {
-                  should: [
-                    {
-                      match_phrase: {
-                        text: {
-                          query: part,
-                          slop: 2,
-                          boost: 4
-                        }
-                      }
-                    },
-                    {
-                      match_phrase_prefix: {
-                        text: {
-                          query: part,
-                          max_expansions: 50,
-                          boost: 2
-                        }
-                      }
-                    },
-                    {
-                      match: {
-                        text: {
-                          query: part,
-                          fuzziness: 2,
-                          prefix_length: 1,
-                          max_expansions: 50,
-                          boost: 1
-                        }
-                      }
-                    }
-                  ],
-                  minimum_should_match: 1
-                }
-              }))
-            }
-          }
-        ];
-
-      }
-    });
-
 const searchClient = SearchkitInstantsearchClient(sk, {
   getQuery(query) {
     const q = (query || "").trim();
@@ -479,7 +380,7 @@ const searchClient = SearchkitInstantsearchClient(sk, {
     };
 
     const orGroups = q
-      .split(",")
+      .split(/\s*(?:,|;|\bOR\b)\s*/i)
       .map(v => v.trim())
       .filter(Boolean);
 
@@ -488,10 +389,10 @@ const searchClient = SearchkitInstantsearchClient(sk, {
         bool: {
           should: orGroups.map((group) => {
 
-            const andTerms = group
-              .split("+")
-              .map(v => v.trim())
-              .filter(Boolean);
+          const andTerms = group
+            .split(/\s*(?:\+|\bAND\b)\s*/i)
+            .map(v => v.trim())
+            .filter(Boolean);
 
             if (andTerms.length === 1) {
               return buildTermQuery(andTerms[0]);
