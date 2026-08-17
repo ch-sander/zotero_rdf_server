@@ -48,7 +48,6 @@ def ensure_import(module, attr=None, requirements=requirements):
     from zotero_rdf_server import utils
     return utils.ensure_import(module=module,attr=attr,requirements=requirements)
 
-
 @lru_cache(maxsize=1)
 def resolve_config_path(config_path: Optional[str] = None) -> Path:
     # def is_url(s: str) -> bool:

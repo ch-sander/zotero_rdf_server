@@ -1,9 +1,9 @@
-from __future__ import annotations
 from fastapi import FastAPI, Request, Query, Form, HTTPException, APIRouter, Body, Depends, status
 from fastapi.responses import StreamingResponse, FileResponse, Response, JSONResponse, PlainTextResponse, HTMLResponse, RedirectResponse
 from typing import Literal, Any, Dict, Iterator, List, Optional, Union, Tuple
 from pathlib import Path
 import json, io, html, os
+from urllib.parse import quote
 from pydantic import BaseModel, Field
 from .helpers import plugin_logger, safe_doc_id
 logger=plugin_logger()
@@ -2161,8 +2161,12 @@ def get_text(os_doc_id: str):
     tags=["Viewer"],
 )
 def view_root(request: Request):
-    return build_view_response(request, None, editable=False)
-
+    from .viewer import MODE
+    if MODE == "dynamic":
+        return build_view_response(request, None, editable=False)
+    else:
+        return None
+    
 @open_router.get(
     "/view/{os_doc_id:path}",
     summary="View image page and OCR",
@@ -2171,7 +2175,13 @@ def view_root(request: Request):
     tags=["Viewer"],
 )
 def view_page(request: Request, os_doc_id: str):
-    return build_view_response(request, os_doc_id, editable=False)
+    from .viewer import MODE
+    if MODE == "dynamic":
+        return build_view_response(request, os_doc_id, editable=False)
+    elif MODE == "static":
+        return build_static_view_redirect(request, os_doc_id)
+    else:
+        return None
 
 @router.get("/edit-view/{os_doc_id:path}",
             name = "edit-view",
@@ -2206,6 +2216,43 @@ def save_page(request: Request, os_doc_id: str, text: str = Form(...)):
     return RedirectResponse(
         url=redirect_url,
         status_code=303,
+    )
+
+def build_static_view_redirect(
+    request: Request,
+    os_doc_id: str,
+) -> RedirectResponse:
+    from .viewer import split_doc_id, STATIC_VIEWER_ROOT
+
+    doc_key, page_digits = split_doc_id(os_doc_id)
+
+    filename = f"{doc_key}.html"
+    file_path = STATIC_VIEWER_ROOT / filename
+
+    logger.info(
+        "Static viewer redirect: os_doc_id=%r doc_key=%r "
+        "filename=%r file=%s exists=%s",
+        os_doc_id,
+        doc_key,
+        filename,
+        file_path,
+        file_path.is_file(),
+    )
+
+    if not file_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Static viewer document not found: {filename}",
+        )
+
+    html_url = request.url_for(
+        "static-viewer",
+        path=filename,
+    )
+
+    return RedirectResponse(
+        url=f"{html_url}#page={page_digits}",
+        status_code=302,
     )
 
 def build_view_response(

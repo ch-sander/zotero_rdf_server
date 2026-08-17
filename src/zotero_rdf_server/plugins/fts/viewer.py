@@ -2,6 +2,7 @@ from functools import lru_cache
 from html import escape
 from pathlib import Path
 from typing import Any
+import os
 from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -45,11 +46,17 @@ DASHBOARD_URL = cfg.get("dashboard_url") or None
 # BASE_URL = str(cfg.get("base_url", "/plugin/fts")).rstrip("/")
 # BASE_URL = f"{ROOT_PATH}/{BASE_URL.lstrip(str(ROOT_PATH))}"
 STATIC_URL = str(cfg.get("static_url", f"{STATIC_UI_PREFIX}/view")).rstrip("/") 
-ATLAS_URL = str(cfg.get("atlas_url", "/ui/atlas")).rstrip("/") 
+ATLAS_URL = str(cfg.get("atlas_url", "/ui/atlas")).rstrip("/")
+MODE = os.getenv("FTS_MOUNT_MODE") or cfg.get("mode", "dynamic")
 OSD_CONFIG = cfg.get("OpenSeadragon") or {}
 OCR_FRAMEWORKS = cfg.get("ocr_frameworks") or []
 
-MOUNT_PATH = "/image-files"
+STATIC_MOUNT_URL = "/viewer-static"
+STATIC_VIEWER_ROOT = Path(
+    cfg.get("static_viewer_root")
+)
+
+IMAGE_MOUNT_URL = "/image-files"
 
 if not IMAGE_ROOT_STR:
     logger.warning("viewer.image_root is not configured")
@@ -60,24 +67,55 @@ image_root = Path(IMAGE_ROOT_STR) if IMAGE_ROOT_STR else Path(".")
 text_root = Path(TEXT_ROOT_STR) if TEXT_ROOT_STR else Path(".")
 
 
-def ensure_router_mount(app, mount_path = MOUNT_PATH) -> None:
-    """
-    Mount static files once.
-    Call this during router/app setup, not inside the route handler.
-    """
+def ensure_static_mount(
+    app: Any,
+    *,
+    mount_path: str,
+    directory: Path,
+    name: str,
+    html: bool = False,
+) -> None:
+    """Mount a directory unless its URL path is already mounted."""
+
+    mount_path = "/" + mount_path.strip("/")
+
     for route in getattr(app, "routes", []):
         if getattr(route, "path", None) == mount_path:
+            logger.debug("Mount already registered: %s", mount_path)
             return
-    
+
     app.mount(
         mount_path,
-        StaticFiles(directory=str(image_root),check_dir=False),
+        StaticFiles(
+            directory=str(directory),
+            check_dir=False,
+            html=html,
+        ),
+        name=name,
+    )
+
+    logger.info(
+        "Mounted static path %s -> %s",
+        mount_path,
+        directory,
+    )
+
+if STATIC_VIEWER_ROOT and MODE == "static":
+    ensure_static_mount(
+        app,
+        mount_path=STATIC_MOUNT_URL,
+        directory=STATIC_VIEWER_ROOT,
+        name="static-viewer",
+        html=True,
+    )
+    
+elif MODE == "dynamic" and IMAGE_MOUNT_URL:
+    ensure_static_mount(
+        app,
+        mount_path=IMAGE_MOUNT_URL,
+        directory=image_root,
         name="image-files",
     )
-    logger.info(f"Mounted static image path at {mount_path} -> {image_root}")
-
-
-ensure_router_mount(app)
 
 for route in app.routes:
     logger.info(f"name={getattr(route, 'name', None)} path={getattr(route, 'path', None)}")

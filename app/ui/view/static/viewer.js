@@ -225,35 +225,35 @@ async function loadIiifSources(url) {
  * requested. This keeps the document at
  * the metadata header on normal page load.
  */
+function formatPage(page) {
+  const value = Number(page);
+
+  if (
+    !Number.isSafeInteger(value)
+    || value <= 0
+  ) {
+    return null;
+  }
+
+  return String(value).padStart(4, "0");
+}
+
+
 function pageFromUrl() {
-  const hash =
-    window.location.hash.slice(1);
+  const hash = window.location.hash.slice(1);
 
   if (!hash) {
     return null;
   }
 
-  const params =
-    new URLSearchParams(hash);
+  const params = new URLSearchParams(hash);
+  const formattedPage = formatPage(params.get("page"));
 
-  const raw =
-    params.get("page");
-
-  if (raw === null) {
+  if (formattedPage === null) {
     return null;
   }
 
-  const page =
-    Number(raw);
-
-  if (
-    Number.isInteger(page)
-    && page > 0
-  ) {
-    return page;
-  }
-
-  return null;
+  return Number(formattedPage);
 }
 
 
@@ -262,10 +262,16 @@ function pageFromUrl() {
  * browser history entry for every page turn.
  */
 function updatePageUrl(page) {
+  const formattedPage = formatPage(page);
+
+  if (formattedPage === null) {
+    return;
+  }
+
   history.replaceState(
     null,
     "",
-    `#page=${page}`
+    `#page=${formattedPage}`,
   );
 }
 

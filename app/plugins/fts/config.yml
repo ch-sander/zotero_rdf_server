@@ -238,6 +238,8 @@ rag:
     only_need_prompt: false
 
 viewer:
+  mode: dynamic
+  static_viewer_root: "/app/exports/html"
   image_root: "/app/exports/kraken/images"
   text_root: "/app/exports/kraken/texts"
   image_ext: jpg
