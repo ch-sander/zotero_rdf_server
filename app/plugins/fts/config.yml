@@ -599,7 +599,18 @@ open-search:
             field: "meta.parent_creators"
             separator: "\\s*;\\s*"
             ignore_missing: true
-
+            
+        # - script:
+        #     lang: painless
+        #     source: >
+        #       if (ctx.meta != null && ctx.meta.parent_tags instanceof List) {
+        #         ctx.meta.parent_tags.removeIf(tag ->
+        #           tag == null ||
+        #           !(tag instanceof String) ||
+        #           tag.length() == 0 ||
+        #           !Character.isLetter(tag.codePointAt(0))
+        #         );
+        #       }
         # - script:
         #     lang: painless
         #     source: >
