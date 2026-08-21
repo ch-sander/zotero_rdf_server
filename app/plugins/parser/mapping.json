@@ -157,6 +157,11 @@
                     "operator": "OR",
                     "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
                     "targetObject": "https://semantic-html.org/vocab#Entity"
+                },
+                {
+                    "operator": "OR",
+                    "targetProperty": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+                    "targetObject": "http://www.w3.org/2002/07/owl#Thing"
                 }
             ],
             "SAME": [
