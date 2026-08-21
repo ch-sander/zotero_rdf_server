@@ -427,9 +427,17 @@ const searchClient = SearchkitInstantsearchClient(sk, {
   }
 });
 
+    const params = new URLSearchParams(window.location.search);
+    const initialQuery = params.get("q") || "";
+
     const search = instantsearch({
-      indexName: indexName,
-      searchClient
+      indexName,
+      searchClient,
+      initialUiState: {
+        [indexName]: {
+          query: initialQuery
+        }
+      }
     });
 
     search.addWidgets([
