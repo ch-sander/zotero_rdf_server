@@ -1227,7 +1227,7 @@ def run_update_queries(lib: ZoteroLibrary, store: Store):
                 update or q,
                 exc_info=True,
             )
-            raise
+            continue
 
     after_all = len(store)
 
