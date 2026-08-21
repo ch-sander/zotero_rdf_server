@@ -24,6 +24,8 @@ sic
 ergo
 quia
 etiam
+utrum
+vtrum
 illius
 
 # pronouns
