@@ -15,7 +15,7 @@
             "xpath": [
                 "//em | //i | //span[contains(@style, \"italic\")]"
             ],
-            "split": "\\s*(?:,|\\band\\b|\\+|\\&)\\s*",
+            "split": "\\s*(?:[,;+&]|\\band\\b)\\s*",
             "types": [
                 "Entity",
                 "Annotation"
@@ -29,7 +29,7 @@
                 "Concept",
                 "Annotation"
             ],
-            "split": "\\s*(?:,|\\band\\b|\\+|\\&)\\s*"
+            "split": "\\s*(?:[,;+&]|\\band\\b)\\s*"
         },
         "Reference": {
             "xpath": [
