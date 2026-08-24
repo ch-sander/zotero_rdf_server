@@ -1111,6 +1111,85 @@
         }
       }
     },
+    "/sparql_query": {
+      "post": {
+        "tags": [
+          "RDF",
+          "Proxy"
+        ],
+        "summary": "Run a SPARQL SELECT query against the RDF store",
+        "description": "Executes a SPARQL SELECT query against the global RDF store.\n\nThe request body must be plain text. It may contain either a SPARQL SELECT query directly or a path that `load_text_like()` can resolve.\n\nThe `result_format` query parameter controls whether the bindings are returned as SPARQL Results JSON, SPARQL Results CSV, or an HTML table. Only SELECT queries are supported because other SPARQL query forms do not return variable bindings.",
+        "operationId": "sparql_query_sparql_query_post",
+        "parameters": [
+          {
+            "name": "result_format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "json",
+                "csv",
+                "html"
+              ],
+              "type": "string",
+              "description": "Serialization format for the SELECT bindings: `json`, `csv`, or `html`.",
+              "default": "json",
+              "title": "Result Format"
+            },
+            "description": "Serialization format for the SELECT bindings: `json`, `csv`, or `html`."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "text/plain": {
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 50000,
+                "description": "SPARQL SELECT query or path to a SPARQL query file.",
+                "title": "Query Input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Serialized SPARQL SELECT bindings.",
+            "content": {
+              "application/sparql-results+json": {
+                "schema": {
+                  "type": "object"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The query could not be loaded, is invalid, or is not a SELECT query."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/plugin/citation/render": {
       "get": {
         "tags": [
@@ -2821,10 +2900,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-31T10:06:27Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-08-24T06:48:51Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-31T10:06:27Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-08-24T06:48:51Z"
           },
           {
             "name": "perform_analysis",
@@ -2995,11 +3074,11 @@
               "type": "number",
               "maximum": 1.0,
               "exclusiveMinimum": 0.0,
-              "description": "Max document frequency.",
+              "description": "Maximum fraction of documents in which a term may appear for TF-IDF.",
               "default": 1.0,
               "title": "Analyze Tfidf Max Df"
             },
-            "description": "Max document frequency."
+            "description": "Maximum fraction of documents in which a term may appear for TF-IDF."
           },
           {
             "name": "cluster_enabled",
@@ -3793,10 +3872,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-31T10:06:27Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-08-24T06:48:51Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-31T10:06:27Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-08-24T06:48:51Z"
           },
           {
             "name": "format",
@@ -4110,10 +4189,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-31T10:06:27Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-08-24T06:48:51Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-31T10:06:27Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-08-24T06:48:51Z"
           },
           {
             "name": "format",
@@ -4444,10 +4523,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-31T10:06:27Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-08-24T06:48:51Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-31T10:06:27Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-08-24T06:48:51Z"
           },
           {
             "name": "format",
@@ -4757,10 +4836,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-31T10:06:27Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-08-24T06:48:51Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-07-31T10:06:27Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-08-24T06:48:51Z"
           },
           {
             "name": "format",
@@ -6029,7 +6108,7 @@
               null
             ]
           },
-          "rdf_kwargs": {
+          "export_kwargs": {
             "anyOf": [
               {
                 "additionalProperties": true,
@@ -6039,8 +6118,8 @@
                 "type": "null"
               }
             ],
-            "title": "Rdf Kwargs",
-            "description": "Keyword Arguments for RDF Backend Config",
+            "title": "Export Kwargs",
+            "description": "Keyword Arguments for Export to RDF, XML, or QLever TSV",
             "examples": [
               null
             ]
