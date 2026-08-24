@@ -570,6 +570,139 @@ async def sparql_update(
         "delta": after - before,
     }
 
+
+SPARQL_RESULT_MEDIA_TYPES = {
+    "json": "application/sparql-results+json",
+    "csv": "text/csv",
+    "html": "text/html",
+}
+
+@open_router.post(
+    "/sparql_query",
+    summary="Run a SPARQL SELECT query against the RDF store",
+    description=(
+        "Executes a SPARQL SELECT query against the global RDF store.\n\n"
+        "The request body must be plain text. It may contain either a SPARQL "
+        "SELECT query directly or a path that `load_text_like()` can resolve.\n\n"
+        "The `result_format` query parameter controls whether the bindings are "
+        "returned as SPARQL Results JSON, SPARQL Results CSV, or an HTML table. "
+        "Only SELECT queries are supported because other SPARQL query forms do "
+        "not return variable bindings."
+    ),
+    tags=["RDF", "Proxy"],
+    response_class=Response,
+    responses={
+        200: {
+            "description": "Serialized SPARQL SELECT bindings.",
+            "content": {
+                "application/sparql-results+json": {
+                    "schema": {"type": "object"},
+                },
+                "text/csv": {
+                    "schema": {"type": "string"},
+                },
+                "text/html": {
+                    "schema": {"type": "string"},
+                },
+            },
+        },
+        400: {
+            "description": (
+                "The query could not be loaded, is invalid, or is not "
+                "a SELECT query."
+            ),
+        },
+    },
+)
+async def sparql_query(
+    query_input: str = Body(
+        ...,
+        min_length=1,
+        max_length=50_000,
+        examples=None,
+        media_type="text/plain",
+        description="SPARQL SELECT query or path to a SPARQL query file.",
+    ),
+    result_format: TypingLiteral["json", "csv", "html"] = Query(
+        default="json",
+        description=(
+            "Serialization format for the SELECT bindings: "
+            "`json`, `csv`, or `html`."
+        ),
+    ),
+) -> Response:
+    store = global_store.get_store()
+
+    try:
+        query = load_text_like(
+            query_input,
+            label="SPARQL SELECT query",
+        ) if INCLUDE_CLOSED_ROUTER else query_input
+    except Exception as e:
+        logger.error(
+            "Could not load SPARQL SELECT query: %s",
+            e,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not load SPARQL SELECT query: {e}",
+        ) from e
+
+    try:
+        with global_store._store_lock:
+            logger.info(
+                "Running SPARQL SELECT query; result format=%s",
+                result_format,
+            )
+
+            serialized_result = query_bindings(
+                store,
+                query,
+                result_format=result_format,
+            )
+
+            response_size = len(serialized_result.encode("utf-8"))
+
+            logger.info(
+                "Finished SPARQL SELECT query; "
+                "result format=%s; response size=%s bytes",
+                result_format,
+                response_size,
+            )
+
+    except TypeError as e:
+        logger.warning(
+            "SPARQL query did not return SELECT bindings: %s",
+            e,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Only SPARQL SELECT queries are supported.",
+        ) from e
+
+    except SyntaxError as e:
+        logger.warning(
+            "Invalid SPARQL SELECT query: %s",
+            e,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid SPARQL SELECT query.",
+        ) from e
+
+    except Exception:
+        logger.exception("SPARQL SELECT query execution failed")
+        raise HTTPException(
+            status_code=500,
+            detail="SPARQL SELECT query execution failed.",
+        )
+
+    return Response(
+        content=serialized_result,
+        media_type=SPARQL_RESULT_MEDIA_TYPES[result_format],
+    )
+
 @router.delete(
     "/mapping-targets",
     summary="Delete all target statements from a mapping graph",

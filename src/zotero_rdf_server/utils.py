@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from urllib.parse import quote, urlparse
 import urllib.request
-from pyoxigraph import Store, Quad, NamedNode, Literal, RdfFormat, DefaultGraph, BlankNode
+from pyoxigraph import Store, Quad, NamedNode, Literal, RdfFormat, DefaultGraph, BlankNode, QueryResultsFormat, QuerySolutions, Triple, Variable
 from rapidfuzz import fuzz, process
 import re, json, requests, yaml, unicodedata, subprocess, importlib, sys, hashlib, tempfile
 from copy import deepcopy
@@ -10,7 +10,11 @@ from pathlib import Path
 from .logging_config import logger
 # from .config import *
 from uuid import uuid4, uuid5, UUID
-from typing import Any, Iterator
+from typing import Any, Iterator, Literal as TypingLiteral
+
+from collections.abc import Callable
+from html import escape
+from io import StringIO
 
 from .config import MAP_TYPE_HINT, MAP_ENTRY_TYPE, RDF_TYPE, LANG_MAP, PROV_TIMESTAMP, XSD_NS, MAP_LABEL, MAP_TARGET, MAP_REGEX, RDFS_LABEL, APP_USER
 
@@ -542,7 +546,6 @@ def load_text_like(
         return _fallback("unexpected error")
 
 
-        
 def ensure_mapping_literal(
     store: Store,
     subject: NamedNode,
@@ -1291,3 +1294,156 @@ def stable_int_id(value: str) -> int:
     ).digest()
 
     return int.from_bytes(digest, byteorder="big") & ((1 << 63) - 1)
+
+
+
+
+OutputFormat = TypingLiteral["json", "csv", "html"]
+Term = NamedNode | BlankNode | Literal | Triple
+GraphName = NamedNode | BlankNode | DefaultGraph
+
+
+def query_bindings(
+    store: Store,
+    query: str,
+    *,
+    result_format: OutputFormat = "json",
+    base_iri: str | None = None,
+    prefixes: dict[str, str] | None = None,
+    use_default_graph_as_union: bool = True,
+    default_graph: GraphName | list[GraphName] | None = None,
+    named_graphs: list[NamedNode | BlankNode] | None = None,
+    substitutions: dict[Variable, Term] | None = None,
+    custom_functions: dict[
+        NamedNode, Callable[..., Term | None]
+    ] | None = None,
+    custom_aggregate_functions: dict[
+        NamedNode, Callable[[], Any]
+    ] | None = None,
+) -> str:
+    """
+    Execute a SPARQL SELECT query and serialize its variable bindings.
+
+    Args:
+        store:
+            PyOxigraph store against which the query is executed.
+        query:
+            SPARQL SELECT query.
+        result_format:
+            Output format: ``json``, ``csv``, or ``html``.
+        base_iri:
+            Base IRI used to resolve relative IRIs.
+        prefixes:
+            Default prefix mappings available during query parsing.
+        use_default_graph_as_union:
+            Whether all graphs should be queried as the default graph.
+        default_graph:
+            Graph or graphs to use as the query's default graph.
+        named_graphs:
+            Named graphs available to ``GRAPH`` clauses.
+        substitutions:
+            Variable substitutions applied before query evaluation.
+        custom_functions:
+            Custom SPARQL functions.
+        custom_aggregate_functions:
+            Custom SPARQL aggregate functions.
+
+    Returns:
+        Serialized query bindings as a UTF-8 string.
+
+    Raises:
+        ValueError:
+            If ``result_format`` is unsupported.
+        TypeError:
+            If the query is not a SELECT query.
+        RuntimeError:
+            If PyOxigraph unexpectedly returns no serialized payload.
+        SyntaxError:
+            If the SPARQL query is invalid.
+        OSError:
+            If the store cannot be read.
+    """
+    normalized_format = result_format.casefold()
+
+    if normalized_format not in {"json", "csv", "html"}:
+        raise ValueError(
+            "result_format must be 'json', 'csv', or 'html'"
+        )
+    if not prefixes:
+        from .config import PREFIXES
+        prefixes = PREFIXES
+
+    result = store.query(
+        query,
+        base_iri=base_iri,
+        prefixes=prefixes,
+        use_default_graph_as_union=use_default_graph_as_union,
+        default_graph=default_graph,
+        named_graphs=named_graphs,
+        substitutions=substitutions,
+        custom_functions=custom_functions,
+        custom_aggregate_functions=custom_aggregate_functions,
+    )
+
+    if not isinstance(result, QuerySolutions):
+        raise TypeError(
+            "query_bindings only supports SELECT queries; "
+            f"received {type(result).__name__}"
+        )
+
+    if normalized_format == "json":
+        payload = result.serialize(format=QueryResultsFormat.JSON)
+
+        if payload is None:
+            raise RuntimeError(
+                "PyOxigraph returned no JSON serialization"
+            )
+
+        return payload.decode("utf-8")
+
+    if normalized_format == "csv":
+        payload = result.serialize(format=QueryResultsFormat.CSV)
+
+        if payload is None:
+            raise RuntimeError(
+                "PyOxigraph returned no CSV serialization"
+            )
+
+        return payload.decode("utf-8")
+
+    variables = result.variables
+    output = StringIO()
+
+    output.write(
+        '<table class="sparql-results">\n'
+        "  <thead>\n"
+        "    <tr>"
+    )
+
+    for variable in variables:
+        output.write(
+            f'<th scope="col">{escape(variable.value)}</th>'
+        )
+
+    output.write(
+        "</tr>\n"
+        "  </thead>\n"
+        "  <tbody>\n"
+    )
+
+    for solution in result:
+        output.write("    <tr>")
+
+        for variable in variables:
+            term = solution[variable]
+            value = "" if term is None else str(term)
+            output.write(f"<td>{escape(value)}</td>")
+
+        output.write("</tr>\n")
+
+    output.write(
+        "  </tbody>\n"
+        "</table>"
+    )
+
+    return output.getvalue()
