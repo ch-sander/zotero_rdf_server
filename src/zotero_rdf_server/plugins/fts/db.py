@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Dict, Iterator, Tuple, Any, Iterable, Callable, Optional
 from opensearchpy import OpenSearch
 from opensearchpy.helpers import streaming_bulk
+from opensearchpy.exceptions import NotFoundError
 from functools import lru_cache
 from pathlib import Path
 from collections import Counter
@@ -82,8 +83,13 @@ def ensure_aliases(client: OpenSearch, *, aliases_cfg: dict) -> None:
     for _, alias_def in aliases_cfg.items():
         actions.extend(alias_def.get("actions", []))
 
-    if actions:
+    if not actions:
+        return
+
+    try:
         client.indices.update_aliases(body={"actions": actions})
+    except NotFoundError as e:
+        logger.info("Skipping aliases: target index does not exist yet: %s", e)
 
 def ensure_index_from_schema(client: OpenSearch, *, index: str, index_def: dict) -> None:
     """

@@ -4,6 +4,7 @@ from typing import Literal, Any, Dict, Iterator, List, Optional, Union, Tuple
 from pathlib import Path
 import json, io, html, os
 from urllib.parse import quote
+from datetime import datetime, timezone, date
 from pydantic import BaseModel, Field
 from .helpers import plugin_logger, safe_doc_id
 logger=plugin_logger()
@@ -1473,7 +1474,7 @@ def build_aggregation(agg: AggregationParams) -> Optional[dict]:
 
     raise HTTPException(status_code=400, detail=f"Unsupported agg_mode: {agg.agg_mode}")
 
-from datetime import datetime, timezone, date
+
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -2113,6 +2114,346 @@ def mlt_by_text(
         header_md_extra=out_header.header_md,
         root_path=request.scope.get("root_path", "")
     )
+
+@open_router.get(
+    "/search/stats",
+    summary="Calculate statistics over numeric fields",
+    description=(
+        "Calculate count, min, max, avg and sum for a numeric field. "
+        "Optionally group by a keyword field. "
+        "When group_by is specified, composite aggregation is used so all "
+        "groups can be retrieved using the after cursor."
+    ),
+    tags=["Search"],
+)
+def search_stats(
+    request: Request,
+
+    index: Annotated[
+        Optional[str],
+        Query(
+            description=(
+                "Name of the OpenSearch index to query. "
+                "Default alias can be set in configuration."
+            ),
+        ),
+    ] = None,
+
+    field: Annotated[
+        str,
+        Query(
+            description=(
+                "Numeric field for statistics "
+                "(count, min, max, avg, sum), "
+                "e.g. text_length."
+            ),
+        ),
+    ] = "text_length",
+
+    group_by: Annotated[
+        Optional[str],
+        Query(
+            description=(
+                "Optional keyword field to group by, "
+                "e.g. meta.parent. "
+                "If omitted, statistics are calculated globally."
+            ),
+        ),
+    ] = None,
+
+    size: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=MAX_SIZE,
+            description=(
+                "Number of group buckets returned per request. "
+                "Only used when group_by is specified. "
+                "Does not limit the number of documents included "
+                "in the aggregation."
+            ),
+        ),
+    ] = MAX_SIZE,
+
+    after: Annotated[
+        Optional[str],
+        Query(
+            description=(
+                "Composite aggregation cursor returned by the "
+                "previous request. Only used with group_by."
+            ),
+        ),
+    ] = None,
+    format: OutputFormat = Depends(resolve_format),
+    filters: KeywordFilter = Depends(keyword_filter_params),
+    ingest_ts: IngestTsRangeFilter = Depends(
+        get_ingest_ts_range_filter
+    ),
+):
+    """
+    Calculate statistics over all matching documents.
+
+    Without group_by:
+
+        /search/stats?field=content_length
+
+    With grouping:
+
+        /search/stats
+            ?field=content_length
+            &group_by=parent_item
+            &size=1000
+
+    Next page:
+
+        /search/stats
+            ?field=content_length
+            &group_by=parent_item
+            &size=1000
+            &after=<cursor>
+
+    """
+
+    from .search import (
+        os_search,
+        apply_keyword_filter,
+        apply_ingest_ts_range_filter,
+    )
+
+    api_call = str(request.url)
+
+    # ------------------------------------------------------------------
+    # Base query
+    # ------------------------------------------------------------------
+
+    body: Dict[str, Any] = {
+        "size": 0,
+        "track_total_hits": True,
+        "query": {
+            "match_all": {}
+        },
+    }
+
+    # Reuse the same filters as the normal search endpoint.
+    apply_ingest_ts_range_filter(body, ingest_ts)
+    apply_keyword_filter(body, filters)
+
+    # ------------------------------------------------------------------
+    # Global statistics
+    #
+    # GET /search/stats?field=content_length
+    # ------------------------------------------------------------------
+
+    if not group_by:
+        if after is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="'after' can only be used together with 'group_by'.",
+            )
+
+        body["aggs"] = {
+            "stats": {
+                "stats": {
+                    "field": field
+                }
+            }
+        }
+
+    # ------------------------------------------------------------------
+    # Grouped statistics
+    #
+    # GET /search/stats
+    #     ?field=content_length
+    #     &group_by=parent_item
+    #
+    # Composite is deliberately used instead of terms so all buckets
+    # can be retrieved page by page.
+    # ------------------------------------------------------------------
+
+    else:
+        composite: Dict[str, Any] = {
+            "size": size,
+            "sources": [
+                {
+                    "group": {
+                        "terms": {
+                            "field": group_by
+                        }
+                    }
+                }
+            ],
+        }
+
+        if after is not None:
+            composite["after"] = {
+                "group": after
+            }
+
+        body["aggs"] = {
+            "groups": {
+                "composite": composite,
+                "aggs": {
+                    "stats": {
+                        "stats": {
+                            "field": field
+                        }
+                    }
+                },
+            }
+        }
+
+    # ------------------------------------------------------------------
+    # OpenSearch
+    # ------------------------------------------------------------------
+
+    try:
+        resp = os_search(
+            index=index,
+            body=body,
+            columns=None,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"OpenSearch stats error: {e}",
+        )
+
+    # ------------------------------------------------------------------
+    # Number of documents matched by query + filters
+    # ------------------------------------------------------------------
+
+    total = (
+        resp
+        .get("hits", {})
+        .get("total", {})
+    )
+
+    if isinstance(total, dict):
+        total_documents = total.get("value", 0)
+    else:
+        # Compatibility with older response formats.
+        total_documents = total or 0
+
+    # ------------------------------------------------------------------
+    # Global response
+    # ------------------------------------------------------------------
+
+    if not group_by:
+        stats = (
+            resp
+            .get("aggregations", {})
+            .get("stats", {})
+        )
+
+        return {
+            "field": field,
+            "total_documents": total_documents,
+            "results": {
+                "count": stats.get("count", 0),
+                "min": stats.get("min"),
+                "max": stats.get("max"),
+                "avg": stats.get("avg"),
+                "sum": stats.get("sum"),
+            },
+            "context": {
+                "api_call": api_call,
+                "query": body,
+            },
+        }
+
+    # ------------------------------------------------------------------
+    # Grouped response
+    # ------------------------------------------------------------------
+
+    groups = (
+        resp
+        .get("aggregations", {})
+        .get("groups", {})
+    )
+
+    buckets = groups.get("buckets", [])
+
+    results = []
+
+    for bucket in buckets:
+        stats = bucket.get("stats", {})
+
+        results.append({
+            group_by: (
+                bucket
+                .get("key", {})
+                .get("group")
+            ),
+
+            # In your OCR model:
+            # one OpenSearch document == one page.
+            #
+            # Therefore doc_count is the number of pages
+            # belonging to this parent_item.
+            "documents": bucket.get("doc_count", 0),
+
+            "count": stats.get("count", 0),
+            "min": stats.get("min"),
+            "max": stats.get("max"),
+            "avg": stats.get("avg"),
+            "sum": stats.get("sum"),
+        })
+
+    # ------------------------------------------------------------------
+    # Composite pagination cursor
+    # ------------------------------------------------------------------
+
+    after_key = groups.get("after_key")
+
+    next_after = None
+
+    if after_key is not None:
+        next_after = after_key.get("group")
+
+    if format == OutputFormat.csv:
+        import csv
+        import io
+
+        output = io.StringIO()
+
+        fieldnames = [
+            group_by,
+            "documents",
+            "count",
+            "min",
+            "max",
+            "avg",
+            "sum",
+        ]
+
+        writer = csv.DictWriter(
+            output,
+            fieldnames=fieldnames,
+            extrasaction="ignore",
+        )
+
+        writer.writeheader()
+        writer.writerows(results)
+
+        return Response(
+            content=output.getvalue(),
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": 'attachment; filename="stats.csv"'
+            },
+        )
+
+    return {
+        "field": field,
+        "group_by": group_by,
+        "total_documents": total_documents,
+        "results": results,
+        "after": next_after,
+        "context": {
+            "api_call": api_call,
+            "query": body,
+        },
+    }
 
 # VIEWER
 from fastapi import Form

@@ -102,6 +102,10 @@ def make_page_rdf_data(
                 datatype=NamedNode(f"{XSD_NS}int"),
             ),
             "rdf_text": safeLiteral(data["text"]),
+            "rdf_text_len": Literal(
+                            str(len(data["text"])),
+                            datatype=NamedNode(f"{XSD_NS}int"),
+                        ),
         }
     )
 

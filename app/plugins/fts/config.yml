@@ -562,6 +562,8 @@ open-search:
             concepts_flat:
               type: object
               dynamic: true
+            text_length:
+              type: integer
 
           dynamic_templates:
             - meta_as_keyword:
@@ -636,6 +638,12 @@ open-search:
             target_field: "text"
             ignore_missing: true
             if: "ctx.text == null"
+        - script:
+            lang: painless
+            source: |
+              if (ctx.text != null) {
+                ctx.text_length = ctx.text.length();
+              }
 
   index_templates:
   
