@@ -2524,14 +2524,29 @@ def view_root(request: Request):
     description="Indicate root directories and file extensions in configuration under 'viewer'.",
     tags=["Viewer"],
 )
-def view_page(request: Request, os_doc_id: str):
+def view_page(
+    request: Request,
+    os_doc_id: str,
+    static_mode: bool | None = None,
+):
     from .viewer import MODE
-    if MODE == "dynamic":
+
+    render_mode = (
+        MODE
+        if static_mode is None
+        else "static" if static_mode else "dynamic"
+    )
+
+    if render_mode == "dynamic":
         return build_view_response(request, os_doc_id, editable=False)
-    elif MODE == "static":
+
+    if render_mode == "static":
         return build_static_view_redirect(request, os_doc_id)
-    else:
-        return None
+
+    raise HTTPException(
+        status_code=500,
+        detail=f"Invalid viewer mode: {render_mode!r}",
+    )
 
 @router.get("/edit-view/{os_doc_id:path}",
             name = "edit-view",
@@ -2590,10 +2605,26 @@ def build_static_view_redirect(
     )
 
     if not file_path.is_file():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Static viewer document not found: {filename}",
-        )
+        matches = [
+            path
+            for path in STATIC_VIEWER_ROOT.glob("*.html")
+            if path.is_file()
+            and path.name.endswith(f"{doc_key}.html")
+        ]
+
+        if len(matches) == 1:
+            file_path = matches[0]
+            filename = file_path.name
+        elif len(matches) > 1:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Ambiguous document key: {doc_key}",
+            )
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Static viewer document not found: {filename}",
+            )
 
     html_url = request.url_for(
         "static-viewer",
@@ -2630,8 +2661,6 @@ def build_view_response(
 
     root_path = request.scope.get("root_path", "")
 
-
-
     if not raw_os_doc_id:
         view_root_url = url_for_path("view-root")
         view_base_url = url_for_path("view", os_doc_id="__ID__").removesuffix("/__ID__")
@@ -2657,13 +2686,46 @@ def build_view_response(
         )
         logger.info(f"Building: {view_root_url} for {raw_os_doc_id}")
         return HTMLResponse(html)
-
+    
     doc_key, page = split_doc_id(raw_os_doc_id)
-    doc_id_only = raw_os_doc_id.rsplit(":", 1)[0]
+
+    if page is None:
+        doc_id_only = raw_os_doc_id
+    else:
+        doc_id_only = raw_os_doc_id.rsplit(":", 1)[0]
+
+    if ":" not in doc_id_only:
+        from .viewer import text_root
+
+        matches = [
+            path.name
+            for path in text_root.iterdir()
+            if path.is_dir()
+            and path.name.endswith(f"{doc_key}")
+        ]
+
+        if len(matches) == 1:
+            doc_key = matches[0]
+            doc_id_only = doc_key
+
+        elif len(matches) > 1:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Ambiguous document key: {doc_id_only}",
+            )
+        
+    pages = list_pages(doc_key)
+
+    if page is None:
+        if not pages:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No pages found for document {doc_id_only}",
+            )
+        page = pages[0]
 
     img_path = image_file(doc_key, page)
     txt_path = text_file(doc_key, page)
-    pages = list_pages(doc_key)
 
     if not pages and not img_path.exists() and not txt_path.exists():
         raise HTTPException(status_code=404, detail=f"Image {img_path} and text {txt_path} not found")
@@ -2681,6 +2743,7 @@ def build_view_response(
         logger.debug(f"image_rel_path: {image_rel_path}")
         logger.debug(f"image_url: {image_url}")
 
+    current_os_doc_id = f"{doc_id_only}:{page}"
 
     if txt_path.exists():
         try:
@@ -2700,13 +2763,13 @@ def build_view_response(
 
             result = client.get(
                 index=DEFAULT_ALIAS,
-                id=raw_os_doc_id,
+                id=current_os_doc_id,
             )
 
             text = result["_source"].get("text", "[no text in index]")
 
         except Exception as exc:
-            logger.warning(f"Could not load text from OpenSearch for {raw_os_doc_id}: {exc}")
+            logger.warning(f"Could not load text from OpenSearch for {current_os_doc_id}: {exc}")
             text = "[no text on this page]"
 
     prev_page = None
@@ -2724,7 +2787,7 @@ def build_view_response(
     ocr_url = url_for_path("ocr-view", os_doc_id=f"{doc_id_only}:{page}")
     view_base_url = url_for_path("view", os_doc_id="__ID__").removesuffix("/__ID__")
 
-    logger.info(f"Building: {view_url} for {raw_os_doc_id}")
+    logger.info(f"Building: {view_url} for {current_os_doc_id}")
 
     html = render_page(
         os_doc_id=doc_id_only,
@@ -2734,7 +2797,7 @@ def build_view_response(
         text=text,
         prev_page=prev_page,
         next_page=next_page,
-        discover_url=discover_doc_url(raw_os_doc_id),
+        discover_url=discover_doc_url(current_os_doc_id),
         editable=editable,
         save_url=save_url if editable else None,
         page_url_base=view_base_url,
