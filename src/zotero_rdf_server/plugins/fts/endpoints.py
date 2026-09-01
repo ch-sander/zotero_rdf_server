@@ -2455,7 +2455,16 @@ def search_stats(
         },
     }
 
+# MONITOR
+
+try:
+    from .monitor.endpoints import router as ocr_meta_router
+    router.include_router(ocr_meta_router, prefix="/monitor")
+except Exception as e:
+    logger.error(f"Failed to import Monitor: {e}")
+
 # VIEWER
+
 from fastapi import Form
 
 @open_router.get(
