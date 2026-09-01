@@ -1412,21 +1412,6 @@ zotsn:collection_145 a sh:NodeShape ;
         zotsn:property_1967 ;
     sh:targetClass skos:Collection .
 
-zotsn:digitaldocument_2289 a sh:NodeShape ;
-    rdfs:label "DigitalDocument" ;
-    volipi:iconName "fa-solid fa-file-word" ;
-    volipi:message "Tooltip for DigitalDocument" ;
-    sh:name "DigitalDocument" ;
-    sh:nodeKind sh:IRI ;
-    sh:property zotsn:property_1867,
-        zotsn:property_2284,
-        zotsn:property_2285,
-        zotsn:property_2287,
-        zotsn:property_2288,
-        zotsn:property_2292,
-        zotsn:property_930 ;
-    sh:targetClass schema:DigitalDocument .
-
 zotsn:entry_1961 a sh:NodeShape ;
     rdfs:label "Mapping Entry" ;
     volipi:iconName "fa-solid fa-anchor" ;
@@ -1958,17 +1943,20 @@ zotsn:conceptscheme_146 a sh:NodeShape ;
         zotsn:property_1967 ;
     sh:targetClass skos:ConceptScheme .
 
-zotsn:creativework_2290 a sh:NodeShape ;
-    rdfs:label "CreativeWork" ;
-    volipi:iconName "fa-solid fa-file-lines" ;
-    volipi:message "Tooltip for CreativeWork" ;
-    sh:name "CreativeWork" ;
+zotsn:digitaldocument_2289 a sh:NodeShape ;
+    rdfs:label "DigitalDocument" ;
+    volipi:iconName "fa-solid fa-file-word" ;
+    volipi:message "Tooltip for DigitalDocument" ;
+    sh:name "DigitalDocument" ;
     sh:nodeKind sh:IRI ;
     sh:property zotsn:property_1867,
         zotsn:property_2284,
-        zotsn:property_2286,
+        zotsn:property_2285,
+        zotsn:property_2287,
+        zotsn:property_2288,
+        zotsn:property_2292,
         zotsn:property_930 ;
-    sh:targetClass schema:CreativeWork .
+    sh:targetClass schema:DigitalDocument .
 
 zotsn:library_1500 a sh:NodeShape ;
     rdfs:label "Library" ;
@@ -2693,6 +2681,18 @@ zotsn:wktliteral_1054 a sh:NodeShape ;
     sh:nodeKind sh:Literal ;
     sh:targetClass geosparql:wktLiteral .
 
+zotsn:creativework_2290 a sh:NodeShape ;
+    rdfs:label "CreativeWork" ;
+    volipi:iconName "fa-solid fa-file-lines" ;
+    volipi:message "Tooltip for CreativeWork" ;
+    sh:name "CreativeWork" ;
+    sh:nodeKind sh:IRI ;
+    sh:property zotsn:property_1867,
+        zotsn:property_2284,
+        zotsn:property_2286,
+        zotsn:property_930 ;
+    sh:targetClass schema:CreativeWork .
+
 zotsn:creatorrole_1499 a sh:NodeShape ;
     rdfs:label "Creator Role" ;
     volipi:iconName "fa-solid fa-user" ;
@@ -3116,29 +3116,6 @@ zotsn:property_2160 a sh:PropertyShape ;
     sh:nodeKind sh:IRI ;
     sh:path zot:type .
 
-zotsn:concept_134 a sh:NodeShape ;
-    rdfs:label "Concept" ;
-    volipi:iconName "fa-solid fa-question" ;
-    volipi:message "Tooltip for Concept" ;
-    sh:name "Concept" ;
-    sh:nodeKind sh:IRI ;
-    sh:property zotsn:property_1208,
-        zotsn:property_1209,
-        zotsn:property_1210,
-        zotsn:property_1211,
-        zotsn:property_1213,
-        zotsn:property_148,
-        zotsn:property_149,
-        zotsn:property_150,
-        zotsn:property_1738,
-        zotsn:property_1871,
-        zotsn:property_1899,
-        zotsn:property_1963,
-        zotsn:property_1966,
-        zotsn:property_1967,
-        zotsn:property_2284 ;
-    sh:targetClass skos:Concept .
-
 zotsn:property_1673 a sh:PropertyShape ;
     rdfs:label "seriesNumber" ;
     volipi:message "Tooltip for seriesNumber" ;
@@ -3205,6 +3182,29 @@ zotsn:tag_1502 a sh:NodeShape ;
         zotsn:property_2067,
         zotsn:property_2284 ;
     sh:targetClass zot:Tag .
+
+zotsn:concept_134 a sh:NodeShape ;
+    rdfs:label "Concept" ;
+    volipi:iconName "fa-solid fa-question" ;
+    volipi:message "Tooltip for Concept" ;
+    sh:name "Concept" ;
+    sh:nodeKind sh:IRI ;
+    sh:property zotsn:property_1208,
+        zotsn:property_1209,
+        zotsn:property_1210,
+        zotsn:property_1211,
+        zotsn:property_1213,
+        zotsn:property_148,
+        zotsn:property_149,
+        zotsn:property_150,
+        zotsn:property_1738,
+        zotsn:property_1871,
+        zotsn:property_1899,
+        zotsn:property_1963,
+        zotsn:property_1966,
+        zotsn:property_1967,
+        zotsn:property_2284 ;
+    sh:targetClass skos:Concept .
 
 zotsn:place_1772 a sh:NodeShape ;
     rdfs:label "Place" ;
@@ -3532,7 +3532,8 @@ zotsn:property_1803 a sh:PropertyShape ;
     sh:description "A propterty path for transitive and inversive tracing of named nodes within and outside the triple store" ;
     sh:name "identifies as" ;
     sh:nodeKind sh:IRI ;
-    sh:or ( [ sh:class zot:Tag ;
+    sh:or ( [ sh:class skos:Concept ;
+                sh:node zotsn:concept_134 ] [ sh:class zot:Tag ;
                 sh:node zotsn:tag_1502 ] [ sh:class zotsn:Link ;
                 sh:node zotsn:link_1728 ] [ sh:class zot:Agent ;
                 sh:node zotsn:agent_1742 ] [ sh:class semz:Concept ;
@@ -3540,7 +3541,9 @@ zotsn:property_1803 a sh:PropertyShape ;
                 sh:node zotsn:entity_1762 ] [ sh:class semz:Reference ;
                 sh:node zotsn:reference_1763 ] [ sh:class zot:Place ;
                 sh:node zotsn:place_1772 ] [ sh:class zot:Publisher ;
-                sh:node zotsn:publisher_1773 ] ) ;
+                sh:node zotsn:publisher_1773 ] [ sh:class schema:DigitalDocument ;
+                sh:node zotsn:digitaldocument_2289 ] [ sh:class schema:CreativeWork ;
+                sh:node zotsn:creativework_2290 ] ) ;
     sh:path [ sh:zeroOrMorePath [ sh:alternativePath ( owl:sameAs [ sh:inversePath owl:sameAs ] ) ] ] .
 
 zotsn:property_1868 a sh:PropertyShape ;
