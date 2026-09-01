@@ -128,7 +128,7 @@ def add_viewer_url(hits: list, request: Request = None) -> list:
             src['viewer'] = app.url_path_for("view", os_doc_id=_id) if not request else str(request.url_for("view", os_doc_id=_id))
     return hits
 
-def split_doc_id(os_doc_id: str) -> tuple[str, str]:
+def split_doc_id_deprecated(os_doc_id: str) -> tuple[str, str]:
     """
     Input format: <doc_id>:<page>
     Only the last colon separates the page.
@@ -156,6 +156,32 @@ def split_doc_id(os_doc_id: str) -> tuple[str, str]:
 
     return doc_key, page_digits.zfill(4)
 
+def split_doc_id(os_doc_id: str) -> tuple[str, str | None]:
+    """
+    Input formats:
+      <doc_id>
+      <doc_id>:<page>
+    """
+    raw = (os_doc_id or "").strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Missing document ID")
+
+    doc_key_raw = raw
+    page_digits = None
+
+    if ":" in raw:
+        possible_doc_key, possible_page = raw.rsplit(":", 1)
+
+        if possible_page.isdigit():
+            doc_key_raw = possible_doc_key
+            page_digits = possible_page.zfill(4)
+
+    doc_key = safe_doc_id(doc_key_raw)
+
+    if not doc_key:
+        raise HTTPException(status_code=400, detail="Invalid document key")
+
+    return doc_key, page_digits
 
 def image_file(doc_key: str, page: str) -> Path:
     return image_root / doc_key / f"{page}.{IMAGE_EXT}"

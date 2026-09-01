@@ -2590,11 +2590,11 @@ def build_static_view_redirect(
         "static-viewer",
         path=filename,
     )
+    url = str(html_url)
+    if page_digits is not None:
+        url += f"#page={page_digits}"
 
-    return RedirectResponse(
-        url=f"{html_url}#page={page_digits}",
-        status_code=302,
-    )
+    return RedirectResponse(url=url, status_code=302)
 
 def build_view_response(
     request: Request,
