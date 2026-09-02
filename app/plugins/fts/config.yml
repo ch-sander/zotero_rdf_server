@@ -769,3 +769,5 @@ open-search:
     # - create_indices:
     #     - scigma-main-corpus-000001
     - put_aliases: true
+
+# End
