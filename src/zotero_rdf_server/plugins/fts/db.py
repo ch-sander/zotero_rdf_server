@@ -51,6 +51,17 @@ def ensure_component_template(client: OpenSearch, *, name: str, body: dict) -> N
     PUT _component_template/<name>
     body should be the component template body (e.g. {"template": {...}, ...})
     """
+    template = body.get("template")
+
+    if not isinstance(template, dict):
+        logger.warning(f"{name}: missing template object")
+
+    if "settings" not in template:
+        logger.warning(f"{name}: missing template.settings")
+
+    if "mappings" not in template:
+        logger.warning(f"{name}: missing template.mappings")
+    
     # opensearchpy has indices.put_component_template in newer versions; fallback to perform_request for compatibility
     logger.debug("putting component_template")
     try:
