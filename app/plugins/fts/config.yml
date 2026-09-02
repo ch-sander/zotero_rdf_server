@@ -399,11 +399,13 @@ open-search:
                   - "ae=>e"                  
               ocr_dehyphenate_linebreak:
                 type: pattern_replace
-                pattern: "(?<=\\p{L})-\\s*\\n\\s*(?=\\p{L})"
+                # pattern: "(?<=\\p{L})-\\s*\\n\\s*(?=\\p{L})"
+                pattern: "(?<=\\p{L})-[ \\t]*\\r?\\n[ \\t]*(?=\\p{L})"
                 replacement: ""
               ocr_dehyphenate_linebreak_not:
                 type: pattern_replace
-                pattern: "(?<=\\p{L})¬\\s*\\n\\s*(?=\\p{L})"
+                # pattern: "(?<=\\p{L})¬\\s*\\n\\s*(?=\\p{L})"
+                pattern: "(?<=\\p{L})¬\\s*(?=\\p{L})"
                 replacement: ""
               ocr_newlines_to_space:
                 type: pattern_replace
@@ -451,8 +453,8 @@ open-search:
                 char_filter:
                   - ocr_common_map
                   - ocr_dehyphenate_linebreak
-                  - ocr_newlines_to_space
                   - ocr_dehyphenate_linebreak_not
+                  - ocr_newlines_to_space                  
                   - ocr_punctuation_soften
                 tokenizer: standard
                 filter:
@@ -483,8 +485,8 @@ open-search:
                 char_filter:
                   - ocr_common_map
                   - ocr_dehyphenate_linebreak
-                  - ocr_newlines_to_space
                   - ocr_dehyphenate_linebreak_not
+                  - ocr_newlines_to_space
                   - ocr_punctuation_soften
                 tokenizer: standard
                 filter: # No stop words?
@@ -625,6 +627,11 @@ open-search:
         # - gsub:
         #     field: "meta.parent_tags"
         #     pattern: "^\\*"
+        #     replacement: ""
+        #     ignore_missing: true
+        # - gsub:
+        #     field: "meta.parent_tags"
+        #     pattern: "^[^\\p{L}\\p{N}]+"
         #     replacement: ""
         #     ignore_missing: true
 
