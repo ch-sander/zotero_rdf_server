@@ -3544,7 +3544,7 @@ zotsn:property_1803 a sh:PropertyShape ;
                 sh:node zotsn:publisher_1773 ] [ sh:class schema:DigitalDocument ;
                 sh:node zotsn:digitaldocument_2289 ] [ sh:class schema:CreativeWork ;
                 sh:node zotsn:creativework_2290 ] ) ;
-    sh:path [ sh:zeroOrMorePath [ sh:alternativePath ( owl:sameAs [ sh:inversePath owl:sameAs ] ) ] ] .
+    sh:path [ sh:zeroOrMorePath [ sh:alternativePath ( semz:sameAs owl:sameAs [ sh:inversePath owl:sameAs ] ) ] ] .
 
 zotsn:property_1868 a sh:PropertyShape ;
     rdfs:label "belongs to Item" ;
