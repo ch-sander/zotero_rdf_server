@@ -101,6 +101,7 @@
             "@type": "@id"
         },
         "sameAs": {
+            "@id": "owl:sameAs",
             "@type": "@id"
         },
         "doc": {
