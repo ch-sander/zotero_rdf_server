@@ -110,7 +110,7 @@ WHERE {
   }
 
   OPTIONAL {
-    ?raw_parent zot:tags ?tag .
+    ?raw_parent (zot:tags|((zot:creators/zot:hasCreator)|zot:place|zot:publisher)/zot:tags) ?tag .
 
     ?tag
       rdf:type zot:Tag ;
