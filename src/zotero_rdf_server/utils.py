@@ -38,7 +38,27 @@ def canonicalize_label(value: str) -> str:
 def canonicalize_types(my_types) -> tuple[str, ...]:
     return tuple(sorted(str(type_) for type_ in my_types))
 
+def stable_role_uuid(
+    domain_node: NamedNode,
+    creator_node: NamedNode,
+    creator_type: str | None,
+    ROLE_UUID: UUID,
+) -> str:
+    identity = {
+        "version": 1,
+        "domain": domain_node.value,
+        "creator": creator_node.value,
+        "creatorType": (creator_type or "").strip().casefold(),
+    }
 
+    canonical_identity = json.dumps(
+        identity,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+    return str(uuid5(ROLE_UUID, canonical_identity))
 
 def stable_entity_uuid(item: str, my_types, ENTITY_UUID:UUID) -> str:
     identity = {

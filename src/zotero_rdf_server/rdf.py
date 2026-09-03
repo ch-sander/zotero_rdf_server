@@ -731,7 +731,56 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                     role_spec = field_map.get("role_add", {})
 
                     creator_type = object.get("creatorType")
-                    
+
+                    def on_create_creator(creator_node, _label):
+                        creator_data = {
+                            key: val
+                            for key, val in object.items()
+                            if val and key != "creatorType"
+                        }
+
+                        add_rdf_from_dict(
+                            store=store,
+                            subject=creator_node,
+                            data=creator_data,
+                            ns_prefix=ns_prefix,
+                            base_uri=knowledge_base_graph,
+                            map=map,
+                            knowledge_base_graph=knowledge_base_graph,
+                            mapping_base_graph=mapping_base_graph,
+                            language=language
+                        )
+
+                    (nodes, entries) = make_entity(
+                        label,
+                        my_types=type_nodes,
+                        specific_threshold=fuzzy_threshold_specific,
+                        on_create=on_create_creator,
+                        return_entries=True,
+                        type_source=type_source
+                    )
+
+                    creator_node = nodes[0]
+                    entry = entries[0]
+                    ROLE_UUID = uuid5(NAMESPACE_URL, base_uri)
+                    role_uuid = stable_role_uuid(
+                        domain_node=subject,
+                        creator_node=creator_node,
+                        creator_type=creator_type,
+                        ROLE_UUID=ROLE_UUID,
+                    )
+                    role_node = safeNamedNode(f"{base_uri}/{role_uuid}")
+
+                    apply_rdf_types(
+                        store,
+                        role_node,
+                        object,
+                        role_types,
+                        "creatorRole",
+                        base_uri,
+                        ns_prefix
+                    )
+
                     if creator_type:
                         creator_type_objects = field_map.get("creator_type_objects", ["_creatorType"])
                         creator_type_objects = creator_type_objects if isinstance(creator_type_objects, list) else [creator_type_objects]
@@ -773,37 +822,6 @@ def add_rdf_from_dict(store: Store, subject: NamedNode | BlankNode, data: dict, 
                                     graph_name=GRAPH_URI
                                 ))
                                 
-                    def on_create_creator(creator_node, _label):
-                        creator_data = {
-                            key: val
-                            for key, val in object.items()
-                            if val and key != "creatorType"
-                        }
-
-                        add_rdf_from_dict(
-                            store=store,
-                            subject=creator_node,
-                            data=creator_data,
-                            ns_prefix=ns_prefix,
-                            base_uri=knowledge_base_graph,
-                            map=map,
-                            knowledge_base_graph=knowledge_base_graph,
-                            mapping_base_graph=mapping_base_graph,
-                            language=language
-                        )
-
-                    (nodes, entries) = make_entity(
-                        label,
-                        my_types=type_nodes,
-                        specific_threshold=fuzzy_threshold_specific,
-                        on_create=on_create_creator,
-                        return_entries=True,
-                        type_source=type_source
-                    )
-
-                    creator_node = nodes[0]
-                    entry = entries[0]
-
                     ln, fn = object.get("lastName"), object.get("firstName")
                     if ln or fn:
                         creator_label = f"{fn} {ln}".strip()
