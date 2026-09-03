@@ -1475,7 +1475,6 @@ def build_aggregation(agg: AggregationParams) -> Optional[dict]:
     raise HTTPException(status_code=400, detail=f"Unsupported agg_mode: {agg.agg_mode}")
 
 
-
 def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
