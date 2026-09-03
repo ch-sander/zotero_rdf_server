@@ -1411,18 +1411,30 @@ def stream_download_to_tempfile(
     retries: int = 3,
     backoff: float = 1.5,
     chunk_size: int = 1024 * 1024,
+    output_dir: str | Path | None = None,
+    filename: str | None = None,
 ) -> str:
     logger.info(f"Downloading {url}")
+
+    destination = None
+    if output_dir is not None:
+        destination_dir = Path(output_dir)
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        destination = destination_dir / (filename or f"{safe_doc_id(url)}{suffix}")
 
     last_exc = None
     for attempt in range(retries + 1):
         tmp_path = None
         try:
-            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            with tempfile.NamedTemporaryFile(
+                suffix=".part" if destination is not None else suffix,
+                dir=destination.parent if destination is not None else None,
+                delete=False,
+            ) as tmp:
                 tmp_path = tmp.name
             headers = {
                 **APP_USER,
-                "Accept": "application/pdf,application/octet-stream,*/*",
+                "Accept": "*/*",
             }
             headers.setdefault("Referer", origin_referer(url))
             with requests.get(url, stream=True, timeout=timeout, headers=headers) as r:
@@ -1432,6 +1444,10 @@ def stream_download_to_tempfile(
                         if chunk:
                             f.write(chunk)
 
+            if destination is not None:
+                os.replace(tmp_path, destination)
+                logger.info(f"Stored remote input: {destination}")
+                return str(destination)
             return tmp_path
 
         except Exception as e:
@@ -1530,14 +1546,16 @@ def iter_pages(
     skip: bool = False,
     skip_pages: Optional[set[int]] = None,
     local_in: str | None | Path = None,
+    persist_remote_input: bool = False,
+    reuse_local_input: bool = True,
     load_images: bool = True,
     reverse: bool = False, # currently only for IIIF, PDF
 ) -> Iterator[PageItem]:
     if not start_page or int(start_page)<=0:
         start_page = 1
 
-    if local_in:
-        matches = list(Path(local_in).glob(f"{doc_id}.*"))
+    if local_in and reuse_local_input:
+        matches = sorted(Path(local_in).glob(f"{doc_id}.*"))
         
         if matches:
             file_in = matches[0]
@@ -1554,6 +1572,29 @@ def iter_pages(
         kind = detect_file_kind(src_path)
     else:
         kind = detect_url_kind(input, timeout=timeout, request_headers=APP_USER)
+
+        if local_in and persist_remote_input:
+            suffix_by_kind = {
+                "pdf": ".pdf",
+                "iiif": ".json",
+                "json": ".json",
+                "csv": ".csv",
+                "html": ".html",
+                "xml": ".xml",
+                "text": ".txt",
+            }
+            suffix = suffix_by_kind.get(kind, Path(urlparse(input).path).suffix)
+            input_id = doc_id if doc_id and doc_id != "n/a" else input
+            safe_name = safe_doc_id(input_id)
+            filename = safe_name if suffix and safe_name.lower().endswith(suffix.lower()) else f"{safe_name}{suffix}"
+            src_path = Path(stream_download_to_tempfile(
+                input,
+                suffix=suffix,
+                timeout=timeout,
+                output_dir=local_in,
+                filename=filename,
+            ))
+            src_kind = "file"
 
     def _abort_log(status):
         logger.error(f"**********************\n\n{doc_id}: Aborting IIIF manifest after repeated HTTP {status}")
@@ -2118,6 +2159,8 @@ def kraken_image_to_text(
     binarize: bool = False,
     ink_ratio_range: list | None = None,  # [0, 1]
     seg_blur_radius: float | None = None,
+    hocr_path: str | Path | None = None,
+    image_name: str | None = None,
 ) -> str:
     try:
         if ink_ratio_range:
@@ -2185,8 +2228,40 @@ def kraken_image_to_text(
             net = models.load_any(model_path)
             _KRAKEN_NET[net_key] = net
 
-        preds = rpred.rpred(network=net, im=work, bounds=bounds)
+        preds = list(rpred.rpred(network=net, im=work, bounds=bounds))
         ocr_page = "\n".join(p.prediction for p in preds)
+
+        if hocr_path is not None:
+            try:
+                import dataclasses
+                import inspect
+                from kraken import serialization
+
+                serialize_params = inspect.signature(serialization.serialize).parameters
+                if "results" in serialize_params:
+                    replace_kwargs = {"lines": preds}
+                    if image_name is not None and hasattr(bounds, "imagename"):
+                        replace_kwargs["imagename"] = image_name
+                    results = dataclasses.replace(bounds, **replace_kwargs)
+                    hocr = serialization.serialize(
+                        results=results,
+                        image_size=im.size,
+                        template="hocr",
+                    )
+                else:
+                    hocr = serialization.serialize(
+                        preds,
+                        image_name=image_name,
+                        image_size=im.size,
+                        template="hocr",
+                    )
+
+                hocr_file = Path(hocr_path)
+                hocr_file.parent.mkdir(parents=True, exist_ok=True)
+                hocr_file.write_text(hocr, encoding="utf-8")
+                logger.info(f"Stored hOCR file: {hocr_file}")
+            except Exception:
+                logger.exception(f"Failed to store hOCR file: {hocr_path}")
 
         logger.debug(ocr_page)
         return ocr_page
@@ -2208,6 +2283,7 @@ def page_to_text(
     tesseract_lang: str | None = None,
     tesseract_config: str | None = None,
     seg_blur_radius: float | None = None,
+    hocr_path: str | Path | None = None,
 ) -> str:
     if item.kind == "text":
         return item.data or ""
@@ -2235,7 +2311,9 @@ def page_to_text(
             model_name=model_name,
             segmenter=segmenter,
             binarize=binarize,
-            seg_blur_radius=seg_blur_radius
+            seg_blur_radius=seg_blur_radius,
+            hocr_path=hocr_path,
+            image_name=item.source,
         )
       
     elif framework == "transformer":
@@ -2312,9 +2390,11 @@ def iter_text_pages(
 
     img_out: Optional[str] = cfg.get("img_out", "images")
     txt_out: Optional[str] = cfg.get("txt_out", "texts")
+    hocr_out: Optional[str] = cfg.get("hocr_out")
     meta_out = cfg.get("meta_out")
     img_ext: str = cfg.get("img_ext", "jpg")
     txt_ext: str = cfg.get("txt_ext", "txt")
+    hocr_ext: str = cfg.get("hocr_ext", "hocr")
 
     save_text: str = cfg.get("save_text", "skip")  # "skip" | "overwrite" | "active"
     save_image: str = cfg.get("save_image", "skip")  # "skip" | "overwrite" | "active"
@@ -2378,26 +2458,34 @@ def iter_text_pages(
             except Exception as e:
                 logger.error(f"{_doc_id}: Failed to store {meta_file}: {e}")
     
-    local_in = text_image_file_kwargs.get('local_in')
-    compile_out = text_image_file_kwargs.get('compile_out')
+    local_in = cfg.get('local_in')
+    compile_out = cfg.get('compile_out')
+    persist_remote_input = bool(cfg.get('persist_remote_input', False))
+    reuse_local_input = bool(cfg.get('reuse_local_input', True))
 
 
     if local_in:
         local_in = Path(local_in).resolve() # _resolve_out(local_in, None) # TODO accepts files outside EXPORT_DIRECTORY
-        matches = list((local_in).glob(f"{_doc_id}.*"))
+        matches = sorted(local_in.glob(f"{_doc_id}.*")) if reuse_local_input else []
         
         if matches:
             file_in = matches[0]
             logger.warning(f"Using local {file_in} instead of remote {input}")
             input = file_in
             # iter_kwargs['local_in'] = _resolve_out(local_in, None)
-        else:
+        elif reuse_local_input:
             logger.info(f"No local file found for {_doc_id} in {local_in}. Using {input}")
             for p in Path(local_in).glob("*"):
                 logger.debug(f"found {p}")
+        else:
+            logger.info(f"Ignoring existing local input for {_doc_id}; using {input}")
+        iter_kwargs['local_in'] = local_in
+        iter_kwargs['persist_remote_input'] = persist_remote_input
+        iter_kwargs['reuse_local_input'] = reuse_local_input
 
     img_dir = _resolve_out(img_out)
     txt_dir = _resolve_out(txt_out)
+    hocr_dir = _resolve_out(hocr_out)
 
         # CONFIG EXAMPLE
 
@@ -2637,6 +2725,9 @@ def iter_text_pages(
 
     def _image_path(page_no: int) -> Optional[Path]:
         return None if img_dir is None else (img_dir / f"{page_no:04d}.{img_ext}") 
+
+    def _hocr_path(page_no: int) -> Optional[Path]:
+        return None if hocr_dir is None else (hocr_dir / f"{page_no:04d}.{hocr_ext}")
     
     def _parse_page_no(path: Path) -> Optional[int]:
         try:
@@ -2892,10 +2983,12 @@ def iter_text_pages(
                         with Image.open(img_path) as im:
                             pil = im.copy()
                         item = PageItem(page_no, "image", pil, source=f"cache-image:{img_path}",total=total) 
+                        ocr_kwargs = dict(page_to_text_kwargs)
+                        ocr_kwargs.setdefault("hocr_path", _hocr_path(page_no))
                         txt = page_to_text(
                             item,
                             framework=framework,
-                            **page_to_text_kwargs
+                            **ocr_kwargs
                         )
                     except Exception as e:
                         logger.error(f"{_doc_id}: Failed to load cached image for page {page_no} from {img_path}: {e}")
@@ -3033,10 +3126,12 @@ def iter_text_pages(
                 source = "source"
             else:                
                 try:
+                    ocr_kwargs = dict(page_to_text_kwargs)
+                    ocr_kwargs.setdefault("hocr_path", _hocr_path(page_no))
                     txt = page_to_text(
                         item,
                         framework=framework,
-                        **page_to_text_kwargs
+                        **ocr_kwargs
                     )
                 except Exception as e:
                     logger.error(f"{_doc_id}: iter_text_pages error on page {page_no}: {e}")
