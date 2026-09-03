@@ -566,7 +566,11 @@ open-search:
               dynamic: true
             text_length:
               type: integer
-
+            significant_terms:
+              type: keyword
+            frequent_terms:
+              type: keyword
+              
           dynamic_templates:
             - meta_as_keyword:
                 path_match: "meta.*"
