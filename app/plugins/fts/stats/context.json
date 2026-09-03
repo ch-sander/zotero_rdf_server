@@ -1,0 +1,50 @@
+{
+  "@context": {
+    "stats": "https://data.scigma.de/vocab/stats/",
+    "prov": "http://www.w3.org/ns/prov#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+
+    "TermStatistics": "stats:TermStatistics",
+
+    "item": {
+      "@id": "prov:wasDerivedFrom",
+      "@type": "@id"
+    },
+    "generatedAt": {
+      "@id": "prov:generatedAtTime",
+      "@type": "xsd:dateTime"
+    },
+
+    "docId": "stats:docId",
+    "index": "stats:index",
+    "statistics": "stats:statistics",
+
+    "significantTokens": {
+      "@id": "stats:significantToken",
+      "@container": "@set"
+    },
+    "frequentTokens": {
+      "@id": "stats:frequentToken",
+      "@container": "@set"
+    },
+
+    "key": "stats:term",
+    "doc_count": {
+      "@id": "stats:documentCount",
+      "@type": "xsd:integer"
+    },
+    "bg_count": {
+      "@id": "stats:backgroundDocumentCount",
+      "@type": "xsd:integer"
+    },
+    "score": {
+      "@id": "stats:significanceScore",
+      "@type": "xsd:double"
+    },
+
+    "aggregations": null,
+    "request": null,
+    "took": null,
+    "timedOut": null
+  }
+}

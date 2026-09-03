@@ -31,7 +31,6 @@ def ingest_pipeline(
     text_image_file_kwargs: dict = {},    
     config_path: str = None,
     pipeline_meta: dict = {},
-    rdf_kwargs: dict | None = None,
     export_kwargs: dict | None = None,
 ):
 
@@ -50,16 +49,11 @@ def ingest_pipeline(
     text_image_file_kwargs = dict(text_image_file_kwargs or {})
     llm_kwargs = dict(llm_kwargs or {})
     export_kwargs = dict(export_kwargs or {})
-    if rdf_kwargs:
-        export_kwargs["rdf"] = {
-            **dict(export_kwargs.get("rdf") or {}),
-            **dict(rdf_kwargs),
-        }
-
     rdf_kwargs = dict(export_kwargs.get("rdf") or {})
     qlever_kwargs = dict(export_kwargs.get("qlever") or {})
     xml_kwargs = dict(export_kwargs.get("xml") or {})
     html_kwargs = dict(export_kwargs.get("html") or {})    
+    stats_kwargs = dict(export_kwargs.get("stats") or {})
     base_iri = export_kwargs.get(
         "base_iri",
         rdf_kwargs.get(
@@ -80,6 +74,11 @@ def ingest_pipeline(
     html_enabled = bool(html_kwargs)
     qlever_enabled = bool(qlever_kwargs)
     xml_enabled = bool(xml_kwargs)
+
+    stats_enabled = bool(
+        stats_kwargs
+        and stats_kwargs.get("enabled", False)
+    )
 
     logger.info(
         "Ingest Pipeline started with %s items using framework=%s...",
@@ -343,6 +342,7 @@ def ingest_pipeline(
     if (
         not from_source
         and not ingest
+        and not stats_enabled
         and not rdf_enabled
         and not qlever_enabled
         and not xml_enabled
@@ -366,6 +366,83 @@ def ingest_pipeline(
         from .analysis.llm import llm
 
     make_pages_fn = None
+    client = None
+    oscfg = None
+    cfg_path = None
+
+    def ensure_os_client():
+        nonlocal client, oscfg, cfg_path
+
+        if client is None:
+            from .db import (
+                get_os_config,
+                make_client,
+                resolve_config_path,
+            )
+
+            resolve_config_path.cache_clear()
+            get_os_config.cache_clear()
+
+            cfg_path = resolve_config_path(config_path)
+            oscfg = get_os_config(cfg_path)
+            client = make_client(oscfg)
+
+        return client, oscfg, cfg_path
+
+    def run_configured_stats():
+        if not stats_enabled:
+            return []
+
+        from .export.stats import run_stats_for_items
+
+        stats_client, _, _ = ensure_os_client()
+
+        logger.info(
+            "Starting Stats analysis for %s items on %s",
+            len(items),
+            targets,
+        )
+
+        try:
+            stats_results = run_stats_for_items(
+                client=stats_client,
+                items=items,
+                targets=targets,
+                stats_cfg=stats_kwargs,
+                base_iri=base_iri,
+            )
+        except Exception:
+            logger.exception(
+                "Stats analysis failed for targets=%s",
+                targets,
+            )
+
+            if stats_kwargs.get("strict", False):
+                raise
+
+            return []
+
+        written = sum(
+            result.get("status") == "written"
+            for result in stats_results
+        )
+        failed = sum(
+            result.get("status") == "failed"
+            for result in stats_results
+        )
+        skipped = sum(
+            result.get("status") == "skipped"
+            for result in stats_results
+        )
+
+        logger.info(
+            "Stats analysis completed: written=%s failed=%s skipped=%s",
+            written,
+            failed,
+            skipped,
+        )
+
+        return stats_results
 
     if from_source:
         from .ocr import (
@@ -494,7 +571,6 @@ def ingest_pipeline(
                     raise
 
             return pages_fn
-
 
     if not ingest:
         results: List[Dict[str, Any]] = []
@@ -686,31 +762,13 @@ def ingest_pipeline(
                     "delete_index": delete_index,
                 })
 
+        run_configured_stats()
         logger.info("Pipeline finished with %s results!", len(results))
         return results
 
     runs: List[dict] = []
 
-    from .db import (
-        get_os_config,
-        make_client,
-        provision_from_cfg,
-        resolve_config_path,
-    )
-
-    resolve_config_path.cache_clear()
-    get_os_config.cache_clear()
-
-    cfg_path = resolve_config_path(config_path)
-    oscfg = get_os_config(cfg_path)
-    client = make_client(oscfg)
-
-    try:
-        logger.info("Provisioning %s...", targets)
-        provision_from_cfg(client, oscfg)
-        logger.info("Provisioning completed!")
-    except Exception as e:
-        logger.critical("Open Search failed: %s. Open Search running?", e)
+    client, oscfg, cfg_path = ensure_os_client()
 
     if delete_index:
         targets_list = (
@@ -725,8 +783,17 @@ def ingest_pipeline(
             )
             logger.warning("\n\nDeleted Index %s: %s\n\n", target, response)
 
-    from datetime import datetime, timezone
+    from .db import provision_from_cfg
 
+    try:
+        logger.info("Provisioning %s...", targets)
+        provision_from_cfg(client, oscfg)
+        logger.info("Provisioning completed!")
+    except Exception:
+        logger.exception("OpenSearch provisioning failed")
+        raise
+
+    from datetime import datetime, timezone
     now = datetime.now(timezone.utc).isoformat()
 
     with (
@@ -973,6 +1040,7 @@ def ingest_pipeline(
                     "delete_index": delete_index,
                 })
 
+    run_configured_stats()
     logger.info("Ingest Pipeline finished with %s runs!", len(runs))
     return runs
 
