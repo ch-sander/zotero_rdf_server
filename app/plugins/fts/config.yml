@@ -734,30 +734,67 @@ open-search:
                   - bool:
                       should:
                         - term:
-                            meta.parent_tags: "*ingested"
+                            meta.parent_tags:
+                              value: "*ingested"
+                              case_insensitive: true
+
                         - term:
-                            meta.tags: "*ingested"
+                            meta.tags:
+                              value: "*ingested"
+                              case_insensitive: true
+
                         - term:
-                            meta.parent_tags: "*public"
+                            meta.parent_tags:
+                              value: "*public"
+                              case_insensitive: true
+
                         - term:
-                            meta.tags: "*public"
+                            meta.tags:
+                              value: "*public"
+                              case_insensitive: true
+
                         - term:
-                            meta.collection_labels: "ingested"
+                            meta.collection_labels:
+                              value: "ingested"
+                              case_insensitive: true
+
                         - term:
-                            meta.collection_labels: "public"
+                            meta.collection_labels:
+                              value: "public"
+                              case_insensitive: true
+
+                        - wildcard:
+                            meta.collection_labels:
+                              value: "*corpus*"
+                              case_insensitive: true
+
                       minimum_should_match: 1
+
                 must_not:
                   - term:
-                      meta.parent_tags: "*deprecated"
-                  - term:
-                      meta.tags: "*deprecated"
-                  - term:
-                      meta.parent_tags: "*excluded"
-                  - term:
-                      meta.tags: "*excluded"
-                  - term:
-                      meta.collection_labels: "excluded"
+                      meta.parent_tags:
+                        value: "*deprecated"
+                        case_insensitive: true
 
+                  - term:
+                      meta.tags:
+                        value: "*deprecated"
+                        case_insensitive: true
+
+                  - term:
+                      meta.parent_tags:
+                        value: "*excluded"
+                        case_insensitive: true
+
+                  - term:
+                      meta.tags:
+                        value: "*excluded"
+                        case_insensitive: true
+
+                  - term:
+                      meta.collection_labels:
+                        value: "excluded"
+                        case_insensitive: true
   # indices:
   #   # Optional bootstrap index. Recommended if you want to write to an alias.
   #   scigma-main-corpus-000001:
