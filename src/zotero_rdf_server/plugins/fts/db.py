@@ -583,7 +583,7 @@ def index_stream(
     vector_kwargs: dict | None = None,
     llm_kwargs: dict | None = None
 ) -> dict:
-    logger.debug(f"OS index_stream started...")
+    logger.debug(f"OS index_stream started for {targets}...")
     # cfg_path = resolve_config_path(config_path)
     # oscfg = get_os_config(cfg_path)
     # client = make_client(oscfg)
@@ -644,9 +644,10 @@ def index_stream(
     run_id = run.get("run_id") or run.get("error") or "no id/error"
 
     logger.info(
-        "from OCOS index_stream for run %s completed for %s...",
+        "from OCOS index_stream for run %s completed for %s to %s...",
         run_id,
         doc_id,
+        targets
     )
     return run
 
