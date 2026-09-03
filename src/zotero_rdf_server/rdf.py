@@ -107,7 +107,11 @@ def import_rdf(lib: ZoteroLibrary, store: Store):
             )
             after = len(store)
             logger.info(f"Imported {after - before} triples from {src.name}")
-
+        except Exception as e:
+            logger.error(
+                f"Failed to import {src.name}; continuing with next file: {e}",
+                exc_info=True,
+            )
         finally:
             if src.cleanup:
                 try:
