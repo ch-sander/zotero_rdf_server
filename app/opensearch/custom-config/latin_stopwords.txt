@@ -21,6 +21,15 @@ enim
 igitur
 ita
 sic
+sicut
+ficut
+tum
+se
+fi
+no
+qua
+quam
+quo
 ergo
 quia
 etiam
@@ -54,10 +63,19 @@ cuius
 quibus
 quorum
 quarum
+quam
+ejus
+an
+qvod
+is
+ea
+id
 
 # common words
 quidem
 vero
+uero
+uel
 tamen
 ideo
 ideoque
@@ -144,6 +162,7 @@ eum
 eam
 eos
 eas
+eo
 iis
 eis
 nos
