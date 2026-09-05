@@ -248,7 +248,7 @@ def render_page(
 
     
     safe_os_doc_id = escape(os_doc_id)
-    safe_page = escape(page)
+    safe_page = escape(page.lstrip("0") or "0")
     safe_editor_text = escape(editor_text)
     safe_display_text = escape(display_text)
     safe_save_url = escape(save_url or "")

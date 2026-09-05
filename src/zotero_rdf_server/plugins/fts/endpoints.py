@@ -457,14 +457,16 @@ def ingest_route(
             for lib_cfg in zcfg.ZOTERO_LIBRARIES_CONFIGS:
                 lib = ZoteroLibrary(lib_cfg)
                 if not graph or graph == lib.base_uri:
-                    logger.info(f"starting FTS pipeline for {lib.base_uri}...")
-
+                
                     cfg = lib.plugin.get("fts") or [] # TODO load_dict_like
                     cfg = [cfg] if isinstance(cfg,dict) else cfg
                     if len(cfg)>1:
-                        logger.warning(f"Running {len(cfg)} FTS configuration for library {lib.base_uri}")
-                    # if not cfg:
+                        logger.warning(f"Found {len(cfg)} FTS configuration for library {lib.name} for {lib.base_uri}")
+                    if not cfg:
+                        logger.warning(f"{lib.name} has no FTS profile! Skipping...")
+                        continue
                     #     raise HTTPException(status_code=400, detail=f"No FTS config for library {lib.base_uri}")
+                    logger.info(f"starting FTS pipeline for {lib.name} at {lib.base_uri}...")
                     for n, ncfg in enumerate(cfg, start=1): # allow multiple runs per library
                         name = ncfg.get('name','n/a')
                         pipe_id = ncfg.get("id")
@@ -581,7 +583,12 @@ def ingest_route(
 
                         try:
                             sparql_query=load_text_like(query_x,label="Ingest Pipeline SPARQL Query")
-                            logger.info(f"SPARQL query:\n\n{sparql_query}")
+                            logger.info(
+                                "SPARQL query:\n\n%s\n\nExecuted against %s for %s",
+                                sparql_query,
+                                sparql_endpoint_x or "local store",
+                                ", ".join(map(str, [lib.base_uri, lib.knowledge_base_graph])),
+                            )
 
                             bindings = _query_bindings(
                                 sparql_query,
@@ -2692,6 +2699,10 @@ def build_view_response(
         doc_id_only = raw_os_doc_id
     else:
         doc_id_only = raw_os_doc_id.rsplit(":", 1)[0]
+        if not page.isdigit():
+            raise HTTPException(status_code=400, detail=f"Invalid page: {page}")
+        # page = str(int(page)) if page.isdigit() else "0" # TODO
+        # page = page.lstrip("0") or "0"
 
     if ":" not in doc_id_only:
         from .viewer import text_root
@@ -2742,7 +2753,7 @@ def build_view_response(
         logger.debug(f"image_rel_path: {image_rel_path}")
         logger.debug(f"image_url: {image_url}")
 
-    current_os_doc_id = f"{doc_id_only}:{page}"
+    current_os_doc_id = f"{doc_id_only}:{int(page)}" # TODO trailing zeros...
 
     if txt_path.exists():
         try:

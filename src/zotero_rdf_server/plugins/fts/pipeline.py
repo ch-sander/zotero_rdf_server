@@ -435,9 +435,15 @@ def ingest_pipeline(
             for result in stats_results
         )
 
+        persisted = sum(
+            result.get("status") == "persisted"
+            for result in stats_results
+        )
+
         logger.info(
-            "Stats analysis completed: written=%s failed=%s skipped=%s",
+            "Stats analysis completed: written=%s persisted=%s failed=%s skipped=%s",
             written,
+            persisted,
             failed,
             skipped,
         )
