@@ -8,6 +8,7 @@ back to every indexed page belonging to the analyzed item.
 
 from datetime import datetime, timezone
 from collections import Counter
+from functools import lru_cache
 from os import replace
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -23,6 +24,25 @@ from zotero_rdf_server.utils import load_dict_like
 
 logger = plugin_logger()
 _MISSING = object()
+_DEFAULT_JSONLD_CONTEXT = {
+    "@vocab": "urn:opensearch:stats:",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "item": {"@type": "@id"},
+    "generatedAt": {"@type": "xsd:dateTime"},
+}
+
+
+@lru_cache(maxsize=16)
+def _load_jsonld_context_cached(source: str | None) -> Any:
+    """Load a path-based JSON-LD context once per process and source."""
+    loaded = load_dict_like(
+        source,
+        _DEFAULT_JSONLD_CONTEXT,
+        label="Load Context for Stats",
+    )
+    if not isinstance(loaded, Mapping):
+        raise TypeError("stats JSON-LD context must resolve to a mapping")
+    return loaded.get("@context", loaded)
 
 
 def _merge_dicts(
@@ -371,36 +391,61 @@ def _most_frequent_terms(
     ]
 
 
-def _persist_config(stats_cfg: Mapping[str, Any]) -> Dict[str, Any]:
-    """Normalize the optional significant-term persistence setting."""
-    configured = stats_cfg.get("persist_significant_terms", False)
-    if configured is None:
-        return {"enabled": False}
-    if isinstance(configured, bool):
-        return {"enabled": configured}
-    if not isinstance(configured, Mapping):
-        raise TypeError(
-            "stats 'persist_significant_terms' must be a boolean or mapping"
-        )
-    return dict(configured)
+def _persist_terms_config(
+    stats_cfg: Mapping[str, Any],
+) -> tuple[list[Dict[str, Any]], Dict[str, Any]]:
+    """Normalize term persistence entries and shared update options."""
+    configured = stats_cfg.get("persist_terms")
+    options = _require_mapping(
+        stats_cfg.get("persist_terms_options"),
+        "stats 'persist_terms_options'",
+    )
+
+    if configured is None or configured is False:
+        return [], options
+    if isinstance(configured, Mapping):
+        wrapper = dict(configured)
+        if not bool(wrapper.pop("enabled", True)):
+            return [], options
+        entries = wrapper.pop("entries", None)
+        if entries is None:
+            entries = [wrapper]
+        else:
+            options = _merge_dicts(wrapper, options)
+    elif isinstance(configured, list):
+        entries = configured
+    else:
+        raise TypeError("stats 'persist_terms' must be a list or mapping")
+
+    normalized: list[Dict[str, Any]] = []
+    for position, entry in enumerate(entries):
+        if not isinstance(entry, Mapping):
+            raise TypeError(f"stats persist_terms[{position}] must be a mapping")
+        item = dict(entry)
+        if not bool(item.pop("enabled", True)):
+            continue
+        field = item.get("field")
+        source = item.get("source")
+        if not isinstance(field, str) or not field.strip() or "." in field:
+            raise ValueError(
+                f"stats persist_terms[{position}].field must be a top-level field"
+            )
+        if not isinstance(source, str) or not source.strip():
+            raise ValueError(
+                f"stats persist_terms[{position}].source must be a statistics key"
+            )
+        normalized.append({"field": field.strip(), "source": source.strip()})
+    return normalized, options
 
 
-def _significant_term_keys(
-    response: Mapping[str, Any],
-    *,
-    result_path: str,
-) -> list[str]:
-    """Extract unique bucket keys while preserving aggregation order."""
-    buckets = _value_at_path(response, result_path, default=[])
-    if not isinstance(buckets, list):
-        raise TypeError(
-            "stats significant-term result path must resolve to a bucket list"
-        )
-
+def _bucket_term_keys(value: Any, *, source: str) -> list[str]:
+    """Extract unique keys from a statistics bucket list."""
+    if not isinstance(value, list):
+        raise TypeError(f"statistics source {source!r} must be a bucket list")
     terms: list[str] = []
     seen: set[str] = set()
-    for bucket in buckets:
-        if not isinstance(bucket, Mapping) or "key" not in bucket:
+    for bucket in value:
+        if not isinstance(bucket, Mapping) or bucket.get("key") is None:
             continue
         term = str(bucket["key"])
         if term and term not in seen:
@@ -409,50 +454,50 @@ def _significant_term_keys(
     return terms
 
 
-def _persist_significant_terms(
+def _persist_terms(
     *,
     client: Any,
     index: Any,
-    response: Mapping[str, Any],
+    statistics: Mapping[str, Any],
     search_body: Mapping[str, Any],
-    result_paths: Mapping[str, Any],
-    persist_cfg: Mapping[str, Any],
+    entries: list[Mapping[str, Any]],
+    options: Mapping[str, Any],
     variables: Mapping[str, Any],
 ) -> Dict[str, Any]:
-    """Write item-level significant terms to every matching page document."""
-    field = persist_cfg.get("field", "significant_terms")
-    if not isinstance(field, str) or not field.strip():
-        raise ValueError(
-            "stats 'persist_significant_terms.field' must be a field name"
+    """Write configured item-level term lists to all matching pages."""
+    updates: list[Dict[str, Any]] = []
+    fields: set[str] = set()
+    for entry in entries:
+        field = str(entry["field"])
+        source = str(entry["source"])
+        if field in fields:
+            raise ValueError(f"duplicate persist_terms field: {field!r}")
+        if source not in statistics:
+            raise KeyError(f"persist_terms source {source!r} is not available")
+        fields.add(field)
+        updates.append(
+            {
+                "field": field,
+                "source": source,
+                "terms": _bucket_term_keys(statistics[source], source=source),
+            }
         )
 
-    default_path = result_paths.get(
-        "significantTokens",
-        "aggregations.significant_tokens.buckets",
-    )
-    result_path = str(persist_cfg.get("result_path", default_path))
-    terms = _significant_term_keys(response, result_path=result_path)
-
-    configured_query = persist_cfg.get("query", search_body.get("query"))
+    configured_query = options.get("query", search_body.get("query"))
     query = _render_templates(configured_query, variables)
     if not isinstance(query, Mapping) or not query:
-        raise ValueError(
-            "significant-term persistence requires an explicit item query"
-        )
+        raise ValueError("term persistence requires an explicit item query")
 
     update_params: Dict[str, Any] = {
-        "conflicts": persist_cfg.get("conflicts", "proceed"),
-        "refresh": bool(persist_cfg.get("refresh", False)),
+        "conflicts": options.get("conflicts", "proceed"),
+        "refresh": bool(options.get("refresh", False)),
     }
-    pipeline = persist_cfg.get("pipeline", "_none")
+    pipeline = options.get("pipeline", "_none")
     if pipeline is not None:
         update_params["pipeline"] = pipeline
     update_params.update(
         _render_templates(
-            _require_mapping(
-                persist_cfg.get("params"),
-                "stats 'persist_significant_terms.params'",
-            ),
+            _require_mapping(options.get("params"), "stats persist_terms params"),
             variables,
         )
     )
@@ -463,10 +508,13 @@ def _persist_significant_terms(
             "query": dict(query),
             "script": {
                 "lang": "painless",
-                "source": "ctx._source[params.field] = params.terms",
+                "source": (
+                    "for (int i = 0; i < params.fields.size(); ++i) { "
+                    "ctx._source[params.fields.get(i)] = params.values.get(i); }"
+                ),
                 "params": {
-                    "field": field,
-                    "terms": terms,
+                    "fields": [update["field"] for update in updates],
+                    "values": [update["terms"] for update in updates],
                 },
             },
         },
@@ -474,18 +522,27 @@ def _persist_significant_terms(
     )
     update_response = _require_mapping(
         update_response,
-        "OpenSearch significant-term update response",
+        "OpenSearch term persistence response",
     )
+    failures = update_response.get("failures") or []
+    if failures:
+        raise RuntimeError(f"OpenSearch term persistence failed: {failures[0]!r}")
+
     result = {
-        "field": field,
-        "term_count": len(terms),
+        "fields": [
+            {
+                "field": update["field"],
+                "source": update["source"],
+                "term_count": len(update["terms"]),
+            }
+            for update in updates
+        ],
         "updated": update_response.get("updated", 0),
         "version_conflicts": update_response.get("version_conflicts", 0),
     }
     logger.info(
-        "Persisted %s significant terms in %s on %s pages for doc_id=%s",
-        result["term_count"],
-        field,
+        "Persisted term fields %s on %s pages for doc_id=%s",
+        [update["field"] for update in updates],
         result["updated"],
         variables.get("doc_id"),
     )
@@ -592,6 +649,30 @@ def run_item_stats(
         if result is not _MISSING:
             statistics[str(name)] = result
 
+    significant_tokens = statistics.get("significantTokens")
+    if isinstance(significant_tokens, list):
+        significant_doc_count = _value_at_path(
+            response,
+            "aggregations.significant_tokens.doc_count",
+            default=0,
+        )
+        significant_keys = [
+            str(bucket["key"])
+            for bucket in significant_tokens
+            if isinstance(bucket, Mapping) and bucket.get("key") is not None
+        ]
+        logger.info(
+            "Calculated %s significant terms from %s pages for doc_id=%s",
+            len(significant_keys),
+            significant_doc_count,
+            doc_id,
+        )
+        logger.debug(
+            "Significant terms for doc_id=%s: %s",
+            doc_id,
+            significant_keys,
+        )
+
     frequent_cfg = _frequent_terms_config(cfg)
     if bool(frequent_cfg.get("enabled", False)):
         item_query = rendered_body.get("query")
@@ -609,84 +690,102 @@ def run_item_stats(
         )
 
     persistence = None
-    persist_cfg = _persist_config(cfg)
-    if bool(persist_cfg.get("enabled", False)):
-        persistence = _persist_significant_terms(
+    persist_entries, persist_options = _persist_terms_config(cfg)
+    if persist_entries:
+        persistence = _persist_terms(
             client=client,
             index=search_index,
-            response=response,
+            statistics=statistics,
             search_body=rendered_body,
-            result_paths=result_paths,
-            persist_cfg=persist_cfg,
+            entries=persist_entries,
+            options=persist_options,
             variables=variables,
         )
 
-    jsonld_cfg = _require_mapping(cfg.get("jsonld"), "stats 'jsonld'") 
-    context = load_dict_like(jsonld_cfg.get("context", cfg.get("context")), {
-            "@vocab": "urn:opensearch:stats:",
-            "xsd": "http://www.w3.org/2001/XMLSchema#",
-            "item": {"@type": "@id"},
-            "generatedAt": {"@type": "xsd:dateTime"},
-        },
-        label="Load Context for Stats")
+    jsonld_cfg = _require_mapping(cfg.get("jsonld"), "stats 'jsonld'")
+    jsonld_enabled = bool(jsonld_cfg.get("enabled", True))
+    destination: Path | None = None
 
-    default_stats_iri = (
-        f"{item_iri}/term-statistics"
-        if item_iri
-        else f"urn:opensearch:term-statistics:{safe_id}"
-    )
-    stats_iri = _render_templates(
-        jsonld_cfg.get("id", default_stats_iri),
-        variables,
-    )
-    jsonld: Dict[str, Any] = {
-        "@context": context.get("@context", context),
-        "@id": stats_iri,
-        "@type": jsonld_cfg.get("type", "TermStatistics"),
-        "item": item_iri or f"urn:item:{safe_id}",
-        "docId": doc_id,
-        "index": search_index,
-        "generatedAt": datetime.now(timezone.utc).isoformat(),
-        "statistics": statistics,
-    }
+    if jsonld_enabled:
+        context_source = jsonld_cfg.get("context", cfg.get("context"))
+        if isinstance(context_source, Mapping):
+            context = context_source.get("@context", context_source)
+        elif context_source is None or isinstance(context_source, (str, Path)):
+            context = _load_jsonld_context_cached(
+                None if context_source is None else str(context_source)
+            )
+        else:
+            raise TypeError(
+                "stats 'jsonld.context' must be a mapping, path string or null"
+            )
 
-    if jsonld_cfg.get("include_aggregations", False):
-        jsonld["aggregations"] = response.get("aggregations", {})
-    if jsonld_cfg.get("include_request", False):
-        jsonld["request"] = {
+        default_stats_iri = (
+            f"{item_iri}/term-statistics"
+            if item_iri
+            else f"urn:opensearch:term-statistics:{safe_id}"
+        )
+        stats_iri = _render_templates(
+            jsonld_cfg.get("id", default_stats_iri),
+            variables,
+        )
+        jsonld: Dict[str, Any] = {
+            "@context": context,
+            "@id": stats_iri,
+            "@type": jsonld_cfg.get("type", "TermStatistics"),
+            "item": item_iri or f"urn:item:{safe_id}",
+            "docId": doc_id,
             "index": search_index,
-            "body": rendered_body,
+            "generatedAt": datetime.now(timezone.utc).isoformat(),
+            "statistics": statistics,
         }
-    if jsonld_cfg.get("include_hits", False):
-        jsonld["hits"] = response.get("hits", {})
-    if "took" in response:
-        jsonld["took"] = response["took"]
-    if "timed_out" in response:
-        jsonld["timedOut"] = response["timed_out"]
 
-    output = cfg.get("output", cfg.get("output_dir"))
-    if not output:
-        raise ValueError("stats require 'output' or 'output_dir'")
-    output_dir = _output_directory(_render_templates(output, variables))
-    filename = _render_templates(
-        cfg.get("filename", "${safe_doc_id}.jsonld"),
-        variables,
-    )
-    if not isinstance(filename, str) or Path(filename).name != filename:
-        raise ValueError("stats 'filename' must be a plain filename")
+        if jsonld_cfg.get("include_aggregations", False):
+            jsonld["aggregations"] = response.get("aggregations", {})
+        if jsonld_cfg.get("include_request", False):
+            jsonld["request"] = {
+                "index": search_index,
+                "body": rendered_body,
+            }
+        if jsonld_cfg.get("include_hits", False):
+            jsonld["hits"] = response.get("hits", {})
+        if "took" in response:
+            jsonld["took"] = response["took"]
+        if "timed_out" in response:
+            jsonld["timedOut"] = response["timed_out"]
 
-    destination = output_dir / filename
-    _write_json_atomic(
-        destination,
-        jsonld,
-        indent=int(jsonld_cfg.get("indent", 2)),
-    )
+        output = cfg.get("output", cfg.get("output_dir"))
+        if not output:
+            raise ValueError(
+                "stats require 'output' or 'output_dir' when JSON-LD is enabled"
+            )
+        output_dir = _output_directory(_render_templates(output, variables))
+        filename = _render_templates(
+            cfg.get("filename", "${safe_doc_id}.jsonld"),
+            variables,
+        )
+        if not isinstance(filename, str) or Path(filename).name != filename:
+            raise ValueError("stats 'filename' must be a plain filename")
+
+        destination = output_dir / filename
+        _write_json_atomic(
+            destination,
+            jsonld,
+            indent=int(jsonld_cfg.get("indent", 2)),
+        )
+
     result = {
-        "status": "written",
-        "output": str(destination),
+        "status": (
+            "written"
+            if destination is not None
+            else "persisted"
+            if persistence is not None
+            else "analyzed"
+        ),
         "index": search_index,
         "took": response.get("took"),
     }
+    if destination is not None:
+        result["output"] = str(destination)
     if persistence is not None:
         result["persistence"] = persistence
     return result
@@ -780,7 +879,9 @@ def run_stats_for_items(
     if not stats_cfg or not stats_cfg.get("enabled", False):
         return []
 
-    persist_cfg = _persist_config(stats_cfg)
+    item_list = list(items or [])
+    total_items = len(item_list)
+    persist_entries, _ = _persist_terms_config(stats_cfg)
 
     target_list = (
         [targets]
@@ -806,18 +907,27 @@ def run_stats_for_items(
 
     results = []
 
-    for obj in items:
+    for position, obj in enumerate(item_list, start=1):
         doc_id = obj.get("_id")
 
         if not doc_id:
             logger.warning(
-                "Skipping Stats item without _id"
+                "Stats item %s/%s skipped: missing _id",
+                position,
+                total_items,
             )
             results.append({
                 "status": "skipped",
                 "reason": "missing _id",
             })
             continue
+
+        logger.info(
+            "Stats item %s/%s started for doc_id=%s",
+            position,
+            total_items,
+            doc_id,
+        )
 
         export_item_data = make_item_data(
             obj,
@@ -833,15 +943,19 @@ def run_stats_for_items(
                 item_iri=export_item_data.get("item_iri"),
             )
 
-            logger.debug(
-                "Stats written for doc_id=%s to %s",
+            logger.info(
+                "Stats item %s/%s finished for doc_id=%s: %s",
+                position,
+                total_items,
                 doc_id,
-                result.get("output"),
+                result.get("output", result.get("status")),
             )
 
         except Exception as exc:
             logger.exception(
-                "Stats failed for doc_id=%s",
+                "Stats item %s/%s failed for doc_id=%s",
+                position,
+                total_items,
                 doc_id,
             )
 
@@ -856,7 +970,7 @@ def run_stats_for_items(
 
         results.append(result)
 
-    if bool(persist_cfg.get("enabled", False)):
+    if persist_entries:
         client.indices.refresh(index=target_list)
 
     return results
