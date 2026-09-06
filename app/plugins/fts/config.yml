@@ -239,7 +239,7 @@ rag:
 
 viewer:
   mode: dynamic
-  static_viewer_root: "/app/exports/html"
+  static_viewer_root: "/app/exports/dumps/html"
   image_root: "/app/exports/kraken/images"
   text_root: "/app/exports/kraken/texts"
   image_ext: jpg
@@ -570,7 +570,7 @@ open-search:
               type: keyword
             frequent_terms:
               type: keyword
-              
+
           dynamic_templates:
             - meta_as_keyword:
                 path_match: "meta.*"
