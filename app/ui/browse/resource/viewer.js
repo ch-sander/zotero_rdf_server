@@ -85,10 +85,6 @@ function installFastModeToggle() {
     ? "Direct relations only; click to enable full transitive queries"
     : "Click to use cheaper queries without transitive property paths";
   button.setAttribute("aria-pressed", String(FAST_MODE));
-  button.style.position = "fixed";
-  button.style.top = "0.75rem";
-  button.style.right = "0.75rem";
-  button.style.zIndex = "1000";
   button.style.padding = "0.45rem 0.7rem";
   button.style.border = "1px solid currentColor";
   button.style.borderRadius = "999px";
@@ -111,11 +107,14 @@ function installFastModeToggle() {
   const pageHeader = document.querySelector("main > header");
 
   if (pageHeader) {
-    button.style.position = "static";
     button.style.float = "right";
     button.style.margin = "0 0 0.75rem 1rem";
     pageHeader.prepend(button);
   } else {
+    button.style.position = "fixed";
+    button.style.top = "0.75rem";
+    button.style.right = "0.75rem";
+    button.style.zIndex = "2147483647";
     document.body.appendChild(button);
   }
 }
@@ -186,11 +185,13 @@ async function loadCurrentResource() {
   span.textContent = uri;
 
   resourceUriEl.appendChild(withCopy(span, uri));
-  resourceUriEl.appendChild(createQueryLink(uri));
   showStatus("Loading Resource …");
 
   try {
     const resolvedUri = await resolveUri(uri);
+
+    resourceUriEl.appendChild(createQueryLink(resolvedUri));
+    resourceUriEl.appendChild(createRdfDownloadLink(resolvedUri));
 
     console.log("Requested URI:", uri);
     console.log("Resolved URI:", resolvedUri);
@@ -1216,14 +1217,7 @@ function shortenIri(iri) {
 }
 
 function createQueryLink(uri) {
-  const query = `
-    SELECT ?p ?o
-    WHERE {
-      <${escapeSparqlIri(uri)}> ?p ?o .
-    }
-    ORDER BY ?p
-    LIMIT ${LIMIT}
-  `.trim();
+  const query = buildQuery(uri).trim();
 
   const url = new URL(QUERY_UI, window.location.href);
   url.searchParams.set("endpoint", ENDPOINT);
@@ -1235,10 +1229,134 @@ function createQueryLink(uri) {
   link.rel = "noopener noreferrer";
   link.className = "external-link-icon";
   link.textContent = "SPARQL";
-  link.title = "Open SPARQL query";
-  link.setAttribute("aria-label", "Open SPARQL query");
+  link.title = `Open the ${FAST_MODE ? "fast" : "full"} SELECT query used by the resource view`;
+  link.setAttribute("aria-label", "Open SPARQL SELECT query used by the resource view");
 
   return link;
+}
+
+function createRdfDownloadLink(uri) {
+  const link = document.createElement("a");
+  const defaultTitle = "Download direct resource triples as RDF (Turtle preferred)";
+  let isDownloading = false;
+
+  link.href = "#";
+  link.className = "external-link-icon";
+  link.textContent = "RDF";
+  link.title = defaultTitle;
+  link.setAttribute("aria-label", "Download resource as RDF");
+
+  link.addEventListener("click", async (event) => {
+    event.preventDefault();
+
+    if (isDownloading) return;
+
+    isDownloading = true;
+    link.setAttribute("aria-disabled", "true");
+    link.textContent = "RDF …";
+
+    try {
+      await downloadResourceRdf(uri);
+      link.textContent = "RDF ✓";
+    } catch (error) {
+      console.error(error);
+      link.textContent = "RDF error";
+      link.title = error instanceof Error
+        ? error.message
+        : "RDF download failed";
+    } finally {
+      setTimeout(() => {
+        isDownloading = false;
+        link.removeAttribute("aria-disabled");
+        link.textContent = "RDF";
+        link.title = defaultTitle;
+      }, 1500);
+    }
+  });
+
+  return link;
+}
+
+async function downloadResourceRdf(uri) {
+  const response = await fetch(ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/sparql-query",
+      "Accept": "text/turtle, application/n-triples;q=0.9, application/rdf+xml;q=0.8"
+    },
+    body: buildRdfQuery(uri)
+  });
+
+  if (!response.ok) {
+    throw new Error(`RDF download failed: endpoint returned ${response.status}`);
+  }
+
+  const contentType = response.headers.get("content-type") || "text/turtle";
+
+  if (contentType.includes("application/sparql-results")) {
+    throw new Error("RDF download failed: endpoint returned a SELECT result");
+  }
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = objectUrl;
+  link.download = createRdfFileName(uri, contentType);
+  link.hidden = true;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}
+
+function buildRdfQuery(uri) {
+  const escapedUri = escapeSparqlIri(uri);
+
+  return `
+    CONSTRUCT {
+      <${escapedUri}> ?p ?o .
+    }
+    WHERE {
+      <${escapedUri}> ?p ?o .
+    }
+  `.trim();
+}
+
+function createRdfFileName(uri, contentType) {
+  const mimeType = contentType.split(";", 1)[0].trim().toLowerCase();
+  const extensionByMimeType = {
+    "application/ld+json": "jsonld",
+    "application/n-quads": "nq",
+    "application/n-triples": "nt",
+    "application/rdf+xml": "rdf",
+    "application/trig": "trig",
+    "text/turtle": "ttl"
+  };
+  const extension = extensionByMimeType[mimeType] || "ttl";
+  let stem = "resource";
+
+  try {
+    const url = new URL(uri);
+    stem = url.hash.replace(/^#/, "")
+      || url.pathname.split("/").filter(Boolean).pop()
+      || url.hostname
+      || stem;
+  } catch {
+    stem = uri.split(/[\/#:]/).filter(Boolean).pop() || stem;
+  }
+
+  try {
+    stem = decodeURIComponent(stem);
+  } catch {
+    // Keep the encoded value when the IRI contains a malformed escape sequence.
+  }
+
+  stem = stem.replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    || "resource";
+
+  return `${stem}.${extension}`;
 }
 
 function escapeSparqlIri(iri) {

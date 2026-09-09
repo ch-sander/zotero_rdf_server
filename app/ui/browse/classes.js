@@ -80,10 +80,6 @@ function installFastModeToggle() {
     ? "Direct class membership only; click to include inherited instances"
     : "Click to use cheaper queries without transitive subclass paths";
   button.setAttribute("aria-pressed", String(FAST_MODE));
-  button.style.position = "fixed";
-  button.style.top = "0.75rem";
-  button.style.right = "0.75rem";
-  button.style.zIndex = "1000";
   button.style.padding = "0.45rem 0.7rem";
   button.style.border = "1px solid currentColor";
   button.style.borderRadius = "999px";
@@ -106,11 +102,14 @@ function installFastModeToggle() {
   const pageHeader = document.querySelector("main > header");
 
   if (pageHeader) {
-    button.style.position = "static";
     button.style.float = "right";
     button.style.margin = "0 0 0.75rem 1rem";
     pageHeader.prepend(button);
   } else {
+    button.style.position = "fixed";
+    button.style.top = "0.75rem";
+    button.style.right = "0.75rem";
+    button.style.zIndex = "2147483647";
     document.body.appendChild(button);
   }
 }
