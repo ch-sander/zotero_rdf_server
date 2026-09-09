@@ -195,9 +195,12 @@ def refresh_store(force_reload:bool = False, remove_store:bool=True, lib_names:l
                         except Exception as e:
                             logger.error(f"Schema could not be loaded: {e}")
 
+                    limit_libs = lib_names and isinstance(lib_names,list)
+                    if limit_libs:
+                        logger.warning(f"Skipping all libraries but {lib_names}!")
                     for lib_cfg in config.ZOTERO_LIBRARIES_CONFIGS:                        
                         lib = ZoteroLibrary(lib_cfg)
-                        if lib_names and isinstance(lib_names,str) and lib.name not in lib_names:
+                        if limit_libs and lib.name not in lib_names:
                             logger.warning(f"Skipping {lib} as in {lib_names}!")
                             continue
                         ensure_store(store)
