@@ -3,6 +3,7 @@
 @prefix dct: <http://purl.org/dc/terms/> .
 @prefix geosparql: <http://www.opengis.net/ont/geosparql#> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
 @prefix ql: <http://qlever.cs.uni-freiburg.de/builtin-functions/> .
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
@@ -17,6 +18,7 @@
 @prefix zmap: <https://zotero-rdf-server.org/mapping/> .
 @prefix zot: <http://www.zotero.org/namespaces/export#> .
 @prefix zotsn: <http://www.zotero.org/namespaces/sparnatural#> .
+@prefix zstats: <https://zotero-rdf-server.org/stats/> .
 
 zotsn:annotation_1545 a sh:NodeShape ;
     rdfs:label "Annotation" ;
@@ -297,7 +299,9 @@ zotsn:citation_2148 a sh:NodeShape ;
     sh:nodeKind sh:IRI ;
     sh:property zotsn:property_2150,
         zotsn:property_2151,
-        zotsn:property_2153 ;
+        zotsn:property_2153,
+        zotsn:property_2306,
+        zotsn:property_2307 ;
     sh:targetClass cito:Citation .
 
 zotsn:commenter_1594 a sh:NodeShape ;
@@ -944,6 +948,14 @@ zotsn:performer_1586 a sh:NodeShape ;
     sh:order 1.0 ;
     sh:targetClass zot:Performer .
 
+zotsn:person_932 a sh:NodeShape ;
+    rdfs:label "person" ;
+    volipi:iconName "fa-solid fa-question" ;
+    volipi:message "Tooltip for person" ;
+    sh:name "person" ;
+    sh:nodeKind sh:IRI ;
+    sh:targetClass prov:person .
+
 zotsn:podcast_1548 a sh:NodeShape ;
     rdfs:label "Podcast" ;
     volipi:iconName "fa-podcast" ;
@@ -1101,6 +1113,22 @@ zotsn:property_2122 a sh:PropertyShape ;
     sh:node zotsn:wktliteral_1054 ;
     sh:nodeKind sh:Literal ;
     sh:path geosparql:asWKT .
+
+zotsn:property_2309 a sh:PropertyShape ;
+    rdfs:label "significantToken" ;
+    volipi:message "Tooltip for significantToken" ;
+    dash:searchWidget sparnatural:SearchProperty ;
+    sh:deactivated true ;
+    sh:name "significantToken" ;
+    sh:path zstats:significantToken .
+
+zotsn:property_2310 a sh:PropertyShape ;
+    rdfs:label "frequentToken" ;
+    volipi:message "Tooltip for frequentToken" ;
+    dash:searchWidget sparnatural:SearchProperty ;
+    sh:deactivated true ;
+    sh:name "frequentToken" ;
+    sh:path zstats:frequentToken .
 
 zotsn:property_931 a sh:PropertyShape ;
     rdfs:label "contributor" ;
@@ -1271,6 +1299,18 @@ zotsn:statute_1562 a sh:NodeShape ;
         zotsn:property_1714 ;
     sh:targetClass zot:Statute .
 
+zotsn:termstatistics_2304 a sh:NodeShape ;
+    rdfs:label "TermStatistics" ;
+    volipi:iconName "fa-solid fa-question" ;
+    volipi:message "Tooltip for TermStatistics" ;
+    sh:name "TermStatistics" ;
+    sh:nodeKind sh:IRI ;
+    sh:property zotsn:property_2303,
+        zotsn:property_2306,
+        zotsn:property_2307,
+        zotsn:property_2308 ;
+    sh:targetClass zstats:TermStatistics .
+
 zotsn:textcontext_2281 a sh:NodeShape ;
     rdfs:label "TextContext" ;
     volipi:iconName "fa-solid fa-question" ;
@@ -1409,7 +1449,9 @@ zotsn:collection_145 a sh:NodeShape ;
     sh:name "Collection" ;
     sh:nodeKind sh:IRI ;
     sh:property zotsn:property_1871,
-        zotsn:property_1967 ;
+        zotsn:property_1967,
+        zotsn:property_2306,
+        zotsn:property_2307 ;
     sh:targetClass skos:Collection .
 
 zotsn:entry_1961 a sh:NodeShape ;
@@ -1919,6 +1961,23 @@ zotsn:property_2292 a sh:PropertyShape ;
                 sh:node zotsn:creativework_2290 ] ) ;
     sh:path [ sh:zeroOrMorePath schema:isPartOf ] .
 
+zotsn:property_2303 a sh:PropertyShape ;
+    rdfs:label "term" ;
+    volipi:message "Tooltip for term" ;
+    dash:searchWidget sparnatural:SearchProperty ;
+    sh:datatype zotsn:Text ;
+    sh:name "term" ;
+    sh:node zotsn:text_1724 ;
+    sh:nodeKind sh:Literal ;
+    sh:path zstats:term .
+
+zotsn:property_2308 a sh:PropertyShape ;
+    rdfs:label "statistics" ;
+    volipi:message "Tooltip for statistics" ;
+    dash:searchWidget sparnatural:SearchProperty ;
+    sh:name "statistics" ;
+    sh:path zstats:statistics .
+
 zotsn:semantics_1769 a sh:NodeShape ;
     rdfs:label "Semantics" ;
     volipi:iconName "fa-solid fa-pen" ;
@@ -1927,7 +1986,9 @@ zotsn:semantics_1769 a sh:NodeShape ;
     sh:name "Semantics" ;
     sh:nodeKind sh:IRI ;
     sh:property zotsn:property_1856,
-        zotsn:property_1966 ;
+        zotsn:property_1966,
+        zotsn:property_2306,
+        zotsn:property_2307 ;
     sh:targetClass semz:Semantics .
 
 sparnatural_datasource:EnteredSearchTermDatasource sparnatural_datasource:queryString "        SELECT             (\"$key\" AS ?value)             (\"$key\" AS ?label)         WHERE {}" .
@@ -1940,7 +2001,9 @@ zotsn:conceptscheme_146 a sh:NodeShape ;
     sh:nodeKind sh:IRI ;
     sh:property zotsn:property_147,
         zotsn:property_1871,
-        zotsn:property_1967 ;
+        zotsn:property_1967,
+        zotsn:property_2306,
+        zotsn:property_2307 ;
     sh:targetClass skos:ConceptScheme .
 
 zotsn:digitaldocument_2289 a sh:NodeShape ;
@@ -1955,6 +2018,7 @@ zotsn:digitaldocument_2289 a sh:NodeShape ;
         zotsn:property_2287,
         zotsn:property_2288,
         zotsn:property_2292,
+        zotsn:property_2311,
         zotsn:property_930 ;
     sh:targetClass schema:DigitalDocument .
 
@@ -1970,7 +2034,9 @@ zotsn:library_1500 a sh:NodeShape ;
         zotsn:property_1737,
         zotsn:property_1740,
         zotsn:property_1867,
-        zotsn:property_2284 ;
+        zotsn:property_2284,
+        zotsn:property_2306,
+        zotsn:property_2307 ;
     sh:targetClass zot:Library .
 
 zotsn:property_148 a sh:PropertyShape ;
@@ -2690,6 +2756,7 @@ zotsn:creativework_2290 a sh:NodeShape ;
     sh:property zotsn:property_1867,
         zotsn:property_2284,
         zotsn:property_2286,
+        zotsn:property_2311,
         zotsn:property_930 ;
     sh:targetClass schema:CreativeWork .
 
@@ -2719,7 +2786,9 @@ zotsn:itemtype_2109 a sh:NodeShape ;
     sh:property zotsn:property_1729,
         zotsn:property_1738,
         zotsn:property_1867,
-        zotsn:property_2284 ;
+        zotsn:property_2284,
+        zotsn:property_2306,
+        zotsn:property_2307 ;
     sh:targetClass zot:ItemType .
 
 zotsn:language_2107 a sh:NodeShape ;
@@ -2733,7 +2802,9 @@ zotsn:language_2107 a sh:NodeShape ;
     sh:property zotsn:property_1729,
         zotsn:property_1738,
         zotsn:property_1867,
-        zotsn:property_2284 ;
+        zotsn:property_2284,
+        zotsn:property_2306,
+        zotsn:property_2307 ;
     sh:targetClass zot:Language .
 
 zotsn:note_1559 a sh:NodeShape ;
@@ -2890,7 +2961,9 @@ zotsn:series_2108 a sh:NodeShape ;
         zotsn:property_1732,
         zotsn:property_1867,
         zotsn:property_2160,
-        zotsn:property_2284 ;
+        zotsn:property_2284,
+        zotsn:property_2306,
+        zotsn:property_2307 ;
     sh:targetClass zot:Series .
 
 zotsn:property_1615 a sh:PropertyShape ;
@@ -3030,6 +3103,17 @@ zotsn:property_1967 a sh:PropertyShape ;
     sh:nodeKind sh:Literal ;
     sh:path skos:prefLabel .
 
+zotsn:property_2311 a sh:PropertyShape ;
+    rdfs:label "Relevant Term" ;
+    volipi:message "The resource contains machine-readable text with frequent or significant terms. (This is only a query pattern)" ;
+    dash:searchWidget sparnatural:SearchProperty ;
+    sh:datatype zotsn:Text ;
+    sh:description "The resource contains machine-readable text with frequent or significant terms." ;
+    sh:name "Relevant Term" ;
+    sh:node zotsn:text_1724 ;
+    sh:nodeKind sh:Literal ;
+    sh:path ( [ sh:zeroOrOnePath [ sh:inversePath schema:isPartOf ] ] [ sh:inversePath prov:wasDerivedFrom ] zstats:statistics [ sh:alternativePath ( zstats:significantToken zstats:frequentToken ) ] zstats:term ) .
+
 zotsn:semanticnote_1755 a sh:NodeShape ;
     rdfs:label "Semantic Note" ;
     volipi:iconName "fa-solid fa-note-sticky" ;
@@ -3046,7 +3130,10 @@ zotsn:semanticnote_1755 a sh:NodeShape ;
         zotsn:property_1868,
         zotsn:property_1870,
         zotsn:property_1966,
-        zotsn:property_2284 ;
+        zotsn:property_2284,
+        zotsn:property_2306,
+        zotsn:property_2307,
+        zotsn:property_2311 ;
     sh:targetClass semz:SemanticNote .
 
 zotsn:collection_1501 a sh:NodeShape ;
@@ -3064,16 +3151,10 @@ zotsn:collection_1501 a sh:NodeShape ;
         zotsn:property_1752,
         zotsn:property_1753,
         zotsn:property_1867,
-        zotsn:property_2284 ;
+        zotsn:property_2284,
+        zotsn:property_2306,
+        zotsn:property_2307 ;
     sh:targetClass zot:Collection .
-
-zotsn:date_1727 a sh:NodeShape ;
-    rdfs:label "Date" ;
-    volipi:iconName "fa-solid fa-calendar-alt" ;
-    volipi:message "A search value for dates (This is only a query pattern)" ;
-    sh:description "A search value for dates" ;
-    sh:name "Date" ;
-    sh:nodeKind sh:Literal .
 
 zotsn:property_1657 a sh:PropertyShape ;
     rdfs:label "history" ;
@@ -3115,6 +3196,14 @@ zotsn:property_2160 a sh:PropertyShape ;
     sh:node zotsn:itemtype_2109 ;
     sh:nodeKind sh:IRI ;
     sh:path zot:type .
+
+zotsn:date_1727 a sh:NodeShape ;
+    rdfs:label "Date" ;
+    volipi:iconName "fa-solid fa-calendar-alt" ;
+    volipi:message "A search value for dates (This is only a query pattern)" ;
+    sh:description "A search value for dates" ;
+    sh:name "Date" ;
+    sh:nodeKind sh:Literal .
 
 zotsn:property_1673 a sh:PropertyShape ;
     rdfs:label "seriesNumber" ;
@@ -3180,7 +3269,9 @@ zotsn:tag_1502 a sh:NodeShape ;
         zotsn:property_1966,
         zotsn:property_1967,
         zotsn:property_2067,
-        zotsn:property_2284 ;
+        zotsn:property_2284,
+        zotsn:property_2306,
+        zotsn:property_2307 ;
     sh:targetClass zot:Tag .
 
 zotsn:concept_134 a sh:NodeShape ;
@@ -3203,7 +3294,9 @@ zotsn:concept_134 a sh:NodeShape ;
         zotsn:property_1963,
         zotsn:property_1966,
         zotsn:property_1967,
-        zotsn:property_2284 ;
+        zotsn:property_2284,
+        zotsn:property_2306,
+        zotsn:property_2307 ;
     sh:targetClass skos:Concept .
 
 zotsn:place_1772 a sh:NodeShape ;
@@ -3224,7 +3317,9 @@ zotsn:place_1772 a sh:NodeShape ;
         zotsn:property_2067,
         zotsn:property_2121,
         zotsn:property_2160,
-        zotsn:property_2284 ;
+        zotsn:property_2284,
+        zotsn:property_2306,
+        zotsn:property_2307 ;
     sh:targetClass zot:Place .
 
 zotsn:property_1624 a sh:PropertyShape ;
@@ -3301,7 +3396,9 @@ zotsn:publisher_1773 a sh:NodeShape ;
         zotsn:property_1966,
         zotsn:property_2067,
         zotsn:property_2160,
-        zotsn:property_2284 ;
+        zotsn:property_2284,
+        zotsn:property_2306,
+        zotsn:property_2307 ;
     sh:targetClass zot:Publisher .
 
 zotsn:agent_1742 a sh:NodeShape ;
@@ -3325,7 +3422,9 @@ zotsn:agent_1742 a sh:NodeShape ;
         zotsn:property_1966,
         zotsn:property_2067,
         zotsn:property_2160,
-        zotsn:property_2284 ;
+        zotsn:property_2284,
+        zotsn:property_2306,
+        zotsn:property_2307 ;
     sh:targetClass zot:Agent .
 
 zotsn:property_1613 a sh:PropertyShape ;
@@ -3479,7 +3578,9 @@ zotsn:annotation_1759 a sh:NodeShape ;
         zotsn:property_1966,
         zotsn:property_2065,
         zotsn:property_2067,
-        zotsn:property_2284 ;
+        zotsn:property_2284,
+        zotsn:property_2306,
+        zotsn:property_2307 ;
     sh:targetClass semz:Annotation .
 
 zotsn:locator_1757 a sh:NodeShape ;
@@ -3500,7 +3601,9 @@ zotsn:locator_1757 a sh:NodeShape ;
         zotsn:property_1869,
         zotsn:property_1923,
         zotsn:property_1966,
-        zotsn:property_2284 ;
+        zotsn:property_2284,
+        zotsn:property_2306,
+        zotsn:property_2307 ;
     sh:targetClass semz:Locator .
 
 zotsn:paragraph_1758 a sh:NodeShape ;
@@ -3522,7 +3625,9 @@ zotsn:paragraph_1758 a sh:NodeShape ;
         zotsn:property_1869,
         zotsn:property_1923,
         zotsn:property_1966,
-        zotsn:property_2284 ;
+        zotsn:property_2284,
+        zotsn:property_2306,
+        zotsn:property_2307 ;
     sh:targetClass semz:Paragraph .
 
 zotsn:property_1803 a sh:PropertyShape ;
@@ -3596,7 +3701,9 @@ zotsn:concept_1761 a sh:NodeShape ;
         zotsn:property_1966,
         zotsn:property_2065,
         zotsn:property_2067,
-        zotsn:property_2284 ;
+        zotsn:property_2284,
+        zotsn:property_2306,
+        zotsn:property_2307 ;
     sh:targetClass semz:Concept .
 
 zotsn:link_1728 a sh:NodeShape ;
@@ -3670,7 +3777,9 @@ zotsn:quotation_1760 a sh:NodeShape ;
         zotsn:property_1923,
         zotsn:property_1924,
         zotsn:property_1966,
-        zotsn:property_2284 ;
+        zotsn:property_2284,
+        zotsn:property_2306,
+        zotsn:property_2307 ;
     sh:targetClass semz:Quotation .
 
 zotsn:reference_1763 a sh:NodeShape ;
@@ -3694,7 +3803,9 @@ zotsn:reference_1763 a sh:NodeShape ;
         zotsn:property_1966,
         zotsn:property_2065,
         zotsn:property_2067,
-        zotsn:property_2284 ;
+        zotsn:property_2284,
+        zotsn:property_2306,
+        zotsn:property_2307 ;
     sh:targetClass semz:Reference .
 
 zotsn:structure_1756 a sh:NodeShape ;
@@ -3717,7 +3828,9 @@ zotsn:structure_1756 a sh:NodeShape ;
         zotsn:property_1922,
         zotsn:property_1923,
         zotsn:property_1966,
-        zotsn:property_2284 ;
+        zotsn:property_2284,
+        zotsn:property_2306,
+        zotsn:property_2307 ;
     sh:targetClass semz:Structure .
 
 zotsn:entity_1762 a sh:NodeShape ;
@@ -3742,7 +3855,9 @@ zotsn:entity_1762 a sh:NodeShape ;
         zotsn:property_1966,
         zotsn:property_2065,
         zotsn:property_2067,
-        zotsn:property_2284 ;
+        zotsn:property_2284,
+        zotsn:property_2306,
+        zotsn:property_2307 ;
     sh:targetClass semz:Entity .
 
 zotsn:property_1676 a sh:PropertyShape ;
@@ -3925,7 +4040,10 @@ zotsn:item_1498 a sh:NodeShape ;
         zotsn:property_2155,
         zotsn:property_2160,
         zotsn:property_2284,
-        zotsn:property_2286 ;
+        zotsn:property_2286,
+        zotsn:property_2306,
+        zotsn:property_2307,
+        zotsn:property_2311 ;
     sh:targetClass zot:Item .
 
 zotsn:property_1668 a sh:PropertyShape ;
@@ -3963,6 +4081,22 @@ zotsn:property_1867 a sh:PropertyShape ;
     sh:node zotsn:text_1724 ;
     sh:nodeKind sh:Literal ;
     sh:path rdfs:label .
+
+zotsn:property_2306 a sh:PropertyShape ;
+    rdfs:label "wasDerivedFrom" ;
+    volipi:message "Tooltip for wasDerivedFrom" ;
+    sh:name "wasDerivedFrom" ;
+    sh:path prov:wasDerivedFrom .
+
+zotsn:property_2307 a sh:PropertyShape ;
+    rdfs:label "generatedAtTime" ;
+    volipi:message "Tooltip for generatedAtTime" ;
+    dash:searchWidget sparnatural:TimeProperty-Date ;
+    sh:class zotsn:Date ;
+    sh:name "generatedAtTime" ;
+    sh:node zotsn:date_1727 ;
+    sh:nodeKind sh:IRI ;
+    sh:path prov:generatedAtTime .
 
 zotsn:property_1649 a sh:PropertyShape ;
     rdfs:label "archive" ;
@@ -4092,3 +4226,4 @@ zotsn:text_1724 a sh:NodeShape ;
     sh:name "Text" ;
     sh:nodeKind sh:Literal ;
     sh:property zotsn:property_148 .
+
