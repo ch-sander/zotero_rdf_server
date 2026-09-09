@@ -325,6 +325,7 @@ async def reload(
         default=True,
         description="Reload the entire configuration (re-read env/config and reinit globals)",
     ),
+    lib_names: list[str] | None = Query(default=None, description="Library names to (re)load as set in config"),
 ):
     current_level = logger.level
     if logging_level:
@@ -339,7 +340,7 @@ async def reload(
         #     importlib.reload(config_module)
         #     logger.warning("CONFIG reloaded!")
 
-        global_store.refresh_store(reload_libraries, remove_store=remove_store)
+        global_store.refresh_store(reload_libraries, remove_store=remove_store, lib_names=lib_names)
 
         # from .global_store import store
         store = global_store.get_store()
@@ -349,6 +350,7 @@ async def reload(
             "reloaded": {
                 "config": bool(reload_config),
                 "libraries": bool(reload_libraries),
+                "library_names": list(lib_names) if lib_names else None,
                 "store_cleared": bool(remove_store),
             },
             "store": {"named_graphs": graphs, "len": len(store)},

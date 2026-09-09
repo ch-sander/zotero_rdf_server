@@ -128,7 +128,7 @@ def ensure_store(store):
     except Exception as e:
         logger.warning(f"Optimize failed: {e}")
 
-def refresh_store(force_reload:bool = False, remove_store:bool=True):
+def refresh_store(force_reload:bool = False, remove_store:bool=True, lib_names:list=None):
     global store
 
     with _store_lock:
@@ -195,8 +195,11 @@ def refresh_store(force_reload:bool = False, remove_store:bool=True):
                         except Exception as e:
                             logger.error(f"Schema could not be loaded: {e}")
 
-                    for lib_cfg in config.ZOTERO_LIBRARIES_CONFIGS:
+                    for lib_cfg in config.ZOTERO_LIBRARIES_CONFIGS:                        
                         lib = ZoteroLibrary(lib_cfg)
+                        if lib_names and isinstance(lib_names,str) and lib.name not in lib_names:
+                            logger.warning(f"Skipping {lib} as in {lib_names}!")
+                            continue
                         ensure_store(store)
                         logger.warning(f"load_mode '{lib.load_mode}' for '{lib.name}' — start.")
                         if lib.library_type == "excluded":
