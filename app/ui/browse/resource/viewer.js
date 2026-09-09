@@ -18,6 +18,8 @@ console.log("SPARQL endpoint:", ENDPOINT);
 
 const PROPERTY_FILTERS = params.getAll("property");
 const VIEW_MODE = params.get("view");
+// Fast mode intentionally trades labels, type badges and transitive expansion for cheap lookups.
+const FAST_MODE = params.get("mode") === "fast";
 
 const HIDDEN_PROPERTIES = new Set([
   "http://www.zotero.org/namespaces/export#version",
@@ -70,7 +72,53 @@ window.addEventListener("hashchange", () => {
   loadCurrentResource();
 });
 
+installFastModeToggle();
 loadCurrentResource();
+
+function installFastModeToggle() {
+  document.documentElement.dataset.queryMode = FAST_MODE ? "fast" : "full";
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = FAST_MODE ? "Fast mode: on" : "Fast mode: off";
+  button.title = FAST_MODE
+    ? "Direct relations only; click to enable full transitive queries"
+    : "Click to use cheaper queries without transitive property paths";
+  button.setAttribute("aria-pressed", String(FAST_MODE));
+  button.style.position = "fixed";
+  button.style.top = "0.75rem";
+  button.style.right = "0.75rem";
+  button.style.zIndex = "1000";
+  button.style.padding = "0.45rem 0.7rem";
+  button.style.border = "1px solid currentColor";
+  button.style.borderRadius = "999px";
+  button.style.background = FAST_MODE ? "#166534" : "Canvas";
+  button.style.color = FAST_MODE ? "white" : "CanvasText";
+  button.style.cursor = "pointer";
+
+  button.addEventListener("click", () => {
+    const url = new URL(window.location.href);
+
+    if (FAST_MODE) {
+      url.searchParams.delete("mode");
+    } else {
+      url.searchParams.set("mode", "fast");
+    }
+
+    window.location.assign(url.toString());
+  });
+
+  const pageHeader = document.querySelector("main > header");
+
+  if (pageHeader) {
+    button.style.position = "static";
+    button.style.float = "right";
+    button.style.margin = "0 0 0.75rem 1rem";
+    pageHeader.prepend(button);
+  } else {
+    document.body.appendChild(button);
+  }
+}
 
 function setEditLink(resourceIri, resourceTypes = []) {
   const editLink =
@@ -222,31 +270,41 @@ async function queryIncoming(uri) {
       }
     `;
 
-  const query = `
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-    SELECT ?s (MIN(?sl) AS ?sLabel)
-          ?p (MIN(?pl) AS ?pLabel)
-          (GROUP_CONCAT(DISTINCT STR(?type); separator=" · ") AS ?sType)
-    WHERE {
-      ?s ?p <${escapeSparqlIri(uri)}> .
-      OPTIONAL {
-        ?s rdf:type ?type .
+  const query = FAST_MODE
+    ? `
+      SELECT DISTINCT ?s ?p
+      WHERE {
+        ?s ?p <${escapeSparqlIri(uri)}> .
+        FILTER(isIRI(?s))
       }
-      OPTIONAL {
-        ?s rdfs:label ?sl .
-        FILTER(lang(?sl) = "${LANGUAGE}" || lang(?sl) = "")
+      ORDER BY ?p ?s
+      LIMIT ${LIMIT}
+    `
+    : `
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      SELECT ?s (MIN(?sl) AS ?sLabel)
+            ?p (MIN(?pl) AS ?pLabel)
+            (GROUP_CONCAT(DISTINCT STR(?type); separator=" · ") AS ?sType)
+      WHERE {
+        ?s ?p <${escapeSparqlIri(uri)}> .
+        OPTIONAL {
+          ?s rdf:type ?type .
+        }
+        OPTIONAL {
+          ?s rdfs:label ?sl .
+          FILTER(lang(?sl) = "${LANGUAGE}" || lang(?sl) = "")
+        }
+
+        ${propertyLabelBlock}
       }
 
-      ${propertyLabelBlock}
-    }
+      GROUP BY ?s ?p
+      ORDER BY LCASE(STR(COALESCE(MIN(?pl), ?p)))
+               LCASE(STR(COALESCE(MIN(?sl), ?s)))
 
-    GROUP BY ?s ?p
-    ORDER BY LCASE(STR(COALESCE(MIN(?pl), ?p)))
-             LCASE(STR(COALESCE(MIN(?sl), ?s)))
-
-    LIMIT ${LIMIT}
-  `;
+      LIMIT ${LIMIT}
+    `;
 
   const response = await fetch(ENDPOINT, {
     method: "POST",
@@ -266,35 +324,55 @@ async function queryIncoming(uri) {
 
 async function querySameAs(uri, requestedUri) {
 
-  const query = `
-    PREFIX owl:  <http://www.w3.org/2002/07/owl#>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+  const query = FAST_MODE
+    ? `
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
 
-    SELECT ?same
-          (MIN(?label) AS ?sameLabel)
-          (GROUP_CONCAT(DISTINCT STR(?type); separator=" · ") AS ?sameType)
-    WHERE {
+      SELECT DISTINCT ?same
+      WHERE {
+        {
+          <${escapeSparqlIri(uri)}> owl:sameAs ?same .
+        }
+        UNION
+        {
+          ?same owl:sameAs <${escapeSparqlIri(uri)}> .
+        }
 
-      <${escapeSparqlIri(uri)}>
-        (owl:sameAs|^owl:sameAs)* ?same .
+        FILTER(isIRI(?same))
+        FILTER(?same != <${escapeSparqlIri(requestedUri)}>)
+      }
+      ORDER BY ?same
+      LIMIT ${LIMIT}
+    `
+    : `
+      PREFIX owl:  <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 
-      FILTER(isIRI(?same))
-      FILTER(?same != <${escapeSparqlIri(requestedUri)}>)
+      SELECT ?same
+            (MIN(?label) AS ?sameLabel)
+            (GROUP_CONCAT(DISTINCT STR(?type); separator=" · ") AS ?sameType)
+      WHERE {
 
-      OPTIONAL {
-        ?same rdf:type ?type .
+        <${escapeSparqlIri(uri)}>
+          (owl:sameAs|^owl:sameAs)* ?same .
+
+        FILTER(isIRI(?same))
+        FILTER(?same != <${escapeSparqlIri(requestedUri)}>)
+
+        OPTIONAL {
+          ?same rdf:type ?type .
+        }
+
+        OPTIONAL {
+          ?same rdfs:label ?label .
+          FILTER(lang(?label) = "${LANGUAGE}" || lang(?label) = "")
+        }
       }
 
-      OPTIONAL {
-        ?same rdfs:label ?label .
-        FILTER(lang(?label) = "${LANGUAGE}" || lang(?label) = "")
-      }
-    }
-
-    GROUP BY ?same
-    ORDER BY LCASE(STR(COALESCE(MIN(?label), ?same)))
-  `;
+      GROUP BY ?same
+      ORDER BY LCASE(STR(COALESCE(MIN(?label), ?same)))
+    `;
 
   const response = await fetch(ENDPOINT, {
     method: "POST",
@@ -313,6 +391,17 @@ async function querySameAs(uri, requestedUri) {
 }
 
 function buildQuery(uri) {
+  if (FAST_MODE) {
+    return `
+      SELECT ?p ?o
+      WHERE {
+        <${escapeSparqlIri(uri)}> ?p ?o .
+      }
+      ORDER BY ?p
+      LIMIT ${LIMIT}
+    `;
+  }
+
   const propertyLabelBlock = ONTOLOGY_GRAPH
     ? `
       OPTIONAL {
@@ -407,6 +496,10 @@ function withCopy(node, value) {
 
 async function resolveUri(uri) {
 
+  if (FAST_MODE) {
+    return uri;
+  }
+
   const query = `
     PREFIX owl: <http://www.w3.org/2002/07/owl#>
 
@@ -439,6 +532,34 @@ async function resolveUri(uri) {
 }
 
 async function queryRelated(uri) {
+
+  const fastQuery = `
+    PREFIX dc:  <http://purl.org/dc/elements/1.1/>
+    PREFIX dct: <http://purl.org/dc/terms/>
+
+    SELECT DISTINCT ?related
+    WHERE {
+      {
+        <${escapeSparqlIri(uri)}> dc:relation ?related .
+      }
+      UNION
+      {
+        ?related dc:relation <${escapeSparqlIri(uri)}> .
+      }
+      UNION
+      {
+        <${escapeSparqlIri(uri)}> dct:relation ?related .
+      }
+      UNION
+      {
+        ?related dct:relation <${escapeSparqlIri(uri)}> .
+      }
+
+      FILTER(isIRI(?related))
+    }
+    ORDER BY ?related
+    LIMIT ${LIMIT}
+  `;
 
   const query_oxigraph = `
     PREFIX owl:  <http://www.w3.org/2002/07/owl#>
@@ -491,7 +612,7 @@ async function queryRelated(uri) {
     ORDER BY LCASE(STR(COALESCE(SAMPLE(?label), MIN(STR(?variant)))))
     LIMIT ${LIMIT}
   `;
-  const query = `
+  const fullQuery = `
     PREFIX owl:  <http://www.w3.org/2002/07/owl#>
     PREFIX dc:   <http://purl.org/dc/elements/1.1/>
     PREFIX dct:  <http://purl.org/dc/terms/>
@@ -577,7 +698,7 @@ async function queryRelated(uri) {
       "Content-Type": "application/sparql-query",
       "Accept": "application/sparql-results+json"
     },
-    body: query
+    body: FAST_MODE ? fastQuery : fullQuery
   });
 
   if (!response.ok) {
@@ -621,6 +742,7 @@ function renderRelated(bindings) {
       value.startsWith("urn:");
 
     const isInternal =
+      FAST_MODE ||
       binding.isKnown?.value === "1" ||
       binding.isKnown?.value === "true" ||
       Boolean(binding.relatedLabel) ||
@@ -800,6 +922,7 @@ function renderTriples(bindings) {
     const tr = document.createElement("tr");
 
     const isExternal =
+      !FAST_MODE &&
       binding.o?.type === "uri" &&
       binding.isKnown?.value !== "1" &&
       binding.isKnown?.value !== "true";
@@ -995,6 +1118,7 @@ function renderObject(binding) {
   }
 if (object.type === "uri" || object.type === "bnode") {
   const isExternal =
+    !FAST_MODE &&
     object.type === "uri" &&
     binding.isKnown?.value !== "1" &&
     binding.isKnown?.value !== "true";

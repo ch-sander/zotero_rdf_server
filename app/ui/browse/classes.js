@@ -14,6 +14,9 @@ const ONTOLOGY_GRAPH =
   params.get("ontology")
   || DEFAULT_ONTOLOGY_GRAPH;
 
+// Fast mode only considers direct subclass edges and direct rdf:type membership.
+const FAST_MODE = params.get("mode") === "fast";
+
 console.log("SPARQL endpoint:", ENDPOINT);
 
 const HIDDEN_CLASSES = [
@@ -64,7 +67,53 @@ window.addEventListener("hashchange", () => {
   renderCurrentClass();
 });
 
+installFastModeToggle();
 loadClasses();
+
+function installFastModeToggle() {
+  document.documentElement.dataset.queryMode = FAST_MODE ? "fast" : "full";
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = FAST_MODE ? "Fast mode: on" : "Fast mode: off";
+  button.title = FAST_MODE
+    ? "Direct class membership only; click to include inherited instances"
+    : "Click to use cheaper queries without transitive subclass paths";
+  button.setAttribute("aria-pressed", String(FAST_MODE));
+  button.style.position = "fixed";
+  button.style.top = "0.75rem";
+  button.style.right = "0.75rem";
+  button.style.zIndex = "1000";
+  button.style.padding = "0.45rem 0.7rem";
+  button.style.border = "1px solid currentColor";
+  button.style.borderRadius = "999px";
+  button.style.background = FAST_MODE ? "#166534" : "Canvas";
+  button.style.color = FAST_MODE ? "white" : "CanvasText";
+  button.style.cursor = "pointer";
+
+  button.addEventListener("click", () => {
+    const url = new URL(window.location.href);
+
+    if (FAST_MODE) {
+      url.searchParams.delete("mode");
+    } else {
+      url.searchParams.set("mode", "fast");
+    }
+
+    window.location.assign(url.toString());
+  });
+
+  const pageHeader = document.querySelector("main > header");
+
+  if (pageHeader) {
+    button.style.position = "static";
+    button.style.float = "right";
+    button.style.margin = "0 0 0.75rem 1rem";
+    pageHeader.prepend(button);
+  } else {
+    document.body.appendChild(button);
+  }
+}
 
 async function loadClasses() {
   showStatus("Loading Classes …");
@@ -178,6 +227,13 @@ searchEl.addEventListener("input", () => {
 async function queryClasses() {
   const graphOpen = ONTOLOGY_GRAPH ? `GRAPH <${ONTOLOGY_GRAPH}> {` : "";
   const graphClose = ONTOLOGY_GRAPH ? "}" : "";
+  const blockedBranchPattern = FAST_MODE
+    ? "?class rdfs:subClassOf ?blocked ."
+    : "?class rdfs:subClassOf+ ?blocked .";
+  const populatedClassPattern = FAST_MODE
+    ? "?instance a ?class ."
+    : `?instance a ?instanceClass .
+        ?instanceClass rdfs:subClassOf* ?class .`;
 
   const query = `
     PREFIX owl:  <http://www.w3.org/2002/07/owl#>
@@ -215,7 +271,7 @@ async function queryClasses() {
 
       FILTER NOT EXISTS {
         ${graphOpen}
-          ?class rdfs:subClassOf+ ?blocked .
+          ${blockedBranchPattern}
         ${graphClose}
 
         VALUES ?blocked {
@@ -224,8 +280,7 @@ async function queryClasses() {
       }
 
       FILTER EXISTS {
-        ?instance a ?instanceClass .
-        ?instanceClass rdfs:subClassOf* ?class .
+        ${populatedClassPattern}
       }
     }
     GROUP BY ?class
@@ -254,6 +309,7 @@ async function sparql(query) {
 }
 
 async function queryInstanceCount(classUri, search = "") {
+  const hasSearch = Boolean(search.trim());
   const searchFilter = search.trim()
     ? `
       FILTER(
@@ -262,19 +318,27 @@ async function queryInstanceCount(classUri, search = "") {
       )
     `
     : "";
+  const labelBlock = hasSearch
+    ? `
+      OPTIONAL {
+        ?instance rdfs:label ?label .
+        FILTER(lang(?label) = "${LANGUAGE}" || lang(?label) = "")
+      }
+    `
+    : "";
+  const instancePattern = FAST_MODE
+    ? `?instance rdf:type <${escapeSparqlIri(classUri)}> .`
+    : `?instance rdf:type/rdfs:subClassOf* <${escapeSparqlIri(classUri)}> .`;
 
   const query = `
     PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
     PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
     SELECT (COUNT(DISTINCT ?instance) AS ?count) WHERE {
-      ?instance rdf:type/rdfs:subClassOf* <${escapeSparqlIri(classUri)}> .
+      ${instancePattern}
       FILTER(isIRI(?instance))
 
-      OPTIONAL {
-        ?instance rdfs:label ?label .
-        FILTER(lang(?label) = "${LANGUAGE}" || lang(?label) = "")
-      }
+      ${labelBlock}
 
       ${searchFilter}
     }
@@ -292,13 +356,16 @@ async function queryInstances(classUri, search = "", page = 0) {
       )
     `
     : "";
+  const instancePattern = FAST_MODE
+    ? `?instance rdf:type <${escapeSparqlIri(classUri)}> .`
+    : `?instance rdf:type/rdfs:subClassOf* <${escapeSparqlIri(classUri)}> .`;
 
   const query = `
     PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
     PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
     SELECT ?instance (SAMPLE(?label) AS ?instanceLabel) WHERE {
-      ?instance rdf:type/rdfs:subClassOf* <${escapeSparqlIri(classUri)}> .
+      ${instancePattern}
       FILTER(isIRI(?instance))
 
       OPTIONAL {
@@ -446,6 +513,10 @@ function renderInstances(bindings) {
 
     if (ONTOLOGY_GRAPH) {
       params.set("ontology", ONTOLOGY_GRAPH);
+    }
+
+    if (FAST_MODE) {
+      params.set("mode", "fast");
     }
 
     const resourceUrl =
