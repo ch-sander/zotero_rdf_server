@@ -100,6 +100,7 @@ class XmlTemplateSink:
             data,
             node_value=node_value,
         )
+        values["_id"] = safe_doc_id(str(values["_id"]))
         path = resolve_export_path(
             self.output,
             base_dir=self.base_dir,
