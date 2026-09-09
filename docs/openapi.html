@@ -207,6 +207,27 @@
               "title": "Reload Config"
             },
             "description": "Reload the entire configuration (re-read env/config and reinit globals)"
+          },
+          {
+            "name": "lib_names",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Library names to (re)load as set in config",
+              "title": "Lib Names"
+            },
+            "description": "Library names to (re)load as set in config"
           }
         ],
         "responses": {
@@ -2071,6 +2092,281 @@
         }
       }
     },
+    "/plugin/fts/monitor/OCR-meta": {
+      "get": {
+        "tags": [
+          "Plugin",
+          "Fts",
+          "Monitor",
+          "Admin"
+        ],
+        "summary": "Analyze OCR metadata",
+        "description": "Read OCR metadata JSON files, optionally filter them by ts_out, and render them as an interactive HTML table. Date limits are inclusive. Timestamps without a UTC offset are interpreted as UTC.",
+        "operationId": "analyze_OCR_meta_html_plugin_fts_monitor_OCR_meta_get",
+        "parameters": [
+          {
+            "name": "folders",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Relative folders below EXPORT_DIRECTORY. If omitted, all folders containing JSON files are used.",
+              "title": "Folders"
+            },
+            "description": "Relative folders below EXPORT_DIRECTORY. If omitted, all folders containing JSON files are used."
+          },
+          {
+            "name": "ts_out_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Include records with ts_out at or after this ISO-8601 timestamp.",
+              "title": "Ts Out After"
+            },
+            "description": "Include records with ts_out at or after this ISO-8601 timestamp."
+          },
+          {
+            "name": "ts_out_before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Include records with ts_out at or before this ISO-8601 timestamp.",
+              "title": "Ts Out Before"
+            },
+            "description": "Include records with ts_out at or before this ISO-8601 timestamp."
+          },
+          {
+            "name": "sort_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "text_count",
+              "title": "Sort By"
+            }
+          },
+          {
+            "name": "sort_order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string",
+              "default": "asc",
+              "title": "Sort Order"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10000,
+              "minimum": 1,
+              "default": 10000,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugin/fts/monitor/OCR-meta.csv": {
+      "get": {
+        "tags": [
+          "Plugin",
+          "Fts",
+          "Monitor",
+          "Admin"
+        ],
+        "summary": "Export OCR metadata as CSV",
+        "description": "Read and filter OCR metadata JSON files and return the current result page as UTF-8 CSV.",
+        "operationId": "analyze_OCR_meta_csv_plugin_fts_monitor_OCR_meta_csv_get",
+        "parameters": [
+          {
+            "name": "folders",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Relative folders below EXPORT_DIRECTORY. If omitted, all folders containing JSON files are used.",
+              "title": "Folders"
+            },
+            "description": "Relative folders below EXPORT_DIRECTORY. If omitted, all folders containing JSON files are used."
+          },
+          {
+            "name": "ts_out_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Include records with ts_out at or after this ISO-8601 timestamp.",
+              "title": "Ts Out After"
+            },
+            "description": "Include records with ts_out at or after this ISO-8601 timestamp."
+          },
+          {
+            "name": "ts_out_before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Include records with ts_out at or before this ISO-8601 timestamp.",
+              "title": "Ts Out Before"
+            },
+            "description": "Include records with ts_out at or before this ISO-8601 timestamp."
+          },
+          {
+            "name": "sort_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "text_count",
+              "title": "Sort By"
+            }
+          },
+          {
+            "name": "sort_order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string",
+              "default": "asc",
+              "title": "Sort Order"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10000,
+              "minimum": 1,
+              "default": 10000,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/plugin/fts/edit-view/{os_doc_id}": {
       "get": {
         "tags": [
@@ -2900,10 +3196,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-08-24T06:48:51Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-09-09T08:59:57Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-08-24T06:48:51Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-09-09T08:59:57Z"
           },
           {
             "name": "perform_analysis",
@@ -3872,10 +4168,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-08-24T06:48:51Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-09-09T08:59:57Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-08-24T06:48:51Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-09-09T08:59:57Z"
           },
           {
             "name": "format",
@@ -4189,10 +4485,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-08-24T06:48:51Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-09-09T08:59:57Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-08-24T06:48:51Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-09-09T08:59:57Z"
           },
           {
             "name": "format",
@@ -4523,10 +4819,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-08-24T06:48:51Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-09-09T08:59:57Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-08-24T06:48:51Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-09-09T08:59:57Z"
           },
           {
             "name": "format",
@@ -4836,10 +5132,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-08-24T06:48:51Z",
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-09-09T08:59:57Z",
               "title": "Ingest To"
             },
-            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-08-24T06:48:51Z"
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-09-09T08:59:57Z"
           },
           {
             "name": "format",
@@ -4933,6 +5229,231 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugin/fts/search/stats": {
+      "get": {
+        "tags": [
+          "Plugin",
+          "Fts",
+          "Open Endpoint",
+          "Search"
+        ],
+        "summary": "Calculate statistics over numeric fields",
+        "description": "Calculate count, min, max, avg and sum for a numeric field. Optionally group by a keyword field. When group_by is specified, composite aggregation is used so all groups can be retrieved using the after cursor.",
+        "operationId": "search_stats_plugin_fts_search_stats_get",
+        "parameters": [
+          {
+            "name": "index",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Name of the OpenSearch index to query. Default alias can be set in configuration.",
+              "title": "Index"
+            },
+            "description": "Name of the OpenSearch index to query. Default alias can be set in configuration."
+          },
+          {
+            "name": "field",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Numeric field for statistics (count, min, max, avg, sum), e.g. text_length.",
+              "default": "text_length",
+              "title": "Field"
+            },
+            "description": "Numeric field for statistics (count, min, max, avg, sum), e.g. text_length."
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional keyword field to group by, e.g. meta.parent. If omitted, statistics are calculated globally.",
+              "title": "Group By"
+            },
+            "description": "Optional keyword field to group by, e.g. meta.parent. If omitted, statistics are calculated globally."
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10000,
+              "minimum": 1,
+              "description": "Number of group buckets returned per request. Only used when group_by is specified. Does not limit the number of documents included in the aggregation.",
+              "default": 10000,
+              "title": "Size"
+            },
+            "description": "Number of group buckets returned per request. Only used when group_by is specified. Does not limit the number of documents included in the aggregation."
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Composite aggregation cursor returned by the previous request. Only used with group_by.",
+              "title": "After"
+            },
+            "description": "Composite aggregation cursor returned by the previous request. Only used with group_by."
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/OutputFormat"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Response format. json: structured API response. csv: flat table from hits.hits. html: human-readable HTML document hits.hits. md/markdown: human-readable document blocks from hits.hits.",
+              "title": "Format"
+            },
+            "description": "Response format. json: structured API response. csv: flat table from hits.hits. html: human-readable HTML document hits.hits. md/markdown: human-readable document blocks from hits.hits."
+          },
+          {
+            "name": "filter_field",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Keyword field to filter on (e.g. meta.parent_key)",
+              "title": "Filter Field"
+            },
+            "description": "Keyword field to filter on (e.g. meta.parent_key)"
+          },
+          {
+            "name": "filter_value",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Single exact filter value",
+              "title": "Filter Value"
+            },
+            "description": "Single exact filter value"
+          },
+          {
+            "name": "filter_values",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "CSV list of exact filter values",
+              "title": "Filter Values"
+            },
+            "description": "CSV list of exact filter values"
+          },
+          {
+            "name": "ingest_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Lower bound for ingest_ts (inclusive), ISO-8601. ",
+              "title": "Ingest From"
+            },
+            "description": "Lower bound for ingest_ts (inclusive), ISO-8601. "
+          },
+          {
+            "name": "ingest_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-09-09T08:59:57Z",
+              "title": "Ingest To"
+            },
+            "description": "Upper bound for ingest_ts (inclusive), ISO-8601. Example: 2026-09-09T08:59:57Z"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -5082,6 +5603,22 @@
             "schema": {
               "type": "string",
               "title": "Os Doc Id"
+            }
+          },
+          {
+            "name": "static_mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Static Mode"
             }
           }
         ],
