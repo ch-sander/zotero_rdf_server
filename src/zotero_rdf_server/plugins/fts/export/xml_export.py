@@ -8,6 +8,7 @@ from xml.sax.saxutils import escape, quoteattr
 from zotero_rdf_server.logging_config import logger
 from zotero_rdf_server.plugins.fts.export.export_paths import resolve_export_path
 from zotero_rdf_server.utils import load_text_like
+from ..helpers import safe_doc_id
 
 class RawXML(str):
     """Marker for already serialized XML."""
