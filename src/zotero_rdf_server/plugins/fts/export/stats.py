@@ -9,7 +9,7 @@ back to every indexed page belonging to the analyzed item.
 from datetime import datetime, timezone
 from collections import Counter
 from functools import lru_cache
-from os import replace
+from os import replace, fchmod
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any, Dict, Iterable, Mapping
@@ -190,6 +190,7 @@ def _write_json_atomic(path: Path, value: Dict[str, Any], *, indent: int) -> Non
                 default=str,
             )
             temporary.write("\n")
+            fchmod(temporary.fileno(), 0o660)
         replace(temporary_name, path)
     finally:
         if temporary_name:
