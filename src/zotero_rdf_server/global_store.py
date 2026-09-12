@@ -104,9 +104,10 @@ def clear_directory(directory_path):
                 if item.is_file() or item.is_symlink():
                     item.unlink()
                 elif item.is_dir():
-                    shutil.rmtree(item)
+                    shutil.rmtree(item)                
             except Exception as e:
                 logger.error(f"Failed to delete {item}. Reason: {e}")
+        logger.warning(f"Removed Store directory!")
     else:
         logger.error(f"{directory} does not exist!")
 
