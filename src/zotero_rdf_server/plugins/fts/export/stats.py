@@ -190,7 +190,7 @@ def _write_json_atomic(path: Path, value: Dict[str, Any], *, indent: int) -> Non
                 default=str,
             )
             temporary.write("\n")
-            fchmod(temporary.fileno(), 0o660)
+            fchmod(temporary.fileno(), 0o664)
         replace(temporary_name, path)
     finally:
         if temporary_name:
