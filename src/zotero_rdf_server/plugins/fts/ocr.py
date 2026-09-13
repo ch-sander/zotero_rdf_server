@@ -2481,7 +2481,8 @@ def iter_text_pages(
             logger.info(f"Ignoring existing local input for {_doc_id}; using {input}")
         iter_kwargs['local_in'] = local_in
         iter_kwargs['persist_remote_input'] = persist_remote_input
-        iter_kwargs['reuse_local_input'] = reuse_local_input
+        # iter_text_pages already selected the local file, so do not resolve it again.
+        iter_kwargs['reuse_local_input'] = reuse_local_input and not bool(matches)
 
     img_dir = _resolve_out(img_out)
     txt_dir = _resolve_out(txt_out)
