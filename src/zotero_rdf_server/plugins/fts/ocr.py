@@ -1564,7 +1564,7 @@ def iter_pages(
         else:
             logger.info(f"No local file found for {doc_id} in {local_in}. Using {input}")
             for p in Path(local_in).glob("*"):
-                logger.info(p)
+                logger.debug(p)
 
     src_kind, src_path = resolve_source(input)
 
