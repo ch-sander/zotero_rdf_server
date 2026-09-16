@@ -2,6 +2,7 @@
 const DEFAULT_ENDPOINT = "/sparql/query";
 
 const DEFAULT_ONTOLOGY_GRAPH = "http://www.zotero.org/namespaces/export";
+const ZOTERO_NS = "http://www.zotero.org/namespaces/export#";
 // const ONTOLOGY_GRAPH = null;
 
 const params = new URLSearchParams(location.search);
@@ -157,6 +158,7 @@ function setEditLink(resourceIri, resourceTypes = []) {
 
 async function loadCurrentResource() {
   const uri = getUriFromLocation();
+  clearZoteroMetadata();
   triplesEl.innerHTML = "";
   contentEl.hidden = true;
     resourceLabelEl.textContent = "";
@@ -214,16 +216,155 @@ async function loadCurrentResource() {
       return;
     }
 
+    if (getUriFromLocation() !== uri) return;
     renderTriples(data.results.bindings);
     renderIncomingTriples(incomingData.results.bindings);
     renderSameAs(sameAsData.results.bindings);
     renderRelated(relatedData.results.bindings);
     hideStatus();
     contentEl.hidden = false;
+    await publishZoteroMetadata(data.results.bindings, resolvedUri, uri);
   } catch (error) {
     console.error(error);
     showStatus("Error");
   }
+}
+
+function clearZoteroMetadata() {
+  const tags = document.head.querySelectorAll("meta[data-zotero-resource]");
+  tags.forEach(tag => tag.remove());
+  document.title = "RDF Resource Viewer";
+  if (tags.length) document.dispatchEvent(new Event("ZoteroItemUpdated", { bubbles: true }));
+}
+
+async function publishZoteroMetadata(bindings, resolvedUri, requestedUri) {
+  const values = new Map();
+  for (const { p, o } of bindings) {
+    if (!values.has(p.value)) values.set(p.value, []);
+    values.get(p.value).push(o.value);
+  }
+  const first = property => values.get(ZOTERO_NS + property)?.[0];
+  const itemType = first("itemType");
+  const title = first("title") || values.get("http://www.w3.org/2000/01/rdf-schema#label")?.[0];
+  if (!itemType || !title) return; // Don't advertise RDF entities as bibliographic items.
+
+  let linkedMetadata = [];
+  try {
+    const query = `
+      PREFIX zot: <${ZOTERO_NS}>
+      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT DISTINCT ?firstName ?lastName ?name ?label ?creatorType ?roleType ?roleLabel
+                      ?field ?entity ?entityLabel WHERE {
+        {
+          <${escapeSparqlIri(resolvedUri)}> zot:creators ?role .
+          ?role zot:hasCreator ?person .
+          OPTIONAL { ?role zot:creatorType ?creatorType . }
+          OPTIONAL { ?role rdf:type ?roleType . FILTER(?roleType IN (zot:author, zot:editor)) }
+          OPTIONAL { ?role rdfs:label ?roleLabel . }
+          OPTIONAL { ?person zot:firstName ?firstName . }
+          OPTIONAL { ?person zot:lastName ?lastName . }
+          OPTIONAL { ?person zot:name ?name . }
+          OPTIONAL { ?person rdfs:label ?label . }
+        } UNION {
+          VALUES ?field { zot:publisher zot:place }
+          <${escapeSparqlIri(resolvedUri)}> ?field ?entity .
+          ?entity rdfs:label ?entityLabel .
+        }
+      }
+      LIMIT 100
+    `;
+    const response = await fetch(ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/sparql-query",
+        "Accept": "application/sparql-results+json"
+      },
+      body: query
+    });
+    if (!response.ok) throw new Error(`Linked metadata query returned ${response.status}`);
+    linkedMetadata = (await response.json()).results.bindings;
+  } catch (error) {
+    console.warn("Zotero linked metadata unavailable:", error);
+  }
+  if (getUriFromLocation() !== requestedUri) return;
+
+  function addMeta(attribute, name, content) {
+    if (!content) return;
+    const tag = document.createElement("meta");
+    tag.setAttribute(attribute, name);
+    tag.content = content;
+    tag.dataset.zoteroResource = "";
+    document.head.appendChild(tag);
+  }
+
+  function addCreator(type, name) {
+    addMeta("name", `citation_${type}`, name);
+    if (type === "author") addMeta("property", "dc.creator", name);
+  }
+
+  function entityValue(property) {
+    const field = ZOTERO_NS + property;
+    const labels = bindings.filter(binding => binding.p.value === field).map(binding => {
+      if (binding.o.type !== "uri") return binding.o.value;
+      return binding.oLabel?.value || linkedMetadata.find(row =>
+        row.field?.value === field && row.entity?.value === binding.o.value
+      )?.entityLabel?.value;
+    }).filter(Boolean);
+    return [...new Set(labels)].join("; ");
+  }
+
+  addMeta("property", "z:itemType", itemType);
+  addMeta("name", "citation_title", title);
+  addMeta("name", "citation_date", first("date"));
+  addMeta("name", "citation_language", first("language"));
+  addMeta("name", "citation_volume", first("volume"));
+  addMeta("name", "citation_issue", first("issue"));
+  addMeta("name", "citation_doi", first("DOI"));
+  addMeta("name", "citation_isbn", first("ISBN"));
+  addMeta("name", "citation_abstract", first("abstractNote"));
+  addMeta("name", "citation_publisher", entityValue("publisher"));
+  addMeta("property", "z:place", entityValue("place"));
+  if (itemType === "journalArticle") {
+    addMeta("name", "citation_journal_title", first("publicationTitle"));
+  } else if (itemType === "bookSection") {
+    addMeta("name", "citation_inbook_title", first("publicationTitle"));
+  }
+  addMeta("name", "citation_public_url", requestedUri);
+  addMeta("property", "z:url", requestedUri);
+
+  const seen = new Set();
+  const foundTypes = new Set();
+  for (const creator of linkedMetadata) {
+    const roleLabel = creator.roleLabel?.value;
+    const type = [
+      creator.creatorType?.value?.split(/[/#]/).pop(),
+      creator.roleType?.value?.split(/[/#]/).pop(),
+      roleLabel?.match(/\bas\s+(author|editor)$/i)?.[1]
+    ].map(value => value?.toLowerCase()).find(value => value === "author" || value === "editor");
+    if (!type) continue;
+    const lastName = creator.lastName?.value;
+    const firstName = creator.firstName?.value;
+    const name = lastName
+      ? [lastName, firstName].filter(Boolean).join(", ")
+      : creator.name?.value || creator.label?.value || firstName
+        || roleLabel?.replace(/\s+as\s+(author|editor)$/i, "");
+    const key = `${type}:${name}`;
+    if (!name || seen.has(key)) continue;
+    seen.add(key);
+    foundTypes.add(type);
+    addCreator(type, name);
+  }
+  const missingTypes = new Set(["author", "editor"].filter(type => !foundTypes.has(type)));
+  for (const binding of bindings.filter(row => row.p.value === ZOTERO_NS + "creators")) {
+    const match = binding.oLabel?.value?.match(/^(.+?)\s+as\s+(author|editor)$/i);
+    if (!match) continue;
+    const name = match[1].trim();
+    const type = match[2].toLowerCase();
+    if (missingTypes.has(type) && name) addCreator(type, name);
+  }
+  document.title = title;
+  document.dispatchEvent(new Event("ZoteroItemUpdated", { bubbles: true }));
 }
 
 function getUriFromLocation() {
