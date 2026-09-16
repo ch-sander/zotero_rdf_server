@@ -6,6 +6,7 @@ let activeIndexName =
   localStorage.getItem("ocrSearchIndex") || DEFAULT_INDEX_NAME;
 
 let searchInstance = null;
+let useMlt = false;
 
 const SEARCH_ATTRIBUTES_OLD = [
   { field: "text", weight: 5 },
@@ -290,6 +291,57 @@ function buildResultAttributes(fields) {
     .filter((field) => !HIT_BLACKLIST.has(field));
 }
 
+function initSearchMode(search, initialQuery) {
+  document.getElementById("searchbox").innerHTML = `
+    <label style="display: block; margin-bottom: 0.5rem">
+      <input id="mlt-toggle" type="checkbox"> More Like This (MLT)
+    </label>
+    <div id="term-searchbox"></div>
+    <form id="mlt-searchbox" hidden>
+      <textarea id="mlt-text" class="ais-SearchBox-input" rows="6"
+        aria-label="Text for similarity search"
+        placeholder="Paste a text to find similar OCR content..."
+        style="height: auto; padding: 0.75rem; resize: vertical"></textarea>
+      <button type="submit">Search similar text</button>
+      <button type="reset">Clear</button>
+    </form>
+  `;
+
+  const toggle = document.getElementById("mlt-toggle");
+  const termBox = document.getElementById("term-searchbox");
+  const form = document.getElementById("mlt-searchbox");
+  const textarea = document.getElementById("mlt-text");
+  const updateMode = () => {
+    termBox.hidden = useMlt;
+    form.hidden = !useMlt;
+  };
+
+  toggle.checked = useMlt;
+  textarea.value = initialQuery;
+  updateMode();
+
+  toggle.addEventListener("change", () => {
+    const query = useMlt ? textarea.value : search.helper.state.query || "";
+    useMlt = toggle.checked;
+    textarea.value = query;
+    updateMode();
+    search.helper.clearCache().setQuery(query).setPage(0).search();
+    (useMlt ? textarea : termBox.querySelector("input")).focus();
+  });
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    search.helper.setQuery(textarea.value).setPage(0).search();
+  });
+
+  form.addEventListener("reset", (event) => {
+    event.preventDefault();
+    textarea.value = "";
+    search.helper.setQuery("").setPage(0).search();
+    textarea.focus();
+  });
+}
+
 async function init(indexName = activeIndexName) {
   try {
     activeIndexName = indexName;
@@ -299,6 +351,7 @@ async function init(indexName = activeIndexName) {
     const dynamicFacets = buildFacetAttributes(flatFields);
     const dynamicResultAttributes = buildResultAttributes(flatFields);
 
+    searchInstance?.dispose();
     createFacetContainers(dynamicFacets);
 
     const sk = new Searchkit({
@@ -318,12 +371,25 @@ async function init(indexName = activeIndexName) {
       }
     });
 
-const searchClient = SearchkitInstantsearchClient(sk, {
+const createSearchClient = () => SearchkitInstantsearchClient(sk, {
   getQuery(query) {
     const q = (query || "").trim();
 
     if (!q) {
       return false;
+    }
+
+    if (useMlt) {
+      return [{
+        more_like_this: {
+          fields: ["text"],
+          like: q,
+          min_term_freq: 1,
+          min_doc_freq: 1,
+          max_query_terms: 25,
+          minimum_should_match: "30%"
+        }
+      }];
     }
 
     const buildTermQuery = (term) => {
@@ -427,6 +493,17 @@ const searchClient = SearchkitInstantsearchClient(sk, {
   }
 });
 
+    let activeSearchClient = createSearchClient();
+    const searchClient = {
+      search: (requests) => activeSearchClient.search(requests),
+      searchForFacetValues: (requests) => activeSearchClient.searchForFacetValues(requests),
+      clearCache: () => {
+        // Isolate late responses from searches started before a mode switch.
+        activeSearchClient = createSearchClient();
+        return Promise.resolve();
+      }
+    };
+
     const params = new URLSearchParams(window.location.search);
     const initialQuery = params.get("q") || "";
 
@@ -440,9 +517,10 @@ const searchClient = SearchkitInstantsearchClient(sk, {
       }
     });
 
+    initSearchMode(search, initialQuery);
     search.addWidgets([
       instantsearch.widgets.searchBox({
-        container: "#searchbox",
+        container: "#term-searchbox",
         placeholder: "Search OCR content...",
         showReset: true,
         showSubmit: true,
@@ -474,6 +552,7 @@ const searchClient = SearchkitInstantsearchClient(sk, {
       })
     ]);
 
+    searchInstance = search;
     search.start();
   } catch (err) {
     console.error(err);
