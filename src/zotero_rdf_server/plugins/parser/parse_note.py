@@ -307,35 +307,112 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
                                             None,
                                             graph_name=mapping_graph_uri,
                                         )
-                                    )  
-                                                                  
+                                    )
+
+                                candidate_pool = pool_map
+
+                                if target_pool_constrained:
+                                    map_target_node = safeNamedNode(MAP_TARGET)
+                                    target_quads = list(
+                                        pool_map.quads_for_pattern(
+                                            None, map_target_node, None, mapping_graph_uri
+                                        )
+                                    )
+                                    entries_with_target = {q.subject for q in target_quads}
+
+                                    entries_without_target = {
+                                        q.subject
+                                        for q in pool_map.quads_for_pattern(
+                                            None,
+                                            RDF_TYPE_NODE,
+                                            safeNamedNode(MAP_ENTRY_TYPE),
+                                            mapping_graph_uri,
+                                        )
+                                    } - entries_with_target
+
+                                    eligible_entries = entries_without_target | {
+                                        q.subject
+                                        for q in target_quads
+                                        if q.object in filter_target_subjects
+                                    }
+
+                                    candidate_pool = Store()
+                                    for q in pool_map.quads_for_pattern(
+                                        None, None, None, mapping_graph_uri
+                                    ):
+                                        if q.subject not in eligible_entries:
+                                            continue
+                                        if (
+                                            q.predicate == map_target_node
+                                            and q.object not in filter_target_subjects
+                                        ):
+                                            continue
+                                        candidate_pool.add(q)
+
                                 matched_node, score, matched_label, matched_entry = fuzzy_match_label(
-                                    pool_map,
+                                    candidate_pool,
                                     lit_value,
                                     threshold=fuzzy_threshold,
                                     graph_name=mapping_graph_uri,
                                     predicates=[map_label_prop],
                                     regex=regex,
-                                )                                                                   
-                                if (
-                                    matched_node is not None
-                                    and target_pool_constrained
-                                    and matched_node not in filter_target_subjects
-                                ):
-                                    logger.info(
-                                        f"Matched mapping target {matched_node} is outside the target pool"
-                                    )
-                                    matched_node = None
-                                    matched_entry = None
+                                )
 
                                 if matched_node is not None:
-                                    result_store.add(Quad(domain_node, map_prop, matched_node, dp.graph_name))
-                                    logger.debug(f"[FUZZY] Matched {lit_value} to {matched_label} ({score}%)")
-                                    if matched_entry is None:
-                                        entry = ensure_entry(result_store, matched_node, map_graph=mapping_graph_uri, type_hints=list(type_hints))
-                                    else:
-                                        entry = matched_entry
-                                    ensure_mapping_literal(result_store, entry, lit_value, map_label_prop, mapping_graph_uri)                               
+                                    result_store.add(
+                                        Quad(domain_node, map_prop, matched_node, dp.graph_name)
+                                    )
+                                    logger.debug(
+                                        f"[FUZZY] Matched {lit_value} to "
+                                        f"{matched_label} ({score}%)"
+                                    )
+                                    entry = matched_entry or ensure_entry(
+                                        result_store,
+                                        matched_node,
+                                        map_graph=mapping_graph_uri,
+                                        type_hints=list(type_hints),
+                                    )
+                                    ensure_mapping_literal(
+                                        result_store, entry, lit_value,
+                                        map_label_prop, mapping_graph_uri,
+                                    )
+
+                                elif matched_entry is not None and not allow_create:
+                                    ensure_mapping_literal(
+                                        result_store, matched_entry, lit_value,
+                                        map_label_prop, mapping_graph_uri,
+                                    )
+                                    logger.debug(
+                                        f"[FUZZY] Added {lit_value} to targetless "
+                                        f"mapping entry {matched_entry} ({score}%)"
+                                    )                                                                  
+                                # matched_node, score, matched_label, matched_entry = fuzzy_match_label(
+                                #     pool_map,
+                                #     lit_value,
+                                #     threshold=fuzzy_threshold,
+                                #     graph_name=mapping_graph_uri,
+                                #     predicates=[map_label_prop],
+                                #     regex=regex,
+                                # )                                                                   
+                                # if (
+                                #     matched_node is not None
+                                #     and target_pool_constrained
+                                #     and matched_node not in filter_target_subjects
+                                # ):
+                                #     logger.info(
+                                #         f"Matched mapping target {matched_node} is outside the target pool"
+                                #     )
+                                #     matched_node = None
+                                #     matched_entry = None
+
+                                # if matched_node is not None:
+                                #     result_store.add(Quad(domain_node, map_prop, matched_node, dp.graph_name))
+                                #     logger.debug(f"[FUZZY] Matched {lit_value} to {matched_label} ({score}%)")
+                                #     if matched_entry is None:
+                                #         entry = ensure_entry(result_store, matched_node, map_graph=mapping_graph_uri, type_hints=list(type_hints))
+                                #     else:
+                                #         entry = matched_entry
+                                #     ensure_mapping_literal(result_store, entry, lit_value, map_label_prop, mapping_graph_uri)                               
                                     
                                 elif allow_create:
                                     entry = matched_entry
