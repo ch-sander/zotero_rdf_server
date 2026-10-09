@@ -54,6 +54,7 @@ const FACET_BLACKLIST = new Set([
   "meta.file",
   "concepts.start",
   "concepts.end",
+  "meta.link_type",
 ]);
 
 const FACET_PRIORITY = [
