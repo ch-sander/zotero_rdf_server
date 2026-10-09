@@ -176,11 +176,11 @@ class ZoteroLibrary:
                         logger.debug(f"Header: {k}: {v}")
 
                     try:
-                        response = session.send(prepared, timeout=(5, 30))
+                        response = session.send(prepared, timeout=(5, 60))
                         response.raise_for_status()
                         data = response.json()
                     except ReadTimeout:
-                        logger.error(f"Timeout after 30s at {prepared.url}")
+                        logger.error(f"Timeout after 60s at {prepared.url}")
                         raise
                     except RequestException as e:
                         logger.error(f"Request error: {e}")
