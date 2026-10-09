@@ -1404,6 +1404,26 @@ def origin_referer(url: str) -> str:
     p = urlparse(url)
     return f"{p.scheme}://{p.netloc}/"
 
+
+import ssl
+from requests.adapters import HTTPAdapter
+
+class X25519Adapter(HTTPAdapter):
+    def __init__(self):
+        self._context = ssl.create_default_context(
+            cafile=requests.certs.where()
+        )
+        self._context.set_ecdh_curve("X25519")
+        super().__init__()
+
+    def build_connection_pool_key_attributes(self, request, verify, cert):
+        host, settings = super().build_connection_pool_key_attributes(
+            request, verify, cert
+        )
+        settings["ssl_context"] = self._context
+        return host, settings
+
+
 def stream_download_to_tempfile(
     url: str,
     suffix: str,
@@ -1423,6 +1443,7 @@ def stream_download_to_tempfile(
         destination = destination_dir / (filename or f"{safe_doc_id(url)}{suffix}")
 
     last_exc = None
+    use_x25519 = False
     for attempt in range(retries + 1):
         tmp_path = None
         try:
@@ -1437,12 +1458,16 @@ def stream_download_to_tempfile(
                 "Accept": "*/*",
             }
             headers.setdefault("Referer", origin_referer(url))
-            with requests.get(url, stream=True, timeout=timeout, headers=headers) as r:
-                r.raise_for_status()
-                with open(tmp_path, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=chunk_size):
-                        if chunk:
-                            f.write(chunk)
+            with requests.Session() as session:
+                if use_x25519:
+                    session.mount("https://", X25519Adapter())
+
+                with session.get(url, stream=True, timeout=timeout, headers=headers) as r:
+                    r.raise_for_status()
+                    with open(tmp_path, "wb") as f:
+                        for chunk in r.iter_content(chunk_size=chunk_size):
+                            if chunk:
+                                f.write(chunk)
 
             if destination is not None:
                 os.replace(tmp_path, destination)
@@ -1452,7 +1477,8 @@ def stream_download_to_tempfile(
 
         except Exception as e:
             last_exc = e
-
+            if isinstance(e, requests.exceptions.SSLError):
+                use_x25519 = True
             if tmp_path and os.path.exists(tmp_path):
                 try:
                     os.remove(tmp_path)
