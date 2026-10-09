@@ -397,6 +397,10 @@ open-search:
                   - "v=>u"
                   - "j=>i"
                   - "ae=>e"                  
+              ocr_latin_abbreviations:
+                type: pattern_replace
+                pattern: "(?:u\\u0303|ũ)(?!\\p{L})"
+                replacement: "um"
               ocr_dehyphenate_linebreak:
                 type: pattern_replace
                 # pattern: "(?<=\\p{L})-\\s*\\n\\s*(?=\\p{L})"
@@ -454,7 +458,8 @@ open-search:
                   - ocr_common_map
                   - ocr_dehyphenate_linebreak
                   - ocr_dehyphenate_linebreak_not
-                  - ocr_newlines_to_space                  
+                  - ocr_newlines_to_space
+                  - ocr_latin_abbreviations
                   - ocr_punctuation_soften
                 tokenizer: standard
                 filter:
@@ -487,6 +492,7 @@ open-search:
                   - ocr_dehyphenate_linebreak
                   - ocr_dehyphenate_linebreak_not
                   - ocr_newlines_to_space
+                  - ocr_latin_abbreviations
                   - ocr_punctuation_soften
                 tokenizer: standard
                 filter: # No stop words?
