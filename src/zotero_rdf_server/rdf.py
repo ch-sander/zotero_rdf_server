@@ -1667,7 +1667,8 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
         if not json_path_collections:
             items = lib.fetch_items(json_path=json_path_items)
     except Exception as e:
-        logger.warning(f"Could not fetch items for {lib.library_id}: {e}")
+        logger.exception(f"Could not fetch items for {lib.library_id}: {e}")
+        raise
 
     try:
         if not json_path_items:
@@ -1693,6 +1694,8 @@ def build_graph_for_library(lib: ZoteroLibrary, store: Store, json_path:str | Pa
 
     map = lib.map
     sample_entry = (items or collections or [None])[0]
+    if sample_entry is None:
+        raise ValueError(f"No items or collections found for {lib.name}")
     library_data = sample_entry.get("library", {})
 
     if sample_entry is not None:        
