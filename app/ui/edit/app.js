@@ -351,7 +351,8 @@ sshap:EntityKeywordsProperty
     a sh:PropertyShape ;
     sh:path schema:keywords ;
     sh:name "Keywords"@en, "Schlagwörter"@de ;
-    sh:datatype xsd:string ;
+    sh:nodeKind sh:IRIOrLiteral ;
+    # sh:datatype xsd:string ;
     sh:group sshap:CommonEntityGroup ;
     sh:order 6 .
 
