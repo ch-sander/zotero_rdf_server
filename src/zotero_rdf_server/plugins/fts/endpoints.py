@@ -1021,7 +1021,8 @@ def format_search_response(
             make_snippet=False,
         )
 
-        logger.info(json.dumps(normalized['hits'][0],indent=4))
+        if normalized["hits"]:
+            logger.info(json.dumps(normalized["hits"][0], indent=4))
 
         rows = [add_analysis_columns(r) for r in normalized["hits"]]
 
@@ -1097,7 +1098,8 @@ def format_search_response(
                 _input = list(cleaned_rows)
                 logger.warning(f"Redirect to {safe_atlas_url}")
                 export_atlas_folder(_input)
-                return RedirectResponse(safe_atlas_url)
+                return RedirectResponse(safe_atlas_url, status_code=303)
+                # return RedirectResponse(safe_atlas_url)
             except Exception as e:
                 logger.error(e)
                 pass
@@ -1512,6 +1514,123 @@ def get_ingest_ts_range_filter(
 # NLP
 from .analysis.models import ResultAnalysisParams, get_result_analysis_params
 
+
+def _execute_search_with_analysis(
+    *,
+    index: Optional[str],
+    body: Dict[str, Any],
+    columns: Optional[str],
+    field: str,
+    format: OutputFormat,
+    agg: AggregationParams,
+    analysis: ResultAnalysisParams,
+    add_snippet: bool = False,
+    add_viewer_urls: bool = False,
+    scroll_all: bool = False,
+) -> Tuple[Dict[str, Any], Optional[str]]:
+    """Share optional aggregation and hit analysis across search endpoints.
+
+    Analysis uses the fetched hits. Only the existing terms match-all path
+    opts into scrolling; ranked MLT, proximity and k-NN searches stay bounded
+    by their existing size/k parameters.
+    """
+    from copy import copy
+    from .search import os_search
+
+    # Keep dependency objects local to this execution.
+    agg = copy(agg)
+    analysis = copy(analysis)
+
+    if not agg.agg_field and agg.agg_mode == AggMode.significant_text:
+        agg.agg_field = field
+    if agg.agg_mode and agg.agg_field:
+        aggs = build_aggregation(agg)
+        if aggs:
+            body["aggs"] = aggs
+
+    return_analysis = format in {
+        OutputFormat.csv_analysis, OutputFormat.json_analysis, OutputFormat.atlas
+    } or analysis.perform_analysis
+
+    # Preserve the existing terms endpoint's analysis/export behavior.
+    if return_analysis:
+        analysis.perform_analysis = True
+        analysis.cluster_enabled = True
+        analysis.neighbors_enabled = True
+
+    analyze = return_analysis or analysis.cluster_enabled or analysis.neighbors_enabled
+    base_columns = [c.strip() for c in columns.split(",") if c.strip()] if columns else []
+    source_cols = list(base_columns)
+    render_cols = list(base_columns)
+
+    if add_snippet and "snippet" not in render_cols:
+        render_cols.insert(0, "snippet")
+
+    if analysis.cluster_enabled:
+        required_modes = {analysis.cluster_source, analysis.cluster_label_source}
+        if analysis.analysis_mode != "both":
+            if analysis.analysis_mode not in required_modes or len(required_modes) == 2:
+                analysis.analysis_mode = "both"
+        render_cols.extend(["analysis_cluster_label", "analysis_cluster_id"])
+
+    if analysis.perform_analysis:
+        if analysis.analysis_mode in {"both", "hits_documents"}:
+            render_cols.append("analysis_local_key_terms")
+        if analysis.analysis_mode in {"both", "index_documents"}:
+            render_cols.append("analysis_global_key_terms")
+
+    # A restricted projection must still provide the text needed for analysis.
+    if analyze and source_cols and field not in source_cols:
+        source_cols.append(field)
+
+    source_columns = ",".join(dict.fromkeys(source_cols)) or None
+    render_columns = ",".join(dict.fromkeys(render_cols)) or None
+    if not analyze and not add_viewer_urls and not add_snippet:
+        # Preserve ordinary requests on the other endpoints exactly.
+        source_columns = columns
+        render_columns = columns
+
+    use_scroll = return_analysis and scroll_all
+    try:
+        if use_scroll:
+            from .search import os_search_all_scroll
+            resp = os_search_all_scroll(
+                index=index,
+                body=body,
+                columns=source_columns,
+                batch_size=1000,
+                scroll_ttl="2m",
+            )
+            logger.info("Got all scroll hits!")
+        else:
+            resp = os_search(index=index, body=body, columns=source_columns)
+
+        if analyze or add_viewer_urls:
+            from .search import enrich_hits_with_analysis
+            from .viewer import add_viewer_url
+
+            hits = resp.get("hits", {}).get("hits", [])
+            add_viewer_url(hits, request=None)
+            hits = enrich_hits_with_analysis(
+                hits,
+                index=index,
+                analysis=analysis,
+                field=field,
+                return_analysis=return_analysis,
+            )
+            resp["hits"]["hits"] = hits
+
+            if use_scroll:
+                resp["hits"]["total"] = {"value": len(hits), "relation": "eq"}
+            if hits:
+                logger.info("First hit keys: %s", list(hits[0].keys()))
+                logger.debug("First hit highlight: %s", hits[0].get("highlight"))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
+
+    return resp, render_columns
+
+
 @open_router.get(
     "/search/terms",
     summary="Search comma-separated terms (OR) with phrase/prefix/fuzzy modes",
@@ -1631,7 +1750,7 @@ def search_terms(
     context: bool = Query(True, description="Include query context in the response."),
 
 ):
-    from .search import parse_csv, build_terms_should_queries, os_search, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter, TermQueryConfig
+    from .search import parse_csv, build_terms_should_queries, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter, TermQueryConfig
 
     api_call = str(request.url)
     # --- Build query ---------------------------------------------------------
@@ -1685,20 +1804,6 @@ def search_terms(
     apply_keyword_filter(body, filters)
     apply_paging(body, size=size, offset=offset)
 
-    def _split_columns(columns: Optional[str]) -> List[str]:
-        if not columns:
-            return []
-        return [c.strip() for c in columns.split(",") if c.strip()]
-
-    def _join_columns(cols: List[str]) -> Optional[str]:
-        seen = set()
-        out = []
-        for c in cols:
-            if c not in seen:
-                seen.add(c)
-                out.append(c)
-        return ",".join(out) if out else None
-
     # --- Highlight -----------------------------------------------------------
     if highlight:
         hf = highlight_field or field
@@ -1714,100 +1819,18 @@ def search_terms(
             "require_field_match": False,
         }
 
-    # --- Aggregation ---------------------------------------------------------
-    if not agg.agg_field and agg.agg_mode == AggMode.significant_text:
-        agg.agg_field = field
-    if agg.agg_mode and agg.agg_field:
-        aggs = build_aggregation(agg)
-        if aggs:
-            body["aggs"] = aggs
-
-    # --- Columns ---------------------------------------------------------
-    base_columns = _split_columns(columns)
-
-    source_cols = list(base_columns)
-    render_cols = list(base_columns)
-
-    if highlight or truncate_chars > 0:
-        if "snippet" not in render_cols:
-            render_cols.insert(0, "snippet")
-
-    return_analysis = format in {OutputFormat.csv_analysis, OutputFormat.json_analysis, OutputFormat.atlas} or analysis.perform_analysis
-
-    if return_analysis:
-        analysis.perform_analysis=True
-        analysis.cluster_enabled=True
-        analysis.neighbors_enabled=True
-
-    if analysis.cluster_enabled:
-        required_modes = {analysis.cluster_source, analysis.cluster_label_source}
-
-        if analysis.analysis_mode != "both":
-            if analysis.analysis_mode not in required_modes:
-                analysis.analysis_mode = "both"
-            elif len(required_modes) == 2:
-                analysis.analysis_mode = "both"
-        render_cols.append("analysis_cluster_label")
-        render_cols.append("analysis_cluster_id")
-
-
-    if analysis.perform_analysis:
-        # if source_cols and field and field not in source_cols:
-        #     source_cols.append(field)
-        if analysis.analysis_mode == "both" or analysis.analysis_mode == "hits_documents":
-            if "analysis_local_key_terms" not in render_cols:
-                render_cols.append("analysis_local_key_terms")
-
-        if analysis.analysis_mode == "both" or analysis.analysis_mode == "index_documents":
-            if "analysis_global_key_terms" not in render_cols:
-                render_cols.append("analysis_global_key_terms")
-
-    source_columns = _join_columns(source_cols)
-    render_columns = _join_columns(render_cols)
-
-    # --- Query ---------------------------------------------------------
-    try:
-        from .search import os_search_all_scroll, enrich_hits_with_analysis
-        from .viewer import add_viewer_url
-
-        if return_analysis and match_all and size > 10000:
-            resp = os_search_all_scroll(
-                index=index,
-                body=body,
-                columns=source_columns,
-                batch_size=1000,
-                scroll_ttl="2m",
-            )
-            logger.info("Got all scroll hits!")
-        else:
-            resp = os_search(index=index, body=body, columns=source_columns)
-
-
-        hits = resp.get("hits", {}).get("hits", [])
-
-        add_viewer_url(hits,request=None)
-
-        hits = enrich_hits_with_analysis(
-            hits,
-            index=index,
-            analysis=analysis,
-            field=field,
-            return_analysis=return_analysis,
-            # sort = format!=OutputFormat.atlas
-        )
-
-        resp["hits"]["hits"] = hits
-
-        if return_analysis and match_all and size > 10000:
-            resp["hits"]["total"] = {"value": len(hits), "relation": "eq"}
-
-        if hits:
-            h0 = hits[0]
-            logger.info("First hit keys: %s", list(h0.keys()))
-            logger.debug("First hit highlight: %s", h0.get("highlight"))
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
+    resp, render_columns = _execute_search_with_analysis(
+        index=index,
+        body=body,
+        columns=columns,
+        field=field,
+        format=format,
+        agg=agg,
+        analysis=analysis,
+        add_snippet=highlight or truncate_chars > 0,
+        add_viewer_urls=True,
+        scroll_all=match_all and size > 10000,
+    )
 
     meta = make_header(out_header)
 
@@ -1863,8 +1886,10 @@ def search_proximity(
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     out_header: OutputHeader = Depends(output_header_params),
     context: bool = Query(False, description="Include context"),
+    agg: AggregationParams = Depends(get_aggregation_params),
+    analysis: ResultAnalysisParams = Depends(get_result_analysis_params),
 ):
-    from .search import parse_csv, build_proximity_intervals_query, os_search, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter
+    from .search import parse_csv, build_proximity_intervals_query, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter
     api_call = str(request.url)
     try:
         list_a = parse_csv(a)
@@ -1890,10 +1915,10 @@ def search_proximity(
     apply_keyword_filter(body, filters)
     apply_paging(body, size=size)
 
-    try:
-        resp = os_search(index=index, body=body, columns=columns)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
+    resp, render_columns = _execute_search_with_analysis(
+        index=index, body=body, columns=columns, field=field,
+        format=format, agg=agg, analysis=analysis,
+    )
 
     meta = make_header(out_header)
 
@@ -1901,7 +1926,7 @@ def search_proximity(
         resp=resp,
         context_query=body,
         output_format=format.value if hasattr(format, "value") else format,
-        columns=columns,
+        columns=render_columns,
         include_context=context,
         markdown_max_rows=size,
         api_call=api_call,
@@ -1931,8 +1956,11 @@ def knn_by_id(
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     out_header: OutputHeader = Depends(output_header_params),
     context: bool = Query(True, description="Include query context in the response."),
+    agg: AggregationParams = Depends(get_aggregation_params),
+    analysis: ResultAnalysisParams = Depends(get_result_analysis_params),
+    analysis_field: str = Query("text", min_length=1, description="Text field for result analysis and the default significant_text aggregation field."),
 ):
-    from .search import get_doc_vector, os_search, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter
+    from .search import get_doc_vector, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter
     api_call = str(request.url)
     try:
         query_vec = get_doc_vector(index=index, os_id=os_id, vector_field=vector_field)
@@ -1962,10 +1990,10 @@ def knn_by_id(
     apply_keyword_filter(body, filters)
     apply_paging(body, size=size)
 
-    try:
-        resp = os_search(index=index, body=body, columns=columns)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
+    resp, render_columns = _execute_search_with_analysis(
+        index=index, body=body, columns=columns, field=analysis_field,
+        format=format, agg=agg, analysis=analysis,
+    )
 
     meta = make_header(out_header)
 
@@ -1973,7 +2001,7 @@ def knn_by_id(
         resp=resp,
         context_query=body,
         output_format=format.value if hasattr(format, "value") else format,
-        columns=columns,
+        columns=render_columns,
         include_context=context,
         markdown_max_rows=size,
         api_call=api_call,
@@ -2005,9 +2033,12 @@ def mlt_by_id(
     columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
     out_header: OutputHeader = Depends(output_header_params),
     context: bool = Query(True, description="Include query context in the response."),
+    agg: AggregationParams = Depends(get_aggregation_params),
+    analysis: ResultAnalysisParams = Depends(get_result_analysis_params),
+    analysis_field: Optional[str] = Query(None, min_length=1, description="Text field for result analysis and the default significant_text aggregation field. Defaults to the first entry in fields."),
 
 ):
-    from .search import os_search, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter
+    from .search import apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter
     api_call = str(request.url)
     field_list = [f.strip() for f in fields.split(",") if f.strip()]
     if not field_list:
@@ -2037,10 +2068,10 @@ def mlt_by_id(
     apply_ingest_ts_range_filter(body,ingest_ts)
     apply_keyword_filter(body, filters)
     apply_paging(body, size=size)
-    try:
-        resp = os_search(index=index, body=body, columns=columns)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
+    resp, render_columns = _execute_search_with_analysis(
+        index=index, body=body, columns=columns, field=analysis_field or field_list[0],
+        format=format, agg=agg, analysis=analysis,
+    )
 
     meta = make_header(out_header)
 
@@ -2048,7 +2079,7 @@ def mlt_by_id(
         resp=resp,
         context_query=body,
         output_format=format.value if hasattr(format, "value") else format,
-        columns=columns,
+        columns=render_columns,
         include_context=context,
         api_call=api_call,
         header_meta=meta or None,
@@ -2078,8 +2109,11 @@ def mlt_by_text(
     ingest_ts: IngestTsRangeFilter = Depends(get_ingest_ts_range_filter),
     format: OutputFormat = Depends(resolve_format),
     out_header: OutputHeader = Depends(output_header_params),
+    agg: AggregationParams = Depends(get_aggregation_params),
+    analysis: ResultAnalysisParams = Depends(get_result_analysis_params),
+    analysis_field: Optional[str] = Query(None, min_length=1, description="Text field for result analysis and the default significant_text aggregation field. Defaults to the first entry in fields."),
 ):
-    from .search import os_search, apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter
+    from .search import apply_paging, apply_keyword_filter, apply_ingest_ts_range_filter
 
     api_call = str(request.url)
     field_list = [f.strip() for f in fields.split(",") if f.strip()]
@@ -2102,10 +2136,10 @@ def mlt_by_text(
     apply_keyword_filter(body, filters)
     apply_paging(body, size=size)
 
-    try:
-        resp = os_search(index=index, body=body, columns=columns)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OpenSearch search error: {e}")
+    resp, render_columns = _execute_search_with_analysis(
+        index=index, body=body, columns=columns, field=analysis_field or field_list[0],
+        format=format, agg=agg, analysis=analysis,
+    )
 
     meta = make_header(out_header)
 
@@ -2113,7 +2147,7 @@ def mlt_by_text(
         resp=resp,
         context_query=body,
         output_format=format.value if hasattr(format, "value") else format,
-        columns=columns,
+        columns=render_columns,
         include_context=context,
         api_call=api_call,
         header_meta=meta or None,
