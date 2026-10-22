@@ -19,8 +19,8 @@ console.log("SPARQL endpoint:", ENDPOINT);
 
 const PROPERTY_FILTERS = params.getAll("property");
 const VIEW_MODE = params.get("view");
-// Fast mode intentionally trades labels, type badges and transitive expansion for cheap lookups.
-const FAST_MODE = params.get("mode") === "fast";
+// Fast mode keeps direct labels but skips type badges and transitive expansion.
+const FAST_MODE = params.get("mode") !== "full";
 
 const HIDDEN_PROPERTIES = new Set([
   "http://www.zotero.org/namespaces/export#version",
@@ -97,7 +97,7 @@ function installFastModeToggle() {
     const url = new URL(window.location.href);
 
     if (FAST_MODE) {
-      url.searchParams.delete("mode");
+      url.searchParams.set("mode", "full");
     } else {
       url.searchParams.set("mode", "fast");
     }
@@ -414,11 +414,17 @@ async function queryIncoming(uri) {
 
   const query = FAST_MODE
     ? `
-      SELECT DISTINCT ?s ?p
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?s (MIN(?sl) AS ?sLabel) ?p
       WHERE {
         ?s ?p <${escapeSparqlIri(uri)}> .
         FILTER(isIRI(?s))
+        OPTIONAL {
+          ?s rdfs:label ?sl .
+          FILTER(lang(?sl) = "${LANGUAGE}" || lang(?sl) = "")
+        }
       }
+      GROUP BY ?s ?p
       ORDER BY ?p ?s
       LIMIT ${LIMIT}
     `
@@ -469,8 +475,9 @@ async function querySameAs(uri, requestedUri) {
   const query = FAST_MODE
     ? `
       PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-      SELECT DISTINCT ?same
+      SELECT ?same (MIN(?label) AS ?sameLabel)
       WHERE {
         {
           <${escapeSparqlIri(uri)}> owl:sameAs ?same .
@@ -482,7 +489,12 @@ async function querySameAs(uri, requestedUri) {
 
         FILTER(isIRI(?same))
         FILTER(?same != <${escapeSparqlIri(requestedUri)}>)
+        OPTIONAL {
+          ?same rdfs:label ?label .
+          FILTER(lang(?label) = "${LANGUAGE}" || lang(?label) = "")
+        }
       }
+      GROUP BY ?same
       ORDER BY ?same
       LIMIT ${LIMIT}
     `
@@ -535,10 +547,16 @@ async function querySameAs(uri, requestedUri) {
 function buildQuery(uri) {
   if (FAST_MODE) {
     return `
-      SELECT ?p ?o
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?p ?o (MIN(?ol) AS ?oLabel)
       WHERE {
         <${escapeSparqlIri(uri)}> ?p ?o .
+        OPTIONAL {
+          ?o rdfs:label ?ol .
+          FILTER(lang(?ol) = "${LANGUAGE}" || lang(?ol) = "")
+        }
       }
+      GROUP BY ?p ?o
       ORDER BY ?p
       LIMIT ${LIMIT}
     `;
@@ -678,8 +696,9 @@ async function queryRelated(uri) {
   const fastQuery = `
     PREFIX dc:  <http://purl.org/dc/elements/1.1/>
     PREFIX dct: <http://purl.org/dc/terms/>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-    SELECT DISTINCT ?related
+    SELECT ?related (MIN(?label) AS ?relatedLabel)
     WHERE {
       {
         <${escapeSparqlIri(uri)}> dc:relation ?related .
@@ -698,7 +717,11 @@ async function queryRelated(uri) {
       }
 
       FILTER(isIRI(?related))
+      OPTIONAL {
+        ?related rdfs:label ?label .
+      }
     }
+    GROUP BY ?related
     ORDER BY ?related
     LIMIT ${LIMIT}
   `;
