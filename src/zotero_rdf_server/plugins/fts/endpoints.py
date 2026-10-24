@@ -1098,8 +1098,7 @@ def format_search_response(
                 _input = list(cleaned_rows)
                 logger.warning(f"Redirect to {safe_atlas_url}")
                 export_atlas_folder(_input)
-                return RedirectResponse(safe_atlas_url, status_code=303)
-                # return RedirectResponse(safe_atlas_url)
+                return RedirectResponse(safe_atlas_url)
             except Exception as e:
                 logger.error(e)
                 pass
@@ -2143,7 +2142,7 @@ def mlt_by_text(
 
     meta = make_header(out_header)
 
-    return format_search_response(
+    response = format_search_response(
         resp=resp,
         context_query=body,
         output_format=format.value if hasattr(format, "value") else format,
@@ -2154,6 +2153,63 @@ def mlt_by_text(
         header_md_extra=out_header.header_md,
         root_path=request.scope.get("root_path", "")
     )
+
+    # Atlas is a GET page. Preserve existing redirects on all GET routes.
+    if request.method == "POST" and isinstance(response, RedirectResponse):
+        response.status_code = 303
+    return response
+
+
+@open_router.get(
+    "/search/mlt/by-text",
+    summary="Token similarity search by free text from the query string",
+    description=(
+        "GET alternative to the POST endpoint. Pass input text in like_text. "
+        "Use POST for longer texts. Supports the same search, analysis and output options."
+    ),
+    tags=["Search"],
+)
+def mlt_by_text_get(
+    request: Request,
+    like_text: str = Query(..., min_length=1, max_length=20_000, examples=["Similis simili gaudet"], description="Input text to find similar documents for."),
+    index: str = Query(None, description="OpenSearch index name. Default alias can be set in configuration"),
+    fields: str = Query("text", description="CSV list of fields, typically 'text'"),
+    min_term_freq: int = Query(1, ge=0),
+    min_doc_freq: int = Query(1, ge=0),
+    max_query_terms: int = Query(25, ge=1, le=100),
+    minimum_should_match: str = Query("30%", description="e.g. '30%' or '2'"),
+    size: int = Query(20, ge=1, le=1000),
+    columns: Optional[str] = Query(None, description="Optional CSV list of columns to include"),
+    context: bool = Query(True, description="Include query context in the response."),
+    filters: KeywordFilter = Depends(keyword_filter_params),
+    ingest_ts: IngestTsRangeFilter = Depends(get_ingest_ts_range_filter),
+    format: OutputFormat = Depends(resolve_format),
+    out_header: OutputHeader = Depends(output_header_params),
+    agg: AggregationParams = Depends(get_aggregation_params),
+    analysis: ResultAnalysisParams = Depends(get_result_analysis_params),
+    analysis_field: Optional[str] = Query(None, min_length=1, description="Text field for result analysis and the default significant_text aggregation field. Defaults to the first entry in fields."),
+):
+    return mlt_by_text(
+        request=request,
+        like_text=like_text,
+        index=index,
+        fields=fields,
+        min_term_freq=min_term_freq,
+        min_doc_freq=min_doc_freq,
+        max_query_terms=max_query_terms,
+        minimum_should_match=minimum_should_match,
+        size=size,
+        columns=columns,
+        context=context,
+        filters=filters,
+        ingest_ts=ingest_ts,
+        format=format,
+        out_header=out_header,
+        agg=agg,
+        analysis=analysis,
+        analysis_field=analysis_field,
+    )
+
 
 @open_router.get(
     "/search/stats",
@@ -2945,42 +3001,76 @@ def rerun_ocr(
 
 # Proxies
 
-@router.post("/proxy/ollama", tags=["Proxy"],)
-async def ollama_proxy(
-    user_input: str = Body(..., embed=True),
-    llm_kwargs: dict = Body(default_factory=dict, embed=True),
-):
-    logger.info("Initializing ollama...")
-    from .analysis.llm import llm
+
+@router.post("/proxy/ollama", tags=["Proxy"])
+def ollama_proxy(payload: dict = Body(...)):
+    from ollama import ResponseError
+    from .analysis.llm import get_llm_config, llm, make_llm_client
     from .helpers import resolve_config_path
 
     try:
-        llm_kwargs = dict(llm_kwargs or {})
-        llm_kwargs["config_path"] = llm_kwargs.get("config_path", resolve_config_path())
-        logger.info("Receiving llm response...")
-        raw = llm(user_input=user_input, llm_kwargs=llm_kwargs)
+        # Existing task-based requests: user_input + llm_kwargs
+        if "user_input" in payload:
+            user_input = payload["user_input"]
+            kwargs = payload.get("llm_kwargs")
+            if kwargs is None:
+                kwargs = {}
 
-        # --- JSON Parsing ---
+            if not isinstance(user_input, str) or not isinstance(kwargs, dict):
+                raise HTTPException(
+                    422,
+                    "user_input must be a string and llm_kwargs must be an object.",
+                )
+
+            kwargs = dict(kwargs)
+            kwargs.setdefault("config_path", resolve_config_path())
+
+            raw = llm(user_input=user_input, llm_kwargs=kwargs)
+
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise HTTPException(
+                    502, "Model did not return valid JSON."
+                ) from exc
+
+            if not isinstance(parsed, list):
+                raise HTTPException(502, "Model JSON is not a list.")
+
+            return parsed
+
+        # Free chat: forward the request directly to Ollama
+        model = payload.get("model")
+        if not isinstance(model, str) or not model.strip():
+            raise HTTPException(422, "model must be a non-empty string.")
+
+        if not isinstance(payload.get("messages"), list):
+            raise HTTPException(422, "messages must be a list.")
+
+        if payload.get("stream", False) is not False:
+            raise HTTPException(
+                422, "This endpoint only supports stream=false."
+            )
+
+        config = get_llm_config(resolve_config_path())
+        client = make_llm_client(config)
+
         try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError:
-            raise HTTPException(
-                status_code=502,
-                detail=f"Model did not return valid JSON: {raw}"
-            )
+            response = client.chat(**{**payload, "stream": False})
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(422, str(exc)) from exc
 
-        if not isinstance(parsed, list):
-            raise HTTPException(
-                status_code=502,
-                detail=f"Model JSON is not a list: {raw}"
-            )
-
-        return parsed
+        return response.model_dump(mode="json", exclude_none=True)
 
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ollama proxy failed: {e}")
+    except ResponseError as exc:
+        status = exc.status_code if 400 <= exc.status_code <= 599 else 502
+        raise HTTPException(status, exc.error) from exc
+    except ConnectionError as exc:
+        raise HTTPException(502, "Ollama is unreachable.") from exc
+    except Exception as exc:
+        raise HTTPException(500, f"Ollama proxy failed: {exc}") from exc
 
 @open_router.get("/proxy/search/{index}/_mapping", tags=["Proxy"])
 async def get_mapping(index: str):
