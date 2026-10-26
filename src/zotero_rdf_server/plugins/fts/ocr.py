@@ -419,7 +419,8 @@ class IiifOcrRule:
     1) kind="link":
        - key: where to look in the canvas JSON (e.g. "seeAlso", "rendering", "otherContent")
        - profile/profile_match: optional profile string matching
-       - xpath/namespaces: XPath expression used on the fetched hOCR (parsed as XML/HTML)
+       - format: optional MIME type matching (e.g. "text/plain")
+       - xpath/namespaces: XPath expression used on the fetched hOCR; empty xpath for plaintext
 
     2) kind="derive":
        - derive_from: where to take the source string from (default: canvas "@id")
@@ -439,6 +440,7 @@ class IiifOcrRule:
     derive_from: str = "@id"  # currently: only canvas-level fields (default: canvas["@id"])
     id_regex: str = r"/(\d+)$"
     url_template: str = "https://www.e-rara.ch/download/fulltext/plain/{id}"
+    format: Optional[str] = None
 
     def matches_profile(self, p: Optional[str]) -> bool:
         # Only meaningful for kind="link"; for kind="derive" we treat as "match".
@@ -456,6 +458,8 @@ class IiifOcrRule:
     @staticmethod
     def default_rules() -> tuple["IiifOcrRule", ...]:
         return (
+            # Books-as-data Plaintext (before the generic hOCR rule)
+            IiifOcrRule(format="text/plain", xpath=""),
             IiifOcrRule(),
             # e-rara Plaintext
             IiifOcrRule(
@@ -506,7 +510,8 @@ class IiifOcrPolicy:
                             key=str(r.get("key", base.key)),
                             profile=(None if r.get("profile") in (None, "") else str(r.get("profile"))),
                             profile_match=str(r.get("profile_match", base.profile_match)),
-                            xpath=str(r.get("xpath") or base.xpath),
+                            format=(None if r.get("format") in (None, "") else str(r.get("format"))),
+                            xpath=str(r.get("xpath") if r.get("xpath") is not None else base.xpath),
                             namespaces=dict(r.get("namespaces") or base.namespaces),
                             derive_from=str(r.get("derive_from", base.derive_from)),
                             id_regex=str(r.get("id_regex", base.id_regex)),
@@ -850,6 +855,8 @@ def find_ocr(canvas: dict, policy) -> Optional[tuple[str, Any, Optional[str]]]:
             continue
 
         for obj in _iter_link_objs(canvas, rule.key):
+            if getattr(rule, "format", None) and obj.get("format") != rule.format:
+                continue
             url = obj.get("@id") or obj.get("id")
             profile = obj.get("profile")
             if url and _rule_matches_profile(rule, profile):
@@ -1688,7 +1695,11 @@ def iter_pages(
                     try:
                         r = requests.get(ocr_url, timeout=getattr(iiif_ocr_policy, "timeout", timeout), headers=APP_USER)
                         r.raise_for_status()
-                        txt = ocr_bytes_to_text(r.content, rule)
+                        if getattr(rule, "format", None) == "text/plain" and "text/html" in r.headers.get("Content-Type", "").lower():
+                            logger.warning(f"{doc_id}: Expected IIIF OCR plaintext, got HTML from {ocr_url}")
+                            txt = ""
+                        else:
+                            txt = ocr_bytes_to_text(r.content, rule)
                         breaker.reset()
                         logger.debug(f"{doc_id}: Seeing IIIF OCR text in {ocr_url}: {txt}")
                         if is_usable_text(txt, iiif_ocr_policy, log_label="OCR text"):
