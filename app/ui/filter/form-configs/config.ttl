@@ -1,4 +1,4 @@
-# currently not used
+# currently not used but refers to the config of the query builder
 
 @prefix cito: <http://purl.org/spar/cito/> .
 @prefix dash: <http://datashapes.org/dash#> .
