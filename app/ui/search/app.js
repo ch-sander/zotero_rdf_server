@@ -8,34 +8,34 @@ let activeIndexName =
 let searchInstance = null;
 let useMlt = false;
 
-const SEARCH_ATTRIBUTES_OLD = [
-  { field: "text", weight: 5 },
-  { field: "label", weight: 3 },
-  { field: "meta.file_label", weight: 3 },
-  { field: "meta.parent_creators", weight: 2 },
-  { field: "meta.parent_tags", weight: 2 },
-  { field: "meta.library_label", weight: 2 },
-  { field: "meta.file", weight: 1 }
-];
+// const SEARCH_ATTRIBUTES_OLD = [
+//   { field: "text", weight: 5 },
+//   { field: "label", weight: 3 },
+//   { field: "meta.file_label", weight: 3 },
+//   { field: "meta.parent_creators", weight: 2 },
+//   { field: "meta.parent_tags", weight: 2 },
+//   { field: "meta.library_label", weight: 2 },
+//   { field: "meta.file", weight: 1 }
+// ];
 
-const RESULT_ATTRIBUTES_OLD = [
-  "doc_id",
-  "label",
-  "source",
-  "page",
-  "text",
-  "ingest_ts",
-  "meta.file",
-  "meta.file_label",
-  "meta.library",
-  "meta.library_label",
-  "meta.link_type",
-  "meta.parent",
-  "meta.parent_creators",
-  "meta.parent_key",
-  "meta.parent_tags",
-  "meta.date"
-];
+// const RESULT_ATTRIBUTES_OLD = [
+//   "doc_id",
+//   "label",
+//   "source",
+//   "page",
+//   "text",
+//   "ingest_ts",
+//   "meta.file",
+//   "meta.file_label",
+//   "meta.library",
+//   "meta.library_label",
+//   "meta.link_type",
+//   "meta.parent",
+//   "meta.parent_creators",
+//   "meta.parent_key",
+//   "meta.parent_tags",
+//   "meta.date"
+// ];
 
 const HIGHLIGHT_ATTRIBUTES = ["label", "text"];
 const SNIPPET_ATTRIBUTES = ["text"];
@@ -247,12 +247,48 @@ function buildHitsWidget() {
         const label = hit.label || hit.meta?.file_label || hit.meta?.file || "Untitled";
         const source = hit.source || "-";
         const page = hit.page ?? "-";
+        const parent = hit.meta?.parent || "-";
         const creators = hit.meta?.parent_creators || "-";
         const tags = hit.meta?.parent_tags || "-";
         const date = hit.meta?.date || "-";
         const snippet = components.Snippet({ attribute: "text", hit });
         const raw = hit.text ? hit.text.slice(0, 10000) : "";
         const url = buildUrl("doc", hit);
+
+        const badge = (name, value) => {
+          const text = Array.isArray(value)
+            ? value.join(", ")
+            : String(value ?? "-");
+
+          return html`
+            <button
+              type="button"
+              class="badge copyable"
+              title="${name} kopieren"
+              onClick=${async (event) => {
+                const button = event.currentTarget;
+                const feedback = button.querySelector(".copy-feedback");
+
+                clearTimeout(button.copyTimer);
+
+                try {
+                  await navigator.clipboard.writeText(text);
+                  feedback.textContent = " ✓ Copied";
+                } catch (error) {
+                  feedback.textContent = " – Failed to copy!";
+                  console.error(error);
+                }
+
+                button.copyTimer = setTimeout(() => {
+                  feedback.textContent = "";
+                }, 2000);
+              }}
+            >
+              ${name}: ${text}
+              <span class="copy-feedback" aria-live="polite"></span>
+            </button>
+          `;
+        };
 
         return html`
           <div class="hit">
@@ -263,12 +299,13 @@ function buildHitsWidget() {
               }</h2>
 
             <div class="meta">
-              <span class="badge">ID: ${escapeHtml(hit.objectID)}</span>
-              <span class="badge">Source: ${escapeHtml(source)}</span>
-              <span class="badge">Page: ${escapeHtml(page)}</span>
-              <span class="badge">Creators: ${escapeHtml(creators)}</span>
-              <span class="badge">Date: ${escapeHtml(date)}</span>
-              <span class="badge">Tags: ${escapeHtml(tags)}</span>
+              ${badge("ID", hit.objectID)}
+              ${badge("Parent", parent)}
+              ${badge("Source", source)}
+              ${badge("Page", page)}
+              ${badge("Creators", creators)}
+              ${badge("Date", date)}
+              ${badge("Tags", tags)}
             </div>
 
             <div class="snippet">

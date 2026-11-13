@@ -137,3 +137,13 @@ summary {
     order: 1;
   }
 }
+
+.badge.copyable {
+  cursor: pointer;
+  font: inherit;
+}
+
+.badge.copyable:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
