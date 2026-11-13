@@ -4,7 +4,7 @@ from urllib.parse import quote, urlparse
 import urllib.request
 from pyoxigraph import Store, Quad, NamedNode, Literal, RdfFormat, DefaultGraph, BlankNode, QueryResultsFormat, QuerySolutions, Triple, Variable
 from rapidfuzz import fuzz, process
-import re, json, requests, yaml, unicodedata, subprocess, importlib, sys, hashlib, tempfile
+import re, json, requests, yaml, unicodedata, subprocess, importlib, sys, hashlib, tempfile, errno
 from copy import deepcopy
 from pathlib import Path
 from .logging_config import logger
@@ -507,7 +507,7 @@ def html_to_string(text: str) -> str:
     except Exception:
         return ""
 
-def load_text_like(
+def load_text_like_deprecated(
     raw: str | Path | None,
     default: str | None = None,
     label: str | None = "text",
@@ -564,6 +564,73 @@ def load_text_like(
         if required:
             raise
         return _fallback("unexpected error")
+
+def load_text_like(
+    raw: str | Path | None,
+    default: str | None = None,
+    label: str | None = "text",
+    timeout: float = 10.0,
+    required: bool = False,
+) -> str:
+    def _fallback(reason: str, error: Exception) -> str:
+        if required:
+            raise error
+        if default is not None:
+            logger.warning(f"{label}: {reason}; using fallback default")
+            return str(default)
+        logger.warning(f"{label}: {reason}; using empty string")
+        return ""
+
+    def _result(text: str, message: str) -> str:
+        if required and not text.strip():
+            raise ValueError(f"{label or 'text'}: empty text")
+        if label is not None:
+            logger.info(f"{label}: {message}")
+        return text
+
+    try:
+        if raw is None:
+            if required:
+                raise ValueError(f"{label or 'text'}: missing input")
+            return str(default) if default is not None else ""
+
+        if isinstance(raw, Path):
+            path = raw.expanduser().resolve()
+            return _result(
+                path.read_text(encoding="utf-8"),
+                f"loaded from file {path}",
+            )
+
+        if not isinstance(raw, str):
+            raise TypeError(f"unsupported input type: {type(raw).__name__}")
+
+        if not raw or any(char in raw for char in ("\n", "\r", "\x00")):
+            return _result(raw, "using raw string")
+
+        parsed = urlparse(raw)
+        if parsed.scheme.lower() in ("http", "https"):
+            resp = requests.get(raw, timeout=timeout, headers=APP_USER)
+            resp.raise_for_status()
+            return _result(resp.text, f"loaded from URL {raw}")
+
+        try:
+            path = Path(raw).expanduser().resolve()
+            exists = path.exists()
+        except OSError as error:
+            if error.errno == errno.ENAMETOOLONG:
+                return _result(raw, "using raw string")
+            raise
+
+        if exists:
+            return _result(
+                path.read_text(encoding="utf-8"),
+                f"loaded from file {path}",
+            )
+
+        return _result(raw, "using raw string")
+
+    except Exception as error:
+        return _fallback(f"could not load text: {error}", error)
 
 
 def ensure_mapping_literal(
