@@ -1807,11 +1807,12 @@ zotsn:property_1924 a sh:PropertyShape ;
 zotsn:property_1953 a sh:PropertyShape ;
     rdfs:label "related to" ;
     volipi:message "Tooltip for relations" ;
-    sh:class zot:Item ;
     sh:name "related to" ;
-    sh:node zotsn:item_1498 ;
     sh:nodeKind sh:IRI ;
-    sh:path zot:relations .
+    sh:or ( [ sh:class zot:Item ;
+                sh:node zotsn:item_1498 ] [ sh:class zotsn:Link ;
+                sh:node zotsn:link_1728 ] ) ;
+    sh:path ( zot:relations [ sh:inversePath owl:sameAs ] ) .
 
 zotsn:property_1962 a sh:PropertyShape ;
     rdfs:label "Has Target Entity" ;
@@ -1969,7 +1970,7 @@ zotsn:property_2303 a sh:PropertyShape ;
     sh:name "term" ;
     sh:node zotsn:text_1724 ;
     sh:nodeKind sh:Literal ;
-    sh:path zstats:term .
+    sh:path ( zstats:statistics [ sh:alternativePath ( zstats:significantToken zstats:frequentToken ) ] zstats:term ) .
 
 zotsn:property_2308 a sh:PropertyShape ;
     rdfs:label "statistics" ;
@@ -3630,27 +3631,6 @@ zotsn:paragraph_1758 a sh:NodeShape ;
         zotsn:property_2307 ;
     sh:targetClass semz:Paragraph .
 
-zotsn:property_1803 a sh:PropertyShape ;
-    rdfs:label "identifies as" ;
-    volipi:message "A propterty path for transitive and inversive tracing of named nodes within and outside the triple store (This is only a query pattern)" ;
-    dash:searchWidget sparnatural:AutocompleteProperty ;
-    sh:description "A propterty path for transitive and inversive tracing of named nodes within and outside the triple store" ;
-    sh:name "identifies as" ;
-    sh:nodeKind sh:IRI ;
-    sh:or ( [ sh:class skos:Concept ;
-                sh:node zotsn:concept_134 ] [ sh:class zot:Tag ;
-                sh:node zotsn:tag_1502 ] [ sh:class zotsn:Link ;
-                sh:node zotsn:link_1728 ] [ sh:class zot:Agent ;
-                sh:node zotsn:agent_1742 ] [ sh:class semz:Concept ;
-                sh:node zotsn:concept_1761 ] [ sh:class semz:Entity ;
-                sh:node zotsn:entity_1762 ] [ sh:class semz:Reference ;
-                sh:node zotsn:reference_1763 ] [ sh:class zot:Place ;
-                sh:node zotsn:place_1772 ] [ sh:class zot:Publisher ;
-                sh:node zotsn:publisher_1773 ] [ sh:class schema:DigitalDocument ;
-                sh:node zotsn:digitaldocument_2289 ] [ sh:class schema:CreativeWork ;
-                sh:node zotsn:creativework_2290 ] ) ;
-    sh:path [ sh:zeroOrMorePath [ sh:alternativePath ( semz:sameAs owl:sameAs [ sh:inversePath owl:sameAs ] ) ] ] .
-
 zotsn:property_1868 a sh:PropertyShape ;
     rdfs:label "belongs to Item" ;
     volipi:message "The parent item of the related note, e.g. a book (This is only a query pattern)" ;
@@ -3706,18 +3686,6 @@ zotsn:concept_1761 a sh:NodeShape ;
         zotsn:property_2307 ;
     sh:targetClass semz:Concept .
 
-zotsn:link_1728 a sh:NodeShape ;
-    rdfs:label "Link" ;
-    volipi:iconName "fa-solid fa-link" ;
-    volipi:message "Any URL or IRI used (This is only a query pattern)" ;
-    sh:deactivated true ;
-    sh:description "Any URL or IRI used" ;
-    sh:name "Link" ;
-    sh:nodeKind sh:IRI ;
-    sh:property zotsn:property_2067,
-        zotsn:property_2152,
-        zotsn:property_2155 .
-
 zotsn:number_1726 a sh:NodeShape ;
     rdfs:label "Number" ;
     volipi:iconName "fa-solid fa-hashtag" ;
@@ -3756,6 +3724,28 @@ zotsn:property_1764 a sh:PropertyShape ;
     sh:node zotsn:text_1724 ;
     sh:nodeKind sh:Literal ;
     sh:path semz:text .
+
+zotsn:property_1803 a sh:PropertyShape ;
+    rdfs:label "identifies as" ;
+    volipi:message "A propterty path for transitive and inversive tracing of named nodes within and outside the triple store (This is only a query pattern)" ;
+    dash:searchWidget sparnatural:AutocompleteProperty ;
+    sh:description "A propterty path for transitive and inversive tracing of named nodes within and outside the triple store" ;
+    sh:name "identifies as" ;
+    sh:nodeKind sh:IRI ;
+    sh:or ( [ sh:class skos:Concept ;
+                sh:node zotsn:concept_134 ] [ sh:class zot:Item ;
+                sh:node zotsn:item_1498 ] [ sh:class zot:Tag ;
+                sh:node zotsn:tag_1502 ] [ sh:class zotsn:Link ;
+                sh:node zotsn:link_1728 ] [ sh:class zot:Agent ;
+                sh:node zotsn:agent_1742 ] [ sh:class semz:Concept ;
+                sh:node zotsn:concept_1761 ] [ sh:class semz:Entity ;
+                sh:node zotsn:entity_1762 ] [ sh:class semz:Reference ;
+                sh:node zotsn:reference_1763 ] [ sh:class zot:Place ;
+                sh:node zotsn:place_1772 ] [ sh:class zot:Publisher ;
+                sh:node zotsn:publisher_1773 ] [ sh:class schema:DigitalDocument ;
+                sh:node zotsn:digitaldocument_2289 ] [ sh:class schema:CreativeWork ;
+                sh:node zotsn:creativework_2290 ] ) ;
+    sh:path [ sh:zeroOrMorePath [ sh:alternativePath ( semz:sameAs owl:sameAs [ sh:inversePath owl:sameAs ] ) ] ] .
 
 zotsn:quotation_1760 a sh:NodeShape ;
     rdfs:label "Quotation" ;
@@ -3859,6 +3849,19 @@ zotsn:entity_1762 a sh:NodeShape ;
         zotsn:property_2306,
         zotsn:property_2307 ;
     sh:targetClass semz:Entity .
+
+zotsn:link_1728 a sh:NodeShape ;
+    rdfs:label "Link" ;
+    volipi:iconName "fa-solid fa-link" ;
+    volipi:message "Any URL or IRI used (This is only a query pattern)" ;
+    sh:deactivated true ;
+    sh:description "Any URL or IRI used" ;
+    sh:name "Link" ;
+    sh:nodeKind sh:IRI ;
+    sh:property zotsn:property_1803,
+        zotsn:property_2067,
+        zotsn:property_2152,
+        zotsn:property_2155 .
 
 zotsn:property_1676 a sh:PropertyShape ;
     rdfs:label "pages" ;
@@ -4226,4 +4229,3 @@ zotsn:text_1724 a sh:NodeShape ;
     sh:name "Text" ;
     sh:nodeKind sh:Literal ;
     sh:property zotsn:property_148 .
-
