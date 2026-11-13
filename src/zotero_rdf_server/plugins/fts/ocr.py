@@ -1350,6 +1350,7 @@ def fetch_pil_image(
                         "scale" in body
                         or "upscal" in body
                         or "in excess of 100%" in body
+                        or "exceed the native image size" in body
                     )
                 )
             )
@@ -3114,8 +3115,18 @@ def iter_text_pages(
             elif item.kind == "text":
                 img_url = (item.meta or {}).get("img_url")
                 if img_url:                     
-                    img = fetch_pil_image(img_url, timeout=iter_kwargs.get('timeout'),iiif_format=iter_kwargs.get('iiif_format'))
-
+                    # img = fetch_pil_image(img_url, timeout=iter_kwargs.get('timeout'),iiif_format=iter_kwargs.get('iiif_format'))
+                    try:
+                        img = fetch_pil_image(
+                            img_url,
+                            timeout=iter_kwargs.get("timeout"),
+                            iiif_format=iter_kwargs.get("iiif_format"),
+                        )
+                    except requests.RequestException as e:
+                        logger.warning(
+                            f"Image fetch failed for page {page_no}; "
+                            f"continuing with source text: {e}"
+                        )
             if ip is not None and img is not None and hasattr(img, "save"):
                 if (
                     save_image == "overwrite"
