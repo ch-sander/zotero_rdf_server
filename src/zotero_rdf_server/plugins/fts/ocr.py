@@ -2843,8 +2843,11 @@ def iter_text_pages(
             logger.info("IMAGE SKIP mode has not stored images, but it downloaded from source, if no cached images were found.")
         if save_image in {"cache"}:
             logger.info("IMAGE CACHE mode only used cached images.")
-        if save_image in {"active"}:
-            logger.info("IMAGE ACTIVE has stored missing images, but only downloaded from source, if no cached images were found.")
+        if save_image == "active":
+            logger.info(
+                "IMAGE ACTIVE mode uses source images for processing; "
+                "saves missing image files. Existing image files are replaced only if they fail validation and the source image passes validation."
+            )
         if save_image in {"smart"}:
             logger.info("IMAGE SMART mode has downloaded from source and stored missing image files.")
         if save_image in {"sniff"}:
