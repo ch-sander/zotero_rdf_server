@@ -39,6 +39,15 @@
                 "Reference",
                 "Annotation"
             ]
+        },
+        "Identifier": {
+            "xpath": [
+                "//span[contains(@style, 'line-through')]"
+            ],
+            "types": [
+                "Identifier",
+                "Annotation"
+            ]
         }
     },
     "Locator": {
