@@ -640,8 +640,8 @@ def ingest_route(
             targets=list(set(targets_set))
             try:
                 store = None
-                import gc
-                gc.collect()
+                # import gc
+                # gc.collect()
             except:
                 logger.warning("Store not found, maybe check!")
 
@@ -682,8 +682,8 @@ def ingest_route(
 
             try:
                 store = None
-                import gc
-                gc.collect()
+                # import gc
+                # gc.collect()
             except:
                 logger.warning("Store not found, maybe check!")
 
@@ -770,6 +770,8 @@ def ingest_route(
         logger.error(f"Couldn't save file: {e}")
 
     result.pop('run_ids') # do not retun full data
+    logger.info("We're done here...")
+    logger.info(json.dumps(result, ensure_ascii=False, indent=2))
 
     return result
 
