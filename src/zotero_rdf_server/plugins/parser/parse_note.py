@@ -90,7 +90,7 @@ def parse_all_notes(lib: ZoteroLibrary, store: Store, note_predicate : NamedNode
 
         if map_KB:        
             fuzzy_threshold = parser_cfg.get("fuzzy", 90)
-            knowledge_base = mapping.pop("KnowledgeBase", [])
+            knowledge_base = parser_cfg.get("KnowledgeBase", mapping.pop("KnowledgeBase", []))
             # entity_graph_uri = safeNamedNode(lib.knowledge_base_graph)
             logger.debug(f"Map semantic entites to KB following: {knowledge_base}")
 
