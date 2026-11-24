@@ -264,7 +264,7 @@ function buildHitsWidget() {
             <button
               type="button"
               class="badge copyable"
-              title="${name} kopieren"
+              title="Copy ${name}"
               onClick=${async (event) => {
                 const button = event.currentTarget;
                 const feedback = button.querySelector(".copy-feedback");
@@ -331,9 +331,15 @@ function buildResultAttributes(fields) {
 
 function initSearchMode(search, initialQuery) {
   document.getElementById("searchbox").innerHTML = `
-    <label style="display: block; margin-bottom: 0.5rem">
-      <input id="mlt-toggle" type="checkbox"> More Like This (MLT)
-    </label>
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.5rem">
+      <label>
+        <input id="mlt-toggle" type="checkbox"> More Like This (MLT)
+      </label>
+      <button id="show-opensearch-query" type="button" disabled
+        aria-haspopup="dialog" aria-controls="opensearch-query-dialog"
+        title="Show full OpenSearch query"
+        style="font-size: 0.8rem; padding: 0.2rem 0.5rem; cursor: pointer">Query</button>
+    </div>
     <div id="term-searchbox"></div>
     <form id="mlt-searchbox" hidden>
       <textarea id="mlt-text" class="ais-SearchBox-input" rows="6"
@@ -380,6 +386,137 @@ function initSearchMode(search, initialQuery) {
   });
 }
 
+function initQueryInspector() {
+  document.getElementById("searchbox").insertAdjacentHTML("beforeend", `
+    <style>
+      #opensearch-query-dialog {
+        box-sizing: border-box;
+        width: min(900px, calc(100vw - 2rem));
+        max-height: calc(100dvh - 2rem);
+        overflow: auto;
+        padding: 1.25rem;
+        border: 1px solid #cbd5e1;
+        border-radius: 0.65rem;
+        background: #fff;
+        color: #0f172a;
+      }
+      #opensearch-query-dialog::backdrop { background: rgb(0 0 0 / 45%); }
+      #opensearch-query-dialog .query-dialog-header,
+      #opensearch-query-dialog .query-dialog-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+      }
+      #opensearch-query-dialog h2 { margin: 0; font-size: 1.1rem; }
+      #opensearch-query-dialog button { padding: 0.35rem 0.65rem; cursor: pointer; }
+      #opensearch-query-index { margin: 0.75rem 0; overflow-wrap: anywhere; }
+      #opensearch-query-picker { display: block; margin-bottom: 0.75rem; }
+      #opensearch-query-picker[hidden] { display: none; }
+      #opensearch-query-text {
+        box-sizing: border-box;
+        width: 100%;
+        height: 55vh;
+        max-height: 32rem;
+        margin-bottom: 0.75rem;
+        padding: 0.75rem;
+        border: 1px solid #cbd5e1;
+        border-radius: 0.35rem;
+        background: #f8fafc;
+        color: #0f172a;
+        font: 0.8rem/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+        resize: vertical;
+      }
+    </style>
+    <dialog id="opensearch-query-dialog" aria-labelledby="opensearch-query-title">
+      <div class="query-dialog-header">
+        <h2 id="opensearch-query-title">OpenSearch query</h2>
+        <button id="close-opensearch-query" type="button" aria-label="Close">✕</button>
+      </div>
+      <p id="opensearch-query-index"></p>
+      <label id="opensearch-query-picker" hidden>
+        Request: <select id="opensearch-query-select"></select>
+      </label>
+      <textarea id="opensearch-query-text" readonly spellcheck="false" wrap="off"
+        aria-label="Full OpenSearch query"></textarea>
+      <div class="query-dialog-footer">
+        <span id="opensearch-query-feedback" role="status"></span>
+        <button id="copy-opensearch-query" type="button" disabled>Copy</button>
+      </div>
+    </dialog>
+  `);
+
+  const openButton = document.getElementById("show-opensearch-query");
+  const dialog = document.getElementById("opensearch-query-dialog");
+  const picker = document.getElementById("opensearch-query-picker");
+  const select = document.getElementById("opensearch-query-select");
+  const index = document.getElementById("opensearch-query-index");
+  const output = document.getElementById("opensearch-query-text");
+  const copyButton = document.getElementById("copy-opensearch-query");
+  const feedback = document.getElementById("opensearch-query-feedback");
+  let queries = [];
+
+  const render = () => {
+    const query = queries[Number(select.value) || 0];
+    index.textContent = query ? `Index: ${query.indexName}` : "";
+    output.value = query?.body || "No search request available yet.";
+    copyButton.disabled = !query;
+    feedback.textContent = "";
+  };
+
+  openButton.addEventListener("click", () => {
+    feedback.textContent = "";
+    if (!dialog.open) dialog.showModal();
+  });
+  document.getElementById("close-opensearch-query")
+    .addEventListener("click", () => dialog.close());
+  dialog.addEventListener("click", (event) => {
+    const rect = dialog.getBoundingClientRect();
+    if (event.target === dialog && (event.clientX < rect.left ||
+        event.clientX > rect.right || event.clientY < rect.top ||
+        event.clientY > rect.bottom)) dialog.close();
+  });
+  select.addEventListener("change", render);
+  copyButton.addEventListener("click", async () => {
+    const text = output.value;
+    const copyFallback = () => {
+      output.focus();
+      output.select();
+      if (!document.execCommand("copy")) throw new Error("Copy failed");
+    };
+    try {
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        if (output.value !== text) return;
+        copyFallback();
+      }
+      if (output.value === text) feedback.textContent = "Copied.";
+    } catch {
+      feedback.textContent = "Copy failed. Press Ctrl/Cmd+C to copy the selected text.";
+    }
+  });
+
+  render();
+  return (searchRequests) => {
+    // Snapshot the final bodies, including facet filters and aggregations.
+    queries = searchRequests.map((sr) => ({
+      indexName: sr.indexName,
+      body: JSON.stringify(sr.body, null, 2)
+    }));
+    select.replaceChildren(...queries.map((query, i) => {
+      const option = document.createElement("option");
+      option.value = String(i);
+      option.textContent = `Request ${i + 1} of ${queries.length}`;
+      return option;
+    }));
+    picker.hidden = queries.length < 2;
+    openButton.disabled = queries.length === 0;
+    render();
+  };
+}
+
 async function init(indexName = activeIndexName) {
   try {
     activeIndexName = indexName;
@@ -409,7 +546,8 @@ async function init(indexName = activeIndexName) {
       }
     });
 
-const createSearchClient = () => SearchkitInstantsearchClient(sk, {
+let displayOpenSearchQueries = () => {};
+const createSearchClient = (captureQueries = () => {}) => SearchkitInstantsearchClient(sk, {
   getQuery(query) {
     const q = (query || "").trim();
 
@@ -525,6 +663,7 @@ const createSearchClient = () => SearchkitInstantsearchClient(sk, {
         console.log(`Final OpenSearch Query ${i}`);
         console.log(JSON.stringify(sr.body, null, 2));
       });
+      captureQueries(searchRequests);
 
       return searchRequests;
     }
@@ -532,12 +671,36 @@ const createSearchClient = () => SearchkitInstantsearchClient(sk, {
 });
 
     let activeSearchClient = createSearchClient();
+    const queryClients = new Map();
+    let visibleQueryRequest = null;
     const searchClient = {
-      search: (requests) => activeSearchClient.search(requests),
+      search: (requests) => {
+        const key = JSON.stringify(requests);
+        let entry = queryClients.get(key);
+        if (!entry) {
+          entry = { queries: [] };
+          // Keep each cached search paired with its final OpenSearch bodies.
+          entry.client = createSearchClient((searchRequests) => {
+            entry.queries = searchRequests.map((sr) => ({
+              indexName: sr.indexName,
+              body: JSON.parse(JSON.stringify(sr.body))
+            }));
+            if (visibleQueryRequest === entry) displayOpenSearchQueries(entry.queries);
+          });
+          queryClients.set(key, entry);
+          if (queryClients.size > 50) queryClients.delete(queryClients.keys().next().value);
+        }
+        visibleQueryRequest = entry;
+        displayOpenSearchQueries(entry.queries);
+        return entry.client.search(requests);
+      },
       searchForFacetValues: (requests) => activeSearchClient.searchForFacetValues(requests),
       clearCache: () => {
         // Isolate late responses from searches started before a mode switch.
         activeSearchClient = createSearchClient();
+        queryClients.clear();
+        visibleQueryRequest = null;
+        displayOpenSearchQueries([]);
         return Promise.resolve();
       }
     };
@@ -556,6 +719,7 @@ const createSearchClient = () => SearchkitInstantsearchClient(sk, {
     });
 
     initSearchMode(search, initialQuery);
+    displayOpenSearchQueries = initQueryInspector();
     search.addWidgets([
       instantsearch.widgets.searchBox({
         container: "#term-searchbox",

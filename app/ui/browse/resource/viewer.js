@@ -52,6 +52,15 @@ const allowedTypes = new Set([
 
 const LANGUAGE = "en";
 const LIMIT = 1000;
+const LABEL_BATCH_SIZE = 256;
+const preferredLabelCache = new Map();
+const allLanguageLabelCache = new Map();
+const LOG_TIMINGS = params.get("timings") === "1";
+const FAST_RELATION_PREFIXES = `
+  PREFIX owl:  <http://www.w3.org/2002/07/owl#>
+  PREFIX dc:   <http://purl.org/dc/elements/1.1/>
+  PREFIX dct:  <http://purl.org/dc/terms/>
+`;
 
 const statusEl = document.querySelector("#status");
 const contentEl = document.querySelector("#content");
@@ -68,6 +77,8 @@ const relatedBoxEl = document.querySelector("#related-box");
 const relatedListEl = document.querySelector("#related-list");
 const incomingSectionEl = document.querySelector("#incoming-section");
 const incomingTriplesEl = document.querySelector("#incoming-triples");
+
+let activeLoad;
 
 window.addEventListener("hashchange", () => {
   loadCurrentResource();
@@ -156,25 +167,35 @@ function setEditLink(resourceIri, resourceTypes = []) {
   editLink.href = editUrl.toString();
 }
 
-async function loadCurrentResource() {
-  const uri = getUriFromLocation();
-  clearZoteroMetadata();
+function clearOutgoing() {
   triplesEl.innerHTML = "";
+  resourceLabelEl.textContent = "";
+  resourceTypesEl.innerHTML = "";
+  commentTextEl.innerHTML = "";
+  commentBoxEl.hidden = true;
+  generatedAtEl.hidden = true;
+  generatedAtEl.textContent = "";
+}
+
+async function loadCurrentResource() {
+  activeLoad?.abort();
+  activeLoad = new AbortController();
+  const { signal } = activeLoad;
+  const uri = getUriFromLocation();
+  const isCurrent = () => !signal.aborted && getUriFromLocation() === uri;
+
+  clearZoteroMetadata();
+  clearOutgoing();
+  setEditLink(uri, []);
   contentEl.hidden = true;
-    resourceLabelEl.textContent = "";
-    resourceTypesEl.innerHTML = "";
-    commentTextEl.innerHTML = "";
-    commentBoxEl.hidden = true;
 
-    sameAsListEl.innerHTML = "";
-    sameAsBoxEl.hidden = true;
-    relatedListEl.innerHTML = "";
-    relatedBoxEl.hidden = true;
-    generatedAtEl.hidden = true;
-    generatedAtEl.textContent = "";
+  sameAsListEl.innerHTML = "";
+  sameAsBoxEl.hidden = true;
+  relatedListEl.innerHTML = "";
+  relatedBoxEl.hidden = true;
 
-    incomingTriplesEl.innerHTML = "";
-    incomingSectionEl.hidden = true;
+  incomingTriplesEl.innerHTML = "";
+  incomingSectionEl.hidden = true;
   if (!uri) {
     showStatus("No URI given, attacht like so in URL: #https://example.org/resource/123");
     return;
@@ -190,44 +211,45 @@ async function loadCurrentResource() {
   showStatus("Loading Resource …");
 
   try {
-    const resolvedUri = await resolveUri(uri);
+    const resolvedUri = await resolveUri(uri, signal);
+    if (!isCurrent()) return;
 
     resourceUriEl.appendChild(createQueryLink(resolvedUri));
     resourceUriEl.appendChild(createRdfDownloadLink(resolvedUri));
 
-    console.log("Requested URI:", uri);
-    console.log("Resolved URI:", resolvedUri);
+    if (FAST_MODE) {
+      await loadFastView(resolvedUri, signal);
+      return;
+    }
 
-    const data = await queryResource(resolvedUri);
-    console.log(
-      "rdfs:label bindings",
-      data.results.bindings.filter(
-        b => b.p.value === "http://www.w3.org/2000/01/rdf-schema#label"
-      )
-    );
-    const incomingData = await queryIncoming(resolvedUri);
-    const sameAsData = await querySameAs(resolvedUri, uri);
-    const relatedData = await queryRelated(resolvedUri);
-
-    console.log("Endpoint:", ENDPOINT);
-    console.log("Resolved endpoint:", new URL(ENDPOINT, window.location.href).href);
-    if (data.results.bindings.length === 0) {
+    const data = await queryResource(resolvedUri, signal);
+    if (!isCurrent()) return;
+    const bindings = data.results.bindings;
+    if (bindings.length === 0) {
       showStatus("No triples!");
       return;
     }
 
-    if (getUriFromLocation() !== uri) return;
-    renderTriples(data.results.bindings);
+    const incomingData = await queryIncoming(resolvedUri, signal);
+    const sameAsData = await querySameAs(resolvedUri, uri, signal);
+    const relatedData = await queryRelated(resolvedUri, signal);
+    if (!isCurrent()) return;
     renderIncomingTriples(incomingData.results.bindings);
     renderSameAs(sameAsData.results.bindings);
     renderRelated(relatedData.results.bindings);
-    hideStatus();
-    contentEl.hidden = false;
-    await publishZoteroMetadata(data.results.bindings, resolvedUri, uri);
+    showResource(bindings);
+    await publishZoteroMetadata(bindings, resolvedUri, uri, signal);
   } catch (error) {
+    if (!isCurrent()) return;
     console.error(error);
-    showStatus("Error");
+    showStatus(contentEl.hidden ? "Error" : "Could not finish loading the resource.");
   }
+}
+
+function showResource(bindings) {
+  renderTriples(bindings);
+  hideStatus();
+  contentEl.hidden = false;
 }
 
 function clearZoteroMetadata() {
@@ -237,7 +259,7 @@ function clearZoteroMetadata() {
   if (tags.length) document.dispatchEvent(new Event("ZoteroItemUpdated", { bubbles: true }));
 }
 
-async function publishZoteroMetadata(bindings, resolvedUri, requestedUri) {
+async function publishZoteroMetadata(bindings, resolvedUri, requestedUri, signal) {
   const values = new Map();
   for (const { p, o } of bindings) {
     if (!values.has(p.value)) values.set(p.value, []);
@@ -274,20 +296,12 @@ async function publishZoteroMetadata(bindings, resolvedUri, requestedUri) {
       }
       LIMIT 100
     `;
-    const response = await fetch(ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/sparql-query",
-        "Accept": "application/sparql-results+json"
-      },
-      body: query
-    });
-    if (!response.ok) throw new Error(`Linked metadata query returned ${response.status}`);
-    linkedMetadata = (await response.json()).results.bindings;
+    linkedMetadata = (await selectQuery(query, signal, "Zotero metadata")).results.bindings;
   } catch (error) {
+    if (signal?.aborted) return;
     console.warn("Zotero linked metadata unavailable:", error);
   }
-  if (getUriFromLocation() !== requestedUri) return;
+  if (signal?.aborted || getUriFromLocation() !== requestedUri) return;
 
   function addMeta(attribute, name, content) {
     if (!content) return;
@@ -375,26 +389,280 @@ function getUriFromLocation() {
   return new URLSearchParams(location.search).get("uri");
 }
 
-async function queryResource(uri) {
-  const query = buildQuery(uri);
-
+async function selectQuery(query, signal, description = "SPARQL") {
+  const start = LOG_TIMINGS ? performance.now() : 0;
   const response = await fetch(ENDPOINT, {
     method: "POST",
     headers: {
       "Content-Type": "application/sparql-query",
       "Accept": "application/sparql-results+json"
     },
-    body: query
+    body: query,
+    signal
   });
 
   if (!response.ok) {
-    throw new Error(`SPARQL endpoint returned ${response.status}`);
+    const body = await response.text();
+    let detail = body;
+    try {
+      const error = JSON.parse(body);
+      detail = error.exception || error.message || error.error || body;
+    } catch { /* Some proxies send a plain-text error. */ }
+    throw new Error(`HTTP ${response.status} ${String(detail).slice(0, 280)}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  if (!Array.isArray(data?.results?.bindings)) {
+    throw new Error(data?.exception || data?.message || "Expected SPARQL JSON result bindings.");
+  }
+  if (LOG_TIMINGS) {
+    console.info(`[viewer] ${description} — ${Math.round(performance.now() - start)} ms, ${data.results.bindings.length} rows`);
+  }
+  return data;
 }
 
-async function queryIncoming(uri) {
+function queryResource(uri, signal) {
+  return selectQuery(buildQuery(uri), signal, "Outgoing triples");
+}
+
+function buildFastIncoming(uri, visibleOnly = false) {
+  const visibilityFilter = visibleOnly
+    ? [...HIDDEN_PROPERTIES].map(iri => `FILTER(?p != <${iri}>)`).join("\n")
+    : "";
+  return `
+    SELECT ?s ?p WHERE {
+      ?s ?p <${escapeSparqlIri(uri)}> .
+      FILTER(isIRI(?s))
+      ${visibilityFilter}
+    }
+    ORDER BY ?p ?s
+    LIMIT ${LIMIT}
+  `;
+}
+
+function buildFastSameAs(uri, requestedUri = uri) {
+  const target = `<${escapeSparqlIri(uri)}>`;
+  return `
+    SELECT DISTINCT ?same WHERE {
+      { ${target} owl:sameAs ?same } UNION { ?same owl:sameAs ${target} }
+      FILTER(isIRI(?same) && ?same != <${escapeSparqlIri(requestedUri)}>)
+    }
+    ORDER BY ?same
+    LIMIT ${LIMIT}
+  `;
+}
+
+function buildFastRelated(uri) {
+  const target = `<${escapeSparqlIri(uri)}>`;
+  return `
+    SELECT DISTINCT ?related WHERE {
+      { ${target} dc:relation ?related } UNION { ?related dc:relation ${target} }
+      UNION { ${target} dct:relation ?related } UNION { ?related dct:relation ${target} }
+      FILTER(isIRI(?related))
+    }
+    ORDER BY ?related
+    LIMIT ${LIMIT}
+  `;
+}
+
+function buildLabelQuery(iris, anyLanguage) {
+  const terms = iris.map(iri => `(<${escapeSparqlIri(iri)}>)`).join(" ");
+  return `
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    SELECT ?node (MIN(?text) AS ?label) WHERE {
+      VALUES (?node) { ${terms} }
+      ?node rdfs:label ?text .
+      ${anyLanguage ? "" : `FILTER(lang(?text) = "${LANGUAGE}" || lang(?text) = "")`}
+    }
+    GROUP BY ?node
+  `;
+}
+
+function createLabelLookup(signal, anyLanguage, report) {
+  const cache = anyLanguage ? allLanguageLabelCache : preferredLabelCache;
+  const pending = new Map();
+  const queue = [];
+  let running = false;
+
+  async function drain() {
+    while (queue.length) {
+      const iris = queue.splice(0, LABEL_BATCH_SIZE);
+      const found = new Map();
+      let succeeded = false;
+      try {
+        if (!signal.aborted) {
+          const { results } = await selectQuery(buildLabelQuery(iris, anyLanguage), signal,
+            anyLanguage ? "Related labels" : "Resource labels");
+          for (const { node, label } of results.bindings) {
+            if (node && label) found.set(node.value, label);
+          }
+          succeeded = !signal.aborted;
+        }
+      } catch (error) {
+        report("labels", error);
+      }
+      const expires = Date.now() + 60_000;
+      for (const iri of iris) {
+        const label = succeeded ? found.get(iri) || null : null;
+        if (succeeded) {
+          cache.set(iri, { label, expires });
+          if (cache.size > 4096) cache.delete(cache.keys().next().value);
+        }
+        pending.get(iri).resolve(label);
+        pending.delete(iri);
+      }
+    }
+    running = false;
+  }
+
+  return function lookup(iri) {
+    if (signal.aborted) return Promise.resolve(null);
+    const cached = cache.get(iri);
+    if (cached && cached.expires > Date.now()) return Promise.resolve(cached.label);
+    if (!pending.has(iri)) {
+      let resolve;
+      const promise = new Promise(done => { resolve = done; });
+      pending.set(iri, { promise, resolve });
+      queue.push(iri);
+      if (!running) {
+        running = true;
+        Promise.resolve().then(drain);
+      }
+    }
+    return pending.get(iri).promise;
+  };
+}
+
+function buildBlankLabelQuery(uri) {
+  // Blank node identifiers are scoped to one result. Return each object together
+  // with its label in a fresh, complete snapshot of the outgoing rows.
+  return `
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    SELECT ?p ?o ?oLabel WHERE {
+      { ${buildQuery(uri)} }
+      OPTIONAL {
+        SELECT ?p ?o (MIN(?text) AS ?oLabel) WHERE {
+          <${escapeSparqlIri(uri)}> ?p ?o .
+          FILTER(isBlank(?o))
+          ?o rdfs:label ?text .
+          FILTER(lang(?text) = "${LANGUAGE}" || lang(?text) = "")
+        }
+        GROUP BY ?p ?o
+      }
+    }
+    ORDER BY ?p ?o
+  `;
+}
+
+function linkStatus(box, entries) {
+  const inTable = entries === incomingTriplesEl;
+  const item = document.createElement(inTable ? "tr" : "li");
+  let content = item;
+  if (inTable) {
+    content = document.createElement("td");
+    content.colSpan = 2;
+    item.appendChild(content);
+  }
+  item.className = "viewer-link-status";
+  const note = document.createElement("span");
+  note.className = "value-wrap";
+  note.setAttribute("role", "status");
+  content.appendChild(note);
+  entries.appendChild(item);
+  box.hidden = false;
+  return (message, busy) => {
+    box.setAttribute("aria-busy", String(busy));
+    if (message) note.textContent = message;
+    else item.remove();
+  };
+}
+
+async function loadFastView(uri, signal) {
+  const isCurrent = () => !signal.aborted && getUriFromLocation() === uri;
+  const failures = new Set();
+  let hasRows = false;
+
+  function report(section, error) {
+    if (!isCurrent()) return;
+    failures.add(section);
+    console.warn(`Could not load ${section}`, error);
+    showStatus(`Could not load ${[...failures].join(", ")}. ${error.message}`);
+  }
+
+  const lookup = createLabelLookup(signal, false, report);
+  const lookupRelated = createLabelLookup(signal, true, report);
+  async function loadLinks(name, box, entries, request, render, lookupLabel) {
+    const status = linkStatus(box, entries);
+    status(`Loading ${name} …`, true);
+    try {
+      const { results } = await request;
+      if (!isCurrent()) return;
+      if (!results.bindings.length) {
+        status(`No ${name}.`, false);
+        return;
+      }
+      hasRows = true;
+      const labels = new Set();
+      render(results.bindings, iri => {
+        const label = lookupLabel(iri);
+        labels.add(label);
+        return label;
+      });
+      if (labels.size) {
+        status("Loading labels …", true);
+        await Promise.all(labels);
+      }
+      if (isCurrent()) status("", false);
+    } catch (error) {
+      if (!isCurrent()) return;
+      status(`Could not load ${name}.`, false);
+      report(name, error);
+    }
+  }
+
+  async function loadOutgoing() {
+    const { results } = await queryResource(uri, signal);
+    if (!isCurrent()) return;
+    if (!failures.size) hideStatus();
+    let rows = results.bindings;
+    if (!rows.length) return;
+    hasRows = true;
+    renderTriples(rows, lookup);
+    if (rows.some(row => row.o.type === "bnode")) {
+      try {
+        const data = await selectQuery(buildBlankLabelQuery(uri), signal, "Blank node labels");
+        if (!isCurrent()) return;
+        rows = data.results.bindings;
+        clearOutgoing();
+        renderTriples(rows, lookup);
+      } catch (error) {
+        report("blank node labels", error);
+      }
+    }
+    if (!isCurrent() || !rows.some(row => row.p.value === ZOTERO_NS + "itemType")) return;
+    const fields = new Set(["creators", "publisher", "place"].map(key => ZOTERO_NS + key));
+    await Promise.all(rows.filter(row => fields.has(row.p.value) && row.o.type === "uri" && !row.oLabel?.value)
+      .map(async row => { row.oLabel = await lookup(row.o.value); }));
+    if (isCurrent()) await publishZoteroMetadata(rows, uri, uri, signal);
+  }
+
+  contentEl.hidden = false;
+  await Promise.all([
+    loadOutgoing().catch(error => report("outgoing triples", error)),
+    loadLinks("incoming links", incomingSectionEl, incomingTriplesEl,
+      queryIncoming(uri, signal, true), renderIncomingTriples, lookup),
+    loadLinks("sameAs links", sameAsBoxEl, sameAsListEl,
+      querySameAs(uri, uri, signal), renderSameAs, lookup),
+    loadLinks("related links", relatedBoxEl, relatedListEl,
+      queryRelated(uri, signal), renderRelated, lookupRelated)
+  ]);
+  if (isCurrent() && !hasRows && !failures.size) showStatus("No triples!");
+}
+
+async function queryIncoming(uri, signal, visibleOnly = false) {
+  if (FAST_MODE) {
+    return selectQuery(buildFastIncoming(uri, visibleOnly), signal, "Incoming links");
+  }
 
   const propertyLabelBlock = ONTOLOGY_GRAPH
     ? `
@@ -412,23 +680,7 @@ async function queryIncoming(uri) {
       }
     `;
 
-  const query = FAST_MODE
-    ? `
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      SELECT ?s (MIN(?sl) AS ?sLabel) ?p
-      WHERE {
-        ?s ?p <${escapeSparqlIri(uri)}> .
-        FILTER(isIRI(?s))
-        OPTIONAL {
-          ?s rdfs:label ?sl .
-          FILTER(lang(?sl) = "${LANGUAGE}" || lang(?sl) = "")
-        }
-      }
-      GROUP BY ?s ?p
-      ORDER BY ?p ?s
-      LIMIT ${LIMIT}
-    `
-    : `
+  const query = `
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
       SELECT ?s (MIN(?sl) AS ?sLabel)
@@ -454,51 +706,15 @@ async function queryIncoming(uri) {
       LIMIT ${LIMIT}
     `;
 
-  const response = await fetch(ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/sparql-query",
-      "Accept": "application/sparql-results+json"
-    },
-    body: query
-  });
-
-  if (!response.ok) {
-    throw new Error(`SPARQL endpoint returned ${response.status}`);
-  }
-
-  return response.json();
+  return selectQuery(query, signal);
 }
 
-async function querySameAs(uri, requestedUri) {
+async function querySameAs(uri, requestedUri, signal) {
+  if (FAST_MODE) {
+    return selectQuery(`${FAST_RELATION_PREFIXES} ${buildFastSameAs(uri, requestedUri)}`, signal, "sameAs links");
+  }
 
-  const query = FAST_MODE
-    ? `
-      PREFIX owl: <http://www.w3.org/2002/07/owl#>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-      SELECT ?same (MIN(?label) AS ?sameLabel)
-      WHERE {
-        {
-          <${escapeSparqlIri(uri)}> owl:sameAs ?same .
-        }
-        UNION
-        {
-          ?same owl:sameAs <${escapeSparqlIri(uri)}> .
-        }
-
-        FILTER(isIRI(?same))
-        FILTER(?same != <${escapeSparqlIri(requestedUri)}>)
-        OPTIONAL {
-          ?same rdfs:label ?label .
-          FILTER(lang(?label) = "${LANGUAGE}" || lang(?label) = "")
-        }
-      }
-      GROUP BY ?same
-      ORDER BY ?same
-      LIMIT ${LIMIT}
-    `
-    : `
+  const query = `
       PREFIX owl:  <http://www.w3.org/2002/07/owl#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -528,36 +744,14 @@ async function querySameAs(uri, requestedUri) {
       ORDER BY LCASE(STR(COALESCE(MIN(?label), ?same)))
     `;
 
-  const response = await fetch(ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/sparql-query",
-      "Accept": "application/sparql-results+json"
-    },
-    body: query
-  });
-
-  if (!response.ok) {
-    throw new Error(`SPARQL endpoint returned ${response.status}`);
-  }
-
-  return response.json();
+  return selectQuery(query, signal);
 }
 
 function buildQuery(uri) {
   if (FAST_MODE) {
     return `
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      SELECT ?p ?o (MIN(?ol) AS ?oLabel)
-      WHERE {
-        <${escapeSparqlIri(uri)}> ?p ?o .
-        OPTIONAL {
-          ?o rdfs:label ?ol .
-          FILTER(lang(?ol) = "${LANGUAGE}" || lang(?ol) = "")
-        }
-      }
-      GROUP BY ?p ?o
-      ORDER BY ?p
+      SELECT ?p ?o WHERE { <${escapeSparqlIri(uri)}> ?p ?o }
+      ORDER BY ?p ?o
       LIMIT ${LIMIT}
     `;
   }
@@ -654,7 +848,7 @@ function withCopy(node, value) {
   return wrap;
 }
 
-async function resolveUri(uri) {
+async function resolveUri(uri, signal) {
 
   if (FAST_MODE) {
     return uri;
@@ -673,58 +867,15 @@ async function resolveUri(uri) {
     LIMIT 1
   `;
 
-  const response = await fetch(ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/sparql-query",
-      "Accept": "application/sparql-results+json"
-    },
-    body: query
-  });
-
-  if (!response.ok) {
-    throw new Error(`SPARQL endpoint returned ${response.status}`);
-  }
-
-  const data = await response.json();
+  const data = await selectQuery(query, signal);
 
   return data.results.bindings[0]?.canonical?.value || uri;
 }
 
-async function queryRelated(uri) {
-
-  const fastQuery = `
-    PREFIX dc:  <http://purl.org/dc/elements/1.1/>
-    PREFIX dct: <http://purl.org/dc/terms/>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-    SELECT ?related (MIN(?label) AS ?relatedLabel)
-    WHERE {
-      {
-        <${escapeSparqlIri(uri)}> dc:relation ?related .
-      }
-      UNION
-      {
-        ?related dc:relation <${escapeSparqlIri(uri)}> .
-      }
-      UNION
-      {
-        <${escapeSparqlIri(uri)}> dct:relation ?related .
-      }
-      UNION
-      {
-        ?related dct:relation <${escapeSparqlIri(uri)}> .
-      }
-
-      FILTER(isIRI(?related))
-      OPTIONAL {
-        ?related rdfs:label ?label .
-      }
-    }
-    GROUP BY ?related
-    ORDER BY ?related
-    LIMIT ${LIMIT}
-  `;
+async function queryRelated(uri, signal) {
+  if (FAST_MODE) {
+    return selectQuery(`${FAST_RELATION_PREFIXES} ${buildFastRelated(uri)}`, signal, "Related links");
+  }
 
   const query_oxigraph = `
     PREFIX owl:  <http://www.w3.org/2002/07/owl#>
@@ -857,20 +1008,7 @@ async function queryRelated(uri) {
     LIMIT ${LIMIT}
   `;
   
-  const response = await fetch(ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/sparql-query",
-      "Accept": "application/sparql-results+json"
-    },
-    body: FAST_MODE ? fastQuery : fullQuery
-  });
-
-  if (!response.ok) {
-    throw new Error(`SPARQL endpoint returned ${response.status}`);
-  }
-
-  return response.json();
+  return selectQuery(fullQuery, signal);
 }
 
 
@@ -889,10 +1027,21 @@ function appendTypeBadge(anchor, typeBinding) {
   anchor.appendChild(sup);
 }
 
-function renderRelated(bindings) {
+function appendNodeLabel(element, term, boundLabel, lookup) {
+  const text = document.createTextNode(boundLabel?.value || shortenIri(term.value));
+  element.appendChild(text);
+  if (lookup && !boundLabel?.value && term.type === "uri") {
+    lookup(term.value).then(label => {
+      if (label?.value) text.textContent = label.value;
+    });
+  }
+}
+
+function renderRelated(bindings, lookup) {
   if (bindings.length === 0) return;
 
   relatedBoxEl.hidden = false;
+  const items = document.createDocumentFragment();
 
   for (const binding of bindings) {
 
@@ -923,9 +1072,7 @@ function renderRelated(bindings) {
       a.rel = "noopener noreferrer";
     }
 
-    a.textContent =
-      binding.relatedLabel?.value ||
-      shortenIri(binding.related.value);
+    appendNodeLabel(a, binding.related, binding.relatedLabel, lookup);
     appendTypeBadge(a, binding.relatedType);
     a.title = binding.related.value;
 
@@ -933,19 +1080,21 @@ function renderRelated(bindings) {
       withCopy(a, binding.related.value)
     );
 
-    relatedListEl.appendChild(li);
+    items.appendChild(li);
   }
+  relatedListEl.appendChild(items);
 }
 
 
 
-function renderSameAs(bindings) {
+function renderSameAs(bindings, lookup) {
 
   if (bindings.length === 0) {
     return;
   }
 
   sameAsBoxEl.hidden = false;
+  const items = document.createDocumentFragment();
 
   for (const binding of bindings) {
 
@@ -956,9 +1105,7 @@ function renderSameAs(bindings) {
     const value = binding.same.value;
 
     a.href = "#" + encodeURIComponent(value);
-    a.textContent =
-      binding.sameLabel?.value ||
-      shortenIri(value);
+    appendNodeLabel(a, binding.same, binding.sameLabel, lookup);
 
     appendTypeBadge(a, binding.sameType);
     a.title = value;
@@ -1000,11 +1147,12 @@ function renderSameAs(bindings) {
     //   withCopy(a, binding.same.value)
     // );
 
-    sameAsListEl.appendChild(li);
+    items.appendChild(li);
   }
+  sameAsListEl.appendChild(items);
 }
 
-function renderTriples(bindings) {
+function renderTriples(bindings, lookup) {
   const normalRows = [];
   const resourceTypes = [];
 
@@ -1027,8 +1175,7 @@ function renderTriples(bindings) {
       const span = document.createElement("span");
       span.className = "resource-type";
 
-      span.textContent =
-        binding.oLabel?.value || shortenIri(binding.o.value);
+      appendNodeLabel(span, binding.o, binding.oLabel, lookup);
 
       resourceTypesEl.appendChild(
         withCopy(span, binding.o.value)
@@ -1076,13 +1223,14 @@ function renderTriples(bindings) {
 
       td.colSpan = 2;
       td.className = "html-literal";
-      td.appendChild(renderObject(htmlBinding));
+      td.appendChild(renderObject(htmlBinding, lookup));
 
       tr.appendChild(td);
       triplesEl.appendChild(tr);
       return;
     }
   }
+  const rows = document.createDocumentFragment();
   for (const binding of normalRows) {
     const tr = document.createElement("tr");
 
@@ -1100,13 +1248,14 @@ function renderTriples(bindings) {
     propertyTd.appendChild(renderProperty(binding));
 
     const objectTd = document.createElement("td");
-    objectTd.appendChild(renderObject(binding));
+    objectTd.appendChild(renderObject(binding, lookup));
 
     tr.appendChild(propertyTd);
     tr.appendChild(objectTd);
 
-    triplesEl.appendChild(tr);
+    rows.appendChild(tr);
   }
+  triplesEl.appendChild(rows);
 }
 
 function renderTriples_deprecated(bindings) {
@@ -1194,15 +1343,13 @@ function renderTriples_deprecated(bindings) {
   }
 }
 
-function renderIncomingSubject(binding) {
+function renderIncomingSubject(binding, lookup) {
   const link = document.createElement("a");
 
   link.href =
     "#" + encodeURIComponent(binding.s.value);
 
-  link.textContent =
-    binding.sLabel?.value ||
-    shortenIri(binding.s.value);
+  appendNodeLabel(link, binding.s, binding.sLabel, lookup);
 
   appendTypeBadge(link, binding.sType);
 
@@ -1223,7 +1370,7 @@ function renderIncomingProperty(binding) {
 
   return withCopy(span, binding.p.value);
 }
-function renderIncomingTriples(bindings) {
+function renderIncomingTriples(bindings, lookup) {
 
   const visibleBindings = bindings.filter(
     binding => !HIDDEN_PROPERTIES.has(binding.p.value)
@@ -1234,12 +1381,12 @@ function renderIncomingTriples(bindings) {
   //     (!PROPERTY_FILTER || binding.p.value === PROPERTY_FILTER)
   // );
 
-  console.log("Incoming bindings:", visibleBindings);
   if (visibleBindings.length === 0) {
     return;
   }
 
   incomingSectionEl.hidden = false;
+  const rows = document.createDocumentFragment();
 
   for (const binding of visibleBindings) {
 
@@ -1249,7 +1396,7 @@ function renderIncomingTriples(bindings) {
     const propertyTd = document.createElement("td");
 
     subjectTd.appendChild(
-      renderIncomingSubject(binding)
+      renderIncomingSubject(binding, lookup)
     );
 
     propertyTd.appendChild(
@@ -1259,8 +1406,9 @@ function renderIncomingTriples(bindings) {
     tr.appendChild(subjectTd);
     tr.appendChild(propertyTd);
 
-    incomingTriplesEl.appendChild(tr);
+    rows.appendChild(tr);
   }
+  incomingTriplesEl.appendChild(rows);
 }
 
 function renderProperty(binding) {
@@ -1271,7 +1419,7 @@ function renderProperty(binding) {
   return span;
 }
 
-function renderObject(binding) {
+function renderObject(binding, lookup) {
   const object = binding.o;
 
   if (object.datatype === "http://www.w3.org/1999/02/22-rdf-syntax-ns#HTML") {
@@ -1297,8 +1445,7 @@ if (object.type === "uri" || object.type === "bnode") {
     ? object.value
     : "#" + encodeURIComponent(object.value);
 
-  link.textContent =
-    binding.oLabel?.value || shortenIri(object.value);
+  appendNodeLabel(link, object, binding.oLabel, lookup);
 
   appendTypeBadge(link, binding.oType);
   link.title = object.value;
