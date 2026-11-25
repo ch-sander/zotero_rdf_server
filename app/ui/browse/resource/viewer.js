@@ -97,12 +97,6 @@ function installFastModeToggle() {
     ? "Direct relations only; click to enable full transitive queries"
     : "Click to use cheaper queries without transitive property paths";
   button.setAttribute("aria-pressed", String(FAST_MODE));
-  button.style.padding = "0.45rem 0.7rem";
-  button.style.border = "1px solid currentColor";
-  button.style.borderRadius = "999px";
-  button.style.background = FAST_MODE ? "#166534" : "Canvas";
-  button.style.color = FAST_MODE ? "white" : "CanvasText";
-  button.style.cursor = "pointer";
 
   button.addEventListener("click", () => {
     const url = new URL(window.location.href);
@@ -116,45 +110,23 @@ function installFastModeToggle() {
     window.location.assign(url.toString());
   });
 
-  const pageHeader = document.querySelector("main > header");
-
-  if (pageHeader) {
-    button.style.float = "right";
-    button.style.margin = "0 0 0.75rem 1rem";
-    pageHeader.prepend(button);
-  } else {
-    button.style.position = "fixed";
-    button.style.top = "0.75rem";
-    button.style.right = "0.75rem";
-    button.style.zIndex = "2147483647";
-    document.body.appendChild(button);
-  }
+  button.className = "wk-button wk-mode";
+  document.getElementById("view-options").append(button);
 }
 
 function setEditLink(resourceIri, resourceTypes = []) {
-  const editLink =
-    document.getElementById("edit-resource-link");
+  const editLink = document.getElementById("edit-resource-link");
+  if (!editLink) return;
 
-  if (!editLink || !resourceIri) return;
-
-  const isAllowedHost =
-    allowedHosts.has(window.location.hostname);
-
-  const hasAllowedType =
-    resourceTypes.some(type => allowedTypes.has(type));
-
-  const isVisible =
-    isAllowedHost && hasAllowedType;
-
-  editLink.hidden = !isVisible;
-
-  if (!isVisible) {
+  if (!resourceIri || !allowedHosts.has(window.location.hostname) ||
+      !resourceTypes.some(type => allowedTypes.has(type))) {
+    editLink.hidden = true;
     editLink.removeAttribute("href");
     return;
   }
 
   const editUrl =
-    new URL("/ui/edit", window.location.origin);
+    new URL("../../edit/", document.baseURI);
 
   const parameterName =
     resourceIri.includes("/mappings/")
@@ -162,9 +134,10 @@ function setEditLink(resourceIri, resourceTypes = []) {
       : "entity";
 
   editUrl.searchParams.set(parameterName, resourceIri);
-  editUrl.searchParams.set("endpoint", ENDPOINT);
+  editUrl.searchParams.set("endpoint", LibraryWorkspace.linkEndpoint(ENDPOINT));
 
   editLink.href = editUrl.toString();
+  editLink.hidden = false;
 }
 
 function clearOutgoing() {
@@ -197,7 +170,7 @@ async function loadCurrentResource() {
   incomingTriplesEl.innerHTML = "";
   incomingSectionEl.hidden = true;
   if (!uri) {
-    showStatus("No URI given, attacht like so in URL: #https://example.org/resource/123");
+    showStatus("Open a resource from the class browser, or append its IRI after # in the URL.");
     return;
   }
 
@@ -230,6 +203,7 @@ async function loadCurrentResource() {
       return;
     }
 
+    showResource(bindings);
     const incomingData = await queryIncoming(resolvedUri, signal);
     const sameAsData = await querySameAs(resolvedUri, uri, signal);
     const relatedData = await queryRelated(resolvedUri, signal);
@@ -237,7 +211,6 @@ async function loadCurrentResource() {
     renderIncomingTriples(incomingData.results.bindings);
     renderSameAs(sameAsData.results.bindings);
     renderRelated(relatedData.results.bindings);
-    showResource(bindings);
     await publishZoteroMetadata(bindings, resolvedUri, uri, signal);
   } catch (error) {
     if (!isCurrent()) return;
@@ -390,6 +363,7 @@ function getUriFromLocation() {
 }
 
 async function selectQuery(query, signal, description = "SPARQL") {
+  LibraryWorkspace.record(description, "POST " + ENDPOINT, query);
   const start = LOG_TIMINGS ? performance.now() : 0;
   const response = await fetch(ENDPOINT, {
     method: "POST",
@@ -706,7 +680,7 @@ async function queryIncoming(uri, signal, visibleOnly = false) {
       LIMIT ${LIMIT}
     `;
 
-  return selectQuery(query, signal);
+  return selectQuery(query, signal, "Incoming links");
 }
 
 async function querySameAs(uri, requestedUri, signal) {
@@ -744,7 +718,7 @@ async function querySameAs(uri, requestedUri, signal) {
       ORDER BY LCASE(STR(COALESCE(MIN(?label), ?same)))
     `;
 
-  return selectQuery(query, signal);
+  return selectQuery(query, signal, "sameAs links");
 }
 
 function buildQuery(uri) {
@@ -867,7 +841,7 @@ async function resolveUri(uri, signal) {
     LIMIT 1
   `;
 
-  const data = await selectQuery(query, signal);
+  const data = await selectQuery(query, signal, "Resolve resource IRI");
 
   return data.results.bindings[0]?.canonical?.value || uri;
 }
@@ -1008,7 +982,7 @@ async function queryRelated(uri, signal) {
     LIMIT ${LIMIT}
   `;
   
-  return selectQuery(fullQuery, signal);
+  return selectQuery(fullQuery, signal, "Related links");
 }
 
 
@@ -1531,7 +1505,7 @@ function createQueryLink(uri) {
   const query = buildQuery(uri).trim();
 
   const url = new URL(QUERY_UI, window.location.href);
-  url.searchParams.set("endpoint", ENDPOINT);
+  url.searchParams.set("endpoint", LibraryWorkspace.linkEndpoint(ENDPOINT));
   url.searchParams.set("query", query);
 
   const link = document.createElement("a");
@@ -1589,13 +1563,15 @@ function createRdfDownloadLink(uri) {
 }
 
 async function downloadResourceRdf(uri) {
+  const query = buildRdfQuery(uri);
+  LibraryWorkspace.record("RDF download", "POST " + ENDPOINT, query);
   const response = await fetch(ENDPOINT, {
     method: "POST",
     headers: {
       "Content-Type": "application/sparql-query",
       "Accept": "text/turtle, application/n-triples;q=0.9, application/rdf+xml;q=0.8"
     },
-    body: buildRdfQuery(uri)
+    body: query
   });
 
   if (!response.ok) {

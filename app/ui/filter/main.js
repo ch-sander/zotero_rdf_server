@@ -11,41 +11,16 @@ if (!sparnatural) {
   throw new Error("Kein <sparnatural-form>-Element gefunden.");
 }
 
-// Endpoint und Sprache können über URL-Parameter überschrieben werden.
-// Beispiel:
-// index.html?endpoint=https%3A%2F%2Fexample.org%2Fsparql&lang=de
-const params = new URLSearchParams(window.location.search);
-
-const endpointFromUrl = params.get("endpoint");
-const languageFromUrl = params.get("lang");
-
-const endpoint =
-  endpointFromUrl ||
-  sparnatural.getAttribute("endpoint");
-
-const language =
-  languageFromUrl ||
-  sparnatural.getAttribute("lang") ||
-  "de";
-
-sparnatural.setAttribute("endpoint", endpoint);
-sparnatural.setAttribute("lang", language);
-
-// Endpoint auf der Seite anzeigen
-const displayEndpoint = document.querySelector("#displayEndpoint");
-
-if (displayEndpoint) {
-  displayEndpoint.setAttribute("href", endpoint);
-  displayEndpoint.setAttribute("target", "_blank");
-  displayEndpoint.textContent = endpoint;
-}
+const endpoint = sparnatural.getAttribute("endpoint");
 
 // Die in form.json definierten onscreen-Variablen laden.
 // Die normale Suche enthält nur diese Variablen.
 // Der Export enthält alle Variablen aus query.json.
 const formConfigUrl = sparnatural.getAttribute("form");
 
-const onscreenVariablesPromise = fetch(formConfigUrl)
+let onscreenVariablesPromise;
+function getOnscreenVariables() {
+  return onscreenVariablesPromise ||= fetch(formConfigUrl)
   .then((response) => {
     if (!response.ok) {
       throw new Error(
@@ -66,87 +41,12 @@ const onscreenVariablesPromise = fetch(formConfigUrl)
 
     return new Set();
   });
+}
 
 let latestQueryString = "";
 let latestQueryJson = null;
 
-// YASQE initialisieren
-const yasqe = new Yasqe(document.getElementById("yasqe"), {
-  requestConfig: {
-    endpoint,
-    method: "GET",
-    header: {}
-  },
-  copyEndpointOnNewTab: false
-});
-
-// YASR-Plugins registrieren
-Yasr.registerPlugin(
-  "TableX",
-  SparnaturalYasguiPlugins.TableX
-);
-
-Yasr.registerPlugin(
-  "Grid",
-  SparnaturalYasguiPlugins.GridPlugin
-);
-
-Yasr.registerPlugin(
-  "Stats",
-  SparnaturalYasguiPlugins.StatsPlugin
-);
-
-Yasr.registerPlugin(
-  "Map",
-  SparnaturalYasguiPlugins.MapPlugin
-);
-
-delete Yasr.plugins.table;
-delete Yasr.plugins.response;
-
-// YASR initialisieren
-const yasr = new Yasr(
-  document.getElementById("yasr"),
-  {
-    pluginOrder: [
-      "TableX",
-      "Grid",
-      "Stats",
-      "Map"
-    ],
-    defaultPlugin: "TableX",
-    persistencyExpire: 0,
-    maxPersistentResponseSize: 0
-  }
-);
-
-// TableX konfigurieren
-const tableXConfig = yasr.plugins.TableX;
-
-if (tableXConfig) {
-  Object.assign(tableXConfig.config, {
-    includeControls: true,
-    openIriInNewWindow: true,
-
-    uriHrefAdapter: (uri) => {
-      const targetUrl = new URL(
-        "/ui/browse/resource/",
-        window.location.origin
-      );
-
-      targetUrl.searchParams.set(
-        "endpoint",
-        endpoint
-      );
-
-      targetUrl.hash = encodeURIComponent(uri);
-
-      return targetUrl.toString();
-    }
-  });
-
-  tableXConfig.persistentConfig.compact = true;
-}
+const { yasqe, yasr } = SparqlWorkspace.createViews();
 
 // Sparnatural-Konfiguration an YASR-Plugins übergeben
 sparnatural.addEventListener("init", (event) => {
@@ -262,14 +162,14 @@ async function isExportSubmission(event) {
   // Die Exportquery enthält Variablen, die nicht
   // unter variables.onscreen stehen.
   const onscreenVariables =
-    await onscreenVariablesPromise;
+    await getOnscreenVariables();
 
   if (onscreenVariables.size === 0) {
     return false;
   }
 
   const selectedVariables =
-    selectedVariableNames(latestQueryJson);
+    selectedVariableNames(event.detail?.queryJson || latestQueryJson);
 
   return selectedVariables.some(
     (variableName) => {
@@ -446,7 +346,7 @@ function exportFilename() {
 // Fehler in YASR anzeigen
 function showQueryError(message) {
   yasr.setResponse({
-    contentType: "text/html",
+    contentType: "text/plain",
     data: message,
     status: 500
   });
@@ -520,9 +420,8 @@ sparnatural.addEventListener(
         error
       );
 
-      showQueryError(
-        `Export fehlgeschlagen: ${error.message}`
-      );
+      showQueryError(String(error.message));
+      sparnatural.enablePlayBtn();
     } finally {
       // executeSparql arbeitet mit Callbacks und aktiviert
       // den Button dort wieder.
@@ -552,24 +451,3 @@ sparnatural.addEventListener(
   resetEditor
 );
 
-// SPARQL-Editor ein- und ausblenden
-const sparqlToggle =
-  document.getElementById("sparql-toggle");
-
-if (sparqlToggle) {
-  sparqlToggle.onclick = function () {
-    const yasqeElement =
-      document.getElementById("yasqe");
-
-    if (
-      yasqeElement.style.display === "none"
-    ) {
-      yasqeElement.style.display = "block";
-      yasqe.refresh();
-    } else {
-      yasqeElement.style.display = "none";
-    }
-
-    return false;
-  };
-}

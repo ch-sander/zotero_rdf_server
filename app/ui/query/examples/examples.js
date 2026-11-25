@@ -34,9 +34,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-  const confirmationModal = new bootstrap.Modal(
-    modalElement
-  );
+  const confirmationModal = modalElement;
 
   const showDescription = example => {
     descriptionElement.textContent =
@@ -62,7 +60,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       example => !example.hidden
     );
 
-    visibleExamples.forEach((example, index) => {
+    visibleExamples.forEach((example) => {
       const link = document.createElement("a");
 
       link.href = "#";
@@ -108,9 +106,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       container.appendChild(link);
 
-      if (index < visibleExamples.length - 1) {
-        container.append(" | ");
-      }
+
     });
 
     /*
@@ -149,6 +145,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
+    container.closest("details").open = true;
     showDescription(initialExample);
 
     modalMessage.textContent =
@@ -159,10 +156,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         structuredClone(initialExample.query)
       );
 
-      confirmationModal.hide();
+      confirmationModal.close();
     };
 
-    confirmationModal.show();
+    confirmationModal.showModal();
   } catch (error) {
     console.error(
       "Example queries could not be loaded:",

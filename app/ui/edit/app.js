@@ -1,4 +1,4 @@
-import { LeafletPlugin } from "./sf_bundle.js";
+import { LeafletPlugin } from "./sf_bundle.js?v=20261125-org-type";
 
 import { registerRemoteSingleLoader }
     from "./remote-single-loader.js";
@@ -310,6 +310,7 @@ sh:in (
     foaf:Agent
     skos:Concept
     schema:Organization
+    org:Organization
     ${ENTITY_TYPES_TTL}
 ) ;
 sh:name "Types"@en, "Typen"@de ;
@@ -1070,7 +1071,8 @@ function termToSparqlJson(term) {
     return { type: "unknown", value: String(term.value || "") };
 }
 
-async function sparqlSelectLocal(query) {
+async function sparqlSelectLocal(query, label) {
+    LibraryWorkspace.record(label, "Local RDF store · Comunica", query);
     const bs = await engine.queryBindings(query, {
         sources: [localSource()],
         unionDefaultGraph: !!unionDefaultGraphEl.checked,
@@ -1200,6 +1202,7 @@ async function importRemoteGraphsIntoLocal_Comunica() {
     WHERE     { GRAPH <${graphIri}> { ?s ?p ?o } }
     `.trim();
 
+        LibraryWorkspace.record("Import graph", remoteEndpoint, query);
         const stream = await engine.queryQuads(query, {
             sources: [{ type: "sparql", value: remoteEndpoint }],
             unionDefaultGraph: !!unionDefaultGraphEl.checked,
@@ -1229,6 +1232,7 @@ CONSTRUCT { ?s ?p ?o }
 WHERE { GRAPH <${graphIri}> { ?s ?p ?o } }
 `.trim();
 
+    LibraryWorkspace.record("Import graph", "POST " + remoteEndpoint, query);
     const res = await fetch(remoteEndpoint, {
         method: "POST",
         headers: {
@@ -1296,7 +1300,7 @@ ORDER BY STR(?t)
 LIMIT 500
 `.trim();
     try {
-        const data = await sparqlSelectLocal(query);
+        const data = await sparqlSelectLocal(query, "Type hints");
         const hints = data.results.bindings.map(b => b.t?.value).filter(Boolean);
         const current = typeHintFilterEl.value;
         typeHintFilterEl.innerHTML = `<option value="">All type hints</option>`;
@@ -1342,7 +1346,7 @@ async function loadMappingList() {
     OFFSET ${offset}
     `.trim();
 
-        const data = await sparqlSelectLocal(query);
+        const data = await sparqlSelectLocal(query, "Mapping list");
         const rows = data.results.bindings;
         listEl.innerHTML = "";
 
@@ -1393,7 +1397,7 @@ SELECT ?target WHERE {
 GRAPH <${G_MAPPINGS}> { <${mappingIri}> <${MAP_TARGET_P}> ?target . }
 } LIMIT 1
 `.trim();
-    const data = await sparqlSelectLocal(q);
+    const data = await sparqlSelectLocal(q, "Mapping target");
     return data.results.bindings[0]?.target?.value || null;
 }
 
@@ -2433,7 +2437,12 @@ if (!dataset.size) {
     listEl.innerHTML = `<div class="muted">Load a local TriG file and/or import a remote endpoint snapshot.</div>`;
 }
 
-await loadSnapshotFromIndexedDb();
+// A deep link takes precedence over the endpoint kept in an older snapshot.
+if (endpointFromUrl) {
+    endpointEl.value = endpointFromUrl;
+    remoteEndpoint = endpointFromUrl;
+    updateSourceInfo();
+}
 await loadTypeHints();
 await loadMappingList();
 

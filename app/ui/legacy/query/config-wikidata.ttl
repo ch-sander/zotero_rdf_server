@@ -1,0 +1,463 @@
+@prefix sh:     <http://www.w3.org/ns/shacl#> .
+@prefix dash:   <http://datashapes.org/dash#> .
+@prefix sd:     <http://www.w3.org/ns/sparql-service-description#> .
+
+@prefix rdf:    <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .
+@prefix geo:    <http://www.opengis.net/ont/geosparql#> .
+@prefix volipi: <http://data.sparna.fr/ontologies/volipi#> .
+
+@prefix wdt:    <http://www.wikidata.org/prop/direct/> .
+
+@prefix zotsn:  <http://www.zotero.org/namespaces/sparnatural#> .
+@prefix core:   <http://data.sparna.fr/ontologies/sparnatural-config-core#> .
+
+
+#################################################################
+# Sparnatural Wikidata extension
+#
+# Assumptions from the base configuration:
+#
+# - zotsn:link_1728 is the generic IRI node reached through the
+#   existing owl:sameAs property path.
+#
+# - zotsn:date_1727 is the existing generic literal date shape.
+#
+# - zotsn:text_1724 is the existing generic literal text shape.
+#
+# - zotsn:wktliteral_1054 is the existing GeoSPARQL WKT shape.
+#
+# - zotsn:property_1729 is the existing deactivated rdfs:label
+#   property with dash:LabelRole.
+#
+# Wikidata entities returned by entity-valued properties are leaf
+# nodes. They receive their default label through property_1729,
+# but expose no navigable Wikidata properties of their own.
+#
+# Multi-step values such as coordinates and countries of places
+# are flattened and attached directly to zotsn:link_1728.
+#################################################################
+
+
+#################################################################
+# QLever Wikidata SPARQL service
+#################################################################
+
+zotsn:qleverWikidataService
+    a sd:Service ;
+    rdfs:label "QLever Wikidata service"@en ;
+    sd:endpoint <https://qlever.dev/api/wikidata> .
+
+
+#################################################################
+# Wikidata leaf entity
+#
+# This shape is not offered as a start class. It has only the
+# existing deactivated default-label property and therefore stops
+# navigation after an entity-valued Wikidata property.
+#################################################################
+
+zotsn:wikidataEntityLeaf
+    a sh:NodeShape ;
+    rdfs:label "Wikidata entity"@en ;
+    sh:name "Wikidata entity"@en ;
+    sh:description "A Wikidata entity without further navigation"@en ;
+    sh:nodeKind sh:IRI ;
+    sh:deactivated true ;
+    volipi:iconName "fa-brands fa-wikipedia-w" ;
+    sh:property zotsn:wdEntityEnglishLabel .
+
+
+zotsn:wdEntityEnglishLabel
+    a sh:PropertyShape ;
+    rdfs:label "English label"@en ;
+    sh:name "English label"@en ;
+    sh:description "Default English label of a Wikidata entity"@en ;
+
+    sh:path rdfs:label ;
+
+    sh:node zotsn:text_1724 ;
+    sh:nodeKind sh:Literal ;
+    sh:datatype rdf:langString ;
+    sh:deactivated true ;
+
+    dash:searchWidget core:NonSelectableProperty ;
+    dash:propertyRole dash:LabelRole ;
+
+    core:isMultilingual true ;
+    core:sparqlService zotsn:qleverWikidataService ;
+    core:enableOptional true ;
+    core:enableNegation false ;
+
+    sh:order 1 .
+
+
+#################################################################
+# Generic IRI leaf for non-Wikidata-entity IRIs such as images
+#################################################################
+# using zotsn:link_1728 instead
+
+# zotsn:iriValue
+#     a sh:NodeShape ;
+#     rdfs:label "IRI"@en ;
+#     sh:name "IRI"@en ;
+#     sh:description "An IRI value without further navigation"@en ;
+#     sh:nodeKind sh:IRI ;
+#     sh:deactivated true .
+
+
+#################################################################
+# Add Wikidata properties to the existing generic Link shape
+#
+# Link is not offered as a starting class. It remains reachable as
+# the object of the existing local owl:sameAs path.
+#################################################################
+
+zotsn:link_1728
+    a sh:NodeShape ;
+    sh:deactivated true ;
+    sh:property
+        zotsn:wdEnglishLabel ,
+        zotsn:wdDateOfBirth ,
+        zotsn:wdDateOfDeath ,
+
+        zotsn:wdPlaceOfBirth ,
+        zotsn:wdPlaceOfBirthCoordinates ,
+        zotsn:wdPlaceOfBirthCountry ,
+
+        zotsn:wdPlaceOfDeath ,
+        zotsn:wdPlaceOfDeathCoordinates ,
+        zotsn:wdPlaceOfDeathCountry ,
+
+        zotsn:wdOccupation ,
+        zotsn:wdCountryOfCitizenship ,
+        zotsn:wdReligionOrWorldview ,
+        zotsn:wdReligiousOrder ,
+
+        zotsn:wdCountry ,
+        zotsn:wdImage ,
+        zotsn:wdCoordinates .
+
+
+#################################################################
+# Label of the linked Wikidata entity itself
+#################################################################
+
+zotsn:wdEnglishLabel
+    a sh:PropertyShape ;
+    rdfs:label "English label"@en ;
+    sh:name "English label"@en ;
+    sh:description "English label from Wikidata"@en ;
+    sh:path rdfs:label ;
+    sh:node zotsn:text_1724 ;
+    sh:nodeKind sh:Literal ;
+    sh:datatype rdf:langString ;
+    dash:searchWidget core:NonSelectableProperty ;
+    dash:propertyRole dash:LabelRole ;
+    core:isMultilingual true ;
+    core:sparqlService zotsn:qleverWikidataService ;
+    core:executedAfter true ;
+    core:enableOptional true ;
+    core:enableNegation false ;
+    sh:order 10 .
+
+
+#################################################################
+# Life dates
+#################################################################
+
+zotsn:wdDateOfBirth
+    a sh:PropertyShape ;
+    rdfs:label "date of birth"@en ;
+    sh:name "date of birth"@en ;
+    sh:description "Date of birth from Wikidata"@en ;
+    sh:path wdt:P569 ;
+    sh:node zotsn:date_1727 ;
+    sh:nodeKind sh:Literal ;
+    sh:datatype xsd:dateTime ;
+    dash:searchWidget core:TimeProperty-Date ;
+    core:sparqlService zotsn:qleverWikidataService ;
+    core:executedAfter true ;
+    core:enableOptional true ;
+    core:enableNegation false ;
+    sh:order 20 .
+
+
+zotsn:wdDateOfDeath
+    a sh:PropertyShape ;
+    rdfs:label "date of death"@en ;
+    sh:name "date of death"@en ;
+    sh:description "Date of death from Wikidata"@en ;
+    sh:path wdt:P570 ;
+    sh:node zotsn:date_1727 ;
+    sh:nodeKind sh:Literal ;
+    sh:datatype xsd:dateTime ;
+    dash:searchWidget core:TimeProperty-Date ;
+    core:sparqlService zotsn:qleverWikidataService ;
+    core:executedAfter true ;
+    core:enableOptional true ;
+    core:enableNegation false ;
+    sh:order 30 .
+
+
+#################################################################
+# Place of birth
+#################################################################
+
+zotsn:wdPlaceOfBirth
+    a sh:PropertyShape ;
+    rdfs:label "place of birth"@en ;
+    sh:name "place of birth"@en ;
+    sh:description "Place of birth from Wikidata"@en ;
+    sh:path wdt:P19 ;
+    sh:node zotsn:wikidataEntityLeaf ;
+    sh:nodeKind sh:IRI ;
+    dash:searchWidget core:AutocompleteProperty ;
+    core:sparqlService zotsn:qleverWikidataService ;
+    core:executedAfter true ;
+    core:enableOptional true ;
+    core:enableNegation false ;
+    sh:order 40 .
+
+
+zotsn:wdPlaceOfBirthCoordinates
+    a sh:PropertyShape ;
+    rdfs:label "coordinates of place of birth"@en ;
+    sh:name "coordinates of place of birth"@en ;
+    sh:description "Coordinates of the place of birth from Wikidata"@en ;
+    sh:path (
+        wdt:P19
+        wdt:P625
+    ) ;
+    sh:node zotsn:wktliteral_1054 ;
+    sh:nodeKind sh:Literal ;
+    sh:datatype geo:wktLiteral ;
+    dash:searchWidget core:MapProperty ;
+    core:sparqlService zotsn:qleverWikidataService ;
+    core:executedAfter true ;
+    core:enableOptional true ;
+    core:enableNegation false ;
+    sh:order 41 .
+
+
+zotsn:wdPlaceOfBirthCountry
+    a sh:PropertyShape ;
+    rdfs:label "country of place of birth"@en ;
+    sh:name "country of place of birth"@en ;
+    sh:description "Country of the place of birth from Wikidata"@en ;
+    sh:path (
+        wdt:P19
+        wdt:P17
+    ) ;
+    sh:node zotsn:wikidataEntityLeaf ;
+    sh:nodeKind sh:IRI ;
+    dash:searchWidget core:AutocompleteProperty ;
+    core:sparqlService zotsn:qleverWikidataService ;
+    core:executedAfter true ;
+    core:enableOptional true ;
+    core:enableNegation false ;
+    sh:order 42 .
+
+
+#################################################################
+# Place of death
+#################################################################
+
+zotsn:wdPlaceOfDeath
+    a sh:PropertyShape ;
+    rdfs:label "place of death"@en ;
+    sh:name "place of death"@en ;
+    sh:description "Place of death from Wikidata"@en ;
+    sh:path wdt:P20 ;
+    sh:node zotsn:wikidataEntityLeaf ;
+    sh:nodeKind sh:IRI ;
+    dash:searchWidget core:AutocompleteProperty ;
+    core:sparqlService zotsn:qleverWikidataService ;
+    core:executedAfter true ;
+    core:enableOptional true ;
+    core:enableNegation false ;
+    sh:order 50 .
+
+
+zotsn:wdPlaceOfDeathCoordinates
+    a sh:PropertyShape ;
+    rdfs:label "coordinates of place of death"@en ;
+    sh:name "coordinates of place of death"@en ;
+    sh:description "Coordinates of the place of death from Wikidata"@en ;
+    sh:path (
+        wdt:P20
+        wdt:P625
+    ) ;
+    sh:node zotsn:wktliteral_1054 ;
+    sh:nodeKind sh:Literal ;
+    sh:datatype geo:wktLiteral ;
+    dash:searchWidget core:MapProperty ;
+    core:sparqlService zotsn:qleverWikidataService ;
+    core:executedAfter true ;
+    core:enableOptional true ;
+    core:enableNegation false ;
+    sh:order 51 .
+
+
+zotsn:wdPlaceOfDeathCountry
+    a sh:PropertyShape ;
+    rdfs:label "country of place of death"@en ;
+    sh:name "country of place of death"@en ;
+    sh:description "Country of the place of death from Wikidata"@en ;
+    sh:path (
+        wdt:P20
+        wdt:P17
+    ) ;
+    sh:node zotsn:wikidataEntityLeaf ;
+    sh:nodeKind sh:IRI ;
+    dash:searchWidget core:AutocompleteProperty ;
+    core:sparqlService zotsn:qleverWikidataService ;
+    core:executedAfter true ;
+    core:enableOptional true ;
+    core:enableNegation false ;
+    sh:order 52 .
+
+
+#################################################################
+# Occupation
+#################################################################
+
+zotsn:wdOccupation
+    a sh:PropertyShape ;
+    rdfs:label "occupation"@en ;
+    sh:name "occupation"@en ;
+    sh:description "Occupation from Wikidata"@en ;
+    sh:path wdt:P106 ;
+    sh:node zotsn:wikidataEntityLeaf ;
+    sh:nodeKind sh:IRI ;
+    dash:searchWidget core:AutocompleteProperty ;
+    core:sparqlService zotsn:qleverWikidataService ;
+    core:executedAfter true ;
+    core:enableOptional true ;
+    core:enableNegation false ;
+    sh:order 60 .
+
+
+#################################################################
+# Country of citizenship
+#################################################################
+
+zotsn:wdCountryOfCitizenship
+    a sh:PropertyShape ;
+    rdfs:label "country of citizenship"@en ;
+    sh:name "country of citizenship"@en ;
+    sh:description "Country of citizenship from Wikidata"@en ;
+    sh:path wdt:P27 ;
+    sh:node zotsn:wikidataEntityLeaf ;
+    sh:nodeKind sh:IRI ;
+    dash:searchWidget core:AutocompleteProperty ;
+    core:sparqlService zotsn:qleverWikidataService ;
+    core:executedAfter true ;
+    core:enableOptional true ;
+    core:enableNegation false ;
+    sh:order 70 .
+
+
+#################################################################
+# Religion or worldview
+# Wikidata P140
+#################################################################
+
+zotsn:wdReligionOrWorldview
+    a sh:PropertyShape ;
+    rdfs:label "religion or worldview"@en ;
+    sh:name "religion or worldview"@en ;
+    sh:description "Religion or worldview from Wikidata"@en ;
+    sh:path wdt:P140 ;
+    sh:node zotsn:wikidataEntityLeaf ;
+    sh:nodeKind sh:IRI ;
+    dash:searchWidget core:AutocompleteProperty ;
+    core:sparqlService zotsn:qleverWikidataService ;
+    core:executedAfter true ;
+    core:enableOptional true ;
+    core:enableNegation false ;
+    sh:order 80 .
+
+
+#################################################################
+# Religious order
+# Wikidata P611
+#################################################################
+
+zotsn:wdReligiousOrder
+    a sh:PropertyShape ;
+    rdfs:label "religious order"@en ;
+    sh:name "religious order"@en ;
+    sh:description "Religious order from Wikidata"@en ;
+    sh:path wdt:P611 ;
+    sh:node zotsn:wikidataEntityLeaf ;
+    sh:nodeKind sh:IRI ;
+    dash:searchWidget core:AutocompleteProperty ;
+    core:sparqlService zotsn:qleverWikidataService ;
+    core:executedAfter true ;
+    core:enableOptional true ;
+    core:enableNegation false ;
+    sh:order 81 .
+
+
+#################################################################
+# Country of the linked Wikidata entity itself
+# Useful when the linked entity is already a place.
+#################################################################
+
+zotsn:wdCountry
+    a sh:PropertyShape ;
+    rdfs:label "country"@en ;
+    sh:name "country"@en ;
+    sh:description "Country of the linked Wikidata place"@en ;
+    sh:path wdt:P17 ;
+    sh:node zotsn:wikidataEntityLeaf ;
+    sh:nodeKind sh:IRI ;
+    dash:searchWidget core:AutocompleteProperty ;
+    core:sparqlService zotsn:qleverWikidataService ;
+    core:executedAfter true ;
+    core:enableOptional true ;
+    core:enableNegation false ;
+    sh:order 90 .
+
+
+#################################################################
+# Image
+#################################################################
+
+zotsn:wdImage
+    a sh:PropertyShape ;
+    rdfs:label "image"@en ;
+    sh:name "image"@en ;
+    sh:description "Image from Wikidata"@en ;
+    sh:path wdt:P18 ;
+    sh:node zotsn:link_1728 ;
+    sh:nodeKind sh:IRI ;
+    dash:searchWidget core:NonSelectableProperty ;
+    core:sparqlService zotsn:qleverWikidataService ;
+    core:executedAfter true ;
+    core:enableOptional true ;
+    core:enableNegation false ;
+    sh:order 100 .
+
+
+#################################################################
+# Coordinates of the linked Wikidata entity itself
+#################################################################
+
+zotsn:wdCoordinates
+    a sh:PropertyShape ;
+    rdfs:label "coordinate location"@en ;
+    sh:name "coordinate location"@en ;
+    sh:description "Coordinate location from Wikidata"@en ;
+    sh:path wdt:P625 ;
+    sh:node zotsn:wktliteral_1054 ;
+    sh:nodeKind sh:Literal ;
+    sh:datatype geo:wktLiteral ;
+    dash:searchWidget core:MapProperty ;
+    core:sparqlService zotsn:qleverWikidataService ;
+    core:executedAfter true ;
+    core:enableOptional true ;
+    core:enableNegation false ;
+    sh:order 110 .

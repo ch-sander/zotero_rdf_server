@@ -16,13 +16,14 @@ export function registerRemoteSingleLoader({
     clearCachedEntity,
     hasLocalSubject
 }) {
-    async function fetchRemoteConstruct(query, targetGraphIri) {
+    async function fetchRemoteConstruct(query, targetGraphIri, label) {
         const endpoint = (endpointEl.value || "").trim();
 
         if (!endpoint) {
             throw new Error("Remote endpoint missing.");
         }
 
+        LibraryWorkspace.record(label, "POST " + endpoint, query);
         const response = await fetch(endpoint, {
             method: "POST",
             headers: {
@@ -71,7 +72,7 @@ WHERE {
 }
 `.trim();
 
-        return fetchRemoteConstruct(query, G_MAPPINGS);
+        return fetchRemoteConstruct(query, G_MAPPINGS, "Load mapping");
     }
 
     async function fetchRemoteEntity(entityIri) {
@@ -95,7 +96,7 @@ WHERE {
 }
 `.trim();
 
-        return fetchRemoteConstruct(query, G_ENTITIES);
+        return fetchRemoteConstruct(query, G_ENTITIES, "Load entity");
     }
 
     function findTargetIri(mappingIri, quads) {
@@ -183,7 +184,7 @@ WHERE {
     }
     `.trim();
 
-        return fetchRemoteConstruct(query, G_MAPPINGS);
+        return fetchRemoteConstruct(query, G_MAPPINGS, "Find mapping for entity");
     }
 
     async function loadEntityByIri(entityIri) {
@@ -334,4 +335,3 @@ WHERE {
         loadEntityByIri
     };
 }
-

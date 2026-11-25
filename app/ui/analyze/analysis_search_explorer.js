@@ -36,6 +36,7 @@
   let allPreparedHits = [];
   let activeTerm = "";
   let rawResponseVisible = false;
+  let lastResponse = null;
   let currentPage = 1;
   let pageSize = EXPLORER_CONFIG.pageSize;
 
@@ -57,8 +58,6 @@
   const exportBtn = document.getElementById("exportBtn");
   const resetApiFormBtn = document.getElementById("resetApiFormBtn");
   const apiStatusEl = document.getElementById("apiStatus");
-  const requestUrlBoxEl = document.getElementById("requestUrlBox");
-  const requestUrlPreEl = document.getElementById("requestUrlPre");
   const toggleRawResponseBtn = document.getElementById("toggleRawResponseBtn");
   const rawResponseEl = document.getElementById("rawResponse");
 
@@ -894,6 +893,8 @@
   }
 
   function setRawResponse(data) {
+    lastResponse = data;
+    if (!rawResponseVisible) return;
     try {
       rawResponseEl.textContent = JSON.stringify(data, null, 2);
     } catch (_err) {
@@ -1213,6 +1214,13 @@
     container.innerHTML = html;
   }
 
+  function recordRequest(label, url) {
+    const fullUrl = new URL(url, document.baseURI).href;
+    LibraryWorkspace.record(label, "GET", fullUrl);
+    document.getElementById("requestUrlPre").textContent = fullUrl;
+    document.getElementById("last-request").hidden = false;
+  }
+
   async function runApiSearch(event) {
     if (event) event.preventDefault();
 
@@ -1227,9 +1235,7 @@
 
     const url = `${EXPLORER_CONFIG.apiBaseUrl || ""}${EXPLORER_CONFIG.endpointPath}?${params.toString()}`;
 
-    requestUrlBoxEl.innerHTML = `<strong>${escapeHtml(UI_TEXT.request_url || "Request URL")}:</strong>`;
-    requestUrlPreEl.textContent = url;
-    requestUrlPreEl.classList.remove("hidden");
+    recordRequest("Search and analysis", url);
 
     setApiStatus(UI_TEXT.searching || "Searching...");
     submitApiSearchBtn.disabled = true;
@@ -1281,16 +1287,9 @@
 
     const url = `${EXPLORER_CONFIG.apiBaseUrl || ""}${EXPLORER_CONFIG.endpointPath}?${params.toString()}`;
 
-    requestUrlBoxEl.innerHTML = `<strong>${escapeHtml(UI_TEXT.request_url || "Request URL")}:</strong>`;
-    requestUrlPreEl.textContent = url;
-    requestUrlPreEl.classList.remove("hidden");
+    recordRequest("Atlas", url);
 
-    const popup = window.open(url, "_blank", "noopener,noreferrer");
-
-    if (!popup) {
-      setApiStatus("Popup blocked – please allow popups", "error");
-      return;
-    }
+    window.open(url, "_blank", "noopener,noreferrer");
 
     setApiStatus("Opening Atlas...");
   }
@@ -1315,16 +1314,9 @@
 
     const url = `${EXPLORER_CONFIG.apiBaseUrl || ""}${EXPLORER_CONFIG.endpointPath}?${params.toString()}`;
 
-    requestUrlBoxEl.innerHTML = `<strong>${escapeHtml(UI_TEXT.request_url || "Request URL")}:</strong>`;
-    requestUrlPreEl.textContent = url;
-    requestUrlPreEl.classList.remove("hidden");
+    recordRequest("Export", url);
 
-    const popup = window.open(url, "_blank", "noopener,noreferrer");
-
-    if (!popup) {
-      setApiStatus("Popup blocked – please allow popups", "error");
-      return;
-    }
+    window.open(url, "_blank", "noopener,noreferrer");
 
     setApiStatus("Creating Export...");
   }
@@ -1334,6 +1326,7 @@
     submitApiSearchBtn.disabled = true;
     console.log("loadOpenApiAndBuildForm started")
     try {
+      LibraryWorkspace.record("OpenAPI specification", "GET", new URL(EXPLORER_CONFIG.openapiUrl, document.baseURI).href);
       const response = await fetch(EXPLORER_CONFIG.openapiUrl, {
         method: "GET",
         headers: { "Accept": "application/json" }
@@ -1350,6 +1343,13 @@
 
       buildDynamicForm(ENDPOINT_PARAMETERS);
       resetApiForm();
+      const term = new URLSearchParams(location.search).get("q");
+      if (term) {
+        const field = ["q", "query", "terms", "term", "search", "query_text"].map(name =>
+          apiSearchForm.querySelector(`input[data-param="${name}"]:not([type=checkbox])`)
+        ).find(Boolean);
+        if (field) field.value = term;
+      }
 
       submitApiSearchBtn.disabled = false;
       setApiStatus(UI_TEXT.status_ready || "Ready");
@@ -1431,6 +1431,7 @@
 
   toggleRawResponseBtn.addEventListener("click", function () {
     rawResponseVisible = !rawResponseVisible;
+    if (rawResponseVisible && lastResponse !== null) setRawResponse(lastResponse);
     rawResponseEl.classList.toggle("visible", rawResponseVisible);
     toggleRawResponseBtn.textContent = rawResponseVisible
       ? (UI_TEXT.hide_raw_response || "Hide raw response")

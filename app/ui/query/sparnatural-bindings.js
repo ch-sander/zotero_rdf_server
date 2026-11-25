@@ -42,7 +42,7 @@ bindSparnaturalWithYasrPlugins = function(sparnatural, yasr) {
 bindSparnaturalWithYasqe = function(sparnatural, yasqe, yasr) {
 
     sparnatural.addEventListener("queryUpdated", (event) => {
-      queryString = sparnatural.expandSparql(event.detail.queryString);
+      const queryString = sparnatural.expandSparql(event.detail.queryString);
       yasqe.setValue(queryString);
       if(document.getElementById('query-json') != null) {
         // save query in JSON
@@ -81,7 +81,7 @@ bindSparnaturalWithYasqe = function(sparnatural, yasqe, yasr) {
 bindSparnaturalWithItself = function(sparnatural, yasqe, yasr) {
 
   sparnatural.addEventListener("queryUpdated", (event) => {
-    queryString = sparnatural.expandSparql(event.detail.queryString);
+    const queryString = sparnatural.expandSparql(event.detail.queryString);
     yasqe.setValue(queryString);
     if(document.getElementById('query-json') != null) {
       // save query in JSON
@@ -93,7 +93,7 @@ bindSparnaturalWithItself = function(sparnatural, yasqe, yasr) {
     // enable loader on button
     sparnatural.disablePlayBtn() ;
 
-    let finalResult = sparnatural.executeSparql(
+    sparnatural.executeSparql(
       yasqe.getValue(),
       (finalResult) => {
         // send final result to YasR
@@ -104,11 +104,15 @@ bindSparnaturalWithItself = function(sparnatural, yasqe, yasr) {
       (error) => {
         console.error("Got an error when executing SPARQL in Sparnatural");
         console.dir(error);
+        sparnatural.enablePlayBtn();
+        yasr.setResponse({ status: 500, contentType: "text/plain", data: "The query could not be completed." });
       }
     );
   });
 
   sparnatural.addEventListener("reset", (event) => {
     yasqe.setValue("");
+    const json = document.getElementById("query-json");
+    if (json) json.value = "";
   });
 }

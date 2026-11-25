@@ -1,145 +1,16 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Analysis Search Explorer</title>
- <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-  <div id="custom-header-container"></div>
-  <div class="layout">
-  
-    <aside class="sidebar">
-      <div class="sidebar-section">
-        <div class="sidebar-title" id="sidebarTitle">Analysis Search Explorer</div>
-        <div class="cluster-list-info" id="sidebarClusterInfo">Ready</div>
-      </div>
-
-      <div class="sidebar-section">
-        <div class="section-title">Top Cluster Terms</div>
-        <div class="term-cloud" id="topClusterTerms"></div>
-      </div>
-
-      <div class="sidebar-section">
-        <div class="section-title">Clusters</div>
-        <div id="sidebarClusters"></div>
-      </div>
-    </aside>
-
-    <main class="main">
-      <section class="panel search-panel">
-        <details open id="apiSearchDetails">
-          <summary>API Search</summary>
-
-          <!-- <div class="muted">Searches automatically enable analysis and clustering.</div>
-          <div class="note-box">
-            The API request automatically adds <code>perform_analysis=true</code> and
-            <code>cluster_enabled=true</code>.
-          </div> -->
-
-          <form id="apiSearchForm">
-            <div id="dynamicFormSections"></div>
-
-            <div class="form-actions">
-              <button id="submitApiSearchBtn" class="btn btn-primary" type="submit">Search</button>
-              <button id="atlasSearchBtn" class="btn btn-primary" type="button">Atlas</button>
-              <button id="exportBtn" class="btn btn-secondary" type="button">Export</button>
-              <button id="resetApiFormBtn" class="btn btn-secondary" type="button">Reset form</button>
-            </div>
-
-            <div id="apiStatus" class="status-line">Ready</div>
-            <div id="requestUrlBox" class="status-line"><strong>Request URL:</strong></div>
-            <pre id="requestUrlPre" class="request-url-block hidden"></pre>
-
-            <div class="raw-response-wrap">
-              <button id="toggleRawResponseBtn" class="btn btn-secondary" type="button">Show raw response</button>
-              <pre id="rawResponse" class="raw-response"></pre>
-            </div>
-          </form>
-        </details>
-      </section>
-
-    <section class="panel header-card">
-      <div class="header-card-stack">
-        <div class="page-head">
-          <h1 id="pageTitle">Analysis Search Explorer</h1>
-          <div class="muted" id="pageSubtitle">Interactive search, clustering, and analysis explorer.</div>
-        </div>
-
-        <div class="summary-grid">
-          <div class="summary-item">
-            <div class="label">Documents</div>
-            <div class="value" id="summaryDocuments">0</div>
-          </div>
-          <div class="summary-item">
-            <div class="label">Clusters</div>
-            <div class="value" id="summaryClusters">0</div>
-          </div>
-          <div class="summary-item">
-            <div class="label">Unclustered</div>
-            <div class="value" id="summaryUnclustered">0</div>
-          </div>
-          <div class="summary-item">
-            <div class="label">Cluster terms</div>
-            <div class="value" id="summaryClusterTerms">0</div>
-          </div>
-        </div>
-
-        <div id="aggregationsContainer"></div>
-
-        <div class="controls">
-          <input
-            id="clientSearchInput"
-            class="input"
-            type="text"
-            placeholder="Search title, snippet, ID, terms ..."
-          >
-          <select id="clientClusterSelect" class="select">
-            <option value="">All clusters</option>
-          </select>
-          <button id="resetClientFiltersBtn" class="btn btn-secondary" type="button">Reset filters</button>
-          <button id="expandAllBtn" class="btn btn-secondary" type="button">Toggle all details</button>
-        </div>
-        <br><br>
-        <section class="meta-facets-box" aria-labelledby="metaFacetsTitle">
-          <div class="meta-facets-head">
-            <div>
-              <h2 id="metaFacetsTitle" class="meta-facets-title">Meta facets</h2>
-              <div class="muted">Filter documents by metadata.</div>
-            </div>
-
-            <div class="meta-facets-actions">
-              <button id="toggleAllMetaFacetsBtn" class="btn btn-secondary" type="button">
-                Toggle all meta facets
-              </button>
-              <button id="resetMetaFacetsBtn" class="btn btn-secondary" type="button">
-                Reset meta facets
-              </button>
-            </div>
-          </div>
-
-          <div id="activeMetaFacets" class="active-meta-facets"></div>
-          <div id="metaFacets" class="meta-facets-wrap"></div>
-        </section>
-
-        <div id="resultInfo" class="result-info"></div>
-      </div>
-    </section>
-
-      <div id="content"></div>
-
-      <div class="footer-note">Generated without external frontend dependencies.</div>
-      
-      <div id="custom-footer-container"></div>
-    </main>
-    
-  </div>
-
+  <title>Analysis · Zotero RDF Server Workbench</title>
+  <link rel="stylesheet" href="../assets/workbench/workspace.css">
+  <link rel="stylesheet" href="styles.css">
+  <script src="../assets/workbench/workspace.js" defer></script>
   <script>
     window.ANALYSIS_SEARCH_EXPLORER_CONFIG = {
-      title: "Analysis Search Explorer",
-      subtitle: "Interactive search, clustering, and analysis explorer.",
+      title: "Corpus analysis",
+      subtitle: "Explore search results by cluster, term, and document metadata.",
       endpointPath: "/plugin/fts/search/terms",
       openapiUrl: "/openapi.json",
       apiBaseUrl: "",
@@ -237,8 +108,149 @@
       }
     };
   </script>
-    <script src="./analysis_search_explorer.js"></script>
-    <script src="./meta_facets_addon.js"></script>
-    <script src="../partials/load-partials.js" defer></script>
+  <script src="analysis_search_explorer.js" defer></script>
+  <script src="meta_facets_addon.js" defer></script>
+  <script src="../partials/load-partials.js" defer></script>
+</head>
+<body class="wk-page">
+  <a class="wk-skip" href="#workspace-main">Skip to content</a>
+  <div id="custom-header-container"></div>
+  <nav class="wk-nav" aria-label="Workbench">
+    <div class="wk-nav-inner">
+      <a class="wk-brand" data-workspace-home href="../"><span class="wk-mark" aria-hidden="true"></span>Workbench</a>
+      <div class="wk-tabs">
+        <a href="../search/">Full-text search</a>
+        <a href="../analyze/" aria-current="page">Analysis</a>
+        <a href="../filter/" data-rdf-tool="filter">Search form</a>
+        <a href="../query/" data-rdf-tool="query">Query builder</a>
+        <a href="../browse/" data-rdf-tool="browse">RDF browser</a>
+        <a href="../edit/" data-rdf-tool="edit">Editor</a>
+      </div>
+      <button type="button" class="wk-button wk-inspect" data-show-queries aria-label="Show queries" aria-haspopup="dialog">Show queries</button>
+    </div>
+  </nav>
+  <main class="wk-main analysis" id="workspace-main" tabindex="-1">
+    <header class="wk-heading">
+      <div><h1 id="pageTitle">Corpus analysis</h1><p id="pageSubtitle">Explore search results by cluster, term, and document metadata.</p></div>
+    </header>  <div class="analysis-layout">
+  
+    <aside class="sidebar">
+      <div class="sidebar-section">
+        <h2 class="wk-section-title">Cluster overview</h2>
+        <div class="cluster-list-info" id="sidebarClusterInfo">Ready</div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="section-title">Top Cluster Terms</div>
+        <div class="term-cloud" id="topClusterTerms"></div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="section-title">Clusters</div>
+        <div id="sidebarClusters"></div>
+      </div>
+    </aside>
+
+    <div class="analysis-body">
+      <section class="panel search-panel">
+        <details open id="apiSearchDetails">
+          <summary>Search parameters</summary>
+
+          <form id="apiSearchForm">
+            <div id="dynamicFormSections"></div>
+
+            <div class="form-actions">
+              <button id="submitApiSearchBtn" class="btn btn-primary" type="submit">Search</button>
+              <button id="atlasSearchBtn" class="btn btn-primary" type="button">Atlas</button>
+              <button id="exportBtn" class="btn btn-secondary" type="button">Export</button>
+              <button id="resetApiFormBtn" class="btn btn-secondary" type="button">Reset form</button>
+            </div>
+
+            <div id="apiStatus" role="status" class="status-line">Ready</div>
+
+
+            <details id="last-request" hidden>
+              <summary>Request URL</summary>
+              <pre id="requestUrlPre" class="request-url-block"></pre>
+            </details>
+            <div class="raw-response-wrap">
+              <button id="toggleRawResponseBtn" class="btn btn-secondary" type="button">Show raw response</button>
+              <pre id="rawResponse" class="raw-response"></pre>
+            </div>
+          </form>
+        </details>
+      </section>
+
+    <section class="panel header-card">
+      <div class="header-card-stack">
+        <h2 class="wk-section-title">Results</h2>
+
+        <div class="summary-grid">
+          <div class="summary-item">
+            <div class="label">Documents</div>
+            <div class="value" id="summaryDocuments">0</div>
+          </div>
+          <div class="summary-item">
+            <div class="label">Clusters</div>
+            <div class="value" id="summaryClusters">0</div>
+          </div>
+          <div class="summary-item">
+            <div class="label">Unclustered</div>
+            <div class="value" id="summaryUnclustered">0</div>
+          </div>
+          <div class="summary-item">
+            <div class="label">Cluster terms</div>
+            <div class="value" id="summaryClusterTerms">0</div>
+          </div>
+        </div>
+
+        <div id="aggregationsContainer"></div>
+
+        <div class="controls">
+          <input
+            id="clientSearchInput" aria-label="Filter documents on this page"
+            class="input"
+            type="text"
+            placeholder="Search title, snippet, ID, terms ..."
+          >
+          <select id="clientClusterSelect" aria-label="Filter by cluster" class="select">
+            <option value="">All clusters</option>
+          </select>
+          <button id="resetClientFiltersBtn" class="btn btn-secondary" type="button">Reset filters</button>
+          <button id="expandAllBtn" class="btn btn-secondary" type="button">Toggle all details</button>
+        </div>
+        
+        <section class="meta-facets-box" aria-labelledby="metaFacetsTitle">
+          <div class="meta-facets-head">
+            <div>
+              <h2 id="metaFacetsTitle" class="meta-facets-title">Meta facets</h2>
+              <div class="muted">Filter documents by metadata.</div>
+            </div>
+
+            <div class="meta-facets-actions">
+              <button id="toggleAllMetaFacetsBtn" class="btn btn-secondary" type="button">
+                Toggle all meta facets
+              </button>
+              <button id="resetMetaFacetsBtn" class="btn btn-secondary" type="button">
+                Reset meta facets
+              </button>
+            </div>
+          </div>
+
+          <div id="activeMetaFacets" class="active-meta-facets"></div>
+          <div id="metaFacets" class="meta-facets-wrap"></div>
+        </section>
+
+        <div id="resultInfo" class="result-info"></div>
+      </div>
+    </section>
+
+      <div id="content"></div>
+    </div>
+  </div>
+
+
+  </main>
+  <div id="custom-footer-container"></div>
 </body>
 </html>

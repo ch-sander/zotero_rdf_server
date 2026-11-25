@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+
+  <title>Mapping + Entity Editor</title>
+
+  <script src="./n3.min.js"></script>
+  <script src="./comunica-browser.js"></script>
+
+  <script src="./app.js" type="module"></script>
+
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+  
+  <body>
+    
+    <!-- <div id="custom-header-container"></div> -->
+    <aside>
+      <div class="row">
+        <button id="openFile" class="primary">Open TriG file…</button>
+        <button id="clearLocal">Clear local</button>
+        <input id="fileInput" type="file" accept=".trig,.ttl,.nq,.nt,text/plain,application/trig,text/turtle,application/n-quads" style="display:none" />
+      </div>
+      <div class="muted small" id="fileInfo" style="margin-top:6px;">No local file loaded.</div>
+
+      <div class="divider"></div>
+
+      <input 
+        id="endpoint" 
+        type="url" 
+        placeholder="Remote SPARQL endpoint (e.g. http://localhost:7879/query)"
+        value="/sparql/query"
+      />
+
+      <div class="remote-single-editor" style="margin-top:8px;">         
+
+          <input
+              id="remoteMappingIri"
+              type="url"
+              placeholder="Insert mapping IRI"
+          >
+
+          <button id="loadRemoteMapping" type="button" style="margin-top:8px;">
+              Load mapping
+          </button>
+      </div>
+
+      <div class="row" style="margin-top:8px;">
+        <button id="loadRemote">Load remote into local</button>
+        <button id="clearEndpoint">Clear endpoint</button>
+      </div>
+
+      <div class="chiprow" style="margin-top:8px;">
+        <label class="chip" title="Comunica option unionDefaultGraph">
+          <input id="unionDefaultGraph" type="checkbox" checked />
+          unionDefaultGraph
+        </label>
+      </div>
+
+      <div class="muted small" id="sourceInfo" style="margin-top:8px;">Store: local only</div>
+
+      <div class="divider"></div>
+
+      <div class="row">
+        <input id="q" type="search" placeholder="Search mappings (by label)…" />
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <select id="typeHintFilter" title="Filter by map:typeHint">
+          <option value="">All type hints</option>
+        </select>
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <button id="prev">◀</button>
+        <div class="muted">Page <span id="page">1</span></div>
+        <button id="next">▶</button>
+        <div style="flex:1;"></div>
+        <button id="reload">Reload</button>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="muted">
+        Remote data is imported into the local session store. Editing, deleting and exporting always work against the local store.
+      </div>
+
+      <div id="list" class="list"></div>
+    </aside>
+
+    <main>
+      <div class="row">
+        <button id="exportSelected" class="primary" disabled>Download TriG (selected)</button>
+        <button id="exportMapping" disabled>Download mapping TriG</button>
+        <button id="exportEntity" disabled>Download entity TriG</button>
+        <div style="flex:1;"></div>
+        <button id="exportFull" class="primary">Download full graphs (TriG)</button>
+        <button id="exportShapes" type="button">
+          Download SHACL
+        </button>
+        <div id="status" class="muted"></div>
+      </div>
+
+      <div class="small">
+        Remote import creates a local snapshot. Save/Delete/Export work on that snapshot only.
+      </div>
+
+      <div class="panel">
+        <div class="row" style="margin-bottom:8px;">
+          <button id="showSelected" disabled>Show TriG (selected)</button>
+          <button id="showMapping" disabled>Show mapping TriG</button>
+          <button id="showEntity" disabled>Show entity TriG</button>
+          <button id="copyTrig" disabled>Copy</button>
+          <button id="clearTrig">Clear</button>
+          <label>
+            <input
+                type="checkbox"
+                id="includeCompleteRdf"
+                checked
+              >
+            Include full RDF from source
+          </label>
+          <div class="small" style="margin-left:auto;">Auto-preview updates after edits</div>
+        </div>
+        <textarea id="trigOut" spellcheck="false" placeholder="TriG preview will appear here…"></textarea>
+      </div>
+
+      <div class="small">
+        <button id="saveSelected" class="primary" disabled>Save</button>
+        <button id="newMapping">New mapping</button>
+        <button id="deleteMapping" disabled>Delete mapping</button>
+        <button id="newEntity">New entity</button>
+        <button id="deleteEntity" disabled>Delete entity</button>
+      </div>
+
+      <div class="forms">
+        <details class="panel" open>
+          <summary><h2>Mapping</h2></summary>
+          <div class="muted small">
+            IRI: <code id="mappingIri">(none)</code>
+            <span id="copyMappingIri" class="copyIcon disabled" title="Copy IRI" role="button" tabindex="0">📋</span>
+          </div>
+
+          <shacl-form
+            id="mappingForm"
+            data-use-shadow-root="false"
+            data-dense="true"
+            data-collapse="open"
+            data-values-graph="https://data.scigma.de/resources/mappings"
+          ></shacl-form>
+        </details>
+
+        <details class="panel" open>
+          <summary><h2>Entity</h2></summary>
+          <div class="muted small">
+            IRI: <code id="entityIri">(none)</code>
+            <span id="copyEntityIri" class="copyIcon disabled" title="Copy IRI" role="button" tabindex="0">📋</span>
+          </div>
+
+          <shacl-form
+            id="entityForm"
+            data-use-shadow-root="false"
+            data-dense="true"
+            data-collapse="open"
+            data-values-graph="https://data.scigma.de/resources/entities"
+          ></shacl-form>
+        </details>
+      </div>
+    </main>
+    <!-- <div id="custom-footer-container"></div>
+    <script src="../partials/load-partials.js" defer></script> -->
+
+  </body>
+</html>

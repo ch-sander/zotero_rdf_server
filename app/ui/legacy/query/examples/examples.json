@@ -1,0 +1,688 @@
+[
+    {
+        "id": "blood-hair",
+        "label": "Opinion on Blood and Hair",
+        "hidden": true,
+        "description": "What did authors hold regarding the question of whether blood and hair are alive?",
+        "query": {
+            "distinct": true,
+            "variables": [
+                {
+                    "termType": "Variable",
+                    "value": "Book"
+                },
+                {
+                    "termType": "Variable",
+                    "value": "Scope"
+                },
+                {
+                    "termType": "Variable",
+                    "value": "Opinion"
+                },
+                {
+                    "expression": {
+                        "type": "aggregate",
+                        "aggregation": "group_concat",
+                        "distinct": false,
+                        "expression": {
+                            "termType": "Variable",
+                            "value": "text_1724_12"
+                        }
+                    },
+                    "variable": {
+                        "termType": "Variable",
+                        "value": "Section"
+                    }
+                },
+                {
+                    "expression": {
+                        "type": "aggregate",
+                        "aggregation": "group_concat",
+                        "distinct": false,
+                        "expression": {
+                            "termType": "Variable",
+                            "value": "text_1724_16"
+                        }
+                    },
+                    "variable": {
+                        "termType": "Variable",
+                        "value": "Quotes"
+                    }
+                }
+            ],
+            "order": null,
+            "branches": [
+                {
+                    "line": {
+                        "s": "paragraph_1758_1",
+                        "p": "http://www.zotero.org/namespaces/sparnatural#property_1857",
+                        "o": "Scope",
+                        "sType": "http://www.zotero.org/namespaces/sparnatural#paragraph_1758",
+                        "oType": "http://www.zotero.org/namespaces/sparnatural#tag_1502",
+                        "values": [
+                            {
+                                "label": "Blood",
+                                "rdfTerm": {
+                                    "type": "uri",
+                                    "value": "https://data.scigma.de/resources/entities/c1a774d2-7c20-589d-82cc-8269f191af9f"
+                                }
+                            },
+                            {
+                                "label": "hair",
+                                "rdfTerm": {
+                                    "type": "uri",
+                                    "value": "https://data.scigma.de/resources/entities/4863bc93-706c-50b0-bd10-ef8d41f42faf"
+                                }
+                            }
+                        ]
+                    },
+                    "children": []
+                },
+                {
+                    "line": {
+                        "s": "paragraph_1758_1",
+                        "p": "http://www.zotero.org/namespaces/sparnatural#property_1857",
+                        "o": "Opinion",
+                        "sType": "http://www.zotero.org/namespaces/sparnatural#paragraph_1758",
+                        "oType": "http://www.zotero.org/namespaces/sparnatural#tag_1502",
+                        "values": [
+                            {
+                                "label": "pro",
+                                "rdfTerm": {
+                                    "type": "uri",
+                                    "value": "https://data.scigma.de/resources/entities/811afa99-03ac-59dd-90e3-cb1eb783dd4c"
+                                }
+                            },
+                            {
+                                "label": "contra",
+                                "rdfTerm": {
+                                    "type": "uri",
+                                    "value": "https://data.scigma.de/resources/entities/3449fe81-89a8-55c2-b17f-6f18bd4f136e"
+                                }
+                            }
+                        ]
+                    },
+                    "children": []
+                },
+                {
+                    "line": {
+                        "s": "paragraph_1758_1",
+                        "p": "http://www.zotero.org/namespaces/sparnatural#property_1857",
+                        "o": "tag_1502_8",
+                        "sType": "http://www.zotero.org/namespaces/sparnatural#paragraph_1758",
+                        "oType": "http://www.zotero.org/namespaces/sparnatural#tag_1502",
+                        "values": [
+                            {
+                                "label": "opinion",
+                                "rdfTerm": {
+                                    "type": "uri",
+                                    "value": "https://data.scigma.de/resources/entities/210e7343-75cf-5a2b-9722-7c1253955d68"
+                                }
+                            }
+                        ]
+                    },
+                    "children": []
+                },
+                {
+                    "line": {
+                        "s": "paragraph_1758_1",
+                        "p": "http://www.zotero.org/namespaces/sparnatural#property_1868",
+                        "o": "Book",
+                        "sType": "http://www.zotero.org/namespaces/sparnatural#paragraph_1758",
+                        "oType": "http://www.zotero.org/namespaces/sparnatural#book_1544",
+                        "values": []
+                    },
+                    "children": []
+                },
+                {
+                    "line": {
+                        "s": "paragraph_1758_1",
+                        "p": "http://www.zotero.org/namespaces/sparnatural#property_1869",
+                        "o": "structure_1756_14",
+                        "sType": "http://www.zotero.org/namespaces/sparnatural#paragraph_1758",
+                        "oType": "http://www.zotero.org/namespaces/sparnatural#structure_1756",
+                        "values": []
+                    },
+                    "children": [
+                        {
+                            "line": {
+                                "s": "structure_1756_14",
+                                "p": "http://www.zotero.org/namespaces/sparnatural#property_1764",
+                                "o": "text_1724_12",
+                                "sType": "http://www.zotero.org/namespaces/sparnatural#structure_1756",
+                                "oType": "http://www.zotero.org/namespaces/sparnatural#text_1724",
+                                "values": []
+                            },
+                            "children": []
+                        },
+                        {
+                            "line": {
+                                "s": "structure_1756_14",
+                                "p": "http://www.zotero.org/namespaces/sparnatural#property_1858",
+                                "o": "quotation_1760_18",
+                                "sType": "http://www.zotero.org/namespaces/sparnatural#structure_1756",
+                                "oType": "http://www.zotero.org/namespaces/sparnatural#quotation_1760",
+                                "values": []
+                            },
+                            "children": [
+                                {
+                                    "line": {
+                                        "s": "quotation_1760_18",
+                                        "p": "http://www.zotero.org/namespaces/sparnatural#property_1764",
+                                        "o": "text_1724_16",
+                                        "sType": "http://www.zotero.org/namespaces/sparnatural#quotation_1760",
+                                        "oType": "http://www.zotero.org/namespaces/sparnatural#text_1724",
+                                        "values": []
+                                    },
+                                    "children": []
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ],
+            "limit": 5000
+        }
+    },
+    {
+        "id": "tags",
+        "label": "Most Frequent Tags",
+        "description": "Lists all tags with the number of linked library items, sorted from most to least frequent.",
+        "query": {
+            "distinct": true,
+            "variables": [
+                {
+                    "expression": {
+                        "type": "aggregate",
+                        "aggregation": "count",
+                        "distinct": false,
+                        "expression": {
+                            "termType": "Variable",
+                            "value": "Item"
+                        }
+                    },
+                    "variable": {
+                        "termType": "Variable",
+                        "value": "Items"
+                    }
+                },
+                {
+                    "termType": "Variable",
+                    "value": "Tag"
+                }
+            ],
+            "order": "desc",
+            "branches": [
+                {
+                    "line": {
+                        "s": "Item",
+                        "p": "http://www.zotero.org/namespaces/sparnatural#property_1732",
+                        "o": "Tag",
+                        "sType": "http://www.zotero.org/namespaces/sparnatural#item_1498",
+                        "oType": "http://www.zotero.org/namespaces/sparnatural#tag_1502",
+                        "values": []
+                    },
+                    "children": []
+                }
+            ],
+            "limit": 5000
+        }
+    },
+    {
+        "id": "books",
+        "label": "Books 1545-1789",
+        "description": "Finds distinct books dated between 1545 and 1789 and returns each book together with its date.",
+        "query": {
+            "distinct": true,
+            "variables": [
+                {
+                    "termType": "Variable",
+                    "value": "Book"
+                },
+                {
+                    "termType": "Variable",
+                    "value": "date_1727_2"
+                }
+            ],
+            "order": null,
+            "branches": [
+                {
+                    "line": {
+                        "s": "Book",
+                        "p": "http://www.zotero.org/namespaces/sparnatural#property_1639",
+                        "o": "date_1727_2",
+                        "sType": "http://www.zotero.org/namespaces/sparnatural#book_1544",
+                        "oType": "http://www.zotero.org/namespaces/sparnatural#date_1727",
+                        "values": [
+                            {
+                                "label": "from 1545 to 1789",
+                                "start": "1544-12-31T23:06:33.000Z",
+                                "stop": "1789-12-31T23:06:31.000Z"
+                            }
+                        ]
+                    },
+                    "children": []
+                }
+            ],
+            "limit": 5000
+        }
+    },
+    {
+        "id": "places",
+        "label": "Places of Publication",
+        "description": "Finds items published up to 1800 and returns their publication places together with geographic coordinates.",
+        "query": {
+            "distinct": true,
+            "variables": [
+                {
+                    "termType": "Variable",
+                    "value": "Item"
+                },
+                {
+                    "termType": "Variable",
+                    "value": "Coordinates"
+                },
+                {
+                    "termType": "Variable",
+                    "value": "Place"
+                }
+            ],
+            "order": null,
+            "branches": [
+                {
+                    "line": {
+                        "s": "Item",
+                        "p": "http://www.zotero.org/namespaces/sparnatural#property_1639",
+                        "o": "date_1727_2",
+                        "sType": "http://www.zotero.org/namespaces/sparnatural#item_1498",
+                        "oType": "http://www.zotero.org/namespaces/sparnatural#date_1727",
+                        "values": [
+                            {
+                                "label": "Until 1800",
+                                "start": null,
+                                "stop": "1800-12-31T23:06:31.000Z"
+                            }
+                        ]
+                    },
+                    "children": []
+                },
+                {
+                    "line": {
+                        "s": "Item",
+                        "p": "http://www.zotero.org/namespaces/sparnatural#property_1668",
+                        "o": "Place",
+                        "sType": "http://www.zotero.org/namespaces/sparnatural#item_1498",
+                        "oType": "http://www.zotero.org/namespaces/sparnatural#place_1772",
+                        "values": []
+                    },
+                    "children": [
+                        {
+                            "line": {
+                                "s": "Place",
+                                "p": "http://www.zotero.org/namespaces/sparnatural#property_2121",
+                                "o": "Coordinates",
+                                "sType": "http://www.zotero.org/namespaces/sparnatural#place_1772",
+                                "oType": "http://www.zotero.org/namespaces/sparnatural#wktliteral_1054",
+                                "values": []
+                            },
+                            "children": []
+                        }
+                    ]
+                }
+            ],
+            "limit": 5000
+        }
+    },
+    {
+        "id": "quotations",
+        "label": "Tags in Quotations",
+        "description": "Finds items linked to quotations and combines the tags assigned to those quotations into one result field.",
+        "query": {
+            "distinct": true,
+            "variables": [
+                {
+                    "termType": "Variable",
+                    "value": "Item"
+                },
+                {
+                    "expression": {
+                        "type": "aggregate",
+                        "aggregation": "group_concat",
+                        "distinct": false,
+                        "expression": {
+                            "termType": "Variable",
+                            "value": "text_1724_9"
+                        }
+                    },
+                    "variable": {
+                        "termType": "Variable",
+                        "value": "Tags"
+                    }
+                }
+            ],
+            "order": null,
+            "branches": [
+                {
+                    "line": {
+                        "s": "Quotation",
+                        "p": "http://www.zotero.org/namespaces/sparnatural#property_1857",
+                        "o": "tag_1502_2",
+                        "sType": "http://www.zotero.org/namespaces/sparnatural#quotation_1760",
+                        "oType": "http://www.zotero.org/namespaces/sparnatural#tag_1502",
+                        "values": []
+                    },
+                    "children": [
+                        {
+                            "line": {
+                                "s": "tag_1502_2",
+                                "p": "http://www.zotero.org/namespaces/sparnatural#property_1867",
+                                "o": "text_1724_9",
+                                "sType": "http://www.zotero.org/namespaces/sparnatural#tag_1502",
+                                "oType": "http://www.zotero.org/namespaces/sparnatural#text_1724",
+                                "values": []
+                            },
+                            "children": []
+                        }
+                    ]
+                },
+                {
+                    "line": {
+                        "s": "Quotation",
+                        "p": "http://www.zotero.org/namespaces/sparnatural#property_1765",
+                        "o": "semanticnote_1755_5",
+                        "sType": "http://www.zotero.org/namespaces/sparnatural#quotation_1760",
+                        "oType": "http://www.zotero.org/namespaces/sparnatural#semanticnote_1755",
+                        "values": []
+                    },
+                    "children": [
+                        {
+                            "line": {
+                                "s": "semanticnote_1755_5",
+                                "p": "http://www.zotero.org/namespaces/sparnatural#property_1735",
+                                "o": "Item",
+                                "sType": "http://www.zotero.org/namespaces/sparnatural#semanticnote_1755",
+                                "oType": "http://www.zotero.org/namespaces/sparnatural#item_1498",
+                                "values": []
+                            },
+                            "children": []
+                        }
+                    ]
+                }
+            ],
+            "limit": 5000
+        }
+    },
+    {
+        "id": "annotations",
+        "label": "Annotations in Notes",
+        "description": "Finds items linked through notes to annotations and combines the annotation texts into one result field.",
+        "query": {
+            "distinct": true,
+            "variables": [
+                {
+                    "termType": "Variable",
+                    "value": "Item"
+                },
+                {
+                    "expression": {
+                        "type": "aggregate",
+                        "aggregation": "group_concat",
+                        "distinct": false,
+                        "expression": {
+                            "termType": "Variable",
+                            "value": "text_1724_6"
+                        }
+                    },
+                    "variable": {
+                        "termType": "Variable",
+                        "value": "Annotations"
+                    }
+                }
+            ],
+            "order": null,
+            "branches": [
+                {
+                    "line": {
+                        "s": "annotation_1759_1",
+                        "p": "http://www.zotero.org/namespaces/sparnatural#property_1765",
+                        "o": "semanticnote_1755_2",
+                        "sType": "http://www.zotero.org/namespaces/sparnatural#annotation_1759",
+                        "oType": "http://www.zotero.org/namespaces/sparnatural#semanticnote_1755",
+                        "values": []
+                    },
+                    "children": [
+                        {
+                            "line": {
+                                "s": "semanticnote_1755_2",
+                                "p": "http://www.zotero.org/namespaces/sparnatural#property_1735",
+                                "o": "Item",
+                                "sType": "http://www.zotero.org/namespaces/sparnatural#semanticnote_1755",
+                                "oType": "http://www.zotero.org/namespaces/sparnatural#item_1498",
+                                "values": []
+                            },
+                            "children": []
+                        }
+                    ]
+                },
+                {
+                    "line": {
+                        "s": "annotation_1759_1",
+                        "p": "http://www.zotero.org/namespaces/sparnatural#property_1764",
+                        "o": "text_1724_6",
+                        "sType": "http://www.zotero.org/namespaces/sparnatural#annotation_1759",
+                        "oType": "http://www.zotero.org/namespaces/sparnatural#text_1724",
+                        "values": []
+                    },
+                    "children": []
+                }
+            ],
+            "limit": 5000
+        }
+    },
+    {
+        "id": "fts",
+        "label": "Full Text Search",
+        "hidden": false,
+        "description": "Searches against the Qlever index for an exact term match.",
+        "query": {
+            "distinct": true,
+            "variables": [
+                {
+                    "expression": {
+                        "type": "aggregate",
+                        "aggregation": "count",
+                        "distinct": false,
+                        "expression": {
+                            "termType": "Variable",
+                            "value": "digitaldocument_2289_1"
+                        }
+                    },
+                    "variable": {
+                        "termType": "Variable",
+                        "value": "digitaldocument_2289_1_count"
+                    }
+                },
+                {
+                    "termType": "Variable",
+                    "value": "item_1498_6"
+                }
+            ],
+            "order": "desc",
+            "branches": [
+                {
+                    "line": {
+                        "s": "digitaldocument_2289_1",
+                        "p": "http://www.zotero.org/namespaces/sparnatural#property_2288",
+                        "o": "text_1724_2",
+                        "sType": "http://www.zotero.org/namespaces/sparnatural#digitaldocument_2289",
+                        "oType": "http://www.zotero.org/namespaces/sparnatural#text_1724",
+                        "values": [
+                            {
+                                "label": "copernic",
+                                "regex": "copernic"
+                            }
+                        ]
+                    },
+                    "children": []
+                },
+                {
+                    "line": {
+                        "s": "digitaldocument_2289_1",
+                        "p": "http://www.zotero.org/namespaces/sparnatural#property_2285",
+                        "o": "attachment_1573_4",
+                        "sType": "http://www.zotero.org/namespaces/sparnatural#digitaldocument_2289",
+                        "oType": "http://www.zotero.org/namespaces/sparnatural#attachment_1573",
+                        "values": []
+                    },
+                    "children": [
+                        {
+                            "line": {
+                                "s": "attachment_1573_4",
+                                "p": "http://www.zotero.org/namespaces/sparnatural#property_1735",
+                                "o": "item_1498_6",
+                                "sType": "http://www.zotero.org/namespaces/sparnatural#attachment_1573",
+                                "oType": "http://www.zotero.org/namespaces/sparnatural#item_1498",
+                                "values": []
+                            },
+                            "children": []
+                        }
+                    ]
+                }
+            ],
+            "limit": 5000
+        }
+    },
+    {
+        "id": "citations",
+        "label": "Cross-References",
+        "hidden": false,
+        "description": "Finds cross-references between top-level items while excluding items that belong to another item through the parent-item relation.",
+        "query": {
+            "distinct": true,
+            "variables": [
+                {
+                    "termType": "Variable",
+                    "value": "item_1498_1"
+                },
+                {
+                    "termType": "Variable",
+                    "value": "item_1498_2"
+                }
+            ],
+            "order": null,
+            "branches": [
+                {
+                    "line": {
+                        "s": "item_1498_1",
+                        "p": "http://www.zotero.org/namespaces/sparnatural#property_2152",
+                        "o": "item_1498_2",
+                        "sType": "http://www.zotero.org/namespaces/sparnatural#item_1498",
+                        "oType": "http://www.zotero.org/namespaces/sparnatural#item_1498",
+                        "values": []
+                    },
+                    "children": [
+                        {
+                            "line": {
+                                "s": "item_1498_2",
+                                "p": "http://www.zotero.org/namespaces/sparnatural#property_1735",
+                                "o": "item_1498_6",
+                                "sType": "http://www.zotero.org/namespaces/sparnatural#item_1498",
+                                "oType": "http://www.zotero.org/namespaces/sparnatural#item_1498",
+                                "values": []
+                            },
+                            "children": [],
+                            "notExists": true
+                        }
+                    ]
+                },
+                {
+                    "line": {
+                        "s": "item_1498_1",
+                        "p": "http://www.zotero.org/namespaces/sparnatural#property_1735",
+                        "o": "item_1498_8",
+                        "sType": "http://www.zotero.org/namespaces/sparnatural#item_1498",
+                        "oType": "http://www.zotero.org/namespaces/sparnatural#item_1498",
+                        "values": []
+                    },
+                    "children": [],
+                    "notExists": true
+                }
+            ],
+            "limit": 5000
+        }
+    },
+    {
+        "id": "wikidata",
+        "label": "WikiData",
+        "hidden": false,
+        "description": "Uses Wikidata SERVICE to link to its data.",
+        "query": {
+            "distinct": true,
+            "variables": [
+                {
+                    "termType": "Variable",
+                    "value": "item_1498_1"
+                },
+                {
+                    "termType": "Variable",
+                    "value": "date_1727_7"
+                },
+                {
+                    "termType": "Variable",
+                    "value": "wktliteral_1054_5"
+                }
+            ],
+            "order": null,
+            "branches": [
+                {
+                    "line": {
+                        "s": "item_1498_1",
+                        "p": "http://www.zotero.org/namespaces/sparnatural#property_1746",
+                        "o": "agent_1742_1",
+                        "sType": "http://www.zotero.org/namespaces/sparnatural#item_1498",
+                        "oType": "http://www.zotero.org/namespaces/sparnatural#agent_1742",
+                        "values": []
+                    },
+                    "children": [
+                        {
+                            "line": {
+                                "s": "agent_1742_1",
+                                "p": "http://www.zotero.org/namespaces/sparnatural#property_1803",
+                                "o": "link_1728_3",
+                                "sType": "http://www.zotero.org/namespaces/sparnatural#agent_1742",
+                                "oType": "http://www.zotero.org/namespaces/sparnatural#link_1728",
+                                "values": []
+                            },
+                            "children": [
+                                {
+                                    "line": {
+                                        "s": "link_1728_3",
+                                        "p": "http://www.zotero.org/namespaces/sparnatural#wdPlaceOfDeathCoordinates",
+                                        "o": "wktliteral_1054_5",
+                                        "sType": "http://www.zotero.org/namespaces/sparnatural#link_1728",
+                                        "oType": "http://www.zotero.org/namespaces/sparnatural#wktliteral_1054",
+                                        "values": []
+                                    },
+                                    "children": [],
+                                    "optional": true
+                                },
+                                {
+                                    "line": {
+                                        "s": "link_1728_3",
+                                        "p": "http://www.zotero.org/namespaces/sparnatural#wdDateOfDeath",
+                                        "o": "date_1727_7",
+                                        "sType": "http://www.zotero.org/namespaces/sparnatural#link_1728",
+                                        "oType": "http://www.zotero.org/namespaces/sparnatural#date_1727",
+                                        "values": []
+                                    },
+                                    "children": []
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ],
+            "limit": 5000
+        }
+    }
+]

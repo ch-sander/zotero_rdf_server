@@ -1,0 +1,114 @@
+@prefix cfg:  <https://example.org/sparnatural/qlever-text-search#> .
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix dash: <http://datashapes.org/dash#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+@prefix core:
+    <http://data.sparna.fr/ontologies/sparnatural-config-core#> .
+
+@prefix ds:
+    <http://data.sparna.fr/ontologies/sparnatural-config-datasources#> .
+
+@prefix ql:
+    <http://qlever.cs.uni-freiburg.de/builtin-functions/> .
+
+
+#################################################################
+# Klassen
+#################################################################
+
+cfg:TextContext
+    a sh:NodeShape ;
+    rdfs:label "Textsuche"@de ;
+    sh:property
+        cfg:containsWord ,
+        cfg:containsEntity .
+
+
+cfg:SearchTerm
+    a sh:NodeShape ;
+    sh:nodeKind sh:Literal ;
+    sh:datatype xsd:string ;
+    rdfs:label "Suchbegriff"@de .
+
+cfg:EntityType
+    a sh:NodeShape ;
+    rdfs:label "Entitätstyp"@de ;
+    sh:nodeKind sh:IRI .
+
+cfg:LiteralValue
+    a sh:NodeShape ;
+    rdfs:label "Text"@de ;
+    sh:nodeKind sh:Literal .
+
+cfg:Hit
+    a sh:NodeShape ;
+    rdfs:label "Treffer"@de ;
+    sh:nodeKind sh:IRI ;
+    sh:property
+        cfg:hitType ,
+        cfg:hitLabel .
+
+
+#################################################################
+# Eigenschaften
+#################################################################
+
+cfg:containsWord
+    a sh:PropertyShape ;
+    sh:path ql:contains-word ;
+    sh:name "enthält Suchwort"@de ;
+    sh:node cfg:SearchTerm ;
+    dash:searchWidget core:AutocompleteProperty ;
+    ds:datasource cfg:EnteredSearchTermDatasource ;
+    core:enableOptional false ;
+    core:enableNegation false .
+
+
+cfg:containsEntity
+    a sh:PropertyShape ;
+
+    sh:path ql:contains-entity ;
+    sh:name "enthält Entität"@de ;
+    sh:description "Entität, die im gefundenen Text vorkommt"@de ;
+
+    sh:node cfg:Hit ;
+
+    dash:searchWidget core:AutocompleteProperty ;
+
+    core:enableOptional false ;
+    core:enableNegation false ;
+
+    sh:order 20 .
+
+cfg:hitType
+    a sh:PropertyShape ;
+    sh:path rdf:type ;
+    sh:name "hat Typ"@de ;
+    sh:node cfg:EntityType ;
+    # dash:searchWidget core:NonSelectableProperty ;
+    sh:order 10 .
+
+cfg:hitLabel
+    a sh:PropertyShape ;
+    sh:path rdfs:label ;
+    sh:name "hat Bezeichnung"@de ;
+    sh:node cfg:LiteralValue ;
+    dash:searchWidget core:SearchProperty ;
+    sh:order 20 .
+
+#################################################################
+# Datasource: übernimmt den eingegebenen Text als Literal
+#################################################################
+
+cfg:EnteredSearchTermDatasource
+    a ds:SparqlDatasource ;
+    ds:queryString """
+        SELECT
+            ("$key" AS ?value)
+            ("$key" AS ?label)
+        WHERE {}
+    """ .

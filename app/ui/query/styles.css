@@ -2,22 +2,22 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
 
 :root {
-  --bg: #eef2f7;
+  --bg: #f5f5f5;
   --panel: #ffffff;
-  --panel-soft: #edf3ff;
+  --panel-soft: #f5f5f5;
 
   --text: #111111;
-  --muted: #4f5f78;
+  --muted: #505050;
 
   --line: #4a86e8;
   --accent: #4a86e8;
   --accent-2: #ff9900;
 
-  --border: #9eb9ef;
+  --border: #bdbdbd;
   --border-strong: #4a86e8;
 
   --btn-blue: #4a86e8;
-  --btn-blue-hover: #3f78d6;
+  --btn-blue-hover: #4a86e8;
 
   --btn-orange: #ff9900;
   --btn-orange-hover: #e68a00;
@@ -34,34 +34,34 @@ body {
 /* Headings */
 h1, h2, h3 {
   font-weight: 600;
-  color: var(--accent);
+  color: var(--wk-ink, #171717);
 }
 
 /* Links */
 a {
-  color: var(--accent);
+  color: var(--wk-ink, #171717);
   text-decoration: none;
   font-weight: 600;
 }
 a:hover {
   text-decoration: underline;
-  color: #2f5fb3;
+  color: #171717;
 }
 
 /* Navbar */
 .navbar {
-  background-color: #dfe9fb !important;
+  background-color: #e5e5e5 !important;
   border-bottom: 2px solid var(--line);
   box-shadow: none;
 }
 
 .navbar-light .navbar-brand {
-  color: var(--accent);
+  color: var(--wk-ink, #171717);
   font-weight: 700;
 }
 
 .navbar-light .navbar-nav .nav-link {
-  color: #2c3e5f;
+  color: #171717;
 }
 
 .navbar-light .navbar-nav .nav-link:hover {
@@ -107,7 +107,7 @@ a:hover {
 
 #sparql-toggle {
   background-color: var(--btn-blue);
-  border: 2px solid #2f5fb3;
+  border: 2px solid #4a86e8;
   color: #fff;
 }
 
@@ -146,8 +146,8 @@ spar-natural {
 .badge,
 .tag {
   border: 2px solid var(--line);
-  background: #eaf2ff;
-  color: #244a8f;
+  background: #f5f5f5;
+  color: #171717;
   border-radius: 0;
   padding: 2px 8px;
   font-size: 12px;

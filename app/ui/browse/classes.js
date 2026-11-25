@@ -15,7 +15,7 @@ const ONTOLOGY_GRAPH =
   || DEFAULT_ONTOLOGY_GRAPH;
 
 // Fast mode only considers direct subclass edges and direct rdf:type membership.
-const FAST_MODE = params.get("mode") === "fast";
+const FAST_MODE = params.get("mode") !== "full";
 
 console.log("SPARQL endpoint:", ENDPOINT);
 
@@ -31,7 +31,7 @@ const HIDDEN_CLASS_BRANCHES = [
 const LANGUAGE = "en";
 const LIMIT = 1000;
 const RESOURCE_VIEWER =
-  location.pathname.replace(/\/$/, "") + "/resource";
+  new URL("./resource/", document.baseURI).href;
 
 const searchEl = document.querySelector("#instance-search");
 const instanceCountEl = document.querySelector("#instance-count");
@@ -68,7 +68,7 @@ window.addEventListener("hashchange", () => {
 });
 
 installSearchControls();
-const recordQuery = installQueryViewer();
+
 installFastModeToggle();
 loadClasses();
 
@@ -95,153 +95,6 @@ function installSearchControls() {
   });
 }
 
-function installQueryViewer() {
-  // Keep the latest request of each kind, even if the endpoint returns an error.
-  const queries = new Map();
-  const button = document.createElement("button");
-  button.id = "show-sparql";
-  button.type = "button";
-  button.className = "copy-btn";
-  button.textContent = "Show SPARQL";
-  button.disabled = true;
-
-  const dialog = document.createElement("dialog");
-  dialog.id = "sparql-query-dialog";
-  dialog.setAttribute("aria-labelledby", "sparql-query-title");
-  dialog.style.cssText = "width: min(70rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); padding: 1.25rem; background: var(--panel); color: var(--text); border: 2px solid var(--border-mid); border-radius: var(--radius); font: inherit;";
-
-  const header = document.createElement("div");
-  header.style.cssText = "display: flex; align-items: center; justify-content: space-between; gap: 1rem;";
-
-  const title = document.createElement("h2");
-  title.id = "sparql-query-title";
-  title.textContent = "SPARQL queries";
-  title.style.margin = "0";
-
-  const closeButton = document.createElement("button");
-  closeButton.type = "button";
-  closeButton.className = "copy-btn";
-  closeButton.textContent = "Close";
-  closeButton.autofocus = true;
-  closeButton.addEventListener("click", () => dialog.close());
-  header.append(title, closeButton);
-
-  const endpoint = document.createElement("p");
-  endpoint.textContent = `Endpoint: ${ENDPOINT}`;
-  endpoint.style.overflowWrap = "anywhere";
-
-  const label = document.createElement("label");
-  label.htmlFor = "sparql-query-kind";
-  label.textContent = "Query: ";
-
-  const select = document.createElement("select");
-  select.id = "sparql-query-kind";
-  label.appendChild(select);
-
-  const pre = document.createElement("pre");
-  pre.style.cssText = "max-height: 60vh; overflow: auto; white-space: pre; padding: 1rem; background: var(--panel-3); border: 1px solid var(--border-soft);";
-  const code = document.createElement("code");
-  code.id = "sparql-query-text";
-  pre.appendChild(code);
-
-  const copyButton = document.createElement("button");
-  copyButton.id = "copy-sparql";
-  copyButton.type = "button";
-  copyButton.className = "copy-btn";
-  copyButton.textContent = "Copy query";
-
-  const copyStatus = document.createElement("span");
-  copyStatus.id = "sparql-copy-status";
-  copyStatus.setAttribute("role", "status");
-
-  const copyControls = document.createElement("div");
-  copyControls.className = "literal-wrap";
-  copyControls.append(copyButton, copyStatus);
-  copyButton.addEventListener("click", async () => {
-    copyButton.disabled = true;
-    copyStatus.textContent = "";
-    try {
-      await copyQueryToClipboard(code.textContent, dialog);
-      copyStatus.textContent = "Query copied.";
-    } catch (error) {
-      copyStatus.textContent = "Copy failed. Select and copy the query manually.";
-    } finally {
-      copyButton.disabled = false;
-    }
-  });
-
-  select.addEventListener("change", () => {
-    code.textContent = queries.get(select.value) || "";
-    copyStatus.textContent = "";
-  });
-
-  dialog.append(header, endpoint, label, pre, copyControls);
-  document.body.appendChild(dialog);
-  button.addEventListener("click", () => dialog.showModal());
-  dialog.addEventListener("click", (event) => {
-    if (event.target !== dialog) return;
-    const bounds = dialog.getBoundingClientRect();
-    if (event.clientX < bounds.left || event.clientX > bounds.right ||
-        event.clientY < bounds.top || event.clientY > bounds.bottom) {
-      dialog.close();
-    }
-  });
-
-  const pageHeader = document.querySelector("main > header");
-  if (pageHeader) {
-    button.style.float = "right";
-    button.style.margin = "0 0 0.75rem 1rem";
-    pageHeader.prepend(button);
-  } else {
-    button.style.position = "fixed";
-    button.style.top = "3.75rem";
-    button.style.right = "0.75rem";
-    button.style.zIndex = "2147483647";
-    document.body.appendChild(button);
-  }
-
-  return (name, query) => {
-    if (!queries.has(name)) {
-      const option = document.createElement("option");
-      option.value = name;
-      option.textContent = name;
-      select.appendChild(option);
-    }
-    queries.set(name, query);
-    select.value = name;
-    code.textContent = query;
-    copyStatus.textContent = "";
-    button.disabled = false;
-  };
-}
-
-async function copyQueryToClipboard(text, container) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return;
-  } catch (error) {
-    // Also support HTTP pages and browsers that deny Clipboard API access.
-  }
-
-  const previousFocus = document.activeElement;
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.readOnly = true;
-  textarea.style.cssText = "position: fixed; opacity: 0; width: 1px; height: 1px;";
-  // Keep the fallback inside the modal so its focus trap permits selection.
-  container.appendChild(textarea);
-  try {
-    textarea.focus();
-    textarea.select();
-    if (!document.execCommand("copy")) {
-      throw new Error("Clipboard copy failed");
-    }
-  } finally {
-    textarea.remove();
-    previousFocus?.focus();
-  }
-}
-
 function installFastModeToggle() {
   document.documentElement.dataset.queryMode = FAST_MODE ? "fast" : "full";
 
@@ -257,28 +110,13 @@ function installFastModeToggle() {
   button.addEventListener("click", () => {
     const url = new URL(window.location.href);
 
-    if (FAST_MODE) {
-      url.searchParams.delete("mode");
-    } else {
-      url.searchParams.set("mode", "fast");
-    }
+    url.searchParams.set("mode", FAST_MODE ? "full" : "fast");
 
     window.location.assign(url.toString());
   });
 
-  const pageHeader = document.querySelector("main > header");
-
-  if (pageHeader) {
-    button.style.float = "right";
-    button.style.margin = "0 0 0.75rem 1rem";
-    pageHeader.prepend(button);
-  } else {
-    button.style.position = "fixed";
-    button.style.top = "0.75rem";
-    button.style.right = "0.75rem";
-    button.style.zIndex = "2147483647";
-    document.body.appendChild(button);
-  }
+  button.className = "wk-button wk-mode";
+  document.getElementById("view-options").append(button);
 }
 
 async function loadClasses() {
@@ -445,7 +283,7 @@ async function queryClasses() {
 }
 
 async function sparql(query, name) {
-  recordQuery(name, query);
+  LibraryWorkspace.record(name, "POST " + ENDPOINT, query);
   const response = await fetch(ENDPOINT, {
     method: "POST",
     headers: {
@@ -660,18 +498,17 @@ function renderInstances(bindings) {
     const uriTd = document.createElement("td");
 
     const params = new URLSearchParams();
+    if (currentClassUri) params.set("class", currentClassUri);
 
     if (ENDPOINT !== DEFAULT_ENDPOINT) {
-      params.set("endpoint", ENDPOINT);
+      params.set("endpoint", LibraryWorkspace.linkEndpoint(ENDPOINT));
     }
 
     if (ONTOLOGY_GRAPH) {
       params.set("ontology", ONTOLOGY_GRAPH);
     }
 
-    if (FAST_MODE) {
-      params.set("mode", "fast");
-    }
+    params.set("mode", FAST_MODE ? "fast" : "full");
 
     const resourceUrl =
       `${RESOURCE_VIEWER}?${params.toString()}#${encodeURIComponent(binding.instance.value)}`;

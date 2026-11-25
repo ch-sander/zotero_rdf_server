@@ -6,36 +6,8 @@ let activeIndexName =
   localStorage.getItem("ocrSearchIndex") || DEFAULT_INDEX_NAME;
 
 let searchInstance = null;
+let initVersion = 0;
 let useMlt = false;
-
-// const SEARCH_ATTRIBUTES_OLD = [
-//   { field: "text", weight: 5 },
-//   { field: "label", weight: 3 },
-//   { field: "meta.file_label", weight: 3 },
-//   { field: "meta.parent_creators", weight: 2 },
-//   { field: "meta.parent_tags", weight: 2 },
-//   { field: "meta.library_label", weight: 2 },
-//   { field: "meta.file", weight: 1 }
-// ];
-
-// const RESULT_ATTRIBUTES_OLD = [
-//   "doc_id",
-//   "label",
-//   "source",
-//   "page",
-//   "text",
-//   "ingest_ts",
-//   "meta.file",
-//   "meta.file_label",
-//   "meta.library",
-//   "meta.library_label",
-//   "meta.link_type",
-//   "meta.parent",
-//   "meta.parent_creators",
-//   "meta.parent_key",
-//   "meta.parent_tags",
-//   "meta.date"
-// ];
 
 const HIGHLIGHT_ATTRIBUTES = ["label", "text"];
 const SNIPPET_ATTRIBUTES = ["text"];
@@ -164,7 +136,9 @@ function buildFacetAttributes(fields) {
 }
 
 async function loadMapping(indexName = activeIndexName) {
-  const res = await fetch(`${OPENSEARCH_HOST}/${indexName}/_mapping`);
+  const url = `${OPENSEARCH_HOST}/${indexName}/_mapping`;
+  LibraryWorkspace.record("Index mapping", "GET", new URL(url, document.baseURI).href);
+  const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`Failed to load mapping: ${res.status} ${res.statusText}`);
   }
@@ -179,7 +153,7 @@ function createFacetContainers(facets) {
     const wrapper = document.createElement("section");
     wrapper.className = "facet-block";
 
-    const title = document.createElement("h4");
+    const title = document.createElement("h3");
     title.textContent = facet.label;
 
     const container = document.createElement("div");
@@ -331,23 +305,16 @@ function buildResultAttributes(fields) {
 
 function initSearchMode(search, initialQuery) {
   document.getElementById("searchbox").innerHTML = `
-    <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.5rem">
-      <label>
-        <input id="mlt-toggle" type="checkbox"> More Like This (MLT)
-      </label>
-      <button id="show-opensearch-query" type="button" disabled
-        aria-haspopup="dialog" aria-controls="opensearch-query-dialog"
-        title="Show full OpenSearch query"
-        style="font-size: 0.8rem; padding: 0.2rem 0.5rem; cursor: pointer">Query</button>
-    </div>
+    <label class="search-mode-label">
+      <input id="mlt-toggle" type="checkbox"> More Like This (MLT)
+    </label>
     <div id="term-searchbox"></div>
     <form id="mlt-searchbox" hidden>
       <textarea id="mlt-text" class="ais-SearchBox-input" rows="6"
         aria-label="Text for similarity search"
-        placeholder="Paste a text to find similar OCR content..."
-        style="height: auto; padding: 0.75rem; resize: vertical"></textarea>
-      <button type="submit">Search similar text</button>
-      <button type="reset">Clear</button>
+        placeholder="Paste a text to find similar OCR content..."></textarea>
+      <button class="wk-button wk-primary" type="submit">Search similar text</button>
+      <button class="wk-button" type="reset">Clear</button>
     </form>
   `;
 
@@ -386,141 +353,13 @@ function initSearchMode(search, initialQuery) {
   });
 }
 
-function initQueryInspector() {
-  document.getElementById("searchbox").insertAdjacentHTML("beforeend", `
-    <style>
-      #opensearch-query-dialog {
-        box-sizing: border-box;
-        width: min(900px, calc(100vw - 2rem));
-        max-height: calc(100dvh - 2rem);
-        overflow: auto;
-        padding: 1.25rem;
-        border: 1px solid #cbd5e1;
-        border-radius: 0.65rem;
-        background: #fff;
-        color: #0f172a;
-      }
-      #opensearch-query-dialog::backdrop { background: rgb(0 0 0 / 45%); }
-      #opensearch-query-dialog .query-dialog-header,
-      #opensearch-query-dialog .query-dialog-footer {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        flex-wrap: wrap;
-        gap: 0.75rem;
-      }
-      #opensearch-query-dialog h2 { margin: 0; font-size: 1.1rem; }
-      #opensearch-query-dialog button { padding: 0.35rem 0.65rem; cursor: pointer; }
-      #opensearch-query-index { margin: 0.75rem 0; overflow-wrap: anywhere; }
-      #opensearch-query-picker { display: block; margin-bottom: 0.75rem; }
-      #opensearch-query-picker[hidden] { display: none; }
-      #opensearch-query-text {
-        box-sizing: border-box;
-        width: 100%;
-        height: 55vh;
-        max-height: 32rem;
-        margin-bottom: 0.75rem;
-        padding: 0.75rem;
-        border: 1px solid #cbd5e1;
-        border-radius: 0.35rem;
-        background: #f8fafc;
-        color: #0f172a;
-        font: 0.8rem/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
-        resize: vertical;
-      }
-    </style>
-    <dialog id="opensearch-query-dialog" aria-labelledby="opensearch-query-title">
-      <div class="query-dialog-header">
-        <h2 id="opensearch-query-title">OpenSearch query</h2>
-        <button id="close-opensearch-query" type="button" aria-label="Close">✕</button>
-      </div>
-      <p id="opensearch-query-index"></p>
-      <label id="opensearch-query-picker" hidden>
-        Request: <select id="opensearch-query-select"></select>
-      </label>
-      <textarea id="opensearch-query-text" readonly spellcheck="false" wrap="off"
-        aria-label="Full OpenSearch query"></textarea>
-      <div class="query-dialog-footer">
-        <span id="opensearch-query-feedback" role="status"></span>
-        <button id="copy-opensearch-query" type="button" disabled>Copy</button>
-      </div>
-    </dialog>
-  `);
-
-  const openButton = document.getElementById("show-opensearch-query");
-  const dialog = document.getElementById("opensearch-query-dialog");
-  const picker = document.getElementById("opensearch-query-picker");
-  const select = document.getElementById("opensearch-query-select");
-  const index = document.getElementById("opensearch-query-index");
-  const output = document.getElementById("opensearch-query-text");
-  const copyButton = document.getElementById("copy-opensearch-query");
-  const feedback = document.getElementById("opensearch-query-feedback");
-  let queries = [];
-
-  const render = () => {
-    const query = queries[Number(select.value) || 0];
-    index.textContent = query ? `Index: ${query.indexName}` : "";
-    output.value = query?.body || "No search request available yet.";
-    copyButton.disabled = !query;
-    feedback.textContent = "";
-  };
-
-  openButton.addEventListener("click", () => {
-    feedback.textContent = "";
-    if (!dialog.open) dialog.showModal();
-  });
-  document.getElementById("close-opensearch-query")
-    .addEventListener("click", () => dialog.close());
-  dialog.addEventListener("click", (event) => {
-    const rect = dialog.getBoundingClientRect();
-    if (event.target === dialog && (event.clientX < rect.left ||
-        event.clientX > rect.right || event.clientY < rect.top ||
-        event.clientY > rect.bottom)) dialog.close();
-  });
-  select.addEventListener("change", render);
-  copyButton.addEventListener("click", async () => {
-    const text = output.value;
-    const copyFallback = () => {
-      output.focus();
-      output.select();
-      if (!document.execCommand("copy")) throw new Error("Copy failed");
-    };
-    try {
-      try {
-        await navigator.clipboard.writeText(text);
-      } catch {
-        if (output.value !== text) return;
-        copyFallback();
-      }
-      if (output.value === text) feedback.textContent = "Copied.";
-    } catch {
-      feedback.textContent = "Copy failed. Press Ctrl/Cmd+C to copy the selected text.";
-    }
-  });
-
-  render();
-  return (searchRequests) => {
-    // Snapshot the final bodies, including facet filters and aggregations.
-    queries = searchRequests.map((sr) => ({
-      indexName: sr.indexName,
-      body: JSON.stringify(sr.body, null, 2)
-    }));
-    select.replaceChildren(...queries.map((query, i) => {
-      const option = document.createElement("option");
-      option.value = String(i);
-      option.textContent = `Request ${i + 1} of ${queries.length}`;
-      return option;
-    }));
-    picker.hidden = queries.length < 2;
-    openButton.disabled = queries.length === 0;
-    render();
-  };
-}
-
 async function init(indexName = activeIndexName) {
+  const version = ++initVersion;
+  LibraryWorkspace.setCurrent([]);
   try {
     activeIndexName = indexName;
-    const mapping = await loadMapping();
+    const mapping = await loadMapping(indexName);
+    if (version !== initVersion) return;
     const properties = mapping?.[indexName]?.mappings?.properties || {};
     const flatFields = flattenProperties(properties);
     const dynamicFacets = buildFacetAttributes(flatFields);
@@ -546,131 +385,149 @@ async function init(indexName = activeIndexName) {
       }
     });
 
-let displayOpenSearchQueries = () => {};
-const createSearchClient = (captureQueries = () => {}) => SearchkitInstantsearchClient(sk, {
-  getQuery(query) {
-    const q = (query || "").trim();
+    const createSearchClient = (captureQueries = () => {}) => SearchkitInstantsearchClient(sk, {
+      getQuery(query) {
+        const q = (query || "").trim();
 
-    if (!q) {
-      return false;
-    }
-
-    if (useMlt) {
-      return [{
-        more_like_this: {
-          fields: ["text"],
-          like: q,
-          min_term_freq: 1,
-          min_doc_freq: 1,
-          max_query_terms: 25,
-          minimum_should_match: "30%"
+        if (!q) {
+          return false;
         }
-      }];
-    }
 
-    const buildTermQuery = (term) => {
-      const t = term.trim();
-
-      if (!t) {
-        return null;
-      }
-
-      const isPhrase = /\s+/.test(t);
-
-      const should = [
-        {
-          match_phrase: {
-            text: {
-              query: t,
-              slop: 2,
-              boost: 6
+        if (useMlt) {
+          return [{
+            more_like_this: {
+              fields: ["text"],
+              like: q,
+              min_term_freq: 1,
+              min_doc_freq: 1,
+              max_query_terms: 25,
+              minimum_should_match: "30%"
             }
-          }
-        },
-
-        {
-          match_phrase_prefix: {
-            text: {
-              query: t,
-              max_expansions: 50,
-              boost: 2
-            }
-          }
+          }];
         }
-      ];
 
-      if (!isPhrase) {
-        should.push({
-          match: {
-            text: {
-              query: t,
-              fuzziness: 2,
-              prefix_length: 1,
-              max_expansions: 50,
-              boost: 1
-            }
+        const buildTermQuery = (term) => {
+          const t = term.trim();
+
+          if (!t) {
+            return null;
           }
-        });
-      }
 
-      return {
-        bool: {
-          should,
-          minimum_should_match: 1
-        }
-      };
-    };
+          const isPhrase = /\s+/.test(t);
 
-    const orGroups = q
-      .split(/\s*(?:,|;|\bOR\b)\s*/i)
-      .map(v => v.trim())
-      .filter(Boolean);
-
-    const queryDsl = [
-      {
-        bool: {
-          should: orGroups.map((group) => {
-
-          const andTerms = group
-            .split(/\s*(?:\+|\bAND\b)\s*/i)
-            .map(v => v.trim())
-            .filter(Boolean);
-
-            if (andTerms.length === 1) {
-              return buildTermQuery(andTerms[0]);
-            }
-
-            return {
-              bool: {
-                must: andTerms
-                  .map(buildTermQuery)
-                  .filter(Boolean)
+          const should = [
+            {
+              match_phrase: {
+                text: {
+                  query: t,
+                  slop: 2,
+                  boost: 6
+                }
               }
-            };
-          }),
+            },
 
-          minimum_should_match: 1
+            {
+              match_phrase_prefix: {
+                text: {
+                  query: t,
+                  max_expansions: 50,
+                  boost: 2
+                }
+              }
+            }
+          ];
+
+          if (!isPhrase) {
+            should.push({
+              match: {
+                text: {
+                  query: t,
+                  fuzziness: 2,
+                  prefix_length: 1,
+                  max_expansions: 50,
+                  boost: 1
+                }
+              }
+            });
+          }
+
+          return {
+            bool: {
+              should,
+              minimum_should_match: 1
+            }
+          };
+        };
+
+        const orGroups = q
+          .split(/\s*(?:,|;|\bOR\b)\s*/i)
+          .map(v => v.trim())
+          .filter(Boolean);
+
+        const queryDsl = [
+          {
+            bool: {
+              should: orGroups.map((group) => {
+
+                const andTerms = group
+                  .split(/\s*(?:\+|\bAND\b)\s*/i)
+                  .map(v => v.trim())
+                  .filter(Boolean);
+
+                if (andTerms.length === 1) {
+                  return buildTermQuery(andTerms[0]);
+                }
+
+                return {
+                  bool: {
+                    must: andTerms
+                      .map(buildTermQuery)
+                      .filter(Boolean)
+                  }
+                };
+              }),
+
+              minimum_should_match: 1
+            }
+          }
+        ];
+
+        return queryDsl;
+      },
+      hooks: {
+        beforeSearch: async (searchRequests) => {
+          captureQueries(searchRequests);
+
+          return searchRequests;
         }
       }
-    ];
-
-    console.log("Search input:", query);
-    return queryDsl;
-  },
-  hooks: {
-    beforeSearch: async (searchRequests) => {
-      searchRequests.forEach((sr, i) => {
-        console.log(`Final OpenSearch Query ${i}`);
-        console.log(JSON.stringify(sr.body, null, 2));
+    });
+    const requestTarget = `POST ${OPENSEARCH_HOST}/_msearch`;
+    function recordBodies(requests, label) {
+      const parts = requests.map(({ indexName, body }) => ({ indexName, body }));
+      const entries = parts.map((part, i) => {
+        const number = parts.length > 1 ? ` (${i + 1}/${parts.length})` : "";
+        return LibraryWorkspace.record(`${label} · ${part.indexName}${number}`, requestTarget, part.body);
       });
-      captureQueries(searchRequests);
-
-      return searchRequests;
+      // Searchkit sends an index header and a query body per line pair, including the final newline.
+      // Only build the copyable wire representation when someone selects it.
+      entries.push(LibraryWorkspace.record(`${label} · full request (NDJSON)`, requestTarget, () =>
+        parts.map(part => JSON.stringify({ index: part.indexName }) + "\n" + JSON.stringify(part.body) + "\n").join("")
+      ));
+      return entries;
     }
-  }
-});
 
-    let activeSearchClient = createSearchClient();
+    // The facet-value client otherwise omits search options, including beforeSearch.
+    const facetClient = SearchkitInstantsearchClient({
+      handleInstantSearchRequests(requests) {
+        return sk.handleInstantSearchRequests(requests, { hooks: {
+          beforeSearch(batch) {
+            recordBodies(batch, "Facet values");
+            return batch;
+          }
+        } });
+      }
+    });
     const queryClients = new Map();
     let visibleQueryRequest = null;
     const searchClient = {
@@ -681,26 +538,24 @@ const createSearchClient = (captureQueries = () => {}) => SearchkitInstantsearch
           entry = { queries: [] };
           // Keep each cached search paired with its final OpenSearch bodies.
           entry.client = createSearchClient((searchRequests) => {
-            entry.queries = searchRequests.map((sr) => ({
-              indexName: sr.indexName,
-              body: JSON.parse(JSON.stringify(sr.body))
-            }));
-            if (visibleQueryRequest === entry) displayOpenSearchQueries(entry.queries);
+            entry.queries = recordBodies(searchRequests, "OpenSearch");
+            if (visibleQueryRequest === entry && version === initVersion) {
+              LibraryWorkspace.setCurrent(entry.queries);
+            }
           });
           queryClients.set(key, entry);
           if (queryClients.size > 50) queryClients.delete(queryClients.keys().next().value);
         }
         visibleQueryRequest = entry;
-        displayOpenSearchQueries(entry.queries);
+        LibraryWorkspace.setCurrent(entry.queries);
         return entry.client.search(requests);
       },
-      searchForFacetValues: (requests) => activeSearchClient.searchForFacetValues(requests),
+      searchForFacetValues: (requests) => facetClient.searchForFacetValues(requests),
       clearCache: () => {
         // Isolate late responses from searches started before a mode switch.
-        activeSearchClient = createSearchClient();
         queryClients.clear();
         visibleQueryRequest = null;
-        displayOpenSearchQueries([]);
+        LibraryWorkspace.setCurrent([]);
         return Promise.resolve();
       }
     };
@@ -719,7 +574,16 @@ const createSearchClient = (captureQueries = () => {}) => SearchkitInstantsearch
     });
 
     initSearchMode(search, initialQuery);
-    displayOpenSearchQueries = initQueryInspector();
+    const analysisLink = document.getElementById("analyze-terms");
+    search.on("render", () => {
+      const term = (search.helper?.state.query || "").trim();
+      analysisLink.hidden = !term;
+      if (term) {
+        const url = new URL("../analyze/", document.baseURI);
+        url.searchParams.set("q", term);
+        analysisLink.href = url.href;
+      }
+    });
     search.addWidgets([
       instantsearch.widgets.searchBox({
         container: "#term-searchbox",
@@ -757,10 +621,11 @@ const createSearchClient = (captureQueries = () => {}) => SearchkitInstantsearch
     searchInstance = search;
     search.start();
   } catch (err) {
+    if (version !== initVersion) return;
     console.error(err);
     document.getElementById("hits").innerHTML = `
-      <div class="hit">
-        <h2>Initialization error</h2>
+      <div class="hit failure">
+        <h2>Could not open this index</h2>
         <div class="snippet">${escapeHtml(err.message)}</div>
       </div>
     `;
@@ -782,60 +647,3 @@ function initIndexSelector() {
 
 initIndexSelector();
 init(activeIndexName);
-
-/*     const searchClient = SearchkitInstantsearchClient(sk, {
-    getQuery(query, search_attributes) {
-        const fields = search_attributes.map((attr) =>
-        typeof attr === "string"
-            ? attr
-            : `${attr.field}${attr.weight ? `^${attr.weight}` : ""}`
-        );
-
-        return {
-        simple_query_string: {
-            query,
-            fields,
-            default_operator: "and"
-        }
-        };
-    }
-    }); */
-
-            // return [
-        // {
-        //     bool: {
-        //     should: parts.flatMap((part) => [
-        //         {
-        //         match_phrase: {
-        //             text: {
-        //             query: part,
-        //             slop: 2,
-        //             boost: 4
-        //             }
-        //         }
-        //         },
-        //         {
-        //         match_phrase_prefix: {
-        //             text: {
-        //             query: part,
-        //             max_expansions: 50,
-        //             boost: 2
-        //             }
-        //         }
-        //         },
-        //         {
-        //         match: {
-        //             text: {
-        //             query: part,
-        //             fuzziness: 2,
-        //             prefix_length: 1,
-        //             max_expansions: 50,
-        //             boost: 1
-        //             }
-        //         }
-        //         }
-        //     ]),
-        //     minimum_should_match: 1
-        //     }
-        // }
-        // ];

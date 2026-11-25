@@ -1,33 +1,57 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>RDF Class Instance Viewer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ontology browser · Zotero RDF Server Workbench</title>
+  <link rel="stylesheet" href="../assets/workbench/workspace.css">
   <link rel="stylesheet" href="styles.css">
-</head>
+  <script src="../assets/workbench/workspace.js" defer></script>
 
-<body>
-  <main>
-   <div id="custom-header-container"></div>
-    <header>
-      <h1>Ontology Classes</h1>
+  <script src="classes.js" defer></script>
+  <script src="../partials/load-partials.js" defer></script>
+</head>
+<body class="wk-page">
+  <a class="wk-skip" href="#workspace-main">Skip to content</a>
+  <div id="custom-header-container"></div>
+  <nav class="wk-nav" aria-label="Workbench">
+    <div class="wk-nav-inner">
+      <a class="wk-brand" data-workspace-home href="../"><span class="wk-mark" aria-hidden="true"></span>Workbench</a>
+      <div class="wk-tabs">
+        <a href="../search/">Full-text search</a>
+        <a href="../analyze/">Analysis</a>
+        <a href="../filter/" data-rdf-tool="filter">Search form</a>
+        <a href="../query/" data-rdf-tool="query">Query builder</a>
+        <a href="../browse/" aria-current="page" data-rdf-tool="browse">RDF browser</a>
+        <a href="../edit/" data-rdf-tool="edit">Editor</a>
+      </div>
+      <button type="button" class="wk-button wk-inspect" data-show-queries aria-label="Show queries" aria-haspopup="dialog">Show queries</button>
+    </div>
+  </nav>
+  <main class="wk-main rdf-view" id="workspace-main" tabindex="-1">
+    <header class="wk-heading">
+      <div><h1>Ontology browser</h1><p>Browse RDF classes and open the resources that belong to them.</p></div>
+    </header>
+    <section class="resource-head wk-panel">
       <h2 id="class-label" class="resource-label"></h2>
       <p id="class-uri"></p>
-      <p>Ontology in <a href="/ontology/ttl" target="_blank">Turtle</a> and <a href="../ontology" target="_blank">UI</a>.</p>
-    </header>
+      <p><a href="/ontology/ttl" target="_blank" rel="noopener">Ontology (Turtle)</a> · <a href="../ontology" target="_blank" rel="noopener">Ontology viewer</a></p>
+          <div id="view-options"></div>
+    </section>
 
     <section id="comment-box" class="comment-box" hidden>
       <div id="comment-text"></div>
     </section>
 
-    <section id="status" class="status">Loading Classes …</section>
+    <section role="status" id="status" class="status">Loading classes …</section>
 
     <section id="content" hidden>
       <div class="layout">
         <nav class="class-nav" aria-label="Class hierarchy">
-          <h4>Classes</h4>
-          <ul id="class-tree"></ul>
+          <details open data-small-disclosure>
+            <summary>Classes</summary>
+            <ul id="class-tree"></ul>
+          </details>
         </nav>
 
         <section class="class-content">
@@ -37,7 +61,7 @@
 
           <div class="table-toolbar">
             <input
-              id="instance-search"
+              id="instance-search" aria-label="Search instances"
               type="search"
               placeholder="Search instances..."
             >
@@ -64,9 +88,8 @@
         </section>
       </div>
     </section>
+
   </main>
-<div id="custom-footer-container"></div>
-  <script src="classes.js"></script>
-  <script src="../partials/load-partials.js" defer></script>
+  <div id="custom-footer-container"></div>
 </body>
 </html>

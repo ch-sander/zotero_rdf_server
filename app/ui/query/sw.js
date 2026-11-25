@@ -1,13 +1,13 @@
-/* /explorer/sw.js */
+/* Local SPARQL for the static development page. */
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
-importScripts('/explorer/js/comunica-browser.js');
+importScripts('./js/comunica-browser.js');
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   const scopePath = new URL(self.registration.scope).pathname.replace(/\/+$/, '');
   const sparqlPath = scopePath + '/sparql';
-  if (url.pathname === sparqlPath || url.pathname.startsWith(sparqlPath)) {
+  if (url.origin === self.location.origin && (url.pathname === sparqlPath || url.pathname.startsWith(sparqlPath + '/'))) {
     event.respondWith(handleSparql(event.request));
   }
 });
