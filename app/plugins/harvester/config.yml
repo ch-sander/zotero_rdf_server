@@ -1,0 +1,25 @@
+# BASE API
+base:
+  url: "https://api.base-search.net/cgi-bin/BaseHttpSearchInterface.fcgi"  # BASE API endpoint
+  default_hits: 10  # Default results per page
+  max_hits: 120  # Maximum results per request
+  max_offset: 999  # Maximum offset for pagination
+
+# DDB (Deutsche Digitale Bibliothek)
+ddb:
+  url: "https://api.deutsche-digitale-bibliothek.de/2/search/index/search/select"  # DDB API endpoint
+  ddb_time_parser_cache: "/app/plugins/harvester/data/internal/ddb/ddb_timeparser_cache.tsv"  # Legacy, now hardcoded in ddb_cache.py
+
+# STCV (Short Title Catalogue Vlaanderen)
+stcv:
+  url: "https://anet.be/opendata/stcv/stcv.sqlite.gz"  # STCV API endpoint
+  data_path: "/app/plugins/harvester/data/internal/stcv/latest/"  # Local database path
+  timeout: 30  # Download/processing timeout in seconds
+
+# Zotero API (environment variables are resolved from .env)
+zotero:
+  chunk_size: 50  # Items per batch request
+  chunk_delay: 2.0  # Delay between batches in seconds
+  http:
+    read_timeout: 60.0  # HTTP read timeout in seconds
+    connect_timeout: 30.0  # HTTP connect timeout in seconds
