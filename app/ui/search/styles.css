@@ -46,3 +46,45 @@
 .ocr .ais-Pagination-link { color:var(--wk-ink); background:white; border-color:var(--wk-stroke); }
 .ocr .ais-Pagination-link:hover { color:var(--wk-ink); background:var(--wk-orange); }
 .ocr .ais-RangeInput-input { color:var(--wk-ink); border-color:var(--wk-muted); }
+
+/* Nur auf app.scigma.de */
+.scigma-production .index-field {
+  display: none !important;
+}
+
+.scigma-production .search-panel {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Auf ALLEN Domains */
+.search-mode-options {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 16px;
+  margin-top: 6px;
+  margin-bottom: 12px;
+}
+
+.search-mode-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.8rem;
+  font-weight: normal;
+  opacity: 0.7;
+  cursor: pointer;
+  white-space: nowrap;
+  margin: 0;
+}
+
+.search-mode-label:hover,
+.search-mode-label:has(input:checked) {
+  opacity: 1;
+}
+
+.search-mode-label input {
+  margin: 0;
+  cursor: pointer;
+  width: auto;
+}

@@ -1,13 +1,23 @@
 const OPENSEARCH_HOST = "/plugin/fts/proxy/search";
+const IS_PRODUCTION = window.location.hostname === "app.scigma.de";
+
+document.documentElement.classList.toggle(
+  "scigma-production",
+  IS_PRODUCTION
+);
 
 const DEFAULT_INDEX_NAME = "scigma-main-corpus";
 
-let activeIndexName =
-  localStorage.getItem("ocrSearchIndex") || DEFAULT_INDEX_NAME;
+// let activeIndexName =
+//   localStorage.getItem("ocrSearchIndex") || DEFAULT_INDEX_NAME;
 
 let searchInstance = null;
 let initVersion = 0;
 let useMlt = false;
+let useLucene = false;
+let activeIndexName = IS_PRODUCTION
+  ? DEFAULT_INDEX_NAME
+  : localStorage.getItem("ocrSearchIndex") || DEFAULT_INDEX_NAME;
 
 const HIGHLIGHT_ATTRIBUTES = ["label", "text"];
 const SNIPPET_ATTRIBUTES = ["text"];
@@ -305,6 +315,126 @@ function buildResultAttributes(fields) {
 
 function initSearchMode(search, initialQuery) {
   document.getElementById("searchbox").innerHTML = `
+    <div id="term-searchbox"></div>
+
+    <form id="mlt-searchbox" hidden>
+      <textarea id="mlt-text"
+        class="ais-SearchBox-input" rows="6"></textarea>
+
+      <button id="advanced-submit"
+        class="wk-button wk-primary" type="submit">
+        Search
+      </button>
+
+      <button class="wk-button" type="reset">
+        Clear
+      </button>
+    </form>
+
+    <div class="search-mode-options">
+      <label class="search-mode-label"
+        title="More Like This – similarity search">
+        <input id="mlt-toggle" type="checkbox">
+        MLT
+      </label>
+
+      <label class="search-mode-label"
+        title="Advanced Lucene query syntax">
+        <input id="lucene-toggle" type="checkbox">
+        Lucene
+      </label>
+    </div>
+  `;
+
+  const mltToggle = document.getElementById("mlt-toggle");
+  const luceneToggle = document.getElementById("lucene-toggle");
+  const termBox = document.getElementById("term-searchbox");
+  const form = document.getElementById("mlt-searchbox");
+  const textarea = document.getElementById("mlt-text");
+  const submit = document.getElementById("advanced-submit");
+
+  const updateMode = () => {
+    const advanced = useMlt || useLucene;
+
+    mltToggle.checked = useMlt;
+    luceneToggle.checked = useLucene;
+
+    termBox.hidden = advanced;
+    form.hidden = !advanced;
+
+    textarea.placeholder = useLucene
+      ? 'text:(maria AND virgo) AND meta.year:<1600'
+      : "Paste a text to find similar OCR content...";
+
+    textarea.setAttribute("aria-label", useLucene
+      ? "Lucene query"
+      : "Text for similarity search");
+
+    submit.textContent = useLucene
+      ? "Search Lucene query"
+      : "Search similar text";
+  };
+
+  const switchMode = (mode, checked) => {
+    const query = (useMlt || useLucene)
+      ? textarea.value
+      : search.helper.state.query || "";
+
+    useMlt = mode === "mlt" && checked;
+    useLucene = mode === "lucene" && checked;
+
+    textarea.value = query;
+
+    updateMode();
+
+    search.helper
+      .clearCache()
+      .setQuery(query)
+      .setPage(0)
+      .search();
+
+    if (useMlt || useLucene) {
+      textarea.focus();
+    } else {
+      termBox.querySelector("input")?.focus();
+    }
+  };
+
+  textarea.value = initialQuery;
+  updateMode();
+
+  mltToggle.addEventListener("change", () => {
+    switchMode("mlt", mltToggle.checked);
+  });
+
+  luceneToggle.addEventListener("change", () => {
+    switchMode("lucene", luceneToggle.checked);
+  });
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+
+    search.helper
+      .setQuery(textarea.value)
+      .setPage(0)
+      .search();
+  });
+
+  form.addEventListener("reset", (event) => {
+    event.preventDefault();
+    textarea.value = "";
+
+    search.helper
+      .setQuery("")
+      .setPage(0)
+      .search();
+
+    textarea.focus();
+  });
+}
+
+function initSearchMode_old(search, initialQuery) {
+  document.getElementById("searchbox").innerHTML = `
     <label class="search-mode-label">
       <input id="mlt-toggle" type="checkbox"> More Like This (MLT)
     </label>
@@ -391,6 +521,18 @@ async function init(indexName = activeIndexName) {
 
         if (!q) {
           return false;
+        }
+
+        if (useLucene) {
+          return [{
+            query_string: {
+              query: q,
+              default_field: "text",
+              default_operator: "AND",
+              lenient: false,
+              allow_leading_wildcard: false
+            }
+          }];
         }
 
         if (useMlt) {
@@ -532,7 +674,10 @@ async function init(indexName = activeIndexName) {
     let visibleQueryRequest = null;
     const searchClient = {
       search: (requests) => {
-        const key = JSON.stringify(requests);
+        const key = JSON.stringify({
+          mode: useLucene ? "lucene" : useMlt ? "mlt" : "default",
+          requests
+        });
         let entry = queryClients.get(key);
         if (!entry) {
           entry = { queries: [] };
@@ -636,6 +781,19 @@ function initIndexSelector() {
   const select = document.getElementById("index-select");
   if (!select) return;
 
+  if (IS_PRODUCTION) {
+    select.closest(".index-field")?.remove();
+
+    const panel = document.querySelector(".search-panel");
+    const searchbox = document.getElementById("searchbox");
+
+    panel.style.setProperty("display", "block", "important");
+    searchbox.style.setProperty("width", "100%", "important");
+    searchbox.style.setProperty("max-width", "none", "important");
+
+    return;
+  }
+
   select.value = activeIndexName;
 
   select.addEventListener("change", () => {
@@ -644,6 +802,5 @@ function initIndexSelector() {
     init(nextIndex);
   });
 }
-
 initIndexSelector();
 init(activeIndexName);
